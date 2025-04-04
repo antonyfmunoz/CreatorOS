@@ -455,8 +455,8 @@ const SingleComment = ({
     setShowReplies(!showReplies);
   };
   
-  // Only allow replies up to 3 levels deep
-  const canReply = depth < 2;
+  // Allow replies at any depth
+  const canReply = true;
   
   return (
     <div className="flex gap-3">
@@ -702,7 +702,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        {post.comments > 0 ? `Comments (${post.comments})` : 'Comments'} 
+        Comments {comments.length > 0 ? `(${comments.length})` : ''}
       </h3>
       
       {replyingTo && (
