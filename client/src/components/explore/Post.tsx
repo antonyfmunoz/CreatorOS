@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, MessageSquare, Share2, MoreHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -7,29 +7,55 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Post as PostType } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface PostProps {
   post: PostType;
 }
 
 const Post = ({ post }: PostProps) => {
-  const [isLiked, setIsLiked] = useState(false);
+  // Use local storage to remember liked posts across refreshes
+  const [likedPosts, setLikedPosts] = useState<number[]>(() => {
+    const saved = localStorage.getItem('likedPosts');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const isLiked = likedPosts.includes(post.id);
+  const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Save liked posts to local storage
+  useEffect(() => {
+    localStorage.setItem('likedPosts', JSON.stringify(likedPosts));
+  }, [likedPosts]);
 
   const likePostMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', `/api/posts/${post.id}/like`, null);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+    onSuccess: (updatedPost) => {
+      // Update the post in the cache directly without refetching
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
+      });
+      
+      // Remember this post was liked by adding it to likedPosts
+      setLikedPosts(prev => [...prev, post.id]);
     },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to like the post. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const handleLike = () => {
     if (!isLiked) {
       likePostMutation.mutate();
-      setIsLiked(true);
     }
   };
 
@@ -45,7 +71,7 @@ const Post = ({ post }: PostProps) => {
           </Avatar>
           <div>
             <p className="font-semibold">{post.user.displayName}</p>
-            <p className="text-xs text-gray-500">{post.user.bio} • {formattedDate}</p>
+            <p className="text-xs text-gray-500">{post.user.bio || 'Creator'} • {formattedDate}</p>
           </div>
           <Button variant="ghost" size="icon" className="ml-auto">
             <MoreHorizontal className="h-5 w-5 text-gray-400" />
@@ -69,9 +95,10 @@ const Post = ({ post }: PostProps) => {
               size="sm" 
               className="flex items-center gap-1 px-2"
               onClick={handleLike}
+              disabled={likePostMutation.isPending || isLiked}
             >
               <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-              <span>{post.likes + (isLiked ? 1 : 0)}</span>
+              <span>{post.likes}</span>
             </Button>
             
             <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2">
