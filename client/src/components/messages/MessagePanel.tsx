@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { X, Send, ChevronLeft } from 'lucide-react';
+import { X, Send, ChevronLeft, Search, MessageSquare, User, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';
 import { AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { DirectMessage, Conversation } from '@/types';
+import { DirectMessage, Conversation, User as UserType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { SheetClose, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface MessagePanelProps {
   onClose?: () => void;
@@ -17,6 +18,10 @@ interface MessagePanelProps {
 const MessagePanel = () => {
   const { user } = useAuthStore();
   const [newMessage, setNewMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserType[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeTab, setActiveTab] = useState('conversations');
   const {
     conversations,
     messages,
@@ -26,7 +31,8 @@ const MessagePanel = () => {
     fetchMessages,
     sendMessage,
     setSelectedConversation,
-    markConversationAsRead
+    markConversationAsRead,
+    createConversation
   } = useMessaging();
 
   // Fetch conversations when component mounts
@@ -43,11 +49,85 @@ const MessagePanel = () => {
       markConversationAsRead(selectedConversation);
     }
   }, [selectedConversation, fetchMessages, markConversationAsRead]);
+  
+  // Handle user search with debounce
+  useEffect(() => {
+    if (!searchQuery || searchQuery.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    // Only search if query starts with @
+    if (!trimmedQuery.startsWith('@')) {
+      return;
+    }
+    
+    const query = trimmedQuery.substring(1); // Remove @ prefix
+    if (query.length < 2) {
+      return; // Require at least 2 characters after @
+    }
+    
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const response = await fetch(`/api/users?search=${encodeURIComponent(query)}`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Error searching users: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        // Filter out current user
+        if (Array.isArray(data)) {
+          const filteredResults = data.filter((u: UserType) => u.id !== user?.id);
+          setSearchResults(filteredResults);
+        }
+      } catch (error) {
+        console.error('Error searching users:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery, user?.id]);
 
   const handleSendMessage = () => {
     if (newMessage.trim() && selectedConversation && user) {
       sendMessage(selectedConversation, user.id, newMessage);
       setNewMessage('');
+    }
+  };
+  
+  const handleStartConversation = async (userId: number) => {
+    if (!user) return;
+    
+    try {
+      // Create a new conversation with selected user
+      const conversationId = await createConversation([user.id, userId]);
+      
+      // Select the newly created conversation
+      setSelectedConversation(conversationId);
+      
+      // Clear search results and query
+      setSearchQuery('');
+      setSearchResults([]);
+      
+      // Switch back to conversations tab
+      setActiveTab('conversations');
+    } catch (error) {
+      console.error('Error starting conversation:', error);
     }
   };
 
@@ -142,55 +222,127 @@ const MessagePanel = () => {
             )}
           </div>
         ) : (
-          // Conversation list view
-          <div className="divide-y">
-            {conversations.length > 0 ? (
-              conversations.map((conversation) => (
-                <div 
-                  key={conversation.id}
-                  className="p-4 hover:bg-muted/50 cursor-pointer"
-                  onClick={() => setSelectedConversation(conversation.id)}
-                >
-                  <div className="flex items-center space-x-4">
-                    <Avatar>
-                      <AvatarFallback>
-                        {getConversationName(conversation).charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between">
-                        <p className="font-medium truncate">
-                          {getConversationName(conversation)}
-                        </p>
-                        {conversation.lastMessage && (
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(conversation.lastMessage.sentAt), { addSuffix: true })}
-                          </p>
+          // Tabs for conversations and search
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="px-4 pt-2">
+              <TabsList className="w-full">
+                <TabsTrigger value="conversations" className="flex-1">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Conversations
+                </TabsTrigger>
+                <TabsTrigger value="search" className="flex-1">
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            
+            <TabsContent value="conversations" className="mt-0">
+              <div className="divide-y">
+                {conversations.length > 0 ? (
+                  conversations.map((conversation) => (
+                    <div 
+                      key={conversation.id}
+                      className="p-4 hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setSelectedConversation(conversation.id)}
+                    >
+                      <div className="flex items-center space-x-4">
+                        <Avatar>
+                          <AvatarFallback>
+                            {getConversationName(conversation).charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between">
+                            <p className="font-medium truncate">
+                              {getConversationName(conversation)}
+                            </p>
+                            {conversation.lastMessage && (
+                              <p className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(conversation.lastMessage.sentAt), { addSuffix: true })}
+                              </p>
+                            )}
+                          </div>
+                          {conversation.lastMessage && (
+                            <p className="text-sm text-muted-foreground truncate">
+                              {conversation.lastMessage.content}
+                            </p>
+                          )}
+                        </div>
+                        {conversation.unreadCount && conversation.unreadCount > 0 && (
+                          <div className="bg-primary text-primary-foreground rounded-full h-5 min-w-5 flex items-center justify-center px-1 text-xs font-medium">
+                            {conversation.unreadCount}
+                          </div>
                         )}
                       </div>
-                      {conversation.lastMessage && (
-                        <p className="text-sm text-muted-foreground truncate">
-                          {conversation.lastMessage.content}
-                        </p>
-                      )}
                     </div>
-                    {conversation.unreadCount && conversation.unreadCount > 0 && (
-                      <div className="bg-primary text-primary-foreground rounded-full h-5 min-w-5 flex items-center justify-center px-1 text-xs font-medium">
-                        {conversation.unreadCount}
-                      </div>
-                    )}
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 text-center">
+                    <p className="font-medium mb-1">No conversations yet</p>
+                    <p className="text-muted-foreground text-sm">
+                      Search for users to start chatting
+                    </p>
                   </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center h-full">
-                <p className="font-medium mb-1">No conversations yet</p>
-                <p className="text-muted-foreground text-sm">
-                  Start a new conversation from user profiles
-                </p>
+                )}
               </div>
-            )}
-          </div>
+            </TabsContent>
+            
+            <TabsContent value="search" className="mt-0">
+              <div className="p-4">
+                <div className="mb-4">
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search with @username"
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter @ followed by username, e.g. @john
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  {isSearching ? (
+                    <div className="flex justify-center py-4">
+                      <p>Searching...</p>
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <div className="divide-y">
+                      {searchResults.map((user) => (
+                        <div 
+                          key={user.id}
+                          className="py-3 hover:bg-muted/50 cursor-pointer flex items-center space-x-3"
+                          onClick={() => handleStartConversation(user.id)}
+                        >
+                          <Avatar>
+                            <AvatarImage src={user.profileImageUrl || undefined} />
+                            <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{user.displayName}</p>
+                            <p className="text-sm text-muted-foreground">@{user.username}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : searchQuery && searchQuery.startsWith('@') && searchQuery.length > 2 ? (
+                    <div className="text-center py-4">
+                      <p>No users found</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <Users className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
+                      <p className="font-medium mb-1">Find people to chat with</p>
+                      <p className="text-sm text-muted-foreground">
+                        Search for users by typing @username
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
       </ScrollArea>
       

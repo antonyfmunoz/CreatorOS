@@ -15,6 +15,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User routes
   app.get("/api/users", async (req, res) => {
     try {
+      // If search query is provided in the query params
+      if (req.query.search) {
+        const users = await storage.searchUsersByUsername(req.query.search as string);
+        return res.json(users);
+      }
+      
+      // Otherwise return all users
       const users = await storage.getAllUsers();
       res.json(users);
     } catch (error) {

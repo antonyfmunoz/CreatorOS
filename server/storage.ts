@@ -25,6 +25,7 @@ export interface IStorage {
   // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  searchUsersByUsername(query: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
@@ -493,6 +494,20 @@ export class MemStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
+    );
+  }
+  
+  async searchUsersByUsername(query: string): Promise<User[]> {
+    // Convert to lowercase and remove @ prefix if exists
+    const normalizedQuery = query.toLowerCase().replace(/^@/, '');
+    
+    if (!normalizedQuery.trim()) {
+      return [];
+    }
+    
+    // Filter users with usernames that start with the query
+    return Array.from(this.users.values()).filter(
+      (user) => user.username.toLowerCase().includes(normalizedQuery)
     );
   }
 
@@ -1177,6 +1192,20 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
+  }
+  
+  async searchUsersByUsername(query: string): Promise<User[]> {
+    // Convert to lowercase and remove @ prefix if exists
+    const normalizedQuery = query.toLowerCase().replace(/^@/, '');
+    
+    if (!normalizedQuery.trim()) {
+      return [];
+    }
+    
+    // Use SQL LIKE to find usernames containing the query
+    return await db.select()
+      .from(users)
+      .where(sql`LOWER(${users.username}) LIKE ${'%' + normalizedQuery + '%'}`);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
