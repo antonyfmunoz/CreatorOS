@@ -1,6 +1,6 @@
 import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { z } from "zod";
 
 // User schema
@@ -48,13 +48,16 @@ export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }).notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  parentId: integer("parent_id"),
   content: text("content").notNull(),
+  likes: integer("likes").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertCommentSchema = createInsertSchema(comments).pick({
   postId: true,
   userId: true,
+  parentId: true,
   content: true,
 });
 
@@ -237,9 +240,15 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   comments: many(comments),
 }));
 
-export const commentsRelations = relations(comments, ({ one }) => ({
+export const commentsRelations = relations(comments, ({ one, many }) => ({
   user: one(users, { fields: [comments.userId], references: [users.id] }),
   post: one(posts, { fields: [comments.postId], references: [posts.id] }),
+  parent: one(comments, { 
+    fields: [comments.parentId], 
+    references: [comments.id],
+    relationName: "parent_comment"
+  }),
+  replies: many(comments, { relationName: "parent_comment" }),
 }));
 
 export const productsRelations = relations(products, ({ one }) => ({

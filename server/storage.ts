@@ -13,7 +13,7 @@ import {
   documents, type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -32,7 +32,9 @@ export interface IStorage {
 
   // Comment operations
   getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
+  getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]>;
   createComment(comment: InsertComment): Promise<Comment>;
+  likeComment(id: number): Promise<Comment>;
 
   // Product operations
   getProducts(): Promise<(Product & { user: User })[]>;
@@ -521,7 +523,17 @@ export class MemStorage implements IStorage {
   // Comment operations
   async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
     return Array.from(this.comments.values())
-      .filter(comment => comment.postId === postId)
+      .filter(comment => comment.postId === postId && comment.parentId === null)
+      .map(comment => {
+        const user = this.users.get(comment.userId)!;
+        return { ...comment, user };
+      })
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]> {
+    return Array.from(this.comments.values())
+      .filter(comment => comment.parentId === commentId)
       .map(comment => {
         const user = this.users.get(comment.userId)!;
         return { ...comment, user };
@@ -532,7 +544,7 @@ export class MemStorage implements IStorage {
   async createComment(insertComment: InsertComment): Promise<Comment> {
     const id = this.commentIdCounter++;
     const now = new Date();
-    const comment: Comment = { ...insertComment, id, createdAt: now };
+    const comment: Comment = { ...insertComment, id, createdAt: now, likes: 0 };
     this.comments.set(id, comment);
     
     // Update comment count on the post
@@ -542,6 +554,15 @@ export class MemStorage implements IStorage {
       this.posts.set(post.id, post);
     }
     
+    return comment;
+  }
+  
+  async likeComment(id: number): Promise<Comment> {
+    const comment = this.comments.get(id);
+    if (!comment) throw new Error('Comment not found');
+    
+    comment.likes++;
+    this.comments.set(id, comment);
     return comment;
   }
 
@@ -881,7 +902,24 @@ export class DatabaseStorage implements IStorage {
       user: users,
     }).from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
-      .where(eq(comments.postId, postId))
+      .where(
+        and(
+          eq(comments.postId, postId),
+          isNull(comments.parentId)
+        )
+      )
+      .orderBy(desc(comments.createdAt));
+    
+    return result.map(({ comment, user }) => ({ ...comment, user }));
+  }
+
+  async getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]> {
+    const result = await db.select({
+      comment: comments,
+      user: users,
+    }).from(comments)
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(eq(comments.parentId, commentId))
       .orderBy(desc(comments.createdAt));
     
     return result.map(({ comment, user }) => ({ ...comment, user }));
@@ -900,6 +938,19 @@ export class DatabaseStorage implements IStorage {
     
     const [comment] = await db.insert(comments).values(insertComment).returning();
     return comment;
+  }
+  
+  async likeComment(id: number): Promise<Comment> {
+    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    if (!comment) throw new Error(`Comment with id ${id} not found`);
+    
+    const [updatedComment] = await db
+      .update(comments)
+      .set({ likes: comment.likes + 1 })
+      .where(eq(comments.id, id))
+      .returning();
+    
+    return updatedComment;
   }
 
   // Product operations

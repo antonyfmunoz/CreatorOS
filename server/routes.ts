@@ -92,6 +92,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to create comment" });
     }
   });
+  
+  app.get("/api/comments/:commentId/replies", async (req, res) => {
+    try {
+      const replies = await storage.getCommentReplies(parseInt(req.params.commentId));
+      res.json(replies);
+    } catch (error) {
+      console.error("Error fetching comment replies:", error);
+      res.status(500).json({ message: "Failed to fetch comment replies", error: error.message });
+    }
+  });
+
+  app.post("/api/comments/:id/like", async (req, res) => {
+    try {
+      const comment = await storage.likeComment(parseInt(req.params.id));
+      res.json(comment);
+    } catch (error) {
+      console.error("Error liking comment:", error);
+      res.status(500).json({ message: "Failed to like comment", error: error.message });
+    }
+  });
 
   // Product routes
   app.get("/api/products", async (req, res) => {
