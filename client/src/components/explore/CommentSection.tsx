@@ -689,10 +689,13 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     document.querySelector('textarea')?.focus();
   };
 
+  // Don't show a count if there are no visible comments to avoid confusion
+  const visibleCommentCount = comments.length;
+  
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        Comments {post.comments > 0 ? `(${post.comments})` : ''}
+        Comments {visibleCommentCount > 0 ? `(${visibleCommentCount})` : ''}
       </h3>
       
       {replyingTo && (
@@ -715,10 +718,8 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
         <div className="text-center py-4">Loading comments...</div>
       ) : (
         <div className="space-y-4 mb-4 max-h-80 overflow-y-auto">
-          {post.comments === 0 ? (
+          {comments.length === 0 ? (
             <p className="text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
-          ) : comments.length === 0 ? (
-            <p className="text-gray-500 text-center py-2">No top-level comments yet. The comments may be replies to deleted comments.</p>
           ) : (
             comments.map((comment: Comment & { user: User }) => (
               <SingleComment 
