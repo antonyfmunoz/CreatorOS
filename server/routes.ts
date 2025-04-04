@@ -97,9 +97,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const replies = await storage.getCommentReplies(parseInt(req.params.commentId));
       res.json(replies);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching comment replies:", error);
       res.status(500).json({ message: "Failed to fetch comment replies", error: error.message });
+    }
+  });
+
+  // Get a single comment by ID
+  app.get("/api/comments/:id", async (req, res) => {
+    try {
+      const comment = await storage.getCommentById(parseInt(req.params.id));
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      res.json(comment);
+    } catch (error: any) {
+      console.error("Error fetching comment:", error);
+      res.status(500).json({ message: "Failed to fetch comment" });
+    }
+  });
+
+  // Update a comment
+  app.put("/api/comments/:id", async (req, res) => {
+    try {
+      const commentId = parseInt(req.params.id);
+      const { content, userId } = req.body;
+      
+      // Verify the comment belongs to the user before updating
+      const comment = await storage.getCommentById(commentId);
+      
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      
+      if (comment.userId !== userId) {
+        return res.status(403).json({ message: "You can only edit your own comments" });
+      }
+      
+      const updatedComment = await storage.updateComment(commentId, content);
+      res.json(updatedComment);
+    } catch (error: any) {
+      console.error("Error updating comment:", error);
+      res.status(500).json({ message: "Failed to update comment" });
+    }
+  });
+
+  // Delete a comment
+  app.delete("/api/comments/:id", async (req, res) => {
+    try {
+      const commentId = parseInt(req.params.id);
+      const userId = parseInt(req.query.userId as string);
+      
+      // Verify the comment belongs to the user before deleting
+      const comment = await storage.getCommentById(commentId);
+      
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      
+      if (comment.userId !== userId) {
+        return res.status(403).json({ message: "You can only delete your own comments" });
+      }
+      
+      await storage.deleteComment(commentId);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting comment:", error);
+      res.status(500).json({ message: "Failed to delete comment" });
     }
   });
 
@@ -107,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const comment = await storage.likeComment(parseInt(req.params.id));
       res.json(comment);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error liking comment:", error);
       res.status(500).json({ message: "Failed to like comment", error: error.message });
     }

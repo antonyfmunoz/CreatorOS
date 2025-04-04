@@ -33,7 +33,10 @@ export interface IStorage {
   // Comment operations
   getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
   getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]>;
+  getCommentById(id: number): Promise<(Comment & { user: User }) | undefined>;
   createComment(comment: InsertComment): Promise<Comment>;
+  updateComment(id: number, content: string): Promise<Comment>;
+  deleteComment(id: number): Promise<void>;
   likeComment(id: number): Promise<Comment>;
 
   // Product operations
@@ -531,6 +534,14 @@ export class MemStorage implements IStorage {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
+  async getCommentById(id: number): Promise<(Comment & { user: User }) | undefined> {
+    const comment = this.comments.get(id);
+    if (!comment) return undefined;
+    
+    const user = this.users.get(comment.userId)!;
+    return { ...comment, user };
+  }
+
   async getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]> {
     return Array.from(this.comments.values())
       .filter(comment => comment.parentId === commentId)
@@ -555,6 +566,40 @@ export class MemStorage implements IStorage {
     }
     
     return comment;
+  }
+  
+  async updateComment(id: number, content: string): Promise<Comment> {
+    const comment = this.comments.get(id);
+    if (!comment) throw new Error('Comment not found');
+    
+    comment.content = content;
+    this.comments.set(id, comment);
+    return comment;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    const comment = this.comments.get(id);
+    if (!comment) throw new Error('Comment not found');
+    
+    // If it's a top-level comment, decrement the post's comment count
+    if (comment.parentId === null) {
+      const post = this.posts.get(comment.postId);
+      if (post) {
+        post.comments = Math.max(0, post.comments - 1);
+        this.posts.set(post.id, post);
+      }
+    }
+    
+    // Remove the comment itself
+    this.comments.delete(id);
+    
+    // Also remove all replies to this comment
+    const replies = Array.from(this.comments.values())
+      .filter(c => c.parentId === id);
+      
+    replies.forEach(reply => {
+      this.comments.delete(reply.id);
+    });
   }
   
   async likeComment(id: number): Promise<Comment> {
@@ -938,6 +983,60 @@ export class DatabaseStorage implements IStorage {
     
     const [comment] = await db.insert(comments).values(insertComment).returning();
     return comment;
+  }
+  
+  async getCommentById(id: number): Promise<(Comment & { user: User }) | undefined> {
+    const [result] = await db.select({
+      comment: comments,
+      user: users,
+    }).from(comments)
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(eq(comments.id, id));
+    
+    if (!result) return undefined;
+    return { ...result.comment, user: result.user };
+  }
+
+  async updateComment(id: number, content: string): Promise<Comment> {
+    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    if (!comment) throw new Error(`Comment with id ${id} not found`);
+    
+    const [updatedComment] = await db
+      .update(comments)
+      .set({ content })
+      .where(eq(comments.id, id))
+      .returning();
+    
+    return updatedComment;
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    // First check if the comment exists
+    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    if (!comment) throw new Error(`Comment with id ${id} not found`);
+    
+    // If it's a top-level comment, decrement the post's comment count
+    if (comment.parentId === null) {
+      const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
+      if (post) {
+        // Update the post's comment count
+        await db
+          .update(posts)
+          .set({ comments: Math.max(0, post.comments - 1) })
+          .where(eq(posts.id, comment.postId));
+      }
+    }
+    
+    // Find all replies to delete them as well
+    const replies = await db.select().from(comments).where(eq(comments.parentId, id));
+    
+    // Delete all replies
+    if (replies.length > 0) {
+      await db.delete(comments).where(eq(comments.parentId, id));
+    }
+    
+    // Delete the comment itself
+    await db.delete(comments).where(eq(comments.id, id));
   }
   
   async likeComment(id: number): Promise<Comment> {
