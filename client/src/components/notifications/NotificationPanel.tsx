@@ -13,6 +13,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
+import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 import { useEffect } from 'react';
 
 interface NotificationPanelProps {
@@ -67,7 +68,7 @@ const NotificationPanel = ({ onClose }: NotificationPanelProps) => {
       {/* Header */}
       <div className="p-4 border-b flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <h2 className="font-semibold text-lg">Notifications</h2>
+          <SheetTitle className="font-semibold text-lg">Notifications</SheetTitle>
           {unreadCount > 0 && (
             <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs font-medium">
               {unreadCount}
@@ -92,9 +93,11 @@ const NotificationPanel = ({ onClose }: NotificationPanelProps) => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </Button>
+          <SheetClose asChild>
+            <Button variant="ghost" size="icon">
+              <X className="h-5 w-5" />
+            </Button>
+          </SheetClose>
         </div>
       </div>
       

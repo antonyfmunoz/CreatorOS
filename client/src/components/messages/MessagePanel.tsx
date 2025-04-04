@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { DirectMessage, Conversation } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 
 interface MessagePanelProps {
   onClose?: () => void;
@@ -74,21 +75,25 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
-            <h2 className="font-semibold">
+            <SheetTitle className="font-semibold">
               {conversations.find(c => c.id === selectedConversation)
                 ? getConversationName(conversations.find(c => c.id === selectedConversation)!)
                 : 'Chat'}
-            </h2>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-5 w-5" />
-            </Button>
+            </SheetTitle>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon">
+                <X className="h-5 w-5" />
+              </Button>
+            </SheetClose>
           </>
         ) : (
           <>
-            <h2 className="font-semibold text-lg">Messages</h2>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-5 w-5" />
-            </Button>
+            <SheetTitle className="font-semibold text-lg">Messages</SheetTitle>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon">
+                <X className="h-5 w-5" />
+              </Button>
+            </SheetClose>
           </>
         )}
       </div>

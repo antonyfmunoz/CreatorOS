@@ -36,7 +36,7 @@ const NotificationBell = () => {
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="sm:max-w-md p-0 border-l">
-        <NotificationPanel onClose={closeNotificationPanel} />
+        <NotificationPanel />
       </SheetContent>
     </Sheet>
   );
