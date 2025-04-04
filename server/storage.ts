@@ -13,7 +13,7 @@ import {
   documents, type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -986,7 +986,16 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(comments.postId, postId),
-          isNull(comments.parentId)
+          or(
+            isNull(comments.parentId),
+            // Find orphaned comments (with parent_id that doesn't exist)
+            not(exists(
+              db.select({ id: comments.id })
+                .from(comments)
+                .as('parent_comments')
+                .where(eq(sql`parent_comments.id`, comments.parentId))
+            ))
+          )
         )
       )
       .orderBy(desc(comments.createdAt));
