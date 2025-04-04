@@ -20,9 +20,4 @@
   .tab-content {
     @apply w-full h-full;
   }
-  
-  /* Hide the default close button for shadcn sheet */
-  [role="dialog"] > button[aria-label="Close"] {
-    display: none !important;
-  }
 }

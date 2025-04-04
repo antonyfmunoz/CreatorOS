@@ -35,7 +35,7 @@ const NotificationBell = () => {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="sm:max-w-md p-0 border-l" aria-describedby="notification-panel-desc">
+      <SheetContent side="right" className="sm:max-w-md p-0 border-l" aria-describedby="notification-panel-desc" hideCloseButton>
         <NotificationPanel />
         <div id="notification-panel-desc" className="sr-only">Notification panel showing all your recent notifications</div>
       </SheetContent>
