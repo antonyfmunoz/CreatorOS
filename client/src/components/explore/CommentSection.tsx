@@ -715,8 +715,10 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
         <div className="text-center py-4">Loading comments...</div>
       ) : (
         <div className="space-y-4 mb-4 max-h-80 overflow-y-auto">
-          {comments.length === 0 ? (
+          {post.comments === 0 ? (
             <p className="text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
+          ) : comments.length === 0 ? (
+            <p className="text-gray-500 text-center py-2">No top-level comments yet. The comments may be replies to deleted comments.</p>
           ) : (
             comments.map((comment: Comment & { user: User }) => (
               <SingleComment 
