@@ -1,13 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
-import { Send, Heart, MessageCircle, ChevronRight, ChevronDown } from 'lucide-react';
+import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, MoreHorizontal, X, Check } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Comment, Post, User } from '@/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface CommentSectionProps {
   post: Post;
@@ -30,8 +46,15 @@ const SingleComment = ({
   replyingTo?: number | null
 }) => {
   const [showReplies, setShowReplies] = useState(forceShowReplies);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(comment.content);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Check if the current user is the author of the comment
+  const isAuthor = currentUser?.id === comment.userId;
   
   // Fetch replies for this comment
   const { data: replies = [], isLoading: isLoadingReplies } = useQuery({
@@ -141,6 +164,159 @@ const SingleComment = ({
   });
   
   // Mutation for unliking a comment
+  // Mutation for updating a comment
+  const updateCommentMutation = useMutation({
+    mutationFn: async ({ commentId, content, userId }: { commentId: number; content: string; userId: number }) => {
+      const res = await apiRequest('PUT', `/api/comments/${commentId}`, { content, userId });
+      return res.json();
+    },
+    onMutate: async ({ commentId, content }) => {
+      // Capture the previous state
+      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
+      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
+      
+      // Capture previous state for replies if this is a reply
+      let previousReplies = null;
+      if (comment.parentId) {
+        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
+        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+      }
+      
+      // Optimistically update the comment content
+      // For top-level comments
+      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
+        if (!old) return old;
+        return old.map((c: Comment & { user: User }) => 
+          c.id === commentId ? { ...c, content } : c
+        );
+      });
+      
+      // For replies
+      if (comment.parentId) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => 
+            c.id === commentId ? { ...c, content } : c
+          );
+        });
+      }
+      
+      return { previousPostComments, previousReplies };
+    },
+    onSuccess: (updatedComment) => {
+      // Use the returned data to ensure the UI is in sync with the server
+      queryClient.setQueryData(['/api/posts', updatedComment.postId, 'comments'], (old: any) => {
+        if (!old) return old;
+        return old.map((c: Comment & { user: User }) => 
+          c.id === updatedComment.id ? { ...c, content: updatedComment.content } : c
+        );
+      });
+      
+      if (updatedComment.parentId) {
+        queryClient.setQueryData(['/api/comments', updatedComment.parentId, 'replies'], (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => 
+            c.id === updatedComment.id ? { ...c, content: updatedComment.content } : c
+          );
+        });
+      }
+      
+      // Exit edit mode
+      setIsEditing(false);
+      toast({
+        title: 'Success',
+        description: 'Comment updated successfully',
+      });
+    },
+    onError: (_, __, context: any) => {
+      // Revert to the previous state if there was an error
+      if (context?.previousPostComments) {
+        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+      }
+      
+      if (comment.parentId && context?.previousReplies) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+      }
+      
+      toast({
+        title: 'Error',
+        description: 'Failed to update the comment. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  });
+  
+  // Mutation for deleting a comment
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      // Pass the user ID as a query parameter
+      const res = await apiRequest('DELETE', `/api/comments/${commentId}?userId=${currentUser?.id}`);
+      return commentId; // Just return the ID as there's no response body for 204
+    },
+    onMutate: async (commentId) => {
+      // Capture the previous state
+      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
+      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
+      
+      // Capture previous state for replies if this is a reply
+      let previousReplies = null;
+      if (comment.parentId) {
+        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
+        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+      }
+      
+      // Optimistically remove the comment
+      // For top-level comments
+      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
+        if (!old) return old;
+        return old.filter((c: Comment & { user: User }) => c.id !== commentId);
+      });
+      
+      // For replies
+      if (comment.parentId) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
+          if (!old) return old;
+          return old.filter((c: Comment & { user: User }) => c.id !== commentId);
+        });
+      }
+      
+      // Clear any replies this comment had
+      queryClient.setQueryData(['/api/comments', commentId, 'replies'], []);
+      
+      // Update the post comment count in the cache
+      queryClient.setQueryData(['/api/posts'], (oldData: Post[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => 
+          p.id === comment.postId ? { ...p, comments: Math.max(0, p.comments - 1) } : p
+        );
+      });
+      
+      return { previousPostComments, previousReplies };
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Comment deleted successfully',
+      });
+    },
+    onError: (_, __, context: any) => {
+      // Revert to the previous state if there was an error
+      if (context?.previousPostComments) {
+        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+      }
+      
+      if (comment.parentId && context?.previousReplies) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+      }
+      
+      toast({
+        title: 'Error',
+        description: 'Failed to delete the comment. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  });
+  
   const unlikeCommentMutation = useMutation({
     mutationFn: async (commentId: number) => {
       const res = await apiRequest('POST', `/api/comments/${commentId}/unlike`);
@@ -237,6 +413,44 @@ const SingleComment = ({
     }
   };
   
+  // Handler for starting edit mode
+  const handleEdit = () => {
+    setIsEditing(true);
+    // Focus the edit textarea when edit mode is activated
+    setTimeout(() => {
+      editInputRef.current?.focus();
+    }, 0);
+  };
+  
+  // Handler for saving an edited comment
+  const handleSaveEdit = () => {
+    if (!editedContent.trim() || !currentUser) return;
+    
+    updateCommentMutation.mutate({
+      commentId: comment.id,
+      content: editedContent,
+      userId: currentUser.id
+    });
+  };
+  
+  // Handler for canceling edit mode
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditedContent(comment.content); // Reset to original
+  };
+  
+  // Handler for confirming delete
+  const handleDelete = () => {
+    setIsDeleteDialogOpen(true);
+  };
+  
+  // Handler for confirming delete in the dialog
+  const handleConfirmDelete = () => {
+    if (!currentUser) return;
+    deleteCommentMutation.mutate(comment.id);
+    setIsDeleteDialogOpen(false);
+  };
+  
   const toggleReplies = () => {
     setShowReplies(!showReplies);
   };
@@ -246,6 +460,32 @@ const SingleComment = ({
   
   return (
     <div className="flex gap-3">
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Comment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this comment? This action cannot be undone.
+              {replies.length > 0 && (
+                <p className="mt-2 text-sm font-medium">
+                  This will also delete {replies.length} {replies.length === 1 ? 'reply' : 'replies'}.
+                </p>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       <Avatar className="w-8 h-8 shrink-0">
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
@@ -254,11 +494,73 @@ const SingleComment = ({
         <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
           <div className="flex justify-between">
             <p className="font-medium text-sm">{comment.user.displayName}</p>
-            <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">
+                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+              </span>
+              
+              {isAuthor && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleEdit}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
-          <p className="text-sm mt-1">{comment.content}</p>
+          
+          {isEditing ? (
+            <div className="mt-2">
+              <Textarea
+                ref={editInputRef}
+                value={editedContent}
+                onChange={(e) => setEditedContent(e.target.value)}
+                className="min-h-[60px] text-sm resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSaveEdit();
+                  } else if (e.key === 'Escape') {
+                    handleCancelEdit();
+                  }
+                }}
+              />
+              <div className="flex gap-2 mt-2 justify-end">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-7 text-xs px-2"
+                  onClick={handleCancelEdit}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Cancel
+                </Button>
+                <Button 
+                  size="sm" 
+                  className="h-7 text-xs px-2"
+                  onClick={handleSaveEdit}
+                  disabled={!editedContent.trim() || updateCommentMutation.isPending}
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  Save
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm mt-1">{comment.content}</p>
+          )}
         </div>
         
         <div className="flex items-center gap-3 ml-1">
