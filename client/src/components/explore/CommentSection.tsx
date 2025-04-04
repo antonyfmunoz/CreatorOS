@@ -283,17 +283,12 @@ const SingleComment = ({
       // Clear any replies this comment had
       queryClient.setQueryData(['/api/comments', commentId, 'replies'], []);
       
-      // Update the post comment count in the cache
-      queryClient.setQueryData(['/api/posts'], (oldData: Post[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => 
-          p.id === comment.postId ? { ...p, comments: Math.max(0, p.comments - 1) } : p
-        );
-      });
-      
       return { previousPostComments, previousReplies };
     },
     onSuccess: () => {
+      // Force reload all post data to get updated comment counts
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      
       toast({
         title: 'Success',
         description: 'Comment deleted successfully',
@@ -663,13 +658,8 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
         queryClient.invalidateQueries({ queryKey: ['/api/posts', post.id, 'comments'] });
       }
       
-      // Update the post comment count in the cache
-      queryClient.setQueryData(['/api/posts'], (oldData: Post[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => 
-          p.id === post.id ? { ...p, comments: p.comments + 1 } : p
-        );
-      });
+      // Force reload all posts to get updated comment counts
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
     },
     onError: () => {
       toast({
