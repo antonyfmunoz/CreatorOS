@@ -12,6 +12,8 @@ import {
   contacts, type Contact, type InsertContact,
   documents, type Document, type InsertDocument
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -778,4 +780,324 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values({
+      ...insertUser,
+      xpPoints: 0,
+      level: 1,
+    }).returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
+  }
+
+  // Post operations
+  async getPosts(): Promise<(Post & { user: User })[]> {
+    const result = await db.select({
+      post: posts,
+      user: users,
+    }).from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .orderBy(desc(posts.createdAt));
+    
+    return result.map(({ post, user }) => ({ ...post, user }));
+  }
+
+  async getPostById(id: number): Promise<(Post & { user: User }) | undefined> {
+    const [result] = await db.select({
+      post: posts,
+      user: users,
+    }).from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(eq(posts.id, id));
+    
+    if (!result) return undefined;
+    return { ...result.post, user: result.user };
+  }
+
+  async createPost(insertPost: InsertPost): Promise<Post> {
+    const [post] = await db.insert(posts).values(insertPost).returning();
+    return post;
+  }
+
+  async likePost(id: number): Promise<Post> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new Error(`Post with id ${id} not found`);
+    
+    const [updatedPost] = await db
+      .update(posts)
+      .set({ likes: post.likes + 1 })
+      .where(eq(posts.id, id))
+      .returning();
+    
+    return updatedPost;
+  }
+
+  // Comment operations
+  async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
+    const result = await db.select({
+      comment: comments,
+      user: users,
+    }).from(comments)
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(eq(comments.postId, postId))
+      .orderBy(desc(comments.createdAt));
+    
+    return result.map(({ comment, user }) => ({ ...comment, user }));
+  }
+
+  async createComment(insertComment: InsertComment): Promise<Comment> {
+    // Update post comment count
+    await db
+      .update(posts)
+      .set({ comments: (posts) => `${posts.comments} + 1` })
+      .where(eq(posts.id, insertComment.postId));
+    
+    const [comment] = await db.insert(comments).values(insertComment).returning();
+    return comment;
+  }
+
+  // Product operations
+  async getProducts(): Promise<(Product & { user: User })[]> {
+    const result = await db.select({
+      product: products,
+      user: users,
+    }).from(products)
+      .innerJoin(users, eq(products.userId, users.id))
+      .orderBy(desc(products.createdAt));
+    
+    return result.map(({ product, user }) => ({ ...product, user }));
+  }
+
+  async getProductById(id: number): Promise<(Product & { user: User }) | undefined> {
+    const [result] = await db.select({
+      product: products,
+      user: users,
+    }).from(products)
+      .innerJoin(users, eq(products.userId, users.id))
+      .where(eq(products.id, id));
+    
+    if (!result) return undefined;
+    return { ...result.product, user: result.user };
+  }
+
+  async getProductsByCategory(category: string): Promise<(Product & { user: User })[]> {
+    const result = await db.select({
+      product: products,
+      user: users,
+    }).from(products)
+      .innerJoin(users, eq(products.userId, users.id))
+      .where(eq(products.category, category))
+      .orderBy(desc(products.createdAt));
+    
+    return result.map(({ product, user }) => ({ ...product, user }));
+  }
+
+  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const [product] = await db.insert(products).values(insertProduct).returning();
+    return product;
+  }
+
+  // AI Agent operations
+  async getAIAgents(): Promise<AIAgent[]> {
+    return await db.select().from(aiAgents);
+  }
+
+  async getAIAgentById(id: number): Promise<AIAgent | undefined> {
+    const [agent] = await db.select().from(aiAgents).where(eq(aiAgents.id, id));
+    return agent || undefined;
+  }
+
+  async getUserAIAgents(userId: number): Promise<AIAgent[]> {
+    return await db.select().from(aiAgents).where(eq(aiAgents.userId, userId));
+  }
+
+  async createAIAgent(insertAgent: InsertAIAgent): Promise<AIAgent> {
+    const [agent] = await db.insert(aiAgents).values(insertAgent).returning();
+    return agent;
+  }
+
+  // AI Chat operations
+  async getAIChatsByAgentId(agentId: number, userId: number): Promise<AIChat[]> {
+    return await db
+      .select()
+      .from(aiChats)
+      .where(eq(aiChats.agentId, agentId))
+      .where(eq(aiChats.userId, userId))
+      .orderBy(desc(aiChats.updatedAt));
+  }
+
+  async createAIChat(insertChat: InsertAIChat): Promise<AIChat> {
+    // Increment chat count for the agent
+    await db
+      .update(aiAgents)
+      .set({ chatCount: (agents) => `${agents.chatCount} + 1` })
+      .where(eq(aiAgents.id, insertChat.agentId));
+    
+    const [chat] = await db.insert(aiChats).values(insertChat).returning();
+    return chat;
+  }
+
+  async updateAIChat(id: number, messages: any): Promise<AIChat> {
+    const now = new Date();
+    const [chat] = await db
+      .update(aiChats)
+      .set({ messages, updatedAt: now })
+      .where(eq(aiChats.id, id))
+      .returning();
+    
+    return chat;
+  }
+
+  // Community operations
+  async getCommunities(): Promise<Community[]> {
+    return await db.select().from(communities);
+  }
+
+  async getCommunityById(id: number): Promise<Community | undefined> {
+    const [community] = await db.select().from(communities).where(eq(communities.id, id));
+    return community || undefined;
+  }
+
+  async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
+    const [community] = await db.insert(communities).values(insertCommunity).returning();
+    return community;
+  }
+
+  // Channel operations
+  async getChannelsByCommunityId(communityId: number): Promise<Channel[]> {
+    return await db
+      .select()
+      .from(channels)
+      .where(eq(channels.communityId, communityId));
+  }
+
+  async getChannelById(id: number): Promise<Channel | undefined> {
+    const [channel] = await db.select().from(channels).where(eq(channels.id, id));
+    return channel || undefined;
+  }
+
+  async createChannel(insertChannel: InsertChannel): Promise<Channel> {
+    const [channel] = await db.insert(channels).values(insertChannel).returning();
+    return channel;
+  }
+
+  // Channel Message operations
+  async getMessagesByChannelId(channelId: number): Promise<(ChannelMessage & { user: User })[]> {
+    const result = await db.select({
+      message: channelMessages,
+      user: users,
+    }).from(channelMessages)
+      .innerJoin(users, eq(channelMessages.userId, users.id))
+      .where(eq(channelMessages.channelId, channelId))
+      .orderBy(desc(channelMessages.createdAt));
+    
+    return result.map(({ message, user }) => ({ ...message, user }));
+  }
+
+  async createChannelMessage(insertMessage: InsertChannelMessage): Promise<ChannelMessage> {
+    const [message] = await db.insert(channelMessages).values(insertMessage).returning();
+    return message;
+  }
+
+  async pinChannelMessage(id: number): Promise<ChannelMessage> {
+    const [message] = await db.select().from(channelMessages).where(eq(channelMessages.id, id));
+    if (!message) throw new Error(`Message with id ${id} not found`);
+    
+    const [updatedMessage] = await db
+      .update(channelMessages)
+      .set({ isPinned: !message.isPinned })
+      .where(eq(channelMessages.id, id))
+      .returning();
+    
+    return updatedMessage;
+  }
+
+  async likeChannelMessage(id: number): Promise<ChannelMessage> {
+    const [message] = await db.select().from(channelMessages).where(eq(channelMessages.id, id));
+    if (!message) throw new Error(`Message with id ${id} not found`);
+    
+    const [updatedMessage] = await db
+      .update(channelMessages)
+      .set({ likes: message.likes + 1 })
+      .where(eq(channelMessages.id, id))
+      .returning();
+    
+    return updatedMessage;
+  }
+
+  // Revenue operations
+  async getRevenueByUserId(userId: number): Promise<Revenue[]> {
+    return await db
+      .select()
+      .from(revenue)
+      .where(eq(revenue.userId, userId))
+      .orderBy(desc(revenue.date));
+  }
+
+  async createRevenue(insertRevenue: InsertRevenue): Promise<Revenue> {
+    const [revenueItem] = await db.insert(revenue).values(insertRevenue).returning();
+    return revenueItem;
+  }
+
+  // Contact operations
+  async getContactsByUserId(userId: number): Promise<Contact[]> {
+    return await db
+      .select()
+      .from(contacts)
+      .where(eq(contacts.userId, userId))
+      .orderBy(contacts.contactName);
+  }
+
+  async createContact(insertContact: InsertContact): Promise<Contact> {
+    const [contact] = await db.insert(contacts).values(insertContact).returning();
+    return contact;
+  }
+
+  // Document operations
+  async getDocumentsByUserId(userId: number): Promise<Document[]> {
+    return await db
+      .select()
+      .from(documents)
+      .where(eq(documents.userId, userId))
+      .orderBy(desc(documents.updatedAt));
+  }
+
+  async getDocumentById(id: number): Promise<Document | undefined> {
+    const [document] = await db.select().from(documents).where(eq(documents.id, id));
+    return document || undefined;
+  }
+
+  async createDocument(insertDocument: InsertDocument): Promise<Document> {
+    const [document] = await db.insert(documents).values(insertDocument).returning();
+    return document;
+  }
+
+  async updateDocument(id: number, title: string, content: string): Promise<Document> {
+    const now = new Date();
+    const [document] = await db
+      .update(documents)
+      .set({ title, content, updatedAt: now })
+      .where(eq(documents.id, id))
+      .returning();
+    
+    return document;
+  }
+}
+
+// Replace MemStorage with DatabaseStorage
+export const storage = new DatabaseStorage();

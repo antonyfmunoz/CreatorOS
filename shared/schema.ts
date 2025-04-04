@@ -1,5 +1,6 @@
-import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { relations } from "drizzle-orm";
 import { z } from "zod";
 
 // User schema
@@ -28,7 +29,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 // Post schema
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
   likes: integer("likes").default(0).notNull(),
@@ -45,8 +46,8 @@ export const insertPostSchema = createInsertSchema(posts).pick({
 // Comment schema
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
-  postId: integer("post_id").notNull(),
-  userId: integer("user_id").notNull(),
+  postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -60,7 +61,7 @@ export const insertCommentSchema = createInsertSchema(comments).pick({
 // Product schema
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),
   price: doublePrecision("price").notNull(),
@@ -83,7 +84,7 @@ export const insertProductSchema = createInsertSchema(products).pick({
 // AI Agent schema
 export const aiAgents = pgTable("ai_agents", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   description: text("description").notNull(),
   icon: text("icon").notNull(),
@@ -110,8 +111,8 @@ export const insertAiAgentSchema = createInsertSchema(aiAgents).pick({
 // AI Chat schema
 export const aiChats = pgTable("ai_chats", {
   id: serial("id").primaryKey(),
-  agentId: integer("agent_id").notNull(),
-  userId: integer("user_id").notNull(),
+  agentId: integer("agent_id").references(() => aiAgents.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   messages: json("messages").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -141,7 +142,7 @@ export const insertCommunitySchema = createInsertSchema(communities).pick({
 // Channel schema
 export const channels = pgTable("channels", {
   id: serial("id").primaryKey(),
-  communityId: integer("community_id").notNull(),
+  communityId: integer("community_id").references(() => communities.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -154,8 +155,8 @@ export const insertChannelSchema = createInsertSchema(channels).pick({
 // Channel Message schema
 export const channelMessages = pgTable("channel_messages", {
   id: serial("id").primaryKey(),
-  channelId: integer("channel_id").notNull(),
-  userId: integer("user_id").notNull(),
+  channelId: integer("channel_id").references(() => channels.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   content: text("content").notNull(),
   isPinned: boolean("is_pinned").default(false).notNull(),
   likes: integer("likes").default(0).notNull(),
@@ -172,7 +173,7 @@ export const insertChannelMessageSchema = createInsertSchema(channelMessages).pi
 // Revenue data schema for dashboard
 export const revenue = pgTable("revenue", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   amount: doublePrecision("amount").notNull(),
   date: timestamp("date").notNull(),
   source: text("source").notNull(),
@@ -188,7 +189,7 @@ export const insertRevenueSchema = createInsertSchema(revenue).pick({
 // Contact schema for CRM
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   contactName: text("contact_name").notNull(),
   contactImage: text("contact_image"),
   purchaseInfo: text("purchase_info"),
@@ -205,7 +206,7 @@ export const insertContactSchema = createInsertSchema(contacts).pick({
 // Document schema for Notion-style editor
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -217,6 +218,69 @@ export const insertDocumentSchema = createInsertSchema(documents).pick({
   title: true,
   content: true,
 });
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+  comments: many(comments),
+  products: many(products),
+  aiAgents: many(aiAgents),
+  aiChats: many(aiChats),
+  channelMessages: many(channelMessages),
+  revenues: many(revenue),
+  contacts: many(contacts),
+  documents: many(documents),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+  comments: many(comments),
+}));
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  user: one(users, { fields: [comments.userId], references: [users.id] }),
+  post: one(posts, { fields: [comments.postId], references: [posts.id] }),
+}));
+
+export const productsRelations = relations(products, ({ one }) => ({
+  user: one(users, { fields: [products.userId], references: [users.id] }),
+}));
+
+export const aiAgentsRelations = relations(aiAgents, ({ one, many }) => ({
+  user: one(users, { fields: [aiAgents.userId], references: [users.id] }),
+  aiChats: many(aiChats),
+}));
+
+export const aiChatsRelations = relations(aiChats, ({ one }) => ({
+  user: one(users, { fields: [aiChats.userId], references: [users.id] }),
+  agent: one(aiAgents, { fields: [aiChats.agentId], references: [aiAgents.id] }),
+}));
+
+export const communitiesRelations = relations(communities, ({ many }) => ({
+  channels: many(channels),
+}));
+
+export const channelsRelations = relations(channels, ({ one, many }) => ({
+  community: one(communities, { fields: [channels.communityId], references: [communities.id] }),
+  messages: many(channelMessages),
+}));
+
+export const channelMessagesRelations = relations(channelMessages, ({ one }) => ({
+  channel: one(channels, { fields: [channelMessages.channelId], references: [channels.id] }),
+  user: one(users, { fields: [channelMessages.userId], references: [users.id] }),
+}));
+
+export const revenueRelations = relations(revenue, ({ one }) => ({
+  user: one(users, { fields: [revenue.userId], references: [users.id] }),
+}));
+
+export const contactsRelations = relations(contacts, ({ one }) => ({
+  user: one(users, { fields: [contacts.userId], references: [users.id] }),
+}));
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  user: one(users, { fields: [documents.userId], references: [users.id] }),
+}));
 
 // Export types
 export type User = typeof users.$inferSelect;
