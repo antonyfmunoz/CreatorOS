@@ -468,9 +468,9 @@ const SingleComment = ({
             <AlertDialogDescription>
               Are you sure you want to delete this comment? This action cannot be undone.
               {replies.length > 0 && (
-                <p className="mt-2 text-sm font-medium">
+                <div className="mt-2 text-sm font-medium">
                   This will also delete {replies.length} {replies.length === 1 ? 'reply' : 'replies'}.
-                </p>
+                </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -701,7 +701,9 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
 
   return (
     <div className="mt-4 border-t pt-4">
-      <h3 className="font-medium mb-4">Comments ({post.comments})</h3>
+      <h3 className="font-medium mb-4">
+        {post.comments > 0 ? `Comments (${post.comments})` : 'Comments'} 
+      </h3>
       
       {replyingTo && (
         <div className="mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-md border border-primary/20">
