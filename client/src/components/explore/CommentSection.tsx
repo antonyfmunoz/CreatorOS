@@ -702,7 +702,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        {(!isLoading && comments.length > 0) || post.comments > 0 ? `Comments (${post.comments})` : 'Comments'} 
+        {post.comments > 0 ? `Comments (${post.comments})` : 'Comments'} 
       </h3>
       
       {replyingTo && (
@@ -725,9 +725,9 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
         <div className="text-center py-4">Loading comments...</div>
       ) : (
         <div className="space-y-4 mb-4 max-h-80 overflow-y-auto">
-          {comments.length === 0 && post.comments === 0 ? (
+          {comments.length === 0 ? (
             <p className="text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
-          ) : comments.length > 0 ? (
+          ) : (
             comments.map((comment: Comment & { user: User }) => (
               <SingleComment 
                 key={comment.id} 
@@ -738,8 +738,6 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
                 replyingTo={replyingTo}
               />
             ))
-          ) : (
-            <div className="text-center py-2 text-sm">Loading comments...</div>
           )}
         </div>
       )}
