@@ -343,7 +343,7 @@ interface MessagingState {
   fetchMessages: (conversationId: number) => Promise<void>;
   sendMessage: (conversationId: number, senderId: number, content: string) => Promise<void>;
   markConversationAsRead: (conversationId: number) => Promise<void>;
-  createConversation: (userIds: number[]) => Promise<number>;
+  createConversation: (userIds: number[], name?: string) => Promise<number>;
   setSelectedConversation: (conversationId: number | null) => void;
   toggleMessagePanel: () => void;
   closeMessagePanel: () => void;
@@ -448,14 +448,15 @@ export const useMessaging = create<MessagingState>((set, get) => ({
     }
   },
   
-  createConversation: async (userIds: number[]) => {
+  createConversation: async (userIds: number[], name?: string) => {
     try {
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userIds,
-          isGroup: userIds.length > 2
+          name,
+          isGroup: userIds.length > 2 || !!name
         })
       });
       

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Send, ChevronLeft, Search, MessageSquare, User, Users } from 'lucide-react';
+import { X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,6 +22,8 @@ const MessagePanel = () => {
   const [searchResults, setSearchResults] = useState<UserType[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('conversations');
+  const [groupName, setGroupName] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState<UserType[]>([]);
   const {
     conversations,
     messages,
@@ -130,6 +132,43 @@ const MessagePanel = () => {
       console.error('Error starting conversation:', error);
     }
   };
+  
+  const handleAddUserToGroup = (selectedUser: UserType) => {
+    // Check if user is already selected
+    if (!selectedUsers.some(u => u.id === selectedUser.id)) {
+      setSelectedUsers([...selectedUsers, selectedUser]);
+    }
+  };
+  
+  const handleRemoveUserFromGroup = (userId: number) => {
+    setSelectedUsers(selectedUsers.filter(u => u.id !== userId));
+  };
+  
+  const handleCreateGroupChat = async () => {
+    if (!user || selectedUsers.length === 0 || !groupName.trim()) return;
+    
+    try {
+      // Get user IDs including the current user
+      const userIds = [user.id, ...selectedUsers.map(u => u.id)];
+      
+      // Create a new group conversation
+      const conversationId = await createConversation(userIds, groupName.trim());
+      
+      // Select the newly created conversation
+      setSelectedConversation(conversationId);
+      
+      // Reset group creation form
+      setGroupName('');
+      setSelectedUsers([]);
+      setSearchQuery('');
+      setSearchResults([]);
+      
+      // Switch back to conversations tab
+      setActiveTab('conversations');
+    } catch (error) {
+      console.error('Error creating group chat:', error);
+    }
+  };
 
   const getConversationName = (conversation: Conversation) => {
     if (conversation.name) return conversation.name;
@@ -234,10 +273,24 @@ const MessagePanel = () => {
                   <Search className="h-4 w-4 mr-2" />
                   Search
                 </TabsTrigger>
+                <TabsTrigger value="create-group" className="flex-1">
+                  <Users className="h-4 w-4 mr-2" />
+                  Group
+                </TabsTrigger>
               </TabsList>
             </div>
             
             <TabsContent value="conversations" className="mt-0">
+              <div className="p-4">
+                <Button 
+                  variant="outline" 
+                  className="w-full mb-3 flex items-center justify-center"
+                  onClick={() => setActiveTab('create-group')}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Create Group Chat
+                </Button>
+              </div>
               <div className="divide-y">
                 {conversations.length > 0 ? (
                   conversations.map((conversation) => (
@@ -248,13 +301,14 @@ const MessagePanel = () => {
                     >
                       <div className="flex items-center space-x-4">
                         <Avatar>
-                          <AvatarFallback>
+                          <AvatarFallback className={conversation.name ? "bg-primary text-primary-foreground" : ""}>
                             {getConversationName(conversation).charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="flex justify-between">
-                            <p className="font-medium truncate">
+                          <div className="flex justify-between items-center">
+                            <p className="font-medium truncate flex items-center">
+                              {conversation.name && <Users className="h-3 w-3 mr-1 text-muted-foreground" />}
                               {getConversationName(conversation)}
                             </p>
                             {conversation.lastMessage && (
@@ -265,6 +319,8 @@ const MessagePanel = () => {
                           </div>
                           {conversation.lastMessage && (
                             <p className="text-sm text-muted-foreground truncate">
+                              {conversation.lastMessage.senderId === user?.id ? 
+                                "You: " : `${conversation.lastMessage.sender?.displayName.split(' ')[0] || 'User'}: `}
                               {conversation.lastMessage.content}
                             </p>
                           )}
@@ -312,17 +368,29 @@ const MessagePanel = () => {
                       {searchResults.map((user) => (
                         <div 
                           key={user.id}
-                          className="py-3 hover:bg-muted/50 cursor-pointer flex items-center space-x-3"
-                          onClick={() => handleStartConversation(user.id)}
+                          className="py-3 px-2 hover:bg-muted/50 flex items-center space-x-3 justify-between"
                         >
-                          <Avatar>
-                            <AvatarImage src={user.profileImageUrl || undefined} />
-                            <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{user.displayName}</p>
-                            <p className="text-sm text-muted-foreground">@{user.username}</p>
+                          <div className="flex items-center space-x-3 flex-1">
+                            <Avatar className="cursor-pointer" onClick={() => window.location.href = `/profile/${user.id}`}>
+                              <AvatarImage src={user.profileImageUrl || undefined} />
+                              <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="font-medium">{user.displayName}</p>
+                              <p className="text-sm text-muted-foreground">@{user.username}</p>
+                            </div>
                           </div>
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartConversation(user.id);
+                            }}
+                          >
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            Message
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -339,6 +407,111 @@ const MessagePanel = () => {
                       </p>
                     </div>
                   )}
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="create-group" className="mt-0">
+              <div className="p-4">
+                <h3 className="font-medium mb-4">Create Group Chat</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="group-name" className="text-sm font-medium">
+                      Group Name
+                    </label>
+                    <Input
+                      id="group-name"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      placeholder="Enter group name"
+                      className="w-full mt-1"
+                    />
+                  </div>
+                  
+                  {/* Selected users */}
+                  {selectedUsers.length > 0 && (
+                    <div>
+                      <label className="text-sm font-medium block mb-2">
+                        Selected Users ({selectedUsers.length})
+                      </label>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {selectedUsers.map((user) => (
+                          <div 
+                            key={user.id}
+                            className="bg-muted flex items-center rounded-full px-3 py-1 text-sm"
+                          >
+                            <span className="mr-1">{user.displayName}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => handleRemoveUserFromGroup(user.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="text-sm font-medium block mb-2">
+                      Add Members
+                    </label>
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search with @username"
+                      className="w-full mb-2"
+                    />
+                    
+                    {/* Search results for group creation */}
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {isSearching ? (
+                        <div className="flex justify-center py-3">
+                          <p className="text-sm">Searching...</p>
+                        </div>
+                      ) : searchResults.length > 0 ? (
+                        <div className="divide-y">
+                          {searchResults
+                            .filter(u => !selectedUsers.some(selected => selected.id === u.id))
+                            .map((user) => (
+                              <div 
+                                key={user.id}
+                                className="py-2 px-2 hover:bg-muted/50 flex items-center space-x-3 justify-between cursor-pointer"
+                                onClick={() => handleAddUserToGroup(user)}
+                              >
+                                <div className="flex items-center space-x-3 flex-1">
+                                  <Avatar className="h-7 w-7">
+                                    <AvatarImage src={user.profileImageUrl || undefined} />
+                                    <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1">
+                                    <p className="font-medium text-sm">{user.displayName}</p>
+                                    <p className="text-xs text-muted-foreground">@{user.username}</p>
+                                  </div>
+                                </div>
+                                <Plus className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            ))}
+                        </div>
+                      ) : searchQuery && searchQuery.startsWith('@') && searchQuery.length > 2 ? (
+                        <div className="text-center py-3">
+                          <p className="text-sm">No users found</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    className="w-full mt-4"
+                    disabled={!groupName.trim() || selectedUsers.length === 0}
+                    onClick={handleCreateGroupChat}
+                  >
+                    Create Group
+                  </Button>
                 </div>
               </div>
             </TabsContent>
