@@ -26,6 +26,8 @@ export interface Comment {
   postId: number;
   userId: number;
   content: string;
+  likes: number;
+  parentId: number | null;
   createdAt: string;
   user: User;
 }
