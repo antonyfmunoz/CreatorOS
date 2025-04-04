@@ -47,7 +47,27 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      // Use a shorter staleTime to allow refetching when needed
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      // Add a structural sharing function to ensure stable refs
+      structuralSharing: (oldData, newData) => {
+        // If both are arrays and we're dealing with posts
+        if (Array.isArray(oldData) && Array.isArray(newData) && 
+            oldData.length > 0 && newData.length > 0 && 
+            'id' in oldData[0] && 'id' in newData[0]) {
+          // Create a map of old items by ID for quick lookup
+          const oldMap = new Map(oldData.map(item => [item.id, item]));
+          // For each new item, preserve reference to old item if unchanged
+          return newData.map(newItem => {
+            const oldItem = oldMap.get(newItem.id);
+            if (oldItem && JSON.stringify(oldItem) === JSON.stringify(newItem)) {
+              return oldItem; // Preserve reference if identical
+            }
+            return newItem; // Otherwise use the new item
+          }).sort((a, b) => b.id - a.id); // Maintain consistent sort by ID
+        }
+        return newData; // Default to new data for non-post queries
+      },
       retry: false,
     },
     mutations: {

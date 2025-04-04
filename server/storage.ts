@@ -467,6 +467,10 @@ export class MemStorage implements IStorage {
       createdAt: now,
       xpPoints: 0,
       level: 1,
+      // Ensure required fields have default values
+      bio: insertUser.bio ?? null,
+      profileImageUrl: insertUser.profileImageUrl ?? null,
+      role: insertUser.role ?? 'user',
     };
     this.users.set(id, user);
     return user;
@@ -504,6 +508,8 @@ export class MemStorage implements IStorage {
       likes: 0, 
       comments: 0, 
       createdAt: now,
+      // Ensure required fields have default values
+      imageUrl: insertPost.imageUrl ?? null,
     };
     this.posts.set(id, post);
     return post;
@@ -560,7 +566,14 @@ export class MemStorage implements IStorage {
   async createComment(insertComment: InsertComment): Promise<Comment> {
     const id = this.commentIdCounter++;
     const now = new Date();
-    const comment: Comment = { ...insertComment, id, createdAt: now, likes: 0 };
+    const comment: Comment = { 
+      ...insertComment, 
+      id, 
+      createdAt: now, 
+      likes: 0,
+      // Ensure required fields have default values
+      parentId: insertComment.parentId ?? null
+    };
     this.comments.set(id, comment);
     
     // Update comment count on the post

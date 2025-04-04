@@ -1,15 +1,26 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Post as PostType } from "@/types";
 import { Bell, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Stories from "@/components/explore/Stories";
 import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 const Explore = () => {
+  const queryClient = useQueryClient();
+  
+  // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
     queryKey: ["/api/posts"],
+    // Set a longer staleTime to prevent unnecessary refetching
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    // Make sure posts are stable even on refresh
+    select: (data) => {
+      if (!data) return [];
+      // Create a copy and sort by ID to ensure consistent order
+      return [...data].sort((a, b) => b.id - a.id);
+    },
   });
 
   // Sort posts by ID in descending order to maintain consistent position
