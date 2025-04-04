@@ -46,6 +46,18 @@ const Post = ({ post }: PostProps) => {
     }
   });
   
+  // Fetch the total comment count (including all replies)
+  const { data: commentCountData } = useQuery({
+    queryKey: ['/api/posts', post.id, 'comment-count'],
+    queryFn: async () => {
+      const res = await fetch(`/api/posts/${post.id}/comment-count`);
+      if (!res.ok) throw new Error('Failed to fetch comment count');
+      return res.json();
+    }
+  });
+  
+  const totalCommentCount = commentCountData?.count || 0;
+  
   // For demo purposes, use the first user as the current user
   const currentUser = users?.[0];
 
@@ -164,7 +176,7 @@ const Post = ({ post }: PostProps) => {
               onClick={toggleComments}
             >
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
-              <span>{comments.length}</span>
+              <span>{totalCommentCount}</span>
             </Button>
           </div>
           
@@ -176,7 +188,7 @@ const Post = ({ post }: PostProps) => {
 
         {showComments && currentUser && (
           <CommentSection 
-            post={{...post, comments: comments.length}} 
+            post={{...post, comments: totalCommentCount}} 
             currentUser={currentUser} 
           />
         )}

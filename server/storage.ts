@@ -13,7 +13,7 @@ import {
   documents, type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -39,6 +39,7 @@ export interface IStorage {
   deleteComment(id: number): Promise<void>;
   likeComment(id: number): Promise<Comment>;
   unlikeComment(id: number): Promise<Comment>;
+  getTotalCommentCountForPost(postId: number): Promise<number>;
 
   // Product operations
   getProducts(): Promise<(Product & { user: User })[]>;
@@ -621,6 +622,15 @@ export class MemStorage implements IStorage {
     this.comments.set(id, comment);
     return comment;
   }
+  
+  // Get total comment count for a post, including all replies
+  async getTotalCommentCountForPost(postId: number): Promise<number> {
+    // Get all comments for the post (both top-level and replies)
+    const allComments = Array.from(this.comments.values())
+      .filter(comment => comment.postId === postId);
+    
+    return allComments.length;
+  }
 
   // Product operations
   async getProducts(): Promise<(Product & { user: User })[]> {
@@ -1098,6 +1108,16 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return updatedComment;
+  }
+  
+  // Get total comment count for a post, including all replies
+  async getTotalCommentCountForPost(postId: number): Promise<number> {
+    // Count all comments for this post (both top-level and all nested replies)
+    const result = await db.select({ count: count() }).from(comments)
+      .where(eq(comments.postId, postId));
+    
+    // Extract the count from the result
+    return result[0].count;
   }
 
   // Product operations
