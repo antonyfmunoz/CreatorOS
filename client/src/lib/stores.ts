@@ -53,8 +53,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       // For now, mock by returning user data
       const user = {
         id: 11, // Mock ID
-        username: userData.username,
-        displayName: userData.displayName,
         role: 'creator',
         xpPoints: 0,
         level: 1,
@@ -331,5 +329,162 @@ export const useNotifications = create<NotificationState>((set, get) => ({
   
   closeNotificationPanel: () => set({
     isNotificationPanelOpen: false
+  })
+}));
+
+// Messaging store for handling direct messages and conversations
+interface MessagingState {
+  conversations: any[];
+  messages: any[];
+  isLoading: boolean;
+  selectedConversation: number | null;
+  isMessagePanelOpen: boolean;
+  fetchConversations: (userId: number) => Promise<void>;
+  fetchMessages: (conversationId: number) => Promise<void>;
+  sendMessage: (conversationId: number, senderId: number, content: string) => Promise<void>;
+  markConversationAsRead: (conversationId: number) => Promise<void>;
+  createConversation: (userIds: number[]) => Promise<number>;
+  setSelectedConversation: (conversationId: number | null) => void;
+  toggleMessagePanel: () => void;
+  closeMessagePanel: () => void;
+}
+
+export const useMessaging = create<MessagingState>((set, get) => ({
+  conversations: [],
+  messages: [],
+  isLoading: false,
+  selectedConversation: null,
+  isMessagePanelOpen: false,
+  
+  fetchConversations: async (userId: number) => {
+    try {
+      set({ isLoading: true });
+      const response = await fetch(`/api/users/${userId}/conversations`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch conversations');
+      }
+      
+      const data = await response.json();
+      
+      set({
+        conversations: data,
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+      set({ isLoading: false });
+    }
+  },
+  
+  fetchMessages: async (conversationId: number) => {
+    try {
+      set({ isLoading: true });
+      const response = await fetch(`/api/conversations/${conversationId}/messages`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch messages');
+      }
+      
+      const data = await response.json();
+      
+      set({
+        messages: data,
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      set({ isLoading: false });
+    }
+  },
+  
+  sendMessage: async (conversationId: number, senderId: number, content: string) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          senderId,
+          content,
+          read: false
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+      
+      const newMessage = await response.json();
+      
+      set((state) => ({
+        messages: [...state.messages, newMessage]
+      }));
+      
+      // Update conversation with new last message
+      await get().fetchConversations(senderId);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  },
+  
+  markConversationAsRead: async (conversationId: number) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/mark-read`, {
+        method: 'PATCH'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to mark conversation as read');
+      }
+      
+      // Update conversations to reflect read status
+      const { user } = useAuthStore.getState();
+      if (user) {
+        await get().fetchConversations(user.id);
+      }
+    } catch (error) {
+      console.error('Error marking conversation as read:', error);
+    }
+  },
+  
+  createConversation: async (userIds: number[]) => {
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds,
+          isGroup: userIds.length > 2
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create conversation');
+      }
+      
+      const newConversation = await response.json();
+      
+      // Update conversations list
+      const { user } = useAuthStore.getState();
+      if (user) {
+        await get().fetchConversations(user.id);
+      }
+      
+      return newConversation.id;
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      throw error;
+    }
+  },
+  
+  setSelectedConversation: (conversationId) => set({ selectedConversation: conversationId }),
+  
+  toggleMessagePanel: () => set((state) => ({
+    isMessagePanelOpen: !state.isMessagePanelOpen
+  })),
+  
+  closeMessagePanel: () => set({
+    isMessagePanelOpen: false
   })
 }));

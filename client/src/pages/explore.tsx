@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Post as PostType } from "@/types";
-import { Bell, MessageSquare } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import Stories from "@/components/explore/Stories";
 import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef } from "react";
+import { NotificationBell } from "@/components/notifications";
+import { MessageButton } from "@/components/messages";
 
 const Explore = () => {
   const queryClient = useQueryClient();
@@ -36,12 +36,8 @@ const Explore = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">CreatorOS</h1>
         <div className="flex space-x-3">
-          <Button size="icon" variant="outline" className="bg-gray-100 rounded-full">
-            <Bell className="h-5 w-5" />
-          </Button>
-          <Button size="icon" variant="outline" className="bg-gray-100 rounded-full">
-            <MessageSquare className="h-5 w-5" />
-          </Button>
+          <NotificationBell />
+          <MessageButton />
         </div>
       </div>
 
