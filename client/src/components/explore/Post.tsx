@@ -4,16 +4,18 @@ import { Heart, MessageSquare, Share2, MoreHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Post as PostType } from '@/types';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { Post as PostType, User } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import CommentSection from './CommentSection';
 
 interface PostProps {
   post: PostType;
 }
 
 const Post = ({ post }: PostProps) => {
+  const [showComments, setShowComments] = useState(false);
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
     const saved = localStorage.getItem('likedPosts');
@@ -23,6 +25,19 @@ const Post = ({ post }: PostProps) => {
   const isLiked = likedPosts.includes(post.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Get the current user
+  const { data: users } = useQuery<User[]>({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      const res = await fetch('/api/users');
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    }
+  });
+  
+  // For demo purposes, use the first user as the current user
+  const currentUser = users?.[0];
 
   // Save liked posts to local storage
   useEffect(() => {
@@ -85,6 +100,10 @@ const Post = ({ post }: PostProps) => {
     }
   };
 
+  const toggleComments = () => {
+    setShowComments(!showComments);
+  };
+
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
 
@@ -128,8 +147,13 @@ const Post = ({ post }: PostProps) => {
               <span>{post.likes}</span>
             </Button>
             
-            <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2">
-              <MessageSquare className="h-5 w-5" />
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="flex items-center gap-1 px-2"
+              onClick={toggleComments}
+            >
+              <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
               <span>{post.comments}</span>
             </Button>
           </div>
@@ -139,6 +163,10 @@ const Post = ({ post }: PostProps) => {
             <span>Share</span>
           </Button>
         </div>
+
+        {showComments && currentUser && (
+          <CommentSection post={post} currentUser={currentUser} />
+        )}
       </CardContent>
     </Card>
   );
