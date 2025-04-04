@@ -467,12 +467,12 @@ const SingleComment = ({
             <AlertDialogTitle>Delete Comment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete this comment? This action cannot be undone.
-              {replies.length > 0 && (
-                <div className="mt-2 text-sm font-medium">
-                  This will also delete {replies.length} {replies.length === 1 ? 'reply' : 'replies'}.
-                </div>
-              )}
             </AlertDialogDescription>
+            {replies.length > 0 && (
+              <div className="mt-2 text-sm font-medium text-red-500">
+                This will also delete {replies.length} {replies.length === 1 ? 'reply' : 'replies'}.
+              </div>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
