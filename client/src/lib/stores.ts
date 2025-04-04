@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { User, AIAgent, AIChat, ChatMessage } from '@/types';
+import { User, AIAgent, AIChat, ChatMessage, Notification } from '@/types';
+import { v4 as uuidv4 } from 'uuid';
 
 // App state store for current active tab, user, etc.
 interface AppState {
@@ -73,4 +74,174 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>((set) => ({
   isDarkMode: false,
   toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
+}));
+
+// Notification store for managing notifications
+interface NotificationState {
+  notifications: Notification[];
+  unreadCount: number;
+  isLoading: boolean;
+  isNotificationPanelOpen: boolean;
+  fetchNotifications: (userId: number) => Promise<void>;
+  createNotification: (notification: Omit<Notification, 'id' | 'createdAt' | 'read'>) => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: (userId: number) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  deleteAllNotifications: (userId: number) => Promise<void>;
+  toggleNotificationPanel: () => void;
+  closeNotificationPanel: () => void;
+}
+
+export const useNotifications = create<NotificationState>((set, get) => ({
+  notifications: [],
+  unreadCount: 0,
+  isLoading: false,
+  isNotificationPanelOpen: false,
+  
+  fetchNotifications: async (userId: number) => {
+    try {
+      set({ isLoading: true });
+      const response = await fetch(`/api/users/${userId}/notifications`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch notifications');
+      }
+      
+      const data = await response.json();
+      
+      set({
+        notifications: data,
+        unreadCount: data.filter((n: Notification) => !n.read).length,
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      set({ isLoading: false });
+    }
+  },
+  
+  createNotification: async (notification) => {
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...notification,
+          read: false
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create notification');
+      }
+      
+      const newNotification = await response.json();
+      
+      set((state) => ({
+        notifications: [newNotification, ...state.notifications],
+        unreadCount: state.unreadCount + 1
+      }));
+    } catch (error) {
+      console.error('Error creating notification:', error);
+    }
+  },
+  
+  markAsRead: async (id: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${id}/mark-read`, {
+        method: 'PATCH'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to mark notification as read');
+      }
+      
+      const updatedNotification = await response.json();
+      
+      set((state) => {
+        const updatedNotifications = state.notifications.map(notification => 
+          notification.id === id ? { ...notification, read: true } : notification
+        );
+        
+        return {
+          notifications: updatedNotifications,
+          unreadCount: updatedNotifications.filter(n => !n.read).length
+        };
+      });
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  },
+  
+  markAllAsRead: async (userId: number) => {
+    try {
+      const response = await fetch(`/api/users/${userId}/notifications/mark-all-read`, {
+        method: 'PATCH'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to mark all notifications as read');
+      }
+      
+      set((state) => ({
+        notifications: state.notifications.map(notification => ({ ...notification, read: true })),
+        unreadCount: 0
+      }));
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  },
+  
+  deleteNotification: async (id: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete notification');
+      }
+      
+      set((state) => {
+        const notification = state.notifications.find(n => n.id === id);
+        const unreadCount = notification && !notification.read 
+          ? state.unreadCount - 1 
+          : state.unreadCount;
+        
+        return {
+          notifications: state.notifications.filter(n => n.id !== id),
+          unreadCount: Math.max(0, unreadCount)
+        };
+      });
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  },
+  
+  deleteAllNotifications: async (userId: number) => {
+    try {
+      const response = await fetch(`/api/users/${userId}/notifications`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete all notifications');
+      }
+      
+      set({
+        notifications: [],
+        unreadCount: 0
+      });
+    } catch (error) {
+      console.error('Error deleting all notifications:', error);
+    }
+  },
+  
+  toggleNotificationPanel: () => set((state) => ({
+    isNotificationPanelOpen: !state.isNotificationPanelOpen
+  })),
+  
+  closeNotificationPanel: () => set({
+    isNotificationPanelOpen: false
+  })
 }));

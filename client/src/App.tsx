@@ -10,9 +10,11 @@ import Communities from "@/pages/communities";
 import Profile from "@/pages/profile";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useEffect } from "react";
-import { useAppStore } from "@/lib/stores";
+import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
 import ChatInterface from "@/components/ai/ChatInterface";
-import { useAIChatStore } from "@/lib/stores";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import NotificationPanel from "@/components/notifications/NotificationPanel";
+import ToastContainer from "@/components/notifications/ToastContainer";
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -48,6 +50,25 @@ function Router() {
 
 function App() {
   const { isOpen } = useAIChatStore();
+  const { currentUser, setCurrentUser } = useAppStore();
+  const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
+  
+  // Initialize with a test user if none exists
+  useEffect(() => {
+    if (!currentUser) {
+      // This is only for testing notifications - in a real app, you'd get this from authentication
+      setCurrentUser({
+        id: 11,
+        username: "testuser",
+        displayName: "Test User",
+        bio: "This is a test user for notification testing",
+        role: "user",
+        xpPoints: 100,
+        level: 1,
+        createdAt: new Date().toISOString()
+      });
+    }
+  }, [currentUser, setCurrentUser]);
   
   return (
     <QueryClientProvider client={queryClient}>
@@ -55,10 +76,22 @@ function App() {
         <main className="tab-content">
           <Router />
         </main>
+        {currentUser && (
+          <div className="notification-bell">
+            <NotificationBell userId={currentUser.id} />
+            {isNotificationPanelOpen && (
+              <NotificationPanel 
+                userId={currentUser.id} 
+                onClose={closeNotificationPanel} 
+              />
+            )}
+          </div>
+        )}
         <BottomNavigation />
         {isOpen && <ChatInterface />}
       </div>
       <Toaster />
+      <ToastContainer />
     </QueryClientProvider>
   );
 }

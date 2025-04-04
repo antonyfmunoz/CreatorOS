@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { relations, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -222,6 +222,29 @@ export const insertDocumentSchema = createInsertSchema(documents).pick({
   content: true,
 });
 
+// Notification schema
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").default(false).notNull(),
+  linkTo: text("link_to"),
+  relatedUserId: integer("related_user_id").references(() => users.id),
+  relatedUserImage: text("related_user_image"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).pick({
+  userId: true,
+  type: true,
+  message: true,
+  read: true,
+  linkTo: true,
+  relatedUserId: true,
+  relatedUserImage: true,
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
@@ -233,6 +256,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   revenues: many(revenue),
   contacts: many(contacts),
   documents: many(documents),
+  notifications: many(notifications),
+  relatedToNotifications: many(notifications, { relationName: "related_user" }),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -291,6 +316,11 @@ export const documentsRelations = relations(documents, ({ one }) => ({
   user: one(users, { fields: [documents.userId], references: [users.id] }),
 }));
 
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+  relatedUser: one(users, { fields: [notifications.relatedUserId], references: [users.id], relationName: "related_user" }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -327,3 +357,6 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;

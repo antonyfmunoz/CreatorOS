@@ -131,3 +131,14 @@ export interface Document {
 export interface ApiError {
   message: string;
 }
+
+export interface Notification {
+  id: string;
+  type: 'like' | 'comment' | 'mention' | 'follow' | 'purchase' | 'system';
+  message: string;
+  read: boolean;
+  createdAt: string;
+  linkTo?: string;
+  relatedUserId?: number;
+  relatedUserImage?: string;
+}

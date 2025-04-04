@@ -10,10 +10,12 @@ import {
   channelMessages, type ChannelMessage, type InsertChannelMessage,
   revenue, type Revenue, type InsertRevenue,
   contacts, type Contact, type InsertContact,
-  documents, type Document, type InsertDocument
+  documents, type Document, type InsertDocument,
+  notifications, type Notification, type InsertNotification
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, isNull, inArray, count, or, not, exists, sql } from "drizzle-orm";
+import crypto from "crypto";
 
 // Storage interface for the application
 export interface IStorage {
@@ -87,6 +89,14 @@ export interface IStorage {
   getDocumentById(id: number): Promise<Document | undefined>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: number, title: string, content: string): Promise<Document>;
+
+  // Notification operations
+  getNotificationsByUserId(userId: number): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<Notification>;
+  markAllNotificationsAsRead(userId: number): Promise<void>;
+  deleteNotification(id: string): Promise<void>;
+  deleteAllNotifications(userId: number): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -102,6 +112,7 @@ export class MemStorage implements IStorage {
   private revenues: Map<number, Revenue>;
   private contacts: Map<number, Contact>;
   private documents: Map<number, Document>;
+  private notifications: Map<string, Notification>;
 
   private userIdCounter = 1;
   private postIdCounter = 1;
@@ -129,6 +140,7 @@ export class MemStorage implements IStorage {
     this.revenues = new Map();
     this.contacts = new Map();
     this.documents = new Map();
+    this.notifications = new Map();
     
     // Initialize with sample data
     this.initializeData();
@@ -907,6 +919,64 @@ export class MemStorage implements IStorage {
     this.documents.set(id, document);
     return document;
   }
+
+  // Notification operations
+  async getNotificationsByUserId(userId: number): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const id = crypto.randomUUID();
+    const now = new Date();
+    
+    const newNotification: Notification = {
+      ...notification,
+      id,
+      createdAt: now,
+      read: notification.read ?? false,
+      linkTo: notification.linkTo ?? null,
+      relatedUserId: notification.relatedUserId ?? null,
+      relatedUserImage: notification.relatedUserImage ?? null,
+    };
+    
+    this.notifications.set(id, newNotification);
+    return newNotification;
+  }
+
+  async markNotificationAsRead(id: string): Promise<Notification> {
+    const notification = this.notifications.get(id);
+    if (!notification) throw new Error('Notification not found');
+    
+    notification.read = true;
+    this.notifications.set(id, notification);
+    return notification;
+  }
+
+  async markAllNotificationsAsRead(userId: number): Promise<void> {
+    const userNotifications = Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId);
+    
+    userNotifications.forEach(notification => {
+      notification.read = true;
+      this.notifications.set(notification.id, notification);
+    });
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    if (!this.notifications.has(id)) throw new Error('Notification not found');
+    this.notifications.delete(id);
+  }
+
+  async deleteAllNotifications(userId: number): Promise<void> {
+    const userNotifications = Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId);
+    
+    userNotifications.forEach(notification => {
+      this.notifications.delete(notification.id);
+    });
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1382,6 +1452,53 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return document;
+  }
+
+  // Notification operations
+  async getNotificationsByUserId(userId: number): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db
+      .insert(notifications)
+      .values(notification)
+      .returning();
+    
+    return newNotification;
+  }
+
+  async markNotificationAsRead(id: string): Promise<Notification> {
+    const [notification] = await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    
+    return notification;
+  }
+
+  async markAllNotificationsAsRead(userId: number): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.userId, userId));
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    await db
+      .delete(notifications)
+      .where(eq(notifications.id, id));
+  }
+
+  async deleteAllNotifications(userId: number): Promise<void> {
+    await db
+      .delete(notifications)
+      .where(eq(notifications.userId, userId));
   }
 }
 
