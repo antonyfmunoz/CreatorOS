@@ -478,10 +478,13 @@ export class MemStorage implements IStorage {
 
   // Post operations
   async getPosts(): Promise<(Post & { user: User })[]> {
-    return Array.from(this.posts.values()).map(post => {
-      const user = this.users.get(post.userId)!;
-      return { ...post, user };
-    }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // Sort by ID in descending order for consistent sorting with DatabaseStorage
+    return Array.from(this.posts.values())
+      .sort((a, b) => b.id - a.id)
+      .map(post => {
+        const user = this.users.get(post.userId)!;
+        return { ...post, user };
+    });
   }
 
   async getPostById(id: number): Promise<(Post & { user: User }) | undefined> {
@@ -925,7 +928,7 @@ export class DatabaseStorage implements IStorage {
       user: users,
     }).from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
-      .orderBy(desc(posts.createdAt));
+      .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
     
     return result.map(({ post, user }) => ({ ...post, user }));
   }
