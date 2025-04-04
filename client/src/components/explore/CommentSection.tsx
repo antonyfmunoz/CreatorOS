@@ -689,7 +689,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     document.querySelector('textarea')?.focus();
   };
 
-  // Don't show a count if there are no visible comments to avoid confusion
+  // Show only the count of top-level (parent) comments in the header
   const visibleCommentCount = comments.length;
   
   return (
