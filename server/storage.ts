@@ -583,25 +583,40 @@ export class MemStorage implements IStorage {
     const comment = this.comments.get(id);
     if (!comment) throw new Error('Comment not found');
     
-    // If it's a top-level comment, decrement the post's comment count
-    if (comment.parentId === null) {
-      const post = this.posts.get(comment.postId);
-      if (post) {
-        post.comments = Math.max(0, post.comments - 1);
-        this.posts.set(post.id, post);
-      }
+    // Find all replies to this comment (recursive)
+    const allReplies = this.findAllCommentRepliesRecursive(id);
+    
+    // Get the post to update its comment count
+    const post = this.posts.get(comment.postId);
+    if (post) {
+      // Subtract 1 for the comment itself plus all its replies
+      const totalToRemove = 1 + allReplies.length;
+      post.comments = Math.max(0, post.comments - totalToRemove);
+      this.posts.set(post.id, post);
     }
     
     // Remove the comment itself
     this.comments.delete(id);
     
-    // Also remove all replies to this comment
-    const replies = Array.from(this.comments.values())
-      .filter(c => c.parentId === id);
-      
-    replies.forEach(reply => {
+    // Remove all replies
+    allReplies.forEach(reply => {
       this.comments.delete(reply.id);
     });
+  }
+  
+  // Helper method to find all replies recursively
+  private findAllCommentRepliesRecursive(commentId: number): Comment[] {
+    const directReplies = Array.from(this.comments.values())
+      .filter(c => c.parentId === commentId);
+      
+    let allReplies = [...directReplies];
+    
+    directReplies.forEach(reply => {
+      const nestedReplies = this.findAllCommentRepliesRecursive(reply.id);
+      allReplies = [...allReplies, ...nestedReplies];
+    });
+    
+    return allReplies;
   }
   
   async likeComment(id: number): Promise<Comment> {
