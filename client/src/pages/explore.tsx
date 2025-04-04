@@ -5,11 +5,20 @@ import { Button } from "@/components/ui/button";
 import Stories from "@/components/explore/Stories";
 import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMemo } from "react";
 
 const Explore = () => {
   const { data: posts, isLoading } = useQuery<PostType[]>({
     queryKey: ["/api/posts"],
   });
+
+  // Sort posts by ID in descending order to maintain consistent position
+  // This ensures posts don't jump around when comments are added/removed
+  const sortedPosts = useMemo(() => {
+    if (!posts) return [];
+    // Create a copy of the posts array to avoid modifying the original
+    return [...posts].sort((a, b) => b.id - a.id);
+  }, [posts]);
 
   return (
     <div className="px-4 pt-4 pb-20">
@@ -58,7 +67,7 @@ const Explore = () => {
               </div>
             ))
         ) : (
-          posts?.map((post) => <Post key={post.id} post={post} />)
+          sortedPosts.map((post) => <Post key={post.id} post={post} />)
         )}
 
         {posts?.length === 0 && !isLoading && (

@@ -77,6 +77,7 @@ const Post = ({ post }: PostProps) => {
       // Update the post in the cache directly without refetching
       queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
         if (!oldData) return oldData;
+        // Maintain the same array order while updating the specific post
         return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
       });
       
@@ -101,6 +102,7 @@ const Post = ({ post }: PostProps) => {
       // Update the post in the cache directly without refetching
       queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
         if (!oldData) return oldData;
+        // Maintain the same array order while updating the specific post
         return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
       });
       

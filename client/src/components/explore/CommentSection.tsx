@@ -7,7 +7,7 @@ import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, Mo
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Comment, Post, User } from '@/types';
+import { Comment, Post, User, Post as PostType } from '@/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -286,8 +286,28 @@ const SingleComment = ({
       return { previousPostComments, previousReplies };
     },
     onSuccess: () => {
-      // Force reload all post data to get updated comment counts
-      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      // Update the post comment count directly in the cache without refetching all posts
+      // This prevents posts from jumping around when comments are deleted
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => {
+          if (p.id === comment.postId) {
+            // Decrement the comment count (ensure it doesn't go below 0)
+            return { ...p, comments: Math.max(0, p.comments - 1) };
+          }
+          return p;
+        });
+      });
+      
+      // Also update the post comment count cache
+      queryClient.setQueryData(['/api/posts', comment.postId, 'comment-count'], (oldData: any) => {
+        const currentCount = oldData?.count || 0;
+        return { count: Math.max(0, currentCount - 1) };
+      });
+      
+      // Invalidate specific queries without affecting post order
+      queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comment-count'] });
       
       toast({
         title: 'Success',
@@ -658,8 +678,23 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
         queryClient.invalidateQueries({ queryKey: ['/api/posts', post.id, 'comments'] });
       }
       
-      // Force reload all posts to get updated comment counts
-      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      // Update the post's comment count directly in the cache without refetching all posts
+      // This prevents the posts from jumping around when comments are added/deleted
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => {
+          if (p.id === post.id) {
+            return { ...p, comments: p.comments + 1 };
+          }
+          return p;
+        });
+      });
+      
+      // Also update the post comment count cache
+      queryClient.setQueryData(['/api/posts', post.id, 'comment-count'], (oldData: any) => {
+        const currentCount = oldData?.count || 0;
+        return { count: currentCount + 1 };
+      });
     },
     onError: () => {
       toast({
