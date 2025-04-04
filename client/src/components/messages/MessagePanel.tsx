@@ -281,16 +281,6 @@ const MessagePanel = () => {
             </div>
             
             <TabsContent value="conversations" className="mt-0">
-              <div className="p-4">
-                <Button 
-                  variant="outline" 
-                  className="w-full mb-3 flex items-center justify-center"
-                  onClick={() => setActiveTab('create-group')}
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Create Group Chat
-                </Button>
-              </div>
               <div className="divide-y">
                 {conversations.length > 0 ? (
                   conversations.map((conversation) => (
