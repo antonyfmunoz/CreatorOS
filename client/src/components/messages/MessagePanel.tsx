@@ -8,15 +8,11 @@ import {
   ChevronLeft,
   User as UserIcon
 } from 'lucide-react';
-import { 
-  Button,
-  Avatar,
-  Input, 
-  AvatarFallback, 
-  AvatarImage,
-  Separator,
-  Textarea,
-} from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
 import { Conversation, ConversationParticipant, DirectMessage, User } from '@/types';
 import { getInitials } from '@/lib/utils';
@@ -365,13 +361,15 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* User selection */}
           <div className="p-4 border-b">
-            <Input
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="mb-4"
-              prefix={<Search className="h-4 w-4 text-gray-400" />}
-            />
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </div>
           
           <ScrollArea className="flex-1">
@@ -437,12 +435,15 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Search */}
           <div className="p-4 border-b">
-            <Input
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              prefix={<Search className="h-4 w-4 text-gray-400" />}
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </div>
           
           {/* Conversations list */}
@@ -463,8 +464,11 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                   >
                     <div className="flex items-center gap-3 w-full">
                       <Avatar>
-                        <AvatarImage src={getConversationAvatar(conversation)} />
-                        <AvatarFallback>{getConversationInitials(conversation)}</AvatarFallback>
+                        {getConversationAvatar(conversation) ? (
+                          <AvatarImage src={getConversationAvatar(conversation) || ""} />
+                        ) : (
+                          <AvatarFallback>{getConversationInitials(conversation)}</AvatarFallback>
+                        )}
                       </Avatar>
                       <div className="flex-1 text-left">
                         <div className="font-medium">{getConversationTitle(conversation)}</div>
@@ -478,7 +482,7 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                             {formatDistanceToNow(new Date(conversation.lastMessage.sentAt), { addSuffix: true })}
                           </div>
                         )}
-                        {conversation.unreadCount > 0 && (
+                        {conversation.unreadCount && conversation.unreadCount > 0 && (
                           <div className="bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center mt-1">
                             {conversation.unreadCount}
                           </div>

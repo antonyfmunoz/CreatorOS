@@ -112,6 +112,7 @@ export interface IStorage {
   getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]>;
   createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
   markMessageAsRead(id: number): Promise<DirectMessage>;
+  markConversationAsRead(conversationId: number, userId: number): Promise<void>;
   getUnreadMessageCountForUser(userId: number): Promise<number>;
 }
 
@@ -1136,6 +1137,18 @@ export class MemStorage implements IStorage {
     
     return message;
   }
+  
+  async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
+    // Get all messages in the conversation
+    const messages = Array.from(this.directMessages.values())
+      .filter(msg => msg.conversationId === conversationId && msg.senderId !== userId && !msg.read);
+      
+    // Mark each message as read
+    for (const message of messages) {
+      message.read = true;
+      this.directMessages.set(message.id, message);
+    }
+  }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {
     // Get all conversations this user is part of
@@ -1869,6 +1882,22 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return updatedMessage;
+  }
+  
+  async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
+    // Mark all messages as read where the user is not the sender
+    await db
+      .update(directMessages)
+      .set({
+        read: true,
+      })
+      .where(
+        and(
+          eq(directMessages.conversationId, conversationId),
+          not(eq(directMessages.senderId, userId)),
+          eq(directMessages.read, false)
+        )
+      );
   }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {

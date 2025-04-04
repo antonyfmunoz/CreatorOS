@@ -150,6 +150,9 @@ export interface Conversation {
   isGroup: boolean;
   name?: string;
   icon?: string;
+  participants?: ConversationParticipant[];
+  lastMessage?: DirectMessage;
+  unreadCount?: number;
 }
 
 export interface ConversationParticipant {

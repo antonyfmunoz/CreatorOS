@@ -9,6 +9,7 @@ import { Notification } from '@/types';
 
 interface NotificationPanelProps {
   onClose?: () => void;
+  userId?: number;
 }
 
 const NotificationPanel = ({ onClose }: NotificationPanelProps) => {
