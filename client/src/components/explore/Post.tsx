@@ -36,6 +36,16 @@ const Post = ({ post }: PostProps) => {
     }
   });
   
+  // Fetch the comments for this post - always fetch to get accurate count
+  const { data: comments = [] } = useQuery({
+    queryKey: ['/api/posts', post.id, 'comments'],
+    queryFn: async () => {
+      const res = await fetch(`/api/posts/${post.id}/comments`);
+      if (!res.ok) throw new Error('Failed to fetch comments');
+      return res.json();
+    }
+  });
+  
   // For demo purposes, use the first user as the current user
   const currentUser = users?.[0];
 
@@ -154,7 +164,7 @@ const Post = ({ post }: PostProps) => {
               onClick={toggleComments}
             >
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
-              <span>{post.comments}</span>
+              <span>{comments.length}</span>
             </Button>
           </div>
           
@@ -165,7 +175,10 @@ const Post = ({ post }: PostProps) => {
         </div>
 
         {showComments && currentUser && (
-          <CommentSection post={post} currentUser={currentUser} />
+          <CommentSection 
+            post={{...post, comments: comments.length}} 
+            currentUser={currentUser} 
+          />
         )}
       </CardContent>
     </Card>
