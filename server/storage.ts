@@ -38,6 +38,7 @@ export interface IStorage {
   updateComment(id: number, content: string): Promise<Comment>;
   deleteComment(id: number): Promise<void>;
   likeComment(id: number): Promise<Comment>;
+  unlikeComment(id: number): Promise<Comment>;
 
   // Product operations
   getProducts(): Promise<(Product & { user: User })[]>;
@@ -610,6 +611,16 @@ export class MemStorage implements IStorage {
     this.comments.set(id, comment);
     return comment;
   }
+  
+  async unlikeComment(id: number): Promise<Comment> {
+    const comment = this.comments.get(id);
+    if (!comment) throw new Error('Comment not found');
+    
+    // Prevent negative likes
+    comment.likes = Math.max(0, comment.likes - 1);
+    this.comments.set(id, comment);
+    return comment;
+  }
 
   // Product operations
   async getProducts(): Promise<(Product & { user: User })[]> {
@@ -1048,6 +1059,24 @@ export class DatabaseStorage implements IStorage {
     const [updatedComment] = await db
       .update(comments)
       .set({ likes: comment.likes + 1 })
+      .where(eq(comments.id, id))
+      .returning();
+    
+    return updatedComment;
+  }
+  
+  async unlikeComment(id: number): Promise<Comment> {
+    // Get the comment
+    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    if (!comment) throw new Error(`Comment with id ${id} not found`);
+    
+    // Prevent negative likes
+    const newLikes = Math.max(0, comment.likes - 1);
+    
+    // Update the like count
+    const [updatedComment] = await db
+      .update(comments)
+      .set({ likes: newLikes })
       .where(eq(comments.id, id))
       .returning();
     
