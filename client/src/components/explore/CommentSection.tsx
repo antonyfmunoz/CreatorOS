@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface CommentSectionProps {
-  post: Post;
+  post: Post & { comments: number };
   currentUser?: User;
 }
 
@@ -692,7 +692,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        Comments {comments.length > 0 ? `(${comments.length})` : ''}
+        Comments {post.comments > 0 ? `(${post.comments})` : ''}
       </h3>
       
       {replyingTo && (
