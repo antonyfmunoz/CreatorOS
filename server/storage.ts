@@ -986,16 +986,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(comments.postId, postId),
-          or(
-            isNull(comments.parentId),
-            // Find orphaned comments (with parent_id that doesn't exist)
-            not(exists(
-              db.select({ id: comments.id })
-                .from(comments)
-                .as('parent_comments')
-                .where(eq(sql`parent_comments.id`, comments.parentId))
-            ))
-          )
+          isNull(comments.parentId)
         )
       )
       .orderBy(desc(comments.createdAt));
