@@ -142,3 +142,31 @@ export interface Notification {
   relatedUserId?: number;
   relatedUserImage?: string;
 }
+
+export interface Conversation {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+  isGroup: boolean;
+  name?: string;
+  icon?: string;
+}
+
+export interface ConversationParticipant {
+  id: number;
+  conversationId: number;
+  userId: number;
+  isAdmin: boolean;
+  joinedAt: string;
+  user?: User;
+}
+
+export interface DirectMessage {
+  id: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  read: boolean;
+  sentAt: string;
+  sender?: User;
+}

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, json, doublePrecision, foreignKey, uuid, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { relations, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -245,6 +245,55 @@ export const insertNotificationSchema = createInsertSchema(notifications).pick({
   relatedUserImage: true,
 });
 
+// Direct Message Conversation schema
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  isGroup: boolean("is_group").default(false).notNull(),
+  name: text("name"),
+  icon: text("icon"),
+});
+
+export const insertConversationSchema = createInsertSchema(conversations);
+
+// Conversation Participants (for both direct messages and group chats)
+export const conversationParticipants = pgTable("conversation_participants", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  isAdmin: boolean("is_admin").default(false).notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // Create a unique constraint so a user can only be in a conversation once
+    userConversation: unique("user_conversation").on(table.userId, table.conversationId),
+  };
+});
+
+export const insertConversationParticipantSchema = createInsertSchema(conversationParticipants).pick({
+  conversationId: true,
+  userId: true,
+  isAdmin: true,
+});
+
+// Direct Messages schema
+export const directMessages = pgTable("direct_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
+  senderId: integer("sender_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  content: text("content").notNull(),
+  read: boolean("read").default(false).notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+});
+
+export const insertDirectMessageSchema = createInsertSchema(directMessages).pick({
+  conversationId: true,
+  senderId: true,
+  content: true,
+  read: true,
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
@@ -258,6 +307,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   documents: many(documents),
   notifications: many(notifications),
   relatedToNotifications: many(notifications, { relationName: "related_user" }),
+  conversationParticipants: many(conversationParticipants),
+  sentMessages: many(directMessages, { relationName: "sender" }),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -321,6 +372,21 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   relatedUser: one(users, { fields: [notifications.relatedUserId], references: [users.id], relationName: "related_user" }),
 }));
 
+export const conversationsRelations = relations(conversations, ({ many }) => ({
+  participants: many(conversationParticipants),
+  messages: many(directMessages),
+}));
+
+export const conversationParticipantsRelations = relations(conversationParticipants, ({ one }) => ({
+  conversation: one(conversations, { fields: [conversationParticipants.conversationId], references: [conversations.id] }),
+  user: one(users, { fields: [conversationParticipants.userId], references: [users.id] }),
+}));
+
+export const directMessagesRelations = relations(directMessages, ({ one }) => ({
+  conversation: one(conversations, { fields: [directMessages.conversationId], references: [conversations.id] }),
+  sender: one(users, { fields: [directMessages.senderId], references: [users.id], relationName: "sender" }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -360,3 +426,12 @@ export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+export type InsertConversationParticipant = z.infer<typeof insertConversationParticipantSchema>;
+
+export type DirectMessage = typeof directMessages.$inferSelect;
+export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;

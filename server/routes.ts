@@ -574,6 +574,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Conversation routes
+  app.get("/api/users/:userId/conversations", async (req, res) => {
+    try {
+      const conversations = await storage.getConversationsByUserId(parseInt(req.params.userId));
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.get("/api/conversations/:id", async (req, res) => {
+    try {
+      const conversation = await storage.getConversationById(parseInt(req.params.id));
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ message: "Failed to fetch conversation" });
+    }
+  });
+
+  app.post("/api/conversations", async (req, res) => {
+    try {
+      const conversation = await storage.createConversation();
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      res.status(500).json({ message: "Failed to create conversation" });
+    }
+  });
+
+  app.post("/api/conversations/:conversationId/participants", async (req, res) => {
+    try {
+      const { userId, isAdmin } = req.body;
+      const participant = await storage.addParticipantToConversation(
+        parseInt(req.params.conversationId),
+        userId,
+        isAdmin
+      );
+      res.status(201).json(participant);
+    } catch (error) {
+      console.error("Error adding participant:", error);
+      res.status(500).json({ message: "Failed to add participant to conversation" });
+    }
+  });
+
+  app.delete("/api/conversations/:conversationId/participants/:userId", async (req, res) => {
+    try {
+      await storage.removeParticipantFromConversation(
+        parseInt(req.params.conversationId),
+        parseInt(req.params.userId)
+      );
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing participant:", error);
+      res.status(500).json({ message: "Failed to remove participant from conversation" });
+    }
+  });
+
+  // Direct Message routes
+  app.get("/api/conversations/:conversationId/messages", async (req, res) => {
+    try {
+      const messages = await storage.getMessagesByConversationId(parseInt(req.params.conversationId));
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  app.post("/api/direct-messages", async (req, res) => {
+    try {
+      const message = await storage.createDirectMessage(req.body);
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Error creating message:", error);
+      res.status(500).json({ message: "Failed to create message" });
+    }
+  });
+
+  app.patch("/api/direct-messages/:id/mark-read", async (req, res) => {
+    try {
+      const message = await storage.markMessageAsRead(parseInt(req.params.id));
+      res.json(message);
+    } catch (error) {
+      console.error("Error marking message as read:", error);
+      res.status(500).json({ message: "Failed to mark message as read" });
+    }
+  });
+
+  app.get("/api/users/:userId/unread-messages/count", async (req, res) => {
+    try {
+      const count = await storage.getUnreadMessageCountForUser(parseInt(req.params.userId));
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting unread message count:", error);
+      res.status(500).json({ message: "Failed to get unread message count" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

@@ -11,7 +11,10 @@ import {
   revenue, type Revenue, type InsertRevenue,
   contacts, type Contact, type InsertContact,
   documents, type Document, type InsertDocument,
-  notifications, type Notification, type InsertNotification
+  notifications, type Notification, type InsertNotification,
+  conversations, type Conversation, type InsertConversation,
+  conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
+  directMessages, type DirectMessage, type InsertDirectMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, isNull, inArray, count, or, not, exists, sql } from "drizzle-orm";
@@ -97,6 +100,19 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: number): Promise<void>;
   deleteNotification(id: string): Promise<void>;
   deleteAllNotifications(userId: number): Promise<void>;
+  
+  // Conversation operations
+  getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]>;
+  getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined>;
+  createConversation(): Promise<Conversation>;
+  addParticipantToConversation(conversationId: number, userId: number, isAdmin?: boolean): Promise<ConversationParticipant>;
+  removeParticipantFromConversation(conversationId: number, userId: number): Promise<void>;
+  
+  // Direct Message operations
+  getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]>;
+  createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
+  markMessageAsRead(id: number): Promise<DirectMessage>;
+  getUnreadMessageCountForUser(userId: number): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -113,6 +129,9 @@ export class MemStorage implements IStorage {
   private contacts: Map<number, Contact>;
   private documents: Map<number, Document>;
   private notifications: Map<string, Notification>;
+  private conversations: Map<number, Conversation>;
+  private conversationParticipants: Map<number, ConversationParticipant>;
+  private directMessages: Map<number, DirectMessage>;
 
   private userIdCounter = 1;
   private postIdCounter = 1;
@@ -126,6 +145,9 @@ export class MemStorage implements IStorage {
   private revenueIdCounter = 1;
   private contactIdCounter = 1;
   private documentIdCounter = 1;
+  private conversationIdCounter = 1;
+  private conversationParticipantIdCounter = 1;
+  private directMessageIdCounter = 1;
 
   constructor() {
     this.users = new Map();
@@ -141,6 +163,9 @@ export class MemStorage implements IStorage {
     this.contacts = new Map();
     this.documents = new Map();
     this.notifications = new Map();
+    this.conversations = new Map();
+    this.conversationParticipants = new Map();
+    this.directMessages = new Map();
     
     // Initialize with sample data
     this.initializeData();
@@ -977,6 +1002,156 @@ export class MemStorage implements IStorage {
       this.notifications.delete(notification.id);
     });
   }
+
+  // Conversation operations
+  async getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]> {
+    // Get all conversation participants for the user
+    const userParticipations = Array.from(this.conversationParticipants.values())
+      .filter(participant => participant.userId === userId);
+    
+    // Get the conversations for those participations
+    return userParticipations.map(participation => {
+      const conversation = this.conversations.get(participation.conversationId)!;
+      
+      // Get all participants for this conversation
+      const participants = Array.from(this.conversationParticipants.values())
+        .filter(p => p.conversationId === conversation.id)
+        .map(p => {
+          const user = this.users.get(p.userId)!;
+          return { ...p, user };
+        });
+      
+      return { ...conversation, participants };
+    }).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
+  async getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined> {
+    const conversation = this.conversations.get(id);
+    if (!conversation) return undefined;
+    
+    // Get all participants for this conversation
+    const participants = Array.from(this.conversationParticipants.values())
+      .filter(p => p.conversationId === conversation.id)
+      .map(p => {
+        const user = this.users.get(p.userId)!;
+        return { ...p, user };
+      });
+    
+    return { ...conversation, participants };
+  }
+
+  async createConversation(): Promise<Conversation> {
+    const id = this.conversationIdCounter++;
+    const now = new Date();
+    
+    const conversation: Conversation = {
+      id,
+      createdAt: now,
+      updatedAt: now,
+      isGroup: false,
+      name: null,
+      icon: null
+    };
+    
+    this.conversations.set(id, conversation);
+    return conversation;
+  }
+
+  async addParticipantToConversation(conversationId: number, userId: number, isAdmin: boolean = false): Promise<ConversationParticipant> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) throw new Error('Conversation not found');
+    
+    const id = this.conversationParticipantIdCounter++;
+    const now = new Date();
+    
+    const participant: ConversationParticipant = {
+      id,
+      conversationId,
+      userId,
+      joinedAt: now,
+      isAdmin,
+    };
+    
+    this.conversationParticipants.set(id, participant);
+    
+    // Update the conversation's update timestamp
+    conversation.updatedAt = now;
+    this.conversations.set(conversationId, conversation);
+    
+    return participant;
+  }
+
+  async removeParticipantFromConversation(conversationId: number, userId: number): Promise<void> {
+    const participant = Array.from(this.conversationParticipants.values())
+      .find(p => p.conversationId === conversationId && p.userId === userId);
+    
+    if (!participant) throw new Error('Participant not found');
+    
+    this.conversationParticipants.delete(participant.id);
+    
+    // Update the conversation's update timestamp
+    const conversation = this.conversations.get(conversationId)!;
+    conversation.updatedAt = new Date();
+    this.conversations.set(conversationId, conversation);
+  }
+
+  // Direct Message operations
+  async getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]> {
+    return Array.from(this.directMessages.values())
+      .filter(message => message.conversationId === conversationId)
+      .map(message => {
+        const sender = this.users.get(message.senderId)!;
+        return { ...message, sender };
+      })
+      .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+  }
+
+  async createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage> {
+    const id = this.directMessageIdCounter++;
+    const now = new Date();
+    
+    const directMessage: DirectMessage = {
+      ...message,
+      id,
+      sentAt: now,
+      read: false,
+    };
+    
+    this.directMessages.set(id, directMessage);
+    
+    // Update the conversation's update timestamp
+    const conversation = this.conversations.get(message.conversationId)!;
+    conversation.updatedAt = now;
+    this.conversations.set(message.conversationId, conversation);
+    
+    return directMessage;
+  }
+
+  async markMessageAsRead(id: number): Promise<DirectMessage> {
+    const message = this.directMessages.get(id);
+    if (!message) throw new Error('Message not found');
+    
+    message.read = true;
+    this.directMessages.set(id, message);
+    
+    return message;
+  }
+
+  async getUnreadMessageCountForUser(userId: number): Promise<number> {
+    // Get all conversations this user is part of
+    const userParticipations = Array.from(this.conversationParticipants.values())
+      .filter(participant => participant.userId === userId);
+    
+    const conversationIds = userParticipations.map(p => p.conversationId);
+    
+    // Count unread messages in those conversations where the user is not the sender
+    return Array.from(this.directMessages.values())
+      .filter(message => 
+        conversationIds.includes(message.conversationId) && 
+        message.senderId !== userId && 
+        !message.read
+      ).length;
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1499,6 +1674,231 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(notifications)
       .where(eq(notifications.userId, userId));
+  }
+
+  // Conversation operations
+  async getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]> {
+    // Find conversations where the user is a participant
+    const userParticipations = await db
+      .select({
+        conversation: conversations,
+        participant: conversationParticipants,
+      })
+      .from(conversationParticipants)
+      .innerJoin(conversations, eq(conversationParticipants.conversationId, conversations.id))
+      .where(eq(conversationParticipants.userId, userId))
+      .orderBy(desc(conversations.updatedAt));
+
+    // If no conversations found, return empty array
+    if (userParticipations.length === 0) {
+      return [];
+    }
+
+    // Get all conversation IDs
+    const conversationIds = userParticipations.map(row => row.conversation.id);
+
+    // For each conversation, get all participants with their user info
+    const result = [];
+    for (const conversationId of conversationIds) {
+      const conversation = userParticipations.find(row => row.conversation.id === conversationId)?.conversation;
+      
+      if (conversation) {
+        // Get all participants for this conversation
+        const participantsWithUsers = await db
+          .select({
+            participant: conversationParticipants,
+            user: users,
+          })
+          .from(conversationParticipants)
+          .innerJoin(users, eq(conversationParticipants.userId, users.id))
+          .where(eq(conversationParticipants.conversationId, conversationId));
+
+        const participants = participantsWithUsers.map(row => ({
+          ...row.participant,
+          user: row.user,
+        }));
+
+        result.push({
+          ...conversation,
+          participants,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  async getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined> {
+    // Get the conversation
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, id));
+
+    if (!conversation) {
+      return undefined;
+    }
+
+    // Get all participants with their user info
+    const participantsWithUsers = await db
+      .select({
+        participant: conversationParticipants,
+        user: users,
+      })
+      .from(conversationParticipants)
+      .innerJoin(users, eq(conversationParticipants.userId, users.id))
+      .where(eq(conversationParticipants.conversationId, id));
+
+    const participants = participantsWithUsers.map(row => ({
+      ...row.participant,
+      user: row.user,
+    }));
+
+    return {
+      ...conversation,
+      participants,
+    };
+  }
+
+  async createConversation(): Promise<Conversation> {
+    const now = new Date();
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        createdAt: now,
+        updatedAt: now,
+        isGroup: false,
+        name: null,
+        icon: null,
+      })
+      .returning();
+
+    return conversation;
+  }
+
+  async addParticipantToConversation(conversationId: number, userId: number, isAdmin: boolean = false): Promise<ConversationParticipant> {
+    // Update the conversation's updatedAt timestamp
+    await db
+      .update(conversations)
+      .set({
+        updatedAt: new Date(),
+      })
+      .where(eq(conversations.id, conversationId));
+
+    // Add the participant
+    const [participant] = await db
+      .insert(conversationParticipants)
+      .values({
+        conversationId,
+        userId,
+        joinedAt: new Date(),
+        isAdmin,
+      })
+      .returning();
+
+    return participant;
+  }
+
+  async removeParticipantFromConversation(conversationId: number, userId: number): Promise<void> {
+    // Update the conversation's updatedAt timestamp
+    await db
+      .update(conversations)
+      .set({
+        updatedAt: new Date(),
+      })
+      .where(eq(conversations.id, conversationId));
+
+    // Remove the participant
+    await db
+      .delete(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.userId, userId)
+        )
+      );
+  }
+
+  // Direct Message operations
+  async getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]> {
+    const messagesWithSenders = await db
+      .select({
+        message: directMessages,
+        sender: users,
+      })
+      .from(directMessages)
+      .innerJoin(users, eq(directMessages.senderId, users.id))
+      .where(eq(directMessages.conversationId, conversationId))
+      .orderBy(directMessages.sentAt);
+
+    return messagesWithSenders.map(row => ({
+      ...row.message,
+      sender: row.sender,
+    }));
+  }
+
+  async createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage> {
+    // Update the conversation's updatedAt timestamp
+    await db
+      .update(conversations)
+      .set({
+        updatedAt: new Date(),
+      })
+      .where(eq(conversations.id, message.conversationId));
+
+    // Create the message
+    const [directMessage] = await db
+      .insert(directMessages)
+      .values({
+        ...message,
+        sentAt: new Date(),
+        read: false,
+      })
+      .returning();
+
+    return directMessage;
+  }
+
+  async markMessageAsRead(id: number): Promise<DirectMessage> {
+    const [updatedMessage] = await db
+      .update(directMessages)
+      .set({
+        read: true,
+      })
+      .where(eq(directMessages.id, id))
+      .returning();
+
+    return updatedMessage;
+  }
+
+  async getUnreadMessageCountForUser(userId: number): Promise<number> {
+    // Find all conversations where the user is a participant
+    const userParticipations = await db
+      .select({
+        conversationId: conversationParticipants.conversationId,
+      })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.userId, userId));
+
+    if (userParticipations.length === 0) {
+      return 0;
+    }
+
+    const conversationIds = userParticipations.map(row => row.conversationId);
+    
+    // Count unread messages in those conversations where the user is not the sender
+    const result = await db
+      .select({ count: count() })
+      .from(directMessages)
+      .where(
+        and(
+          inArray(directMessages.conversationId, conversationIds),
+          not(eq(directMessages.senderId, userId)),
+          eq(directMessages.read, false)
+        )
+      );
+
+    return result[0].count;
   }
 }
 

@@ -2,6 +2,94 @@ import { create } from 'zustand';
 import { User, AIAgent, AIChat, ChatMessage, Notification } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
+// Auth store for handling user authentication
+interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<User>;
+  register: (userData: Partial<User> & { username: string; password: string; displayName: string }) => Promise<User>;
+  logout: () => void;
+  setUser: (user: User | null) => void;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  
+  login: async (username, password) => {
+    try {
+      set({ isLoading: true });
+      
+      // For demo purposes, we're just using the first user from the list
+      const response = await fetch('/api/users');
+      const users = await response.json();
+      
+      const user = users.find((u: User) => u.username === username);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      set({ 
+        user, 
+        isAuthenticated: true, 
+        isLoading: false 
+      });
+      
+      return user;
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+  
+  register: async (userData) => {
+    try {
+      set({ isLoading: true });
+      
+      // In a real app, we would send a POST request to register the user
+      // For now, mock by returning user data
+      const user = {
+        id: 11, // Mock ID
+        username: userData.username,
+        displayName: userData.displayName,
+        role: 'creator',
+        xpPoints: 0,
+        level: 1,
+        createdAt: new Date().toISOString(),
+        ...userData
+      } as User;
+      
+      set({ 
+        user, 
+        isAuthenticated: true, 
+        isLoading: false 
+      });
+      
+      return user;
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+  
+  logout: () => {
+    set({ 
+      user: null, 
+      isAuthenticated: false 
+    });
+  },
+  
+  setUser: (user) => {
+    set({ 
+      user, 
+      isAuthenticated: !!user 
+    });
+  }
+}));
+
 // App state store for current active tab, user, etc.
 interface AppState {
   activeTab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile';

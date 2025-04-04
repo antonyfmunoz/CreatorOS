@@ -1,70 +1,55 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { Bell } from 'lucide-react';
-import { useNotifications } from '@/lib/stores';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import NotificationPanel from './NotificationPanel';
+import { useNotifications } from '@/lib/stores';
+import { useAuthStore } from '@/lib/stores';
 
-interface NotificationBellProps {
-  userId: number;
-}
-
-const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
+const NotificationBell = () => {
+  const { user } = useAuthStore();
   const { 
     unreadCount, 
-    fetchNotifications, 
     isNotificationPanelOpen, 
-    toggleNotificationPanel 
+    fetchNotifications, 
+    toggleNotificationPanel,
+    closeNotificationPanel
   } = useNotifications();
   
-  const [isInitialized, setIsInitialized] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  
-  // Fetch notifications on mount and when userId changes
+  // Fetch notifications when user changes
   useEffect(() => {
-    if (userId) {
-      fetchNotifications(userId);
-      setIsInitialized(true);
+    if (user?.id) {
+      fetchNotifications(user.id);
+      
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(() => {
+        fetchNotifications(user.id);
+      }, 30000);
+      
+      return () => clearInterval(interval);
     }
-  }, [userId, fetchNotifications]);
-  
-  // Poll for new notifications every minute
-  useEffect(() => {
-    if (!userId) return;
-    
-    const intervalId = setInterval(() => {
-      fetchNotifications(userId);
-    }, 60000); // Every minute
-    
-    return () => clearInterval(intervalId);
-  }, [userId, fetchNotifications]);
-  
-  const handleClick = () => {
-    toggleNotificationPanel();
-  };
-  
-  if (!isInitialized) return null;
+  }, [user?.id, fetchNotifications]);
   
   return (
-    <div className="fixed top-4 right-4 z-40">
-      <Button
-        ref={buttonRef}
-        variant={isNotificationPanelOpen ? 'default' : 'ghost'}
-        size="icon"
-        className="relative"
-        onClick={handleClick}
-        aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
-      >
-        <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <Badge 
-            variant="destructive" 
-            className="absolute -top-1 -right-1 w-5 h-5 p-0 rounded-full flex items-center justify-center text-xs"
-          >
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </Badge>
-        )}
-      </Button>
-    </div>
+    <Sheet open={isNotificationPanelOpen} onOpenChange={toggleNotificationPanel}>
+      <SheetTrigger asChild>
+        <Button size="icon" variant="outline" className="bg-gray-100 rounded-full relative">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+            >
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="sm:max-w-md p-0 border-l">
+        <NotificationPanel onClose={closeNotificationPanel} />
+      </SheetContent>
+    </Sheet>
   );
 };
 
