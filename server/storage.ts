@@ -1040,9 +1040,11 @@ export class DatabaseStorage implements IStorage {
   }
   
   async likeComment(id: number): Promise<Comment> {
+    // Get the comment with user info to return a more complete response
     const [comment] = await db.select().from(comments).where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
     
+    // Update the like count
     const [updatedComment] = await db
       .update(comments)
       .set({ likes: comment.likes + 1 })

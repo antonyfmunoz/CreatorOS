@@ -169,7 +169,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/comments/:id/like", async (req, res) => {
     try {
-      const comment = await storage.likeComment(parseInt(req.params.id));
+      // Get the comment ID from the URL parameter
+      const commentId = parseInt(req.params.id);
+      
+      // Like the comment
+      const comment = await storage.likeComment(commentId);
+      
+      // Get the updated comment with user details if it's a top-level comment
+      if (comment.parentId === null) {
+        const updatedComment = await storage.getCommentById(commentId);
+        if (updatedComment) {
+          return res.json(updatedComment);
+        }
+      }
+      
+      // Otherwise, return the comment as is
       res.json(comment);
     } catch (error: any) {
       console.error("Error liking comment:", error);

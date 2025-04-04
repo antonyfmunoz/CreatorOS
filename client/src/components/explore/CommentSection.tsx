@@ -56,14 +56,73 @@ const SingleComment = ({
       const res = await apiRequest('POST', `/api/comments/${commentId}/like`);
       return res.json();
     },
-    onSuccess: (updatedComment) => {
-      // Update the comment likes in the cache
-      queryClient.invalidateQueries({ queryKey: ['/api/posts', updatedComment.postId, 'comments'] });
+    onMutate: async (commentId) => {
+      // Capture the previous state
+      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
+      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
+      
+      // Capture previous state for replies if this is a reply
+      let previousReplies = null;
       if (comment.parentId) {
-        queryClient.invalidateQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
+        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
+        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+      }
+      
+      // Optimistically update the comment likes
+      // For top-level comments
+      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
+        if (!old) return old;
+        return old.map((c: Comment & { user: User }) => 
+          c.id === commentId ? { ...c, likes: c.likes + 1 } : c
+        );
+      });
+      
+      // For replies
+      if (comment.parentId) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => 
+            c.id === commentId ? { ...c, likes: c.likes + 1 } : c
+          );
+        });
+      }
+      
+      // Also update directly for replies of the current comment
+      queryClient.setQueryData(['/api/comments', commentId, 'replies'], (old: any) => {
+        if (!old) return old;
+        return old.map((c: Comment & { user: User }) => ({ ...c }));
+      });
+      
+      return { previousPostComments, previousReplies };
+    },
+    onSuccess: (updatedComment, _, context) => {
+      // We can optionally use the returned data to synchronize our optimistic update
+      queryClient.setQueryData(['/api/posts', updatedComment.postId, 'comments'], (old: any) => {
+        if (!old) return old;
+        return old.map((c: Comment & { user: User }) => 
+          c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
+        );
+      });
+      
+      if (updatedComment.parentId) {
+        queryClient.setQueryData(['/api/comments', updatedComment.parentId, 'replies'], (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => 
+            c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
+          );
+        });
       }
     },
-    onError: () => {
+    onError: (_, __, context: any) => {
+      // Revert to the previous state if there was an error
+      if (context?.previousPostComments) {
+        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+      }
+      
+      if (comment.parentId && context?.previousReplies) {
+        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+      }
+      
       toast({
         title: 'Error',
         description: 'Failed to like the comment. Please try again.',
