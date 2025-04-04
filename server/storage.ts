@@ -13,7 +13,7 @@ import {
   documents, type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -888,10 +888,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createComment(insertComment: InsertComment): Promise<Comment> {
+    // First fetch the current post to get the comment count
+    const [post] = await db.select().from(posts).where(eq(posts.id, insertComment.postId));
+    if (!post) throw new Error(`Post with id ${insertComment.postId} not found`);
+    
     // Update post comment count
     await db
       .update(posts)
-      .set({ comments: (posts) => `${posts.comments} + 1` })
+      .set({ comments: post.comments + 1 })
       .where(eq(posts.id, insertComment.postId));
     
     const [comment] = await db.insert(comments).values(insertComment).returning();
@@ -963,16 +967,22 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(aiChats)
-      .where(eq(aiChats.agentId, agentId))
-      .where(eq(aiChats.userId, userId))
+      .where(and(
+        eq(aiChats.agentId, agentId),
+        eq(aiChats.userId, userId)
+      ))
       .orderBy(desc(aiChats.updatedAt));
   }
 
   async createAIChat(insertChat: InsertAIChat): Promise<AIChat> {
+    // First fetch the agent to get current chat count
+    const [agent] = await db.select().from(aiAgents).where(eq(aiAgents.id, insertChat.agentId));
+    if (!agent) throw new Error(`Agent with id ${insertChat.agentId} not found`);
+    
     // Increment chat count for the agent
     await db
       .update(aiAgents)
-      .set({ chatCount: (agents) => `${agents.chatCount} + 1` })
+      .set({ chatCount: agent.chatCount + 1 })
       .where(eq(aiAgents.id, insertChat.agentId));
     
     const [chat] = await db.insert(aiChats).values(insertChat).returning();
