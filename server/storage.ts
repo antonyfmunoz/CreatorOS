@@ -28,6 +28,7 @@ export interface IStorage {
   getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
   createPost(post: InsertPost): Promise<Post>;
   likePost(id: number): Promise<Post>;
+  unlikePost(id: number): Promise<Post>;
 
   // Comment operations
   getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
@@ -507,6 +508,16 @@ export class MemStorage implements IStorage {
     return post;
   }
 
+  async unlikePost(id: number): Promise<Post> {
+    const post = this.posts.get(id);
+    if (!post) throw new Error('Post not found');
+    
+    // Prevent negative likes
+    post.likes = Math.max(0, post.likes - 1);
+    this.posts.set(id, post);
+    return post;
+  }
+
   // Comment operations
   async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
     return Array.from(this.comments.values())
@@ -841,6 +852,22 @@ export class DatabaseStorage implements IStorage {
     const [updatedPost] = await db
       .update(posts)
       .set({ likes: post.likes + 1 })
+      .where(eq(posts.id, id))
+      .returning();
+    
+    return updatedPost;
+  }
+
+  async unlikePost(id: number): Promise<Post> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new Error(`Post with id ${id} not found`);
+    
+    // Prevent negative likes
+    const newLikes = Math.max(0, post.likes - 1);
+    
+    const [updatedPost] = await db
+      .update(posts)
+      .set({ likes: newLikes })
       .where(eq(posts.id, id))
       .returning();
     

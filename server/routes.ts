@@ -60,6 +60,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to like post" });
     }
   });
+  
+  app.post("/api/posts/:id/unlike", async (req, res) => {
+    try {
+      const post = await storage.unlikePost(parseInt(req.params.id));
+      res.json(post);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to unlike post" });
+    }
+  });
 
   // Comment routes
   app.get("/api/posts/:postId/comments", async (req, res) => {

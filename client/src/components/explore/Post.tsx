@@ -53,13 +53,40 @@ const Post = ({ post }: PostProps) => {
     }
   });
 
-  const handleLike = () => {
-    if (!isLiked) {
+  const unlikePostMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/posts/${post.id}/unlike`, null);
+      return res.json();
+    },
+    onSuccess: (updatedPost) => {
+      // Update the post in the cache directly without refetching
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
+      });
+      
+      // Remove this post from the liked posts list
+      setLikedPosts(prev => prev.filter(id => id !== post.id));
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to unlike the post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleLikeToggle = () => {
+    if (isLiked) {
+      unlikePostMutation.mutate();
+    } else {
       likePostMutation.mutate();
     }
   };
 
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
+  const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
 
   return (
     <Card className="mb-4 overflow-hidden">
@@ -94,8 +121,8 @@ const Post = ({ post }: PostProps) => {
               variant="ghost" 
               size="sm" 
               className="flex items-center gap-1 px-2"
-              onClick={handleLike}
-              disabled={likePostMutation.isPending || isLiked}
+              onClick={handleLikeToggle}
+              disabled={isPending}
             >
               <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
               <span>{post.likes}</span>
