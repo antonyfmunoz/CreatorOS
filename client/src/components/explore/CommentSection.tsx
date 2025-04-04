@@ -689,13 +689,12 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     document.querySelector('textarea')?.focus();
   };
 
-  // Show only the count of top-level (parent) comments in the header
-  const visibleCommentCount = comments.length;
-  
+  // Use the total comment count passed in from the post prop
+  // This includes both top-level comments and all nested replies
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        Comments {visibleCommentCount > 0 ? `(${visibleCommentCount})` : ''}
+        Comments {post.comments > 0 ? `(${post.comments})` : ''}
       </h3>
       
       {replyingTo && (

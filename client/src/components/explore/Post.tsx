@@ -56,12 +56,9 @@ const Post = ({ post }: PostProps) => {
     }
   });
   
-  // Store the total count for use in the component props
+  // Use the total comment count from the database for the UI
+  // This includes both top-level comments and all replies
   const totalCommentCount = commentCountData?.count || 0;
-  
-  // For UI consistency, we'll show the number of top-level comments
-  // This matches what users can see in the comments section
-  const visibleCommentCount = comments.length;
   
   // For demo purposes, use the first user as the current user
   const currentUser = users?.[0];
@@ -181,7 +178,7 @@ const Post = ({ post }: PostProps) => {
               onClick={toggleComments}
             >
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
-              <span>{visibleCommentCount}</span>
+              <span>{totalCommentCount}</span>
             </Button>
           </div>
           
@@ -193,7 +190,7 @@ const Post = ({ post }: PostProps) => {
 
         {showComments && currentUser && (
           <CommentSection 
-            post={{...post, comments: visibleCommentCount}} 
+            post={{...post, comments: totalCommentCount}} 
             currentUser={currentUser} 
           />
         )}
