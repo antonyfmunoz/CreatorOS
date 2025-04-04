@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, AIAgent, AIChat, ChatMessage, Notification } from '@/types';
+import { User, AIAgent, AIChat, ChatMessage, Notification, Conversation, DirectMessage } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 // Auth store for handling user authentication
@@ -334,8 +334,8 @@ export const useNotifications = create<NotificationState>((set, get) => ({
 
 // Messaging store for handling direct messages and conversations
 interface MessagingState {
-  conversations: any[];
-  messages: any[];
+  conversations: Conversation[];
+  messages: DirectMessage[];
   isLoading: boolean;
   selectedConversation: number | null;
   isMessagePanelOpen: boolean;
@@ -400,7 +400,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   sendMessage: async (conversationId: number, senderId: number, content: string) => {
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+      const response = await fetch(`/api/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
