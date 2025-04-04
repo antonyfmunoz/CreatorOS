@@ -14,7 +14,7 @@ interface MessagePanelProps {
   onClose?: () => void;
 }
 
-const MessagePanel = ({ onClose }: MessagePanelProps) => {
+const MessagePanel = () => {
   const { user } = useAuthStore();
   const [newMessage, setNewMessage] = useState('');
   const {

@@ -34,8 +34,9 @@ const MessageButton = () => {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="sm:max-w-md p-0 border-l">
+      <SheetContent side="right" className="sm:max-w-md p-0 border-l" aria-describedby="message-panel-desc">
         <MessagePanel />
+        <div id="message-panel-desc" className="sr-only">Message panel for your conversations</div>
       </SheetContent>
     </Sheet>
   );

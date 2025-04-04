@@ -20,7 +20,7 @@ interface NotificationPanelProps {
   onClose?: () => void;
 }
 
-const NotificationPanel = ({ onClose }: NotificationPanelProps) => {
+const NotificationPanel = () => {
   const { 
     notifications, 
     isLoading, 
