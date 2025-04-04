@@ -13,7 +13,7 @@ import {
   documents, type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 
 // Storage interface for the application
 export interface IStorage {
@@ -1026,28 +1026,45 @@ export class DatabaseStorage implements IStorage {
     const [comment] = await db.select().from(comments).where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
     
-    // If it's a top-level comment, decrement the post's comment count
-    if (comment.parentId === null) {
-      const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
-      if (post) {
-        // Update the post's comment count
-        await db
-          .update(posts)
-          .set({ comments: Math.max(0, post.comments - 1) })
-          .where(eq(posts.id, comment.postId));
-      }
+    // Find all replies (and potential nested replies) recursively
+    const allReplies = await this.findAllCommentRepliesRecursive(id);
+    
+    // Total number of comments to delete (main comment + all nested replies)
+    const totalCommentsToDelete = 1 + allReplies.length;
+    
+    // Always update the post's comment count regardless of parent/child relationship
+    const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
+    if (post) {
+      // Update the post's comment count by subtracting all deleted comments
+      await db
+        .update(posts)
+        .set({ comments: Math.max(0, post.comments - totalCommentsToDelete) })
+        .where(eq(posts.id, comment.postId));
     }
     
-    // Find all replies to delete them as well
-    const replies = await db.select().from(comments).where(eq(comments.parentId, id));
-    
-    // Delete all replies
-    if (replies.length > 0) {
-      await db.delete(comments).where(eq(comments.parentId, id));
+    // Delete all replies and sub-replies
+    if (allReplies.length > 0) {
+      const replyIds = allReplies.map(reply => reply.id);
+      await db.delete(comments).where(inArray(comments.id, replyIds));
     }
     
     // Delete the comment itself
     await db.delete(comments).where(eq(comments.id, id));
+  }
+  
+  // Helper method to find all replies recursively (including replies to replies)
+  private async findAllCommentRepliesRecursive(commentId: number): Promise<Comment[]> {
+    const directReplies = await db.select().from(comments).where(eq(comments.parentId, commentId));
+    
+    let allReplies = [...directReplies];
+    
+    // For each direct reply, find its nested replies
+    for (const reply of directReplies) {
+      const nestedReplies = await this.findAllCommentRepliesRecursive(reply.id);
+      allReplies = [...allReplies, ...nestedReplies];
+    }
+    
+    return allReplies;
   }
   
   async likeComment(id: number): Promise<Comment> {
