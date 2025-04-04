@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
+import { insertCommentSchema } from "../shared/schema";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -82,9 +83,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/comments", async (req, res) => {
     try {
+      console.log("Creating comment with data:", req.body);
+      // Skip validation for now to debug
       const comment = await storage.createComment(req.body);
       res.status(201).json(comment);
     } catch (error) {
+      console.error("Error creating comment:", error);
       res.status(500).json({ message: "Failed to create comment" });
     }
   });

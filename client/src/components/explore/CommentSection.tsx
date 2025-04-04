@@ -62,11 +62,13 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
   const handleSubmitComment = () => {
     if (!commentText.trim() || !currentUser) return;
     
-    createCommentMutation.mutate({
+    const comment = {
       postId: post.id,
       userId: currentUser.id,
       content: commentText
-    });
+    };
+    console.log('Submitting comment:', comment);
+    createCommentMutation.mutate(comment);
   };
 
   return (
