@@ -18,14 +18,16 @@ const SingleComment = ({
   comment, 
   currentUser, 
   onReply,
-  depth = 0
+  depth = 0,
+  forceShowReplies = false
 }: { 
   comment: Comment & { user: User }, 
   currentUser?: User,
   onReply: (parentId: number) => void,
-  depth?: number
+  depth?: number,
+  forceShowReplies?: boolean
 }) => {
-  const [showReplies, setShowReplies] = useState(false);
+  const [showReplies, setShowReplies] = useState(forceShowReplies);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -36,9 +38,15 @@ const SingleComment = ({
       const res = await fetch(`/api/comments/${comment.id}/replies`);
       if (!res.ok) throw new Error('Failed to fetch replies');
       return res.json();
-    },
-    enabled: showReplies // Only fetch when replies are shown
+    }
   }) as { data: (Comment & { user: User })[], isLoading: boolean };
+  
+  // Update showReplies when forceShowReplies changes or when we get replies
+  useEffect(() => {
+    if (forceShowReplies || (replies && replies.length > 0)) {
+      setShowReplies(true);
+    }
+  }, [forceShowReplies, replies]);
   
   // Mutation for liking a comment
   const likeCommentMutation = useMutation({
@@ -143,6 +151,7 @@ const SingleComment = ({
                   currentUser={currentUser} 
                   onReply={onReply}
                   depth={depth + 1}
+                  forceShowReplies={replyingTo === reply.id}
                 />
               ))
             )}
@@ -258,6 +267,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
                 comment={comment} 
                 currentUser={currentUser} 
                 onReply={handleReply}
+                forceShowReplies={replyingTo === comment.id}
               />
             ))
           )}
