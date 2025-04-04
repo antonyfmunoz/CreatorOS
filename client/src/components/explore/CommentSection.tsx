@@ -677,7 +677,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
       postId: post.id,
       userId: currentUser.id,
       content: commentText,
-      ...(replyingTo ? { parentId: replyingTo } : {})
+      ...(replyingTo !== null ? { parentId: replyingTo } : {})
     };
     console.log('Submitting comment:', comment);
     createCommentMutation.mutate(comment);
