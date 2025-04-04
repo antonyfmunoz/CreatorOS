@@ -19,13 +19,15 @@ const SingleComment = ({
   currentUser, 
   onReply,
   depth = 0,
-  forceShowReplies = false
+  forceShowReplies = false,
+  replyingTo = null
 }: { 
   comment: Comment & { user: User }, 
   currentUser?: User,
   onReply: (parentId: number) => void,
   depth?: number,
-  forceShowReplies?: boolean
+  forceShowReplies?: boolean,
+  replyingTo?: number | null
 }) => {
   const [showReplies, setShowReplies] = useState(forceShowReplies);
   const { toast } = useToast();
@@ -151,7 +153,7 @@ const SingleComment = ({
                   currentUser={currentUser} 
                   onReply={onReply}
                   depth={depth + 1}
-                  forceShowReplies={replyingTo === reply.id}
+                  replyingTo={replyingTo}
                 />
               ))
             )}
@@ -268,6 +270,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
                 currentUser={currentUser} 
                 onReply={handleReply}
                 forceShowReplies={replyingTo === comment.id}
+                replyingTo={replyingTo}
               />
             ))
           )}
