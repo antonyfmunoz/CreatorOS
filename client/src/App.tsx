@@ -76,17 +76,7 @@ function App() {
         <main className="tab-content">
           <Router />
         </main>
-        {currentUser && (
-          <div className="notification-bell">
-            <NotificationBell userId={currentUser.id} />
-            {isNotificationPanelOpen && (
-              <NotificationPanel 
-                userId={currentUser.id} 
-                onClose={closeNotificationPanel} 
-              />
-            )}
-          </div>
-        )}
+        {/* Notification components moved to the Explore page header */}
         <BottomNavigation />
         {isOpen && <ChatInterface />}
       </div>

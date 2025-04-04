@@ -11,3 +11,13 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+@layer components {
+  .app-container {
+    @apply min-h-[100dvh] w-full pb-16 relative;
+  }
+
+  .tab-content {
+    @apply w-full h-full;
+  }
+}
