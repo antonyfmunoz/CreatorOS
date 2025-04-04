@@ -53,8 +53,8 @@ const ContactList = ({ userId }: ContactListProps) => {
           {contacts?.map((contact) => (
             <div key={contact.id} className="flex items-center">
               <Avatar className="w-10 h-10 mr-3">
-                <AvatarImage src={contact.contactImage} alt={contact.contactName} />
-                <AvatarFallback>{contact.contactName.charAt(0)}</AvatarFallback>
+                <AvatarImage src={contact.contactImage} alt={contact.contactName || "Contact"} />
+                <AvatarFallback>{contact.contactName ? contact.contactName.charAt(0) : "C"}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <p className="font-medium">{contact.contactName}</p>

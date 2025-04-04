@@ -295,7 +295,93 @@ const AI = () => {
               Train a custom AI agent to help with specific tasks
             </DialogDescription>
           </DialogHeader>
-          {/* Same form as above - for the button at the bottom */}
+          
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-2">
+                <Label htmlFor="name-bottom" className="text-right">Name</Label>
+                <Input 
+                  id="name-bottom" 
+                  name="name"
+                  placeholder="Content Writer" 
+                  className="col-span-3" 
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-2">
+                <Label htmlFor="description-bottom" className="text-right">Description</Label>
+                <Textarea 
+                  id="description-bottom" 
+                  name="description"
+                  placeholder="Writes blog posts and marketing copy" 
+                  className="col-span-3" 
+                  value={formData.description}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-2">
+                <Label htmlFor="icon-bottom" className="text-right">Icon</Label>
+                <Select 
+                  onValueChange={(value) => handleSelectChange('icon', value)}
+                  defaultValue={formData.icon}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select icon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {iconOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-2">
+                <Label htmlFor="color-bottom" className="text-right">Color</Label>
+                <Select 
+                  onValueChange={(value) => handleSelectChange('color', value)}
+                  defaultValue={formData.iconColor}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select color" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {colorOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-2">
+                <Label htmlFor="systemPrompt-bottom" className="text-right">System Prompt</Label>
+                <Textarea 
+                  id="systemPrompt-bottom" 
+                  name="systemPrompt"
+                  placeholder="You are a helpful assistant specialized in..." 
+                  className="col-span-3" 
+                  value={formData.systemPrompt}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button type="submit" disabled={createAgentMutation.isPending}>
+                {createAgentMutation.isPending ? "Creating..." : "Create Agent"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
