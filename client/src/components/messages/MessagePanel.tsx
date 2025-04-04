@@ -10,6 +10,7 @@ import { DirectMessage, Conversation, User as UserType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Link } from 'wouter';
 
 interface MessagePanelProps {
   onClose?: () => void;
@@ -361,14 +362,18 @@ const MessagePanel = () => {
                           className="py-3 px-2 hover:bg-muted/50 flex items-center space-x-3 justify-between"
                         >
                           <div className="flex items-center space-x-3 flex-1">
-                            <Avatar className="cursor-pointer" onClick={() => window.location.href = `/profile/${user.id}`}>
-                              <AvatarImage src={user.profileImageUrl || undefined} />
-                              <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1">
-                              <p className="font-medium">{user.displayName}</p>
-                              <p className="text-sm text-muted-foreground">@{user.username}</p>
-                            </div>
+                            <Link to={`/profile/${user.id}`}>
+                              <Avatar className="cursor-pointer">
+                                <AvatarImage src={user.profileImageUrl || undefined} />
+                                <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                              </Avatar>
+                            </Link>
+                            <Link to={`/profile/${user.id}`} className="flex-1">
+                              <div className="cursor-pointer">
+                                <p className="font-medium">{user.displayName}</p>
+                                <p className="text-sm text-muted-foreground">@{user.username}</p>
+                              </div>
+                            </Link>
                           </div>
                           <Button 
                             variant="secondary" 
