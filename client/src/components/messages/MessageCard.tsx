@@ -3,9 +3,15 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, Reply, Edit, Trash2, X, Check } from 'lucide-react';
+import { Heart, Reply, Edit, Trash2, X, Check, MoreHorizontal } from 'lucide-react';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { DirectMessage, User } from '@/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -251,33 +257,40 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                           />
                         </Button>
                         
-                        {/* Edit button (only for own messages) */}
-                        {isOwnMessage && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 w-6 p-0"
-                            onClick={handleEdit}
-                          >
-                            <Edit 
-                              className="h-3.5 w-3.5 text-primary-foreground/70" 
-                            />
-                          </Button>
-                        )}
-                        
-                        {/* Delete button (only for own messages) */}
-                        {isOwnMessage && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 w-6 p-0"
-                            onClick={handleDelete}
-                          >
-                            <Trash2 
-                              className="h-3.5 w-3.5 text-primary-foreground/70 hover:text-destructive" 
-                            />
-                          </Button>
-                        )}
+                        {/* More options menu (similar to comments) */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 w-6 p-0"
+                            >
+                              <MoreHorizontal 
+                                className={`h-3.5 w-3.5 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}
+                              />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {isOwnMessage && (
+                              <>
+                                <DropdownMenuItem 
+                                  onClick={handleEdit}
+                                  className="cursor-pointer"
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={handleDelete}
+                                  className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     
