@@ -544,7 +544,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Add participants to the conversation
       for (const userId of userIds) {
-        await storage.addUserToConversation(conversation.id, userId);
+        await storage.addParticipantToConversation(conversation.id, userId);
       }
       
       res.status(201).json(conversation);

@@ -105,7 +105,7 @@ export interface IStorage {
   // Conversation operations
   getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]>;
   getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined>;
-  createConversation(): Promise<Conversation>;
+  createConversation(userIds: number[], name?: string, isGroup?: boolean): Promise<Conversation>;
   addParticipantToConversation(conversationId: number, userId: number, isAdmin?: boolean): Promise<ConversationParticipant>;
   removeParticipantFromConversation(conversationId: number, userId: number): Promise<void>;
   
@@ -1056,7 +1056,7 @@ export class MemStorage implements IStorage {
     return { ...conversation, participants };
   }
 
-  async createConversation(): Promise<Conversation> {
+  async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
     const id = this.conversationIdCounter++;
     const now = new Date();
     
@@ -1064,12 +1064,16 @@ export class MemStorage implements IStorage {
       id,
       createdAt: now,
       updatedAt: now,
-      isGroup: false,
-      name: null,
+      isGroup: isGroup || userIds.length > 2,
+      name: name || null,
       icon: null
     };
     
     this.conversations.set(id, conversation);
+    
+    // Add participants (function call without actually adding participants here,
+    // as participants should be added separately by the route handler)
+    
     return conversation;
   }
 
@@ -1802,15 +1806,15 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async createConversation(): Promise<Conversation> {
+  async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
     const now = new Date();
     const [conversation] = await db
       .insert(conversations)
       .values({
         createdAt: now,
         updatedAt: now,
-        isGroup: false,
-        name: null,
+        isGroup: isGroup || userIds.length > 2,
+        name: name || null,
         icon: null,
       })
       .returning();
