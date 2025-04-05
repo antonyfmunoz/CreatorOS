@@ -501,7 +501,7 @@ const SingleComment = ({
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
-        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg">
+        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between">
             <p className="font-medium text-sm">{comment.user.displayName}</p>
             <div className="flex items-center gap-2">
@@ -537,7 +537,7 @@ const SingleComment = ({
                 ref={editInputRef}
                 value={editedContent}
                 onChange={(e) => setEditedContent(e.target.value)}
-                className="min-h-[60px] text-sm resize-none mb-2 bg-background text-foreground"
+                className="min-h-[60px] text-sm resize-none mb-2 bg-background text-foreground border border-gray-200 dark:border-gray-700 focus:border-primary shadow-sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -735,7 +735,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
       </h3>
       
       {replyingTo && (
-        <div className="mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-md border border-primary/20">
+        <div className="mb-4 bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium">Replying to a comment</span>
             <Button 
@@ -782,7 +782,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Write a comment..."
-              className="min-h-[60px] resize-none pr-12"
+              className="min-h-[60px] resize-none pr-12 border border-gray-200 dark:border-gray-700 focus:border-primary shadow-sm"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
