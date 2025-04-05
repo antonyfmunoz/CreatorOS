@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus
+  X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus, 
+  Heart, ThumbsUp, MoreHorizontal, Edit, Trash2, Reply, Check
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, useMessaging } from '@/lib/stores';
@@ -272,7 +273,7 @@ const MessagePanel = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-background">
+    <div className="flex flex-col h-full bg-white">
       {/* Header */}
       <div className="p-4 border-b flex items-center justify-between">
         {selectedConversation ? (
@@ -331,11 +332,83 @@ const MessagePanel = () => {
                 );
               })
             ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7" 
+                                    onClick={() => {
+                                      if (user) {
+                                        // Toggle between like and heart
+                                        const reaction = "❤️";
+                                        useMessaging.getState().reactToMessage(message.id, user.id, reaction);
+                                      }
+                                    }}
+                                  >
+                                    <Heart className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Like</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            {/* Reply button */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7"
+                                    onClick={() => useMessaging.getState().setReplyingToMessage(message)}
+                                  >
+                                    <Reply className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Reply</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            {/* Edit/Delete (only for own messages) */}
+                            {isOwnMessage && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-32">
+                                  <DropdownMenuItem onClick={() => useMessaging.getState().setEditingMessageId(message.id)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => useMessaging.getState().deleteMessage(message.id)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
               <div className="flex flex-col items-center justify-center p-8 text-center h-full">
                 <p className="text-muted-foreground">No messages yet. Send the first message!</p>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
         ) : (
           // Tabs for conversations and search
@@ -579,11 +652,11 @@ const MessagePanel = () => {
                   </div>
                   
                   <Button 
-                    className="w-full"
-                    disabled={selectedUsers.length === 0 || !groupName.trim()}
+                    className="w-full mt-4"
+                    disabled={!groupName.trim() || selectedUsers.length === 0}
                     onClick={handleCreateGroupChat}
                   >
-                    Create Group Chat
+                    Create Group
                   </Button>
                 </div>
               </div>
@@ -592,57 +665,71 @@ const MessagePanel = () => {
         )}
       </ScrollArea>
       
-      {/* Input area for sending messages */}
+      {/* Message input */}
+      {/* Add invisible div for scrolling to bottom */}
+      <div ref={messagesEndRef} />
+      
       {selectedConversation && (
         <div className="p-4 border-t">
-          <div className="relative">
-            {/* Reply indicator */}
-            {replyingToMessage && (
-              <div className="mb-2 bg-muted/50 p-2 rounded-md flex items-center justify-between">
-                <div className="flex-1 truncate">
-                  <span className="text-xs font-medium">
-                    Replying to {replyingToMessage.senderId === user?.id ? 'yourself' : replyingToMessage.sender?.displayName}
-                  </span>
-                  <p className="text-xs text-muted-foreground truncate">{replyingToMessage.content}</p>
-                </div>
-                <Button variant="ghost" size="sm" className="h-6 px-2" onClick={cancelReply}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-            
-            {/* Editing indicator */}
-            {editingMessageId && (
-              <div className="mb-2 bg-muted/50 p-2 rounded-md flex items-center justify-between">
-                <span className="text-xs font-medium">Editing message</span>
-                <Button variant="ghost" size="sm" className="h-6 px-2" onClick={cancelEditing}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-            
-            <div className="flex items-center gap-2">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={editingMessageId ? "Edit your message..." : "Type a message..."}
-                className="flex-1"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-              />
-              <Button 
-                type="submit" 
-                size="icon"
-                disabled={!newMessage.trim()}
-                onClick={handleSendMessage}
-              >
-                <Send className="h-4 w-4" />
+          {/* Show editing status */}
+          {editingMessageId && (
+            <div className="bg-muted rounded-md p-2 mb-2 flex justify-between items-center">
+              <span className="text-sm flex items-center">
+                <Edit className="h-3.5 w-3.5 mr-1" />
+                Editing message
+              </span>
+              <Button variant="ghost" size="sm" onClick={cancelEditing}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Cancel
               </Button>
             </div>
+          )}
+          
+          {/* Show replying status */}
+          {replyingToMessage && !editingMessageId && (
+            <div className="bg-muted rounded-md p-2 mb-2 flex justify-between items-center">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium flex items-center">
+                  <Reply className="h-3.5 w-3.5 mr-1" />
+                  Replying to {replyingToMessage.senderId === user?.id ? 'yourself' : replyingToMessage.sender?.displayName}
+                </span>
+                <span className="text-xs text-muted-foreground line-clamp-1">
+                  {replyingToMessage.content}
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={cancelReply}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          )}
+          
+          <div className="flex space-x-2">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={editingMessageId ? "Edit your message..." : replyingToMessage ? "Write a reply..." : "Type a message..."}
+              className="flex-1"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                } else if (e.key === 'Escape') {
+                  if (editingMessageId) {
+                    cancelEditing();
+                  } else if (replyingToMessage) {
+                    cancelReply();
+                  }
+                }
+              }}
+            />
+            <Button 
+              size="icon" 
+              onClick={handleSendMessage}
+              disabled={!newMessage.trim()}
+            >
+              {editingMessageId ? <Check className="h-5 w-5" /> : <Send className="h-5 w-5" />}
+            </Button>
           </div>
         </div>
       )}
