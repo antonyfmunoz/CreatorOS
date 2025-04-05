@@ -10,7 +10,7 @@ import Communities from "@/pages/communities";
 import Profile from "@/pages/profile";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useEffect } from "react";
-import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
+import { useAppStore, useAIChatStore, useNotifications, useAuthStore } from "@/lib/stores";
 import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
@@ -53,11 +53,14 @@ function App() {
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   
+  // Get user from auth store
+  const { user: authUser, setUser } = useAuthStore();
+  
   // Initialize with a test user if none exists
   useEffect(() => {
-    if (!currentUser) {
-      // This is only for testing notifications - in a real app, you'd get this from authentication
-      setCurrentUser({
+    if (!currentUser || !authUser) {
+      // This is only for testing - in a real app, you'd get this from authentication
+      const testUser = {
         id: 11,
         username: "testuser",
         displayName: "Test User",
@@ -66,9 +69,13 @@ function App() {
         xpPoints: 100,
         level: 1,
         createdAt: new Date().toISOString()
-      });
+      };
+      
+      // Set in both stores to ensure consistency
+      setCurrentUser(testUser);
+      setUser(testUser);
     }
-  }, [currentUser, setCurrentUser]);
+  }, [currentUser, setCurrentUser, authUser, setUser]);
   
   return (
     <QueryClientProvider client={queryClient}>
