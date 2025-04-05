@@ -116,9 +116,14 @@ const MessagePanel = () => {
   const handleStartConversation = async (userId: number) => {
     if (!user) return;
     
+    console.log('Starting conversation with user ID:', userId);
+    console.log('Current user ID:', user.id);
+    
     try {
       // Create a new conversation with selected user
+      console.log('Creating conversation with userIds:', [user.id, userId]);
       const conversationId = await createConversation([user.id, userId]);
+      console.log('Created conversation with ID:', conversationId);
       
       // Select the newly created conversation
       setSelectedConversation(conversationId);
@@ -131,6 +136,7 @@ const MessagePanel = () => {
       setActiveTab('conversations');
     } catch (error) {
       console.error('Error starting conversation:', error);
+      console.error('Error details:', error instanceof Error ? error.message : JSON.stringify(error));
     }
   };
   
