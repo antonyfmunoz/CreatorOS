@@ -221,8 +221,8 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                 <>
                   <p>{message.content}</p>
                   
-                  <div className="flex items-center justify-between mt-1">
-                    <div className="flex items-center">
+                  <div className="flex flex-col mt-1">
+                    <div className="flex items-center justify-between">
                       <p className={`text-xs ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                         {formatDistanceToNow(new Date(message.sentAt), { addSuffix: true })}
                         {message.isEdited && (
@@ -230,92 +230,81 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                         )}
                       </p>
                       
-                      {/* Message action buttons - inline */}
-                      <div className="flex items-center space-x-1 ml-2">
-                        {/* Like button */}
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 w-6 p-0" 
-                          onClick={handleReaction}
-                        >
-                          <Heart 
-                            className={`h-3.5 w-3.5 ${hasUserReaction() ? 'fill-rose-500 text-rose-500' : 
-                              isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
-                          />
-                        </Button>
-                        
-                        {/* Reply button */}
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 w-6 p-0"
-                          onClick={handleReply}
-                        >
-                          <Reply 
-                            className={`h-3.5 w-3.5 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
-                          />
-                        </Button>
-                        
-                        {/* More options menu (similar to comments) */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-6 w-6 p-0"
-                            >
-                              <MoreHorizontal 
-                                className={`h-3.5 w-3.5 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}
-                              />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            {isOwnMessage && (
-                              <>
-                                <DropdownMenuItem 
-                                  onClick={handleEdit}
-                                  className="cursor-pointer"
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={handleDelete}
-                                  className="cursor-pointer text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <div className="flex items-center gap-2">
+                        {/* More options menu (like comments) */}
+                        {isOwnMessage && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <MoreHorizontal 
+                                  className={`h-4 w-4 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}
+                                />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={handleEdit}
+                                className="cursor-pointer"
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={handleDelete}
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </div>
-                    
-                    {/* Reaction count */}
-                    {hasReactions && (
-                      <div 
-                        className={`flex items-center text-xs ml-2 px-1.5 py-0.5 rounded-full
-                          ${isOwnMessage ? 'bg-primary-foreground/10 text-primary-foreground' : 'bg-muted-foreground/10 text-foreground'}
-                        `}
+
+                    {/* Action buttons below timestamp - like in comments */}
+                    <div className="flex items-center gap-3 mt-1">
+                      <Button 
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center gap-1 px-2 h-6"
+                        onClick={handleReaction}
                       >
-                        <Heart className={`h-3 w-3 mr-0.5 ${hasUserReaction() ? 'fill-rose-500 text-rose-500' : ''}`} />
-                        <span>{
-                          (() => {
-                            try {
-                              const reactionsObj = typeof message.reactions === 'string' 
-                                ? JSON.parse(message.reactions as string) 
-                                : (message.reactions || {});
-                              return Object.keys(reactionsObj).length;
-                            } catch (e) {
-                              return 0;
-                            }
-                          })()
-                        }</span>
-                      </div>
-                    )}
+                        <Heart 
+                          className={`h-4 w-4 ${hasUserReaction() ? 'fill-rose-500 text-rose-500' : 
+                            isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs">
+                          {hasUserReaction() ? 'Liked' : 'Like'}
+                          {hasReactions && (
+                            <span className="ml-1">
+                              ({(() => {
+                                try {
+                                  const reactionsObj = typeof message.reactions === 'string' 
+                                    ? JSON.parse(message.reactions as string) 
+                                    : (message.reactions || {});
+                                  return Object.keys(reactionsObj).length;
+                                } catch (e) {
+                                  return 0;
+                                }
+                              })()})
+                            </span>
+                          )}
+                        </span>
+                      </Button>
+                      
+                      <Button 
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center gap-1 px-2 h-6"
+                        onClick={handleReply}
+                      >
+                        <Reply 
+                          className={`h-4 w-4 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs">Reply</span>
+                      </Button>
+                    </div>
                   </div>
                 </>
               )}
