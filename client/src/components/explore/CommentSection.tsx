@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
-import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, MoreHorizontal, X, Check } from 'lucide-react';
+import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, MoreHorizontal, X, Check, Reply } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +55,7 @@ const SingleComment = ({
   
   // Check if the current user is the author of the comment
   const isAuthor = currentUser?.id === comment.userId;
+  const isOwnComment = isAuthor; // Used for styling consistency with messages
   
   // Fetch replies for this comment
   const { data: replies = [], isLoading: isLoadingReplies } = useQuery({
@@ -448,20 +449,15 @@ const SingleComment = ({
     });
   };
   
-  // Handler for canceling edit mode
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    setEditedContent(comment.content); // Reset to original
-  };
-  
-  // Handler for confirming delete
+  // Handler for deleting a comment
   const handleDelete = () => {
     setIsDeleteDialogOpen(true);
   };
   
-  // Handler for confirming delete in the dialog
+  // Handler for confirming deletion
   const handleConfirmDelete = () => {
     if (!currentUser) return;
+    
     deleteCommentMutation.mutate(comment.id);
     setIsDeleteDialogOpen(false);
   };
@@ -472,7 +468,7 @@ const SingleComment = ({
   
   // Allow replies at any depth
   const canReply = true;
-  
+
   return (
     <div className="flex gap-3">
       {/* Delete confirmation dialog */}
@@ -501,16 +497,29 @@ const SingleComment = ({
         </AlertDialogContent>
       </AlertDialog>
       
-      <Avatar className="w-8 h-8 shrink-0">
+      <Avatar className="w-8 h-8 shrink-0 mt-1">
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
-        <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
+        {/* Display username outside bubble for more Instagram-like appearance */}
+        {!isEditing && (
+          <div className="text-sm font-medium ml-1">
+            {comment.user.displayName}
+          </div>
+        )}
+        
+        <div className={`rounded-lg p-3 ${
+          isOwnComment 
+            ? 'bg-primary text-primary-foreground' 
+            : 'bg-muted'
+        } relative group`}>
           <div className="flex justify-between">
-            <p className="font-medium text-sm">{comment.user.displayName}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">
+            {isEditing && (
+              <p className="font-medium text-sm">{comment.user.displayName}</p>
+            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
               </span>
               
@@ -542,31 +551,36 @@ const SingleComment = ({
                 ref={editInputRef}
                 value={editedContent}
                 onChange={(e) => setEditedContent(e.target.value)}
-                className="min-h-[60px] text-sm resize-none"
+                className="min-h-[60px] text-sm resize-none mb-2 bg-background text-foreground"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSaveEdit();
                   } else if (e.key === 'Escape') {
-                    handleCancelEdit();
+                    e.preventDefault();
+                    setIsEditing(false);
+                    setEditedContent(comment.content);
                   }
                 }}
               />
-              <div className="flex gap-2 mt-2 justify-end">
+              <div className="flex justify-end gap-2">
                 <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-7 text-xs px-2"
-                  onClick={handleCancelEdit}
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedContent(comment.content);
+                  }}
+                  className="h-7"
                 >
                   <X className="h-3 w-3 mr-1" />
                   Cancel
                 </Button>
                 <Button 
-                  size="sm" 
-                  className="h-7 text-xs px-2"
+                  variant={isOwnComment ? "secondary" : "default"}
+                  size="sm"
                   onClick={handleSaveEdit}
-                  disabled={!editedContent.trim() || updateCommentMutation.isPending}
+                  className="h-7"
                 >
                   <Check className="h-3 w-3 mr-1" />
                   Save
@@ -574,7 +588,7 @@ const SingleComment = ({
               </div>
             </div>
           ) : (
-            <p className="text-sm mt-1">{comment.content}</p>
+            <p className="text-sm">{comment.content}</p>
           )}
         </div>
         
@@ -597,7 +611,7 @@ const SingleComment = ({
               className="flex items-center gap-1 px-2 h-6"
               onClick={() => onReply(comment.id)}
             >
-              <MessageCircle className="h-4 w-4" />
+              <Reply className="h-4 w-4" />
               <span className="text-xs">Reply</span>
             </Button>
           )}
