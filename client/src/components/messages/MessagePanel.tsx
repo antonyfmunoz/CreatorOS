@@ -86,15 +86,12 @@ const MessagePanel = () => {
       return;
     }
     
-    // Only search if query starts with @
-    if (!trimmedQuery.startsWith('@')) {
+    // Require at least 2 characters
+    if (trimmedQuery.length < 2) {
       return;
     }
     
-    const query = trimmedQuery.substring(1); // Remove @ prefix
-    if (query.length < 2) {
-      return; // Require at least 2 characters after @
-    }
+    const query = trimmedQuery;
     
     const timer = setTimeout(async () => {
       setIsSearching(true);
@@ -417,11 +414,11 @@ const MessagePanel = () => {
                   <Input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search with @username"
+                    placeholder="Search by username"
                     className="w-full"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Enter @ followed by username, e.g. @john
+                    Enter a username to search, e.g. john
                   </p>
                 </div>
                 
@@ -467,7 +464,7 @@ const MessagePanel = () => {
                         </div>
                       ))}
                     </div>
-                  ) : searchQuery && searchQuery.startsWith('@') && searchQuery.length > 2 ? (
+                  ) : searchQuery && searchQuery.length > 1 ? (
                     <div className="text-center py-4">
                       <p>No users found</p>
                     </div>
@@ -476,7 +473,7 @@ const MessagePanel = () => {
                       <Users className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
                       <p className="font-medium mb-1">Find people to chat with</p>
                       <p className="text-sm text-muted-foreground">
-                        Search for users by typing @username
+                        Search for users by typing their username
                       </p>
                     </div>
                   )}
@@ -536,7 +533,7 @@ const MessagePanel = () => {
                     <Input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search with @username"
+                      placeholder="Search by username"
                       className="w-full mb-2"
                     />
                     
@@ -570,7 +567,7 @@ const MessagePanel = () => {
                               </div>
                             ))}
                         </div>
-                      ) : searchQuery && searchQuery.startsWith('@') && searchQuery.length > 2 ? (
+                      ) : searchQuery && searchQuery.length > 1 ? (
                         <div className="text-center py-3">
                           <p className="text-sm">No users found</p>
                         </div>
