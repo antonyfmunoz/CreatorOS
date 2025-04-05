@@ -346,6 +346,7 @@ interface MessagingState {
   sendMessage: (conversationId: number, senderId: number, content: string, replyToMessageId?: number | null) => Promise<void>;
   editMessage: (messageId: number, newContent: string) => Promise<void>;
   deleteMessage: (messageId: number) => Promise<void>;
+  deleteConversation: (conversationId: number) => Promise<void>;
   reactToMessage: (messageId: number, userId: number, reaction: string) => Promise<void>;
   markConversationAsRead: (conversationId: number) => Promise<void>;
   createConversation: (userIds: number[], name?: string) => Promise<number>;
@@ -494,6 +495,26 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       }
     } catch (error) {
       console.error('Error deleting message:', error);
+    }
+  },
+  
+  deleteConversation: async (conversationId: number) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete conversation');
+      }
+      
+      set((state) => ({
+        conversations: state.conversations.filter(conv => conv.id !== conversationId),
+        selectedConversation: state.selectedConversation === conversationId ? null : state.selectedConversation
+      }));
+      
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
     }
   },
   

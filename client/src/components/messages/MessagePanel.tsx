@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus
+  X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus,
+  MoreHorizontal, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, useMessaging } from '@/lib/stores';
@@ -21,6 +22,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import MessageCard from './MessageCard';
 
 interface MessagePanelProps {
@@ -36,6 +47,7 @@ const MessagePanel = () => {
   const [activeTab, setActiveTab] = useState('conversations');
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<UserType[]>([]);
+  const [conversationToDelete, setConversationToDelete] = useState<number | null>(null);
   const {
     conversations,
     messages,
@@ -48,6 +60,7 @@ const MessagePanel = () => {
     sendMessage,
     editMessage,
     deleteMessage,
+    deleteConversation,
     reactToMessage,
     setSelectedConversation,
     setEditingMessageId,
@@ -268,8 +281,37 @@ const MessagePanel = () => {
     return otherParticipant?.user?.displayName || 'Unknown User';
   };
 
+  // Handle confirming delete conversation
+  const handleConfirmDelete = async () => {
+    if (conversationToDelete !== null) {
+      await deleteConversation(conversationToDelete);
+      setConversationToDelete(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-background">
+      {/* Delete conversation confirmation dialog */}
+      <AlertDialog open={conversationToDelete !== null} onOpenChange={(open) => !open && setConversationToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this conversation? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       {/* Header */}
       <div className="p-4 border-b flex items-center justify-between">
         {selectedConversation ? (
@@ -360,10 +402,40 @@ const MessagePanel = () => {
                   conversations.map((conversation) => (
                     <div 
                       key={conversation.id}
-                      className="p-4 hover:bg-muted/50 cursor-pointer"
-                      onClick={() => setSelectedConversation(conversation.id)}
+                      className="p-4 hover:bg-muted/50 cursor-pointer relative group"
                     >
-                      <div className="flex items-center space-x-4">
+                      {/* Three dot menu */}
+                      <div className="absolute right-2 top-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConversationToDelete(conversation.id);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      
+                      <div 
+                        className="flex items-center space-x-4"
+                        onClick={() => setSelectedConversation(conversation.id)}
+                      >
                         <Avatar>
                           <AvatarFallback className={conversation.name ? "bg-primary text-primary-foreground" : ""}>
                             {getConversationName(conversation).charAt(0)}
