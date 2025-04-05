@@ -536,13 +536,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/conversations", async (req, res) => {
     try {
       const { userIds, name, isGroup } = req.body;
+      console.log("Received conversation creation request:", { userIds, name, isGroup });
+      
       if (!userIds || !Array.isArray(userIds) || userIds.length < 2) {
+        console.error("Invalid userIds:", userIds);
         return res.status(400).json({ message: "At least two users are required" });
       }
       
+      // Check all userIds are valid numbers
+      const invalidIds = userIds.filter(id => typeof id !== 'number');
+      if (invalidIds.length > 0) {
+        console.error("Invalid user IDs (not numbers):", invalidIds);
+        return res.status(400).json({ message: "All user IDs must be numbers" });
+      }
+      
+      console.log("Creating conversation with userIds:", userIds, "name:", name, "isGroup:", isGroup);
       const conversation = await storage.createConversation(userIds, name, isGroup);
+      console.log("Created conversation:", conversation);
       
       // Add participants to the conversation
+      console.log("Adding participants to conversation:", conversation.id);
       for (const userId of userIds) {
         await storage.addParticipantToConversation(conversation.id, userId);
       }
@@ -550,7 +563,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
-      res.status(500).json({ message: "Failed to create conversation" });
+      res.status(500).json({ message: "Failed to create conversation", error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
   

@@ -450,6 +450,20 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   createConversation: async (userIds: number[], name?: string) => {
     try {
+      console.log('Creating conversation with userIds:', userIds, 'name:', name);
+      
+      // Make sure userIds is an array and contains at least 2 members
+      if (!Array.isArray(userIds) || userIds.length < 2) {
+        console.error('Invalid userIds provided. Need at least 2 users in an array:', userIds);
+        throw new Error('At least two users required for a conversation');
+      }
+      
+      // Check all userIds are numbers
+      if (!userIds.every(id => typeof id === 'number')) {
+        console.error('All userIds must be numbers:', userIds);
+        throw new Error('All user IDs must be numbers');
+      }
+      
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -461,10 +475,13 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       });
       
       if (!response.ok) {
-        throw new Error('Failed to create conversation');
+        const errorText = await response.text();
+        console.error('Server response error:', response.status, errorText);
+        throw new Error(`Failed to create conversation: ${response.status} ${errorText}`);
       }
       
       const newConversation = await response.json();
+      console.log('Created conversation:', newConversation);
       
       // Update conversations list
       const { user } = useAuthStore.getState();

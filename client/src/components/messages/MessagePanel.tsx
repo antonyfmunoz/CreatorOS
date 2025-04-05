@@ -113,20 +113,49 @@ const MessagePanel = () => {
     }
   };
   
-  const handleStartConversation = async (userId: number) => {
-    if (!user) return;
+  const handleStartConversation = async (targetUserId: number) => {
+    if (!user) {
+      console.error('Cannot start conversation: No authenticated user');
+      return;
+    }
     
-    console.log('Starting conversation with user ID:', userId);
+    if (!targetUserId || typeof targetUserId !== 'number') {
+      console.error('Cannot start conversation: Invalid target user ID', targetUserId);
+      return;
+    }
+    
+    console.log('Starting conversation with user ID:', targetUserId);
     console.log('Current user ID:', user.id);
     
+    // Don't allow conversation with self
+    if (targetUserId === user.id) {
+      console.error('Cannot start conversation with yourself');
+      return;
+    }
+    
     try {
-      // Create a new conversation with selected user
-      console.log('Creating conversation with userIds:', [user.id, userId]);
-      const conversationId = await createConversation([user.id, userId]);
-      console.log('Created conversation with ID:', conversationId);
+      // Make sure the user IDs are correct and in the right order
+      const userIds = [user.id, targetUserId].sort((a, b) => a - b); // Sort to ensure consistent order
+      console.log('Creating conversation with userIds:', userIds);
       
-      // Select the newly created conversation
-      setSelectedConversation(conversationId);
+      // Check if conversation already exists
+      const existingConversation = conversations.find(
+        conv => !conv.isGroup && conv.participants && 
+        conv.participants.some(p => p.userId === targetUserId) && 
+        conv.participants.some(p => p.userId === user.id)
+      );
+      
+      if (existingConversation) {
+        console.log('Conversation already exists, using existing:', existingConversation.id);
+        setSelectedConversation(existingConversation.id);
+      } else {
+        // Create a new conversation with selected user
+        const conversationId = await createConversation(userIds);
+        console.log('Created new conversation with ID:', conversationId);
+        
+        // Select the newly created conversation
+        setSelectedConversation(conversationId);
+      }
       
       // Clear search results and query
       setSearchQuery('');
@@ -386,6 +415,8 @@ const MessagePanel = () => {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
+                              console.log('Message button clicked for user:', user);
+                              // Call handleStartConversation with the user ID from search results
                               handleStartConversation(user.id);
                             }}
                           >
