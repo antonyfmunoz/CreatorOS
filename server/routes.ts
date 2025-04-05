@@ -535,7 +535,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new conversation
   app.post("/api/conversations", async (req, res) => {
     try {
-      const conversation = await storage.createConversation();
+      const { userIds, name, isGroup } = req.body;
+      if (!userIds || !Array.isArray(userIds) || userIds.length < 2) {
+        return res.status(400).json({ message: "At least two users are required" });
+      }
+      
+      const conversation = await storage.createConversation(userIds, name, isGroup);
+      
+      // Add participants to the conversation
+      for (const userId of userIds) {
+        await storage.addUserToConversation(conversation.id, userId);
+      }
+      
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
