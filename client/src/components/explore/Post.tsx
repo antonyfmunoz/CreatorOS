@@ -33,7 +33,7 @@ const Post = ({ post }: PostProps) => {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
-  const [selectedTab, setSelectedTab] = useState('link');
+  const [selectedTab, setSelectedTab] = useState('message'); // Default to message tab
   
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
@@ -305,81 +305,80 @@ const Post = ({ post }: PostProps) => {
                 <DialogTitle>Share post</DialogTitle>
               </DialogHeader>
               
-              <Tabs value={selectedTab} className="mt-4" onValueChange={setSelectedTab}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="link">Copy Link</TabsTrigger>
-                  <TabsTrigger value="message">Message</TabsTrigger>
-                </TabsList>
+              <div className="flex justify-between items-center mt-4 mb-3">
+                <div className="flex gap-2">
+                  <Button
+                    variant={selectedTab === 'message' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedTab('message')}
+                    className="gap-1"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    <span>Message</span>
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={copyPostLink}
+                    className="gap-1"
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    <span className="sr-only">Copy link</span>
+                  </Button>
+                </div>
+              </div>
                 
-                <TabsContent value="link" className="mt-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="grid flex-1 gap-2">
-                      <div className="flex items-center p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
-                        <Link className="mr-2 h-4 w-4 shrink-0 opacity-70" />
-                        <span className="text-sm truncate">
-                          {`${window.location.origin}/post/${post.id}`}
-                        </span>
-                      </div>
-                    </div>
-                    <Button size="sm" className="px-3 w-24" onClick={copyPostLink}>
-                      <span className="sr-only">Copy</span>
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      <span className="ml-2">{copied ? "Copied" : "Copy"}</span>
-                    </Button>
+              {selectedTab === 'message' && (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search users..."
+                      className="pl-9"
+                      value={searchQuery}
+                      onChange={(e) => handleSearch(e.target.value)}
+                    />
                   </div>
-                </TabsContent>
-                
-                <TabsContent value="message" className="mt-4">
-                  <div className="space-y-4">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search users..."
-                        className="pl-9"
-                        value={searchQuery}
-                        onChange={(e) => handleSearch(e.target.value)}
-                      />
-                    </div>
-                    
-                    <ScrollArea className="h-60">
-                      {searchResults.length > 0 ? (
-                        <div className="space-y-2">
-                          {searchResults.map((user) => (
-                            <div
-                              key={user.id}
-                              className="flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
-                              onClick={() => shareWithUser(user)}
-                            >
-                              <Avatar className="h-9 w-9 mr-2">
-                                <AvatarImage src={user.profileImageUrl} alt={user.displayName} />
-                                <AvatarFallback>
-                                  <UserIcon className="h-5 w-5" />
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium">{user.displayName}</p>
-                                <p className="text-xs text-gray-500 truncate">{user.username}</p>
-                              </div>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                <Send className="h-4 w-4" />
-                                <span className="sr-only">Send</span>
-                              </Button>
+                  
+                  <ScrollArea className="h-60">
+                    {searchResults.length > 0 ? (
+                      <div className="space-y-2">
+                        {searchResults.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                            onClick={() => shareWithUser(user)}
+                          >
+                            <Avatar className="h-9 w-9 mr-2">
+                              <AvatarImage src={user.profileImageUrl} alt={user.displayName} />
+                              <AvatarFallback>
+                                <UserIcon className="h-5 w-5" />
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{user.displayName}</p>
+                              <p className="text-xs text-gray-500 truncate">{user.username}</p>
                             </div>
-                          ))}
-                        </div>
-                      ) : searchQuery ? (
-                        <p className="text-center py-4 text-gray-500">
-                          No users found matching "{searchQuery}"
-                        </p>
-                      ) : (
-                        <p className="text-center py-4 text-gray-500">
-                          Search for users to share this post with
-                        </p>
-                      )}
-                    </ScrollArea>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <Send className="h-4 w-4" />
+                              <span className="sr-only">Send</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : searchQuery ? (
+                      <p className="text-center py-4 text-gray-500">
+                        No users found matching "{searchQuery}"
+                      </p>
+                    ) : (
+                      <p className="text-center py-4 text-gray-500">
+                        Search for users to share this post with
+                      </p>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
               
               <DialogFooter className="sm:justify-start mt-4">
                 <DialogClose asChild>
