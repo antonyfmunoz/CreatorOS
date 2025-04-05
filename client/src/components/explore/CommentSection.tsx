@@ -55,7 +55,6 @@ const SingleComment = ({
   
   // Check if the current user is the author of the comment
   const isAuthor = currentUser?.id === comment.userId;
-  const isOwnComment = isAuthor; // Used for styling consistency with messages
   
   // Fetch replies for this comment
   const { data: replies = [], isLoading: isLoadingReplies } = useQuery({
@@ -497,29 +496,16 @@ const SingleComment = ({
         </AlertDialogContent>
       </AlertDialog>
       
-      <Avatar className="w-8 h-8 shrink-0 mt-1">
+      <Avatar className="w-8 h-8 shrink-0">
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
-        {/* Display username outside bubble for more Instagram-like appearance */}
-        {!isEditing && (
-          <div className="text-sm font-medium ml-1">
-            {comment.user.displayName}
-          </div>
-        )}
-        
-        <div className={`rounded-lg p-3 ${
-          isOwnComment 
-            ? 'bg-primary text-primary-foreground' 
-            : 'bg-muted'
-        } relative group`}>
+        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg">
           <div className="flex justify-between">
-            {isEditing && (
-              <p className="font-medium text-sm">{comment.user.displayName}</p>
-            )}
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-xs text-muted-foreground">
+            <p className="font-medium text-sm">{comment.user.displayName}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">
                 {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
               </span>
               
@@ -577,7 +563,7 @@ const SingleComment = ({
                   Cancel
                 </Button>
                 <Button 
-                  variant={isOwnComment ? "secondary" : "default"}
+                  variant="default"
                   size="sm"
                   onClick={handleSaveEdit}
                   className="h-7"
@@ -588,50 +574,52 @@ const SingleComment = ({
               </div>
             </div>
           ) : (
-            <p className="text-sm">{comment.content}</p>
+            <>
+              <p className="text-sm mt-1">{comment.content}</p>
+              
+              <div className="flex items-center gap-3 mt-2">
+                <Button 
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-1 px-2 h-6"
+                  onClick={handleLike}
+                  disabled={likeCommentMutation.isPending || unlikeCommentMutation.isPending}
+                >
+                  <Heart className={`h-4 w-4 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+                  <span className="text-xs">{isLiked ? (comment.likes > 0 ? comment.likes : 1) : 'Like'}</span>
+                </Button>
+                
+                {canReply && (
+                  <Button 
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-1 px-2 h-6"
+                    onClick={() => onReply(comment.id)}
+                  >
+                    <Reply className="h-4 w-4" />
+                    <span className="text-xs">Reply</span>
+                  </Button>
+                )}
+              </div>
+            </>
           )}
         </div>
         
-        <div className="flex items-center gap-3 ml-1">
+        {replies.length > 0 ? (
           <Button 
             variant="ghost"
             size="sm"
-            className="flex items-center gap-1 px-2 h-6"
-            onClick={handleLike}
-            disabled={likeCommentMutation.isPending || unlikeCommentMutation.isPending}
+            className="flex items-center gap-1 px-2 h-6 ml-1"
+            onClick={toggleReplies}
           >
-            <Heart className={`h-4 w-4 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-            <span className="text-xs">{isLiked ? (comment.likes > 0 ? comment.likes : 1) : 'Like'}</span>
+            {showReplies ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            <span className="text-xs">{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span>
           </Button>
-          
-          {canReply && (
-            <Button 
-              variant="ghost"
-              size="sm"
-              className="flex items-center gap-1 px-2 h-6"
-              onClick={() => onReply(comment.id)}
-            >
-              <Reply className="h-4 w-4" />
-              <span className="text-xs">Reply</span>
-            </Button>
-          )}
-          
-          {replies.length > 0 ? (
-            <Button 
-              variant="ghost"
-              size="sm"
-              className="flex items-center gap-1 px-2 h-6"
-              onClick={toggleReplies}
-            >
-              {showReplies ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              <span className="text-xs">{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span>
-            </Button>
-          ) : null}
-        </div>
+        ) : null}
         
         {showReplies && (
           <div className="ml-4 space-y-4 mt-2">
