@@ -3,15 +3,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, Reply, Edit, Trash2, MoreHorizontal, X, Check } from 'lucide-react';
+import { Heart, Reply, Edit, Trash2, X, Check } from 'lucide-react';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { DirectMessage, User } from '@/types';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,12 +16,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface MessageCardProps {
   message: DirectMessage & { sender?: User };
@@ -38,10 +26,8 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
   const { user } = useAuthStore();
   const { 
     reactToMessage, 
-    setEditingMessageId, 
     setReplyingToMessage, 
-    deleteMessage,
-    messages
+    deleteMessage
   } = useMessaging();
   
   const [isEditing, setIsEditing] = useState(false);
@@ -230,12 +216,70 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                   <p>{message.content}</p>
                   
                   <div className="flex items-center justify-between mt-1">
-                    <p className={`text-xs ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                      {formatDistanceToNow(new Date(message.sentAt), { addSuffix: true })}
-                      {message.isEdited && (
-                        <span className="ml-1 italic">· edited</span>
-                      )}
-                    </p>
+                    <div className="flex items-center">
+                      <p className={`text-xs ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                        {formatDistanceToNow(new Date(message.sentAt), { addSuffix: true })}
+                        {message.isEdited && (
+                          <span className="ml-1 italic">· edited</span>
+                        )}
+                      </p>
+                      
+                      {/* Message action buttons - inline */}
+                      <div className="flex items-center space-x-1 ml-2">
+                        {/* Like button */}
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 w-6 p-0" 
+                          onClick={handleReaction}
+                        >
+                          <Heart 
+                            className={`h-3.5 w-3.5 ${hasUserReaction() ? 'fill-rose-500 text-rose-500' : 
+                              isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
+                          />
+                        </Button>
+                        
+                        {/* Reply button */}
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 w-6 p-0"
+                          onClick={handleReply}
+                        >
+                          <Reply 
+                            className={`h-3.5 w-3.5 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} 
+                          />
+                        </Button>
+                        
+                        {/* Edit button (only for own messages) */}
+                        {isOwnMessage && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0"
+                            onClick={handleEdit}
+                          >
+                            <Edit 
+                              className="h-3.5 w-3.5 text-primary-foreground/70" 
+                            />
+                          </Button>
+                        )}
+                        
+                        {/* Delete button (only for own messages) */}
+                        {isOwnMessage && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0"
+                            onClick={handleDelete}
+                          >
+                            <Trash2 
+                              className="h-3.5 w-3.5 text-primary-foreground/70 hover:text-destructive" 
+                            />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                     
                     {/* Reaction count */}
                     {hasReactions && (
@@ -261,76 +305,6 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                     )}
                   </div>
                 </>
-              )}
-              
-              {/* Message actions (visible on hover) */}
-              {!isEditing && (
-                <div className={`absolute ${isOwnMessage ? 'left-0' : 'right-0'} -translate-x-full top-1/2 -translate-y-1/2 
-                  ${!isOwnMessage && 'translate-x-full'} opacity-0 group-hover:opacity-100 transition-opacity
-                  flex items-center bg-background shadow-sm rounded-full p-1 border space-x-1`}>
-                  
-                  {/* React button */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7" 
-                          onClick={handleReaction}
-                        >
-                          <Heart className={`h-3.5 w-3.5 ${hasUserReaction() ? 'fill-rose-500 text-rose-500' : ''}`} />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Like</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  {/* Reply button */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7"
-                          onClick={handleReply}
-                        >
-                          <Reply className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Reply</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  {/* Edit/Delete (only for own messages) */}
-                  {isOwnMessage && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-32">
-                        <DropdownMenuItem onClick={handleEdit}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={handleDelete}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
               )}
             </div>
           </div>
