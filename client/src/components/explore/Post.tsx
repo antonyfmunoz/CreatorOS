@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link } from 'lucide-react';
+import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +9,10 @@ import { Post as PostType, User } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
+import { useAuthStore, useMessaging } from '@/lib/stores';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +31,9 @@ const Post = ({ post }: PostProps) => {
   const [showComments, setShowComments] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [selectedTab, setSelectedTab] = useState('link');
   
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
@@ -37,6 +44,8 @@ const Post = ({ post }: PostProps) => {
   const isLiked = likedPosts.includes(post.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const { createConversation, sendMessage } = useMessaging();
 
   // Get the current user
   const { data: users } = useQuery<User[]>({
@@ -160,6 +169,76 @@ const Post = ({ post }: PostProps) => {
       setTimeout(() => setCopied(false), 2000);
     });
   };
+  
+  // Search for users to share with
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/users?search=${encodeURIComponent(query)}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to search users');
+      }
+      
+      const users = await response.json();
+      
+      // Filter out the current user if present
+      setSearchResults(users.filter((u: User) => u.id !== user?.id));
+    } catch (error) {
+      console.error('Error searching users:', error);
+      toast({
+        title: "Error",
+        description: "Failed to search for users. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  // Share a post with another user via direct message
+  const shareWithUser = async (targetUser: User) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to share with others.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      // Create or get conversation with user
+      const conversationId = await createConversation([user.id, targetUser.id]);
+      
+      // Create post share message
+      const postLink = `${window.location.origin}/post/${post.id}`;
+      const messageContent = `Check out this post: ${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}\n${postLink}`;
+      
+      // Send message
+      await sendMessage(conversationId, user.id, messageContent);
+      
+      toast({
+        title: "Post shared",
+        description: `Post shared with ${targetUser.displayName} via message`,
+      });
+      
+      // Close dialog
+      setShareDialogOpen(false);
+      
+    } catch (error) {
+      console.error('Error sharing post:', error);
+      toast({
+        title: "Error",
+        description: "Failed to share post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
@@ -225,21 +304,83 @@ const Post = ({ post }: PostProps) => {
               <DialogHeader>
                 <DialogTitle>Share post</DialogTitle>
               </DialogHeader>
-              <div className="flex items-center space-x-2 mt-4">
-                <div className="grid flex-1 gap-2">
-                  <div className="flex items-center p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
-                    <Link className="mr-2 h-4 w-4 shrink-0 opacity-70" />
-                    <span className="text-sm truncate">
-                      {`${window.location.origin}/post/${post.id}`}
-                    </span>
+              
+              <Tabs value={selectedTab} className="mt-4" onValueChange={setSelectedTab}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="link">Copy Link</TabsTrigger>
+                  <TabsTrigger value="message">Message</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="link" className="mt-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="grid flex-1 gap-2">
+                      <div className="flex items-center p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                        <Link className="mr-2 h-4 w-4 shrink-0 opacity-70" />
+                        <span className="text-sm truncate">
+                          {`${window.location.origin}/post/${post.id}`}
+                        </span>
+                      </div>
+                    </div>
+                    <Button size="sm" className="px-3 w-24" onClick={copyPostLink}>
+                      <span className="sr-only">Copy</span>
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      <span className="ml-2">{copied ? "Copied" : "Copy"}</span>
+                    </Button>
                   </div>
-                </div>
-                <Button size="sm" className="px-3 w-24" onClick={copyPostLink}>
-                  <span className="sr-only">Copy</span>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  <span className="ml-2">{copied ? "Copied" : "Copy"}</span>
-                </Button>
-              </div>
+                </TabsContent>
+                
+                <TabsContent value="message" className="mt-4">
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search users..."
+                        className="pl-9"
+                        value={searchQuery}
+                        onChange={(e) => handleSearch(e.target.value)}
+                      />
+                    </div>
+                    
+                    <ScrollArea className="h-60">
+                      {searchResults.length > 0 ? (
+                        <div className="space-y-2">
+                          {searchResults.map((user) => (
+                            <div
+                              key={user.id}
+                              className="flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                              onClick={() => shareWithUser(user)}
+                            >
+                              <Avatar className="h-9 w-9 mr-2">
+                                <AvatarImage src={user.profileImageUrl} alt={user.displayName} />
+                                <AvatarFallback>
+                                  <UserIcon className="h-5 w-5" />
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{user.displayName}</p>
+                                <p className="text-xs text-gray-500 truncate">{user.username}</p>
+                              </div>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                <Send className="h-4 w-4" />
+                                <span className="sr-only">Send</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : searchQuery ? (
+                        <p className="text-center py-4 text-gray-500">
+                          No users found matching "{searchQuery}"
+                        </p>
+                      ) : (
+                        <p className="text-center py-4 text-gray-500">
+                          Search for users to share this post with
+                        </p>
+                      )}
+                    </ScrollArea>
+                  </div>
+                </TabsContent>
+              </Tabs>
+              
               <DialogFooter className="sm:justify-start mt-4">
                 <DialogClose asChild>
                   <Button type="button" variant="secondary">
