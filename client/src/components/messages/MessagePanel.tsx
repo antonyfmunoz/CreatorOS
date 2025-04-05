@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
-import { X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { 
+  X, Send, ChevronLeft, Search, MessageSquare, User, Users, Plus, 
+  Heart, ThumbsUp, MoreHorizontal, Edit, Trash2, Reply, Check
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,6 +14,14 @@ import { formatDistanceToNow } from 'date-fns';
 import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'wouter';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 
 interface MessagePanelProps {
   onClose?: () => void;
@@ -30,10 +41,17 @@ const MessagePanel = () => {
     messages,
     selectedConversation,
     isLoading,
+    editingMessageId,
+    replyingToMessage,
     fetchConversations,
     fetchMessages,
     sendMessage,
+    editMessage,
+    deleteMessage,
+    reactToMessage,
     setSelectedConversation,
+    setEditingMessageId,
+    setReplyingToMessage,
     markConversationAsRead,
     createConversation
   } = useMessaging();
@@ -106,11 +124,47 @@ const MessagePanel = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, user?.id]);
 
+  // Reference for scrolling to bottom
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+  
+  // When editing a message, prefill the input field
+  useEffect(() => {
+    if (editingMessageId) {
+      const messageToEdit = messages.find(msg => msg.id === editingMessageId);
+      if (messageToEdit) {
+        setNewMessage(messageToEdit.content);
+      }
+    }
+  }, [editingMessageId, messages]);
+  
   const handleSendMessage = () => {
     if (newMessage.trim() && selectedConversation && user) {
-      sendMessage(selectedConversation, user.id, newMessage);
+      if (editingMessageId) {
+        // If we're editing a message
+        editMessage(editingMessageId, newMessage.trim());
+        setEditingMessageId(null);
+      } else {
+        // If we're sending a new message (possibly a reply)
+        const replyId = replyingToMessage ? replyingToMessage.id : null;
+        sendMessage(selectedConversation, user.id, newMessage, replyId);
+        setReplyingToMessage(null);
+      }
       setNewMessage('');
     }
+  };
+  
+  const cancelEditing = () => {
+    setEditingMessageId(null);
+    setNewMessage('');
+  };
+  
+  const cancelReply = () => {
+    setReplyingToMessage(null);
   };
   
   const handleStartConversation = async (targetUserId: number) => {
@@ -263,33 +317,149 @@ const MessagePanel = () => {
           // Message view
           <div className="flex flex-col p-4 space-y-4">
             {messages.length > 0 ? (
-              messages.map((message) => (
-                <div 
-                  key={message.id}
-                  className={`flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`flex ${message.senderId === user?.id ? 'flex-row-reverse' : 'flex-row'} max-w-[80%] gap-2`}>
-                    {message.senderId !== user?.id && (
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={message.sender?.profileImageUrl} />
-                        <AvatarFallback>{message.sender?.displayName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                    )}
-                    <div 
-                      className={`rounded-lg p-3 ${
-                        message.senderId === user?.id 
-                          ? 'bg-primary text-primary-foreground' 
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <p>{message.content}</p>
-                      <p className={`text-xs ${message.senderId === user?.id ? 'text-primary-foreground/70' : 'text-muted-foreground'} mt-1`}>
-                        {formatDistanceToNow(new Date(message.sentAt), { addSuffix: true })}
-                      </p>
+              messages.map((message) => {
+                const isOwnMessage = message.senderId === user?.id;
+                const replyToMessage = message.replyToMessageId 
+                  ? messages.find(m => m.id === message.replyToMessageId) 
+                  : null;
+                  
+                return (
+                  <div 
+                    key={message.id}
+                    className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[80%] gap-2`}>
+                      {!isOwnMessage && (
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={message.sender?.profileImageUrl} />
+                          <AvatarFallback>{message.sender?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      
+                      <div className="flex flex-col">
+                        {/* Reply reference */}
+                        {replyToMessage && (
+                          <div 
+                            className={`text-xs mb-1 ${isOwnMessage ? 'text-right' : 'text-left'} 
+                              px-3 py-1 rounded-md bg-muted/70 max-w-[200px] truncate
+                              ${isOwnMessage ? 'mr-1' : 'ml-1'}`}
+                          >
+                            <span className="font-medium">
+                              {replyToMessage.senderId === user?.id ? 'You' : replyToMessage.sender?.displayName}:
+                            </span> {replyToMessage.content}
+                          </div>
+                        )}
+                        
+                        <div 
+                          className={`rounded-lg p-3 ${
+                            isOwnMessage 
+                              ? 'bg-primary text-primary-foreground' 
+                              : 'bg-muted'
+                          } relative group`}
+                        >
+                          <p>{message.content}</p>
+                          
+                          <div className="flex items-center justify-between mt-1">
+                            <p className={`text-xs ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                              {formatDistanceToNow(new Date(message.sentAt), { addSuffix: true })}
+                              {message.isEdited && (
+                                <span className="ml-1 italic">· edited</span>
+                              )}
+                            </p>
+                            
+                            {/* Reaction count */}
+                            {message.reactions && Object.keys(message.reactions).length > 0 && (
+                              <div className={`flex items-center text-xs ml-2 ${
+                                isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                              }`}>
+                                {Object.entries(message.reactions).map(([reaction, count]) => (
+                                  <span key={reaction} className="ml-1">
+                                    {reaction} {count > 1 && count}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Message actions (visible on hover) */}
+                          <div className={`absolute ${isOwnMessage ? 'left-0' : 'right-0'} -translate-x-full top-1/2 -translate-y-1/2 
+                            ${!isOwnMessage && 'translate-x-full'} hidden group-hover:flex items-center 
+                            bg-background shadow-sm rounded-full p-1 border space-x-1`}>
+                            
+                            {/* React button */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7" 
+                                    onClick={() => {
+                                      if (user) {
+                                        // Toggle between like and heart
+                                        const reaction = "❤️";
+                                        useMessaging.getState().reactToMessage(message.id, user.id, reaction);
+                                      }
+                                    }}
+                                  >
+                                    <Heart className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Like</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            {/* Reply button */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7"
+                                    onClick={() => useMessaging.getState().setReplyingToMessage(message)}
+                                  >
+                                    <Reply className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Reply</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            {/* Edit/Delete (only for own messages) */}
+                            {isOwnMessage && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-32">
+                                  <DropdownMenuItem onClick={() => useMessaging.getState().setEditingMessageId(message.id)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => useMessaging.getState().deleteMessage(message.id)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-center h-full">
                 <p className="text-muted-foreground">No messages yet. Send the first message!</p>
@@ -552,18 +722,60 @@ const MessagePanel = () => {
       </ScrollArea>
       
       {/* Message input */}
+      {/* Add invisible div for scrolling to bottom */}
+      <div ref={messagesEndRef} />
+      
       {selectedConversation && (
         <div className="p-4 border-t">
+          {/* Show editing status */}
+          {editingMessageId && (
+            <div className="bg-muted rounded-md p-2 mb-2 flex justify-between items-center">
+              <span className="text-sm flex items-center">
+                <Edit className="h-3.5 w-3.5 mr-1" />
+                Editing message
+              </span>
+              <Button variant="ghost" size="sm" onClick={cancelEditing}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          )}
+          
+          {/* Show replying status */}
+          {replyingToMessage && !editingMessageId && (
+            <div className="bg-muted rounded-md p-2 mb-2 flex justify-between items-center">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium flex items-center">
+                  <Reply className="h-3.5 w-3.5 mr-1" />
+                  Replying to {replyingToMessage.senderId === user?.id ? 'yourself' : replyingToMessage.sender?.displayName}
+                </span>
+                <span className="text-xs text-muted-foreground line-clamp-1">
+                  {replyingToMessage.content}
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={cancelReply}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          )}
+          
           <div className="flex space-x-2">
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
+              placeholder={editingMessageId ? "Edit your message..." : replyingToMessage ? "Write a reply..." : "Type a message..."}
               className="flex-1"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
+                } else if (e.key === 'Escape') {
+                  if (editingMessageId) {
+                    cancelEditing();
+                  } else if (replyingToMessage) {
+                    cancelReply();
+                  }
                 }
               }}
             />
@@ -572,7 +784,7 @@ const MessagePanel = () => {
               onClick={handleSendMessage}
               disabled={!newMessage.trim()}
             >
-              <Send className="h-5 w-5" />
+              {editingMessageId ? <Check className="h-5 w-5" /> : <Send className="h-5 w-5" />}
             </Button>
           </div>
         </div>

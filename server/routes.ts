@@ -589,6 +589,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Edit a message
+  app.patch("/api/messages/:id", async (req, res) => {
+    try {
+      const messageId = parseInt(req.params.id);
+      const { content, isEdited } = req.body;
+      
+      const updatedMessage = await storage.updateDirectMessage(messageId, { 
+        content, 
+        isEdited: true 
+      });
+      
+      res.json(updatedMessage);
+    } catch (error) {
+      console.error("Error updating message:", error);
+      res.status(500).json({ message: "Failed to update message" });
+    }
+  });
+  
+  // Delete a message
+  app.delete("/api/messages/:id", async (req, res) => {
+    try {
+      const messageId = parseInt(req.params.id);
+      await storage.deleteDirectMessage(messageId);
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      res.status(500).json({ message: "Failed to delete message" });
+    }
+  });
+  
+  // Add/update reaction to a message
+  app.post("/api/messages/:id/reaction", async (req, res) => {
+    try {
+      const messageId = parseInt(req.params.id);
+      const { userId, reaction } = req.body;
+      
+      const updatedMessage = await storage.addReactionToMessage(messageId, userId, reaction);
+      res.json(updatedMessage);
+    } catch (error) {
+      console.error("Error adding reaction:", error);
+      res.status(500).json({ message: "Failed to add reaction" });
+    }
+  });
+  
   // Mark conversation as read
   app.patch("/api/conversations/:conversationId/read", async (req, res) => {
     try {

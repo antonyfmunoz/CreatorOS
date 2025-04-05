@@ -172,4 +172,8 @@ export interface DirectMessage {
   read: boolean;
   sentAt: string;
   sender?: User;
+  isEdited?: boolean;
+  replyToMessageId?: number | null;
+  replyToMessage?: DirectMessage | null;
+  reactions?: Record<string, number>; // Store reactions like { "❤️": 3, "👍": 2 }
 }

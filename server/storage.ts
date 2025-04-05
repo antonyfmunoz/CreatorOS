@@ -112,6 +112,9 @@ export interface IStorage {
   // Direct Message operations
   getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]>;
   createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
+  updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage>;
+  deleteDirectMessage(id: number): Promise<void>;
+  addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage>;
   markMessageAsRead(id: number): Promise<DirectMessage>;
   markConversationAsRead(conversationId: number, userId: number): Promise<void>;
   getUnreadMessageCountForUser(userId: number): Promise<number>;
@@ -1147,6 +1150,47 @@ export class MemStorage implements IStorage {
     return directMessage;
   }
 
+  async updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage> {
+    const message = this.directMessages.get(id);
+    if (!message) throw new Error('Message not found');
+    
+    const updatedMessage = { ...message, ...updates };
+    this.directMessages.set(id, updatedMessage);
+    return updatedMessage;
+  }
+  
+  async deleteDirectMessage(id: number): Promise<void> {
+    if (!this.directMessages.has(id)) {
+      throw new Error('Message not found');
+    }
+    
+    this.directMessages.delete(id);
+  }
+  
+  async addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage> {
+    const message = this.directMessages.get(messageId);
+    if (!message) throw new Error('Message not found');
+    
+    // Initialize reactions object if it doesn't exist
+    const reactions = message.reactions || {};
+    
+    // Convert number to string for consistent object keys
+    const userIdStr = userId.toString();
+    
+    // Update or add the reaction
+    if (reactions[userIdStr] === reaction) {
+      // If same reaction exists, remove it (toggle behavior)
+      delete reactions[userIdStr];
+    } else {
+      // Otherwise set the new reaction
+      reactions[userIdStr] = reaction;
+    }
+    
+    message.reactions = reactions;
+    this.directMessages.set(messageId, message);
+    return message;
+  }
+  
   async markMessageAsRead(id: number): Promise<DirectMessage> {
     const message = this.directMessages.get(id);
     if (!message) throw new Error('Message not found');
@@ -1905,6 +1949,58 @@ export class DatabaseStorage implements IStorage {
     return directMessage;
   }
 
+  async updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage> {
+    const [updatedMessage] = await db
+      .update(directMessages)
+      .set(updates)
+      .where(eq(directMessages.id, id))
+      .returning();
+    
+    return updatedMessage;
+  }
+  
+  async deleteDirectMessage(id: number): Promise<void> {
+    await db
+      .delete(directMessages)
+      .where(eq(directMessages.id, id));
+  }
+  
+  async addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage> {
+    // First get the current message to access its reactions
+    const [message] = await db
+      .select()
+      .from(directMessages)
+      .where(eq(directMessages.id, messageId));
+    
+    if (!message) {
+      throw new Error('Message not found');
+    }
+    
+    // Initialize reactions object if it doesn't exist
+    const reactions = message.reactions as Record<string, string> || {};
+    
+    // Convert number to string for consistent object keys
+    const userIdStr = userId.toString();
+    
+    // Update or add the reaction
+    if (reactions[userIdStr] === reaction) {
+      // If same reaction exists, remove it (toggle behavior)
+      delete reactions[userIdStr];
+    } else {
+      // Otherwise set the new reaction
+      reactions[userIdStr] = reaction;
+    }
+    
+    // Update the message with new reactions
+    const [updatedMessage] = await db
+      .update(directMessages)
+      .set({ reactions })
+      .where(eq(directMessages.id, messageId))
+      .returning();
+    
+    return updatedMessage;
+  }
+  
   async markMessageAsRead(id: number): Promise<DirectMessage> {
     const [updatedMessage] = await db
       .update(directMessages)

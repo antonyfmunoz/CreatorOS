@@ -285,6 +285,9 @@ export const directMessages = pgTable("direct_messages", {
   content: text("content").notNull(),
   read: boolean("read").default(false).notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
+  isEdited: boolean("is_edited").default(false),
+  replyToMessageId: integer("reply_to_message_id"),
+  reactions: json("reactions").default({}).notNull(), // Stores user reactions: { userId: reactionType }
 });
 
 export const insertDirectMessageSchema = createInsertSchema(directMessages).pick({
@@ -292,6 +295,9 @@ export const insertDirectMessageSchema = createInsertSchema(directMessages).pick
   senderId: true,
   content: true,
   read: true,
+  isEdited: true,
+  replyToMessageId: true,
+  reactions: true,
 });
 
 // Relations
@@ -385,6 +391,11 @@ export const conversationParticipantsRelations = relations(conversationParticipa
 export const directMessagesRelations = relations(directMessages, ({ one }) => ({
   conversation: one(conversations, { fields: [directMessages.conversationId], references: [conversations.id] }),
   sender: one(users, { fields: [directMessages.senderId], references: [users.id], relationName: "sender" }),
+  replyTo: one(directMessages, { 
+    fields: [directMessages.replyToMessageId], 
+    references: [directMessages.id],
+    relationName: "message_reply" 
+  }),
 }));
 
 // Export types

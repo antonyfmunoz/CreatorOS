@@ -339,12 +339,19 @@ interface MessagingState {
   isLoading: boolean;
   selectedConversation: number | null;
   isMessagePanelOpen: boolean;
+  editingMessageId: number | null;
+  replyingToMessage: DirectMessage | null;
   fetchConversations: (userId: number) => Promise<void>;
   fetchMessages: (conversationId: number) => Promise<void>;
-  sendMessage: (conversationId: number, senderId: number, content: string) => Promise<void>;
+  sendMessage: (conversationId: number, senderId: number, content: string, replyToMessageId?: number | null) => Promise<void>;
+  editMessage: (messageId: number, newContent: string) => Promise<void>;
+  deleteMessage: (messageId: number) => Promise<void>;
+  reactToMessage: (messageId: number, userId: number, reaction: string) => Promise<void>;
   markConversationAsRead: (conversationId: number) => Promise<void>;
   createConversation: (userIds: number[], name?: string) => Promise<number>;
   setSelectedConversation: (conversationId: number | null) => void;
+  setEditingMessageId: (messageId: number | null) => void;
+  setReplyingToMessage: (message: DirectMessage | null) => void;
   toggleMessagePanel: () => void;
   closeMessagePanel: () => void;
 }
@@ -355,6 +362,8 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   isLoading: false,
   selectedConversation: null,
   isMessagePanelOpen: false,
+  editingMessageId: null,
+  replyingToMessage: null,
   
   fetchConversations: async (userId: number) => {
     try {
@@ -398,7 +407,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
     }
   },
   
-  sendMessage: async (conversationId: number, senderId: number, content: string) => {
+  sendMessage: async (conversationId: number, senderId: number, content: string, replyToMessageId = null) => {
     try {
       const response = await fetch(`/api/messages`, {
         method: 'POST',
@@ -407,7 +416,8 @@ export const useMessaging = create<MessagingState>((set, get) => ({
           conversationId,
           senderId,
           content,
-          read: false
+          read: false,
+          replyToMessageId
         })
       });
       
@@ -418,13 +428,99 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       const newMessage = await response.json();
       
       set((state) => ({
-        messages: [...state.messages, newMessage]
+        messages: [...state.messages, newMessage],
+        replyingToMessage: null // Clear the replying state after sending
       }));
       
       // Update conversation with new last message
       await get().fetchConversations(senderId);
     } catch (error) {
       console.error('Error sending message:', error);
+    }
+  },
+  
+  editMessage: async (messageId: number, newContent: string) => {
+    try {
+      const response = await fetch(`/api/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newContent,
+          isEdited: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to edit message');
+      }
+      
+      const updatedMessage = await response.json();
+      
+      set((state) => ({
+        messages: state.messages.map(msg => 
+          msg.id === messageId ? updatedMessage : msg
+        ),
+        editingMessageId: null // Clear editing state after saving
+      }));
+      
+      // Update conversations to show latest message content if it was edited
+      const { user } = useAuthStore.getState();
+      if (user) {
+        await get().fetchConversations(user.id);
+      }
+    } catch (error) {
+      console.error('Error editing message:', error);
+    }
+  },
+  
+  deleteMessage: async (messageId: number) => {
+    try {
+      const response = await fetch(`/api/messages/${messageId}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete message');
+      }
+      
+      set((state) => ({
+        messages: state.messages.filter(msg => msg.id !== messageId)
+      }));
+      
+      // Update conversations list to reflect the deletion
+      const { user } = useAuthStore.getState();
+      if (user) {
+        await get().fetchConversations(user.id);
+      }
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  },
+  
+  reactToMessage: async (messageId: number, userId: number, reaction: string) => {
+    try {
+      const response = await fetch(`/api/messages/${messageId}/reaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          reaction
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add reaction');
+      }
+      
+      const updatedMessage = await response.json();
+      
+      set((state) => ({
+        messages: state.messages.map(msg => 
+          msg.id === messageId ? updatedMessage : msg
+        )
+      }));
+    } catch (error) {
+      console.error('Error adding reaction:', error);
     }
   },
   
@@ -504,5 +600,13 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   closeMessagePanel: () => set({
     isMessagePanelOpen: false
+  }),
+  
+  setEditingMessageId: (messageId) => set({ 
+    editingMessageId: messageId 
+  }),
+  
+  setReplyingToMessage: (message) => set({ 
+    replyingToMessage: message 
   })
 }));
