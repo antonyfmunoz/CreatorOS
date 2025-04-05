@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageSquare, Share2, MoreHorizontal } from 'lucide-react';
+import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +9,15 @@ import { Post as PostType, User } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog";
 
 interface PostProps {
   post: PostType;
@@ -16,6 +25,9 @@ interface PostProps {
 
 const Post = ({ post }: PostProps) => {
   const [showComments, setShowComments] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
     const saved = localStorage.getItem('likedPosts');
@@ -130,6 +142,25 @@ const Post = ({ post }: PostProps) => {
     setShowComments(!showComments);
   };
 
+  const handleShare = () => {
+    setShareDialogOpen(true);
+  };
+  
+  const copyPostLink = () => {
+    // Create a shareable link for the post
+    const postLink = `${window.location.origin}/post/${post.id}`;
+    navigator.clipboard.writeText(postLink).then(() => {
+      setCopied(true);
+      toast({
+        title: "Link copied",
+        description: "Post link copied to clipboard",
+      });
+      
+      // Reset the copied state after 2 seconds
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
 
@@ -184,10 +215,40 @@ const Post = ({ post }: PostProps) => {
             </Button>
           </div>
           
-          <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2">
-            <Share2 className="h-5 w-5" />
-            <span>Share</span>
-          </Button>
+          <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare}>
+                <Share2 className="h-5 w-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Share post</DialogTitle>
+              </DialogHeader>
+              <div className="flex items-center space-x-2 mt-4">
+                <div className="grid flex-1 gap-2">
+                  <div className="flex items-center p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                    <Link className="mr-2 h-4 w-4 shrink-0 opacity-70" />
+                    <span className="text-sm truncate">
+                      {`${window.location.origin}/post/${post.id}`}
+                    </span>
+                  </div>
+                </div>
+                <Button size="sm" className="px-3 w-24" onClick={copyPostLink}>
+                  <span className="sr-only">Copy</span>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  <span className="ml-2">{copied ? "Copied" : "Copy"}</span>
+                </Button>
+              </div>
+              <DialogFooter className="sm:justify-start mt-4">
+                <DialogClose asChild>
+                  <Button type="button" variant="secondary">
+                    Close
+                  </Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {showComments && currentUser && (
