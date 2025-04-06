@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Heart, Reply, Edit, Trash2, X, Check, MoreHorizontal } from 'lucide-react';
 import { useAuthStore, useMessaging } from '@/lib/stores';
 import { DirectMessage, User } from '@/types';
+import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,7 @@ interface MessageCardProps {
 
 const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const { 
     reactToMessage, 
     setReplyingToMessage, 
@@ -66,6 +68,22 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
   
   // Handler for editing a message
   const handleEdit = () => {
+    // Check if the message is a post share card (JSON)
+    try {
+      const parsedContent = JSON.parse(message.content);
+      if (parsedContent.type === 'post_share') {
+        // Don't allow editing of post share cards
+        toast({
+          title: "Cannot edit shared post",
+          description: "Shared post cards cannot be edited.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (e) {
+      // Not a JSON message, proceed with normal editing
+    }
+    
     setIsEditing(true);
     setEditedContent(message.content);
   };
@@ -219,7 +237,61 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                 </div>
               ) : (
                 <>
-                  <p>{message.content}</p>
+                  {(() => {
+                    // Detect if content is a JSON string containing post_share type
+                    try {
+                      const parsedContent = JSON.parse(message.content);
+                      if (parsedContent.type === 'post_share') {
+                        // Render rich post card
+                        return (
+                          <div 
+                            className="border rounded-md overflow-hidden cursor-pointer hover:bg-muted/20 transition-colors"
+                            onClick={() => {
+                              // Navigate to post when clicked
+                              if (parsedContent.link) {
+                                window.open(parsedContent.link, '_blank');
+                              }
+                            }}
+                          >
+                            <div className="p-3">
+                              <div className="flex items-center mb-2">
+                                <Avatar className="h-6 w-6 mr-2">
+                                  <AvatarImage src={parsedContent.authorImage} />
+                                  <AvatarFallback>{parsedContent.authorName?.[0] || 'U'}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm font-medium">{parsedContent.authorName}</span>
+                              </div>
+                              <p className="text-sm mb-2">{parsedContent.content}</p>
+                              {parsedContent.imageUrl && (
+                                <div className="h-32 w-full overflow-hidden rounded-md mb-2">
+                                  <img 
+                                    src={parsedContent.imageUrl} 
+                                    alt="Post content" 
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+                              <div className="flex items-center text-xs text-muted-foreground space-x-3">
+                                <div className="flex items-center">
+                                  <Heart className="h-3 w-3 mr-1" />
+                                  <span>{parsedContent.likes || 0}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <Reply className="h-3 w-3 mr-1" />
+                                  <span>{parsedContent.comments || 0}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    } catch (e) {
+                      // Not a JSON string or invalid JSON, render as regular text
+                    }
+                    
+                    // Default: render as regular text content
+                    return <p>{message.content}</p>;
+                  })()}
                   
                   <div className="flex flex-col mt-1">
                     <div className="flex items-center justify-between">

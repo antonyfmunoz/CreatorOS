@@ -234,9 +234,24 @@ const Post = ({ post }: PostProps) => {
     }
     
     try {
-      // Create post share message with link
+      // Create a rich post share message with card-like format
       const postLink = `${window.location.origin}/post/${post.id}`;
-      const messageContent = `Check out this post: ${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}\n${postLink}`;
+      // JSON structure containing post details for the frontend to render as a card
+      const postPreview = {
+        type: 'post_share',
+        postId: post.id,
+        content: post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''),
+        imageUrl: post.imageUrl || null,
+        authorName: post.user.displayName,
+        authorImage: post.user.profileImageUrl,
+        likes: post.likes,
+        comments: totalCommentCount,
+        link: postLink
+      };
+      
+      // Stringify the JSON to send as message content
+      // The message component will parse this and render it as a card
+      const messageContent = JSON.stringify(postPreview);
       
       // Send message to the group
       await sendMessage(conversation.id, user.id, messageContent);
@@ -329,9 +344,24 @@ const Post = ({ post }: PostProps) => {
       
       console.log('Got conversation ID:', conversationId);
       
-      // Create post share message
+      // Create a rich post share message with card-like format
       const postLink = `${window.location.origin}/post/${post.id}`;
-      const messageContent = `Check out this post: ${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}\n${postLink}`;
+      // JSON structure containing post details for the frontend to render as a card
+      const postPreview = {
+        type: 'post_share',
+        postId: post.id,
+        content: post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''),
+        imageUrl: post.imageUrl || null,
+        authorName: post.user.displayName,
+        authorImage: post.user.profileImageUrl,
+        likes: post.likes,
+        comments: totalCommentCount,
+        link: postLink
+      };
+      
+      // Stringify the JSON to send as message content
+      // The message component will parse this and render it as a card
+      const messageContent = JSON.stringify(postPreview);
       
       // Send message
       await sendMessage(conversationId, user.id, messageContent);
