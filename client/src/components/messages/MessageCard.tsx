@@ -251,6 +251,10 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                               if (parsedContent.postId) {
                                 // Use the app store to navigate to the post without page reload
                                 const { navigateToPost } = useAppStore.getState();
+                                // Close the message panel when navigating to a post
+                                const { closeMessagePanel } = useMessaging.getState();
+                                closeMessagePanel();
+                                // Navigate to the post
                                 navigateToPost(parsedContent.postId);
                               }
                             }}
