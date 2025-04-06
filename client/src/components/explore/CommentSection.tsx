@@ -308,11 +308,6 @@ const SingleComment = ({
       // Invalidate specific queries without affecting post order
       queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comment-count'] });
-      
-      toast({
-        title: 'Success',
-        description: 'Comment deleted successfully',
-      });
     },
     onError: (_, __, context: any) => {
       // Revert to the previous state if there was an error
