@@ -6,9 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef } from "react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
+import { useAppStore } from "@/lib/stores";
+import { useToast } from "@/hooks/use-toast";
 
 const Explore = () => {
   const queryClient = useQueryClient();
+  const { targetPostId, clearTargetPost } = useAppStore();
+  const { toast } = useToast();
   
   // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
@@ -22,6 +26,42 @@ const Explore = () => {
       return [...data].sort((a, b) => b.id - a.id);
     },
   });
+  
+  // Effect to scroll to targeted post when posts are loaded
+  useEffect(() => {
+    if (!isLoading && posts && targetPostId) {
+      // Give a small delay to ensure the DOM has been updated
+      setTimeout(() => {
+        const postElement = document.getElementById(`post-${targetPostId}`);
+        if (postElement) {
+          postElement.scrollIntoView({ behavior: 'smooth' });
+          // Add a highlight effect
+          postElement.classList.add('highlighted-post');
+          
+          // Show a toast
+          toast({
+            title: "Post found",
+            description: "Scrolled to the shared post",
+          });
+          
+          // Remove highlight after animation completes
+          setTimeout(() => {
+            postElement.classList.remove('highlighted-post');
+            // Clear the target post ID after scrolling to it
+            clearTargetPost();
+          }, 2000);
+        } else {
+          // If post not found, show error toast
+          toast({
+            title: "Post not found",
+            description: "The shared post could not be found in your feed",
+            variant: "destructive",
+          });
+          clearTargetPost();
+        }
+      }, 300);
+    }
+  }, [isLoading, posts, targetPostId, clearTargetPost, toast]);
 
   // Sort posts by ID in descending order to maintain consistent position
   // This ensures posts don't jump around when comments are added/removed

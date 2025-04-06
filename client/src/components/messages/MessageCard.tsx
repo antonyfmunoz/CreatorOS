@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, Reply, Edit, Trash2, X, Check, MoreHorizontal } from 'lucide-react';
-import { useAuthStore, useMessaging } from '@/lib/stores';
+import { useAuthStore, useMessaging, useAppStore } from '@/lib/stores';
 import { DirectMessage, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -248,27 +248,10 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                             className="border rounded-md overflow-hidden cursor-pointer hover:bg-muted/20 transition-colors"
                             onClick={() => {
                               // Extract the post ID from the link and navigate to it in the feed
-                              if (parsedContent.link) {
-                                // Extract post ID from link (format: /post/{id})
-                                const postId = parsedContent.postId;
-                                if (postId) {
-                                  // Navigate to the feed and scroll to the post
-                                  window.location.href = '/'; // Go to main feed
-                                  
-                                  // After navigation, scroll to the post
-                                  // We use setTimeout to ensure the navigation completes and posts are loaded
-                                  setTimeout(() => {
-                                    const postElement = document.getElementById(`post-${postId}`);
-                                    if (postElement) {
-                                      postElement.scrollIntoView({ behavior: 'smooth' });
-                                      // Add a highlight effect
-                                      postElement.classList.add('highlighted-post');
-                                      setTimeout(() => {
-                                        postElement.classList.remove('highlighted-post');
-                                      }, 2000);
-                                    }
-                                  }, 500);
-                                }
+                              if (parsedContent.postId) {
+                                // Use the app store to navigate to the post without page reload
+                                const { navigateToPost } = useAppStore.getState();
+                                navigateToPost(parsedContent.postId);
                               }
                             }}
                           >

@@ -93,18 +93,29 @@ interface AppState {
   activeTab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile';
   currentUser: User | null;
   isLoading: boolean;
+  targetPostId: number | null; // Track the post to highlight
   setActiveTab: (tab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile') => void;
   setCurrentUser: (user: User | null) => void;
   setIsLoading: (isLoading: boolean) => void;
+  navigateToPost: (postId: number) => void; // Function to navigate to a specific post
+  clearTargetPost: () => void; // Clear the target post after navigating
 }
 
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'explore',
   currentUser: null,
   isLoading: false,
+  targetPostId: null,
   setActiveTab: (tab) => set({ activeTab: tab }),
   setCurrentUser: (user) => set({ currentUser: user }),
   setIsLoading: (isLoading) => set({ isLoading }),
+  navigateToPost: (postId) => {
+    // Set the targetPostId and ensure we're on the explore tab
+    set({ targetPostId: postId, activeTab: 'explore' });
+    // Update URL without reloading
+    window.history.pushState(null, "", '/');
+  },
+  clearTargetPost: () => set({ targetPostId: null }),
 }));
 
 // AI Chat store for handling the chat interface
