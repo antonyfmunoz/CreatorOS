@@ -550,6 +550,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "All user IDs must be numbers" });
       }
       
+      // If this is a direct message (only 2 users and no name), check if conversation already exists
+      if (userIds.length === 2 && !name && !isGroup) {
+        // Get all conversations for the first user
+        const userConversations = await storage.getConversationsByUserId(userIds[0]);
+        
+        // Find any direct (non-group) conversation that contains both users
+        let existingConversation = null;
+        
+        // We can't use .find() with async functions directly, so we need to loop
+        for (const conv of userConversations) {
+          if (conv.isGroup) continue;
+          
+          // Get all participants for this conversation - this is an async call
+          const participants = await storage.getParticipantsByConversationId(conv.id);
+          const participantIds = participants.map(p => p.userId);
+          
+          // Check if both users are participants
+          if (participantIds.includes(userIds[0]) && participantIds.includes(userIds[1])) {
+            existingConversation = conv;
+            break;
+          }
+        }
+        
+        if (existingConversation) {
+          console.log("Found existing conversation:", existingConversation.id);
+          return res.status(200).json(existingConversation);
+        }
+      }
+      
+      // If no existing conversation or this is a group chat, create a new one
       console.log("Creating conversation with userIds:", userIds, "name:", name, "isGroup:", isGroup);
       const conversation = await storage.createConversation(userIds, name, isGroup);
       console.log("Created conversation:", conversation);

@@ -105,6 +105,7 @@ export interface IStorage {
   // Conversation operations
   getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]>;
   getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined>;
+  getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]>;
   createConversation(userIds: number[], name?: string, isGroup?: boolean): Promise<Conversation>;
   addParticipantToConversation(conversationId: number, userId: number, isAdmin?: boolean): Promise<ConversationParticipant>;
   removeParticipantFromConversation(conversationId: number, userId: number): Promise<void>;
@@ -1058,6 +1059,16 @@ export class MemStorage implements IStorage {
     
     return { ...conversation, participants };
   }
+  
+  async getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]> {
+    // Get all participants for this conversation
+    return Array.from(this.conversationParticipants.values())
+      .filter(p => p.conversationId === conversationId)
+      .map(p => {
+        const user = this.users.get(p.userId)!;
+        return { ...p, user };
+      });
+  }
 
   async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
     const id = this.conversationIdCounter++;
@@ -1848,6 +1859,23 @@ export class DatabaseStorage implements IStorage {
       ...conversation,
       participants,
     };
+  }
+  
+  async getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]> {
+    // Get all participants with their user info
+    const participantsWithUsers = await db
+      .select({
+        participant: conversationParticipants,
+        user: users,
+      })
+      .from(conversationParticipants)
+      .innerJoin(users, eq(conversationParticipants.userId, users.id))
+      .where(eq(conversationParticipants.conversationId, conversationId));
+
+    return participantsWithUsers.map(row => ({
+      ...row.participant,
+      user: row.user,
+    }));
   }
 
   async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
