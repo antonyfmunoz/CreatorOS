@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Highlighted post animation for when navigating from shared post cards */
+@keyframes highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+.highlighted-post {
+  animation: highlight-pulse 2s ease-out;
+  border-color: theme('colors.blue.500');
+  transition: all 0.3s ease;
+}
+
 @layer base {
   * {
     @apply border-border;

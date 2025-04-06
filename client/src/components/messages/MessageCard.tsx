@@ -247,9 +247,28 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                           <div 
                             className="border rounded-md overflow-hidden cursor-pointer hover:bg-muted/20 transition-colors"
                             onClick={() => {
-                              // Navigate to post when clicked
+                              // Extract the post ID from the link and navigate to it in the feed
                               if (parsedContent.link) {
-                                window.open(parsedContent.link, '_blank');
+                                // Extract post ID from link (format: /post/{id})
+                                const postId = parsedContent.postId;
+                                if (postId) {
+                                  // Navigate to the feed and scroll to the post
+                                  window.location.href = '/'; // Go to main feed
+                                  
+                                  // After navigation, scroll to the post
+                                  // We use setTimeout to ensure the navigation completes and posts are loaded
+                                  setTimeout(() => {
+                                    const postElement = document.getElementById(`post-${postId}`);
+                                    if (postElement) {
+                                      postElement.scrollIntoView({ behavior: 'smooth' });
+                                      // Add a highlight effect
+                                      postElement.classList.add('highlighted-post');
+                                      setTimeout(() => {
+                                        postElement.classList.remove('highlighted-post');
+                                      }, 2000);
+                                    }
+                                  }, 500);
+                                }
                               }
                             }}
                           >

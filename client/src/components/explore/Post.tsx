@@ -393,7 +393,7 @@ const Post = ({ post }: PostProps) => {
   const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
 
   return (
-    <Card className="mb-4 overflow-hidden">
+    <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
       <CardContent className="p-4">
         <div className="flex items-center mb-3">
           <Avatar className="w-10 h-10 mr-3">
