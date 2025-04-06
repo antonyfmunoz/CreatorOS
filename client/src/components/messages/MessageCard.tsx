@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, Reply, Edit, Trash2, X, Check, MoreHorizontal } from 'lucide-react';
 import { useAuthStore, useMessaging, useAppStore } from '@/lib/stores';
+import { useLocation } from 'wouter';
 import { DirectMessage, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -251,20 +252,17 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                               if (parsedContent.postId) {
                                 console.log('Clicked on post card with ID:', parsedContent.postId);
                                 
-                                // First close the message panel
+                                // Close the message panel first
                                 const { closeMessagePanel } = useMessaging.getState();
                                 closeMessagePanel();
-
-                                // Use the app store's navigateToPost function
+                                
+                                // Set the target post ID directly using app store
                                 const { navigateToPost } = useAppStore.getState();
+                                navigateToPost(parsedContent.postId);
                                 
-                                // Navigate to the root route first to ensure we're on the Explore page
-                                window.location.href = '/';
-                                
-                                // After a short delay to allow the page to load, set the target post ID
-                                setTimeout(() => {
-                                  navigateToPost(parsedContent.postId);
-                                }, 300);
+                                // Use wouter to navigate to the home route
+                                const [, setLocation] = useLocation();
+                                setLocation('/');
                               }
                             }}
                           >
