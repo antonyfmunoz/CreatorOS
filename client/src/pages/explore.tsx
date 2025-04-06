@@ -34,7 +34,14 @@ const Explore = () => {
       setTimeout(() => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
-          postElement.scrollIntoView({ behavior: 'smooth' });
+          // Calculate the vertical center position for the post
+          const viewportHeight = window.innerHeight;
+          const postHeight = postElement.offsetHeight;
+          const offset = (viewportHeight - postHeight) / 2;
+          
+          // Use scrollIntoView to position the post and apply an additional scroll
+          postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
           // Add a highlight effect
           postElement.classList.add('highlighted-post');
           
