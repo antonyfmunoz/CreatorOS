@@ -111,6 +111,7 @@ export const useAppStore = create<AppState>((set) => ({
   setIsLoading: (isLoading) => set({ isLoading }),
   navigateToPost: (postId) => {
     // Set the targetPostId and ensure we're on the explore tab
+    // This function only updates state and doesn't show any toast notifications
     set({ targetPostId: postId, activeTab: 'explore' });
     // Update URL without reloading
     window.history.pushState(null, "", '/');

@@ -67,17 +67,14 @@ const Explore = () => {
             clearTargetPost();
           }, 2000);
         } else {
-          // If post not found, show error toast
-          toast({
-            title: "Post not found",
-            description: "The shared post could not be found in your feed",
-            variant: "destructive",
-          });
+          // If post not found, just clear the target post ID without showing a toast
+          // This removes the toast notification when a post can't be found
+          console.log('Post not found in feed:', targetPostId);
           clearTargetPost();
         }
       }, 500); // Increased delay to ensure DOM is ready
     }
-  }, [isLoading, posts, targetPostId, clearTargetPost, toast]);
+  }, [isLoading, posts, targetPostId, clearTargetPost]);
 
   // Sort posts by ID in descending order to maintain consistent position
   // This ensures posts don't jump around when comments are added/removed

@@ -257,7 +257,7 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                                 const { closeMessagePanel } = useMessaging.getState();
                                 closeMessagePanel();
                                 
-                                // Set the target post ID directly using app store
+                                // Set the target post ID directly using app store without showing any toast
                                 const { navigateToPost } = useAppStore.getState();
                                 navigateToPost(parsedContent.postId);
                                 
