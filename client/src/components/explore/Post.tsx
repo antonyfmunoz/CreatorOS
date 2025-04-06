@@ -256,12 +256,6 @@ const Post = ({ post }: PostProps) => {
       // Send message to the group
       await sendMessage(conversation.id, user.id, messageContent);
       
-      // Show success message
-      toast({
-        title: "Post shared",
-        description: `Post shared with ${conversation.name || 'group'} chat`,
-      });
-      
       // Close dialog and clear all search states
       setShareDialogOpen(false);
       setSearchQuery('');
@@ -283,10 +277,6 @@ const Post = ({ post }: PostProps) => {
     const postLink = `${window.location.origin}/post/${post.id}`;
     navigator.clipboard.writeText(postLink).then(() => {
       setCopied(true);
-      toast({
-        title: "Link copied",
-        description: "Post link copied to clipboard",
-      });
       
       // Reset the copied state after 2 seconds
       setTimeout(() => setCopied(false), 2000);
@@ -365,12 +355,6 @@ const Post = ({ post }: PostProps) => {
       
       // Send message
       await sendMessage(conversationId, user.id, messageContent);
-      
-      // Show success message
-      toast({
-        title: "Post shared",
-        description: `Post shared with ${targetUser.displayName} via message`,
-      });
       
       // Close dialog and clear all search states
       setShareDialogOpen(false);
