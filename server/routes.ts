@@ -677,6 +677,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Delete a conversation
+  app.delete("/api/conversations/:conversationId", async (req, res) => {
+    try {
+      const conversationId = parseInt(req.params.conversationId);
+      console.log(`Attempting to delete conversation ${conversationId}`);
+      
+      // This will cascade delete all participants and messages due to DB constraints
+      await storage.deleteConversation(conversationId);
+      
+      console.log(`Successfully deleted conversation ${conversationId}`);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ message: "Failed to delete conversation" });
+    }
+  });
+  
   // Get unread message count for a user
   app.get("/api/users/:userId/unread-count", async (req, res) => {
     try {

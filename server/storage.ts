@@ -109,6 +109,7 @@ export interface IStorage {
   createConversation(userIds: number[], name?: string, isGroup?: boolean): Promise<Conversation>;
   addParticipantToConversation(conversationId: number, userId: number, isAdmin?: boolean): Promise<ConversationParticipant>;
   removeParticipantFromConversation(conversationId: number, userId: number): Promise<void>;
+  deleteConversation(conversationId: number): Promise<void>;
   
   // Direct Message operations
   getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]>;
@@ -1128,6 +1129,33 @@ export class MemStorage implements IStorage {
     conversation.updatedAt = new Date();
     this.conversations.set(conversationId, conversation);
   }
+  
+  async deleteConversation(conversationId: number): Promise<void> {
+    // Check if conversation exists
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation with ID ${conversationId} not found`);
+    }
+    
+    // Delete all participants of this conversation
+    const participantsToDelete = Array.from(this.conversationParticipants.values())
+      .filter(p => p.conversationId === conversationId);
+      
+    for (const participant of participantsToDelete) {
+      this.conversationParticipants.delete(participant.id);
+    }
+    
+    // Delete all messages in this conversation
+    const messagesToDelete = Array.from(this.directMessages.values())
+      .filter(m => m.conversationId === conversationId);
+      
+    for (const message of messagesToDelete) {
+      this.directMessages.delete(message.id);
+    }
+    
+    // Finally delete the conversation itself
+    this.conversations.delete(conversationId);
+  }
 
   // Direct Message operations
   async getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]> {
@@ -1935,6 +1963,30 @@ export class DatabaseStorage implements IStorage {
           eq(conversationParticipants.userId, userId)
         )
       );
+  }
+  
+  async deleteConversation(conversationId: number): Promise<void> {
+    // Check if the conversation exists
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId));
+      
+    if (!conversation) {
+      throw new Error(`Conversation with ID ${conversationId} not found`);
+    }
+    
+    console.log(`Deleting conversation ${conversationId}`);
+    
+    // Direct messages, participants, and other related data will be deleted 
+    // automatically due to cascade delete constraints in the database schema
+
+    // Delete the conversation
+    await db
+      .delete(conversations)
+      .where(eq(conversations.id, conversationId));
+      
+    console.log(`Successfully deleted conversation ${conversationId} and all related data`);
   }
 
   // Direct Message operations
