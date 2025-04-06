@@ -38,12 +38,6 @@ const Explore = () => {
           // Add a highlight effect
           postElement.classList.add('highlighted-post');
           
-          // Show a toast
-          toast({
-            title: "Post found",
-            description: "Scrolled to the shared post",
-          });
-          
           // Remove highlight after animation completes
           setTimeout(() => {
             postElement.classList.remove('highlighted-post');
