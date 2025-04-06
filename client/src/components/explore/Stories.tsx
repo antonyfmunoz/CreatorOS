@@ -24,7 +24,7 @@ const Stories = () => {
   }
 
   return (
-    <div className="overflow-x-auto scrollbar-hide mb-6">
+    <div className="overflow-x-auto scrollbar-hide mb-6 stories-container">
       <div className="flex space-x-4">
         {users?.map((user) => (
           <div key={user.id} className="flex flex-col items-center">

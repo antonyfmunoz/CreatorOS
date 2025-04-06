@@ -30,22 +30,35 @@ const Explore = () => {
   // Effect to scroll to targeted post when posts are loaded
   useEffect(() => {
     if (!isLoading && posts && targetPostId) {
-      // Give a small delay to ensure the DOM has been updated
+      // Wait a bit longer to ensure the DOM is fully updated
       setTimeout(() => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
-          // Instead of using scrollIntoView, calculate the exact position we want
-          const headerHeight = 200; // Approximate height of the header area including Stories and navigation
-          const postTop = postElement.getBoundingClientRect().top + window.scrollY;
+          // Get the top navbar and stories container
+          const navbarElement = document.querySelector('.flex.justify-between.items-center.mb-6');
+          const storiesElement = document.querySelector('.stories-container');
           
-          // Scroll to position the post at the top with some spacing
+          // Calculate the offset (navbar + stories + some padding)
+          let offset = 20; // Start with some minimal padding
+          if (navbarElement) {
+            offset += navbarElement.clientHeight;
+          }
+          if (storiesElement) {
+            offset += storiesElement.clientHeight;
+          }
+          
+          // Directly position the post at the top of the feed area
+          const postPosition = postElement.getBoundingClientRect().top + window.pageYOffset;
           window.scrollTo({
-            top: Math.max(0, postTop - headerHeight),
+            top: postPosition - offset - 20, // Add extra padding to ensure it's visible
             behavior: 'smooth'
           });
           
           // Add a highlight effect
           postElement.classList.add('highlighted-post');
+          
+          // Log positioned values for debugging
+          console.log('Post positioned with offset:', offset, 'final position:', postPosition - offset);
           
           // Remove highlight after animation completes
           setTimeout(() => {
@@ -62,7 +75,7 @@ const Explore = () => {
           });
           clearTargetPost();
         }
-      }, 300);
+      }, 500); // Increased delay to ensure DOM is ready
     }
   }, [isLoading, posts, targetPostId, clearTargetPost, toast]);
 
