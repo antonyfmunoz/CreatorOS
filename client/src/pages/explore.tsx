@@ -34,13 +34,14 @@ const Explore = () => {
       setTimeout(() => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
-          // Calculate the vertical center position for the post
-          const viewportHeight = window.innerHeight;
-          const postHeight = postElement.offsetHeight;
-          const offset = (viewportHeight - postHeight) / 2;
+          // Scroll to the post and position it at the top of the viewport with some padding
+          postElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
           
-          // Use scrollIntoView to position the post and apply an additional scroll
-          postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add a small offset to move it down slightly from the very top
+          // This timeout ensures the scrollBy happens after the scrollIntoView
+          setTimeout(() => {
+            window.scrollBy(0, 80);
+          }, 100);
           
           // Add a highlight effect
           postElement.classList.add('highlighted-post');
