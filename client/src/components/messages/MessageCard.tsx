@@ -249,13 +249,22 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                             onClick={() => {
                               // Extract the post ID from the link and navigate to it in the feed
                               if (parsedContent.postId) {
-                                // Use the app store to navigate to the post without page reload
-                                const { navigateToPost } = useAppStore.getState();
-                                // Close the message panel when navigating to a post
+                                console.log('Clicked on post card with ID:', parsedContent.postId);
+                                
+                                // First close the message panel
                                 const { closeMessagePanel } = useMessaging.getState();
                                 closeMessagePanel();
-                                // Navigate to the post
-                                navigateToPost(parsedContent.postId);
+
+                                // Use the app store's navigateToPost function
+                                const { navigateToPost } = useAppStore.getState();
+                                
+                                // Navigate to the root route first to ensure we're on the Explore page
+                                window.location.href = '/';
+                                
+                                // After a short delay to allow the page to load, set the target post ID
+                                setTimeout(() => {
+                                  navigateToPost(parsedContent.postId);
+                                }, 300);
                               }
                             }}
                           >
