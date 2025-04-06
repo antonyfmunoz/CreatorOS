@@ -34,14 +34,15 @@ const Explore = () => {
       setTimeout(() => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
-          // Scroll to the post and position it at the top of the viewport with some padding
-          postElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Instead of using scrollIntoView, calculate the exact position we want
+          const headerHeight = 200; // Approximate height of the header area including Stories and navigation
+          const postTop = postElement.getBoundingClientRect().top + window.scrollY;
           
-          // Add a small offset to move it down slightly from the very top
-          // This timeout ensures the scrollBy happens after the scrollIntoView
-          setTimeout(() => {
-            window.scrollBy(0, 80);
-          }, 100);
+          // Scroll to position the post at the top with some spacing
+          window.scrollTo({
+            top: Math.max(0, postTop - headerHeight),
+            behavior: 'smooth'
+          });
           
           // Add a highlight effect
           postElement.classList.add('highlighted-post');
