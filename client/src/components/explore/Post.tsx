@@ -212,8 +212,14 @@ const Post = ({ post }: PostProps) => {
     }
     
     try {
-      // Create or get conversation with user
+      console.log('Attempting to share post with users:', user.id, targetUser.id);
+      
+      // Create or get existing conversation with user
+      // The server will check if a conversation already exists and return it
+      // The client store will also check for existing conversations
       const conversationId = await createConversation([user.id, targetUser.id]);
+      
+      console.log('Got conversation ID:', conversationId);
       
       // Create post share message
       const postLink = `${window.location.origin}/post/${post.id}`;
@@ -222,13 +228,16 @@ const Post = ({ post }: PostProps) => {
       // Send message
       await sendMessage(conversationId, user.id, messageContent);
       
+      // Show success message
       toast({
         title: "Post shared",
         description: `Post shared with ${targetUser.displayName} via message`,
       });
       
-      // Close dialog
+      // Close dialog and clear search
       setShareDialogOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
       
     } catch (error) {
       console.error('Error sharing post:', error);

@@ -594,7 +594,9 @@ export const useMessaging = create<MessagingState>((set, get) => ({
             // If it's a group chat, skip it
             if (conv.isGroup) return false;
             
-            // Check if conversation has exactly these two participants
+            // Check if conversation has exactly these two participants and participants array exists
+            if (!conv.participants) return false;
+            
             const participantIds = conv.participants.map(p => p.userId);
             return (
               participantIds.length === 2 && 
@@ -605,12 +607,15 @@ export const useMessaging = create<MessagingState>((set, get) => ({
           
           if (existingConversation) {
             console.log('Found existing conversation:', existingConversation.id);
+            // Update the client-side conversations to include this conversation
+            get().setSelectedConversation(existingConversation.id);
             return existingConversation.id;
           }
         }
       }
       
-      // If no existing conversation was found or this is a group chat, create a new one
+      // Pass the same userIds and parameters to the server
+      // The server will check again for existing conversations to prevent race conditions
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
