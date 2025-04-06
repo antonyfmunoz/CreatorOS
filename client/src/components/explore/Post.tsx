@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon, Users } from 'lucide-react';
+import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon, Users, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -38,6 +38,11 @@ const Post = ({ post }: PostProps) => {
   const [filteredGroupConversations, setFilteredGroupConversations] = useState<Conversation[]>([]);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
   
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
@@ -537,14 +542,25 @@ const Post = ({ post }: PostProps) => {
               
               {selectedTab === 'group' && (
                 <div className="space-y-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search group chats..."
-                      className="pl-9"
-                      value={groupSearchQuery}
-                      onChange={(e) => handleGroupSearch(e.target.value)}
-                    />
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search group chats..."
+                        className="pl-9"
+                        value={groupSearchQuery}
+                        onChange={(e) => handleGroupSearch(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => setCreateGroupDialogOpen(true)}
+                    >
+                      <Users className="h-4 w-4 mr-1" />
+                      <span>New</span>
+                    </Button>
                   </div>
                   
                   <ScrollArea className="h-60">
@@ -587,9 +603,18 @@ const Post = ({ post }: PostProps) => {
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <Users className="h-12 w-12 text-muted-foreground mb-4" />
                         <p className="font-medium mb-1">No group chats found</p>
-                        <p className="text-sm text-muted-foreground max-w-xs">
-                          You haven't created any group chats yet. Create a group chat from the Messages panel to share posts with multiple people.
+                        <p className="text-sm text-muted-foreground max-w-xs mb-4">
+                          You haven't created any group chats yet.
                         </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => setCreateGroupDialogOpen(true)}
+                        >
+                          <Users className="h-4 w-4" />
+                          <span>Create a group chat</span>
+                        </Button>
                       </div>
                     )}
                   </ScrollArea>
@@ -606,6 +631,204 @@ const Post = ({ post }: PostProps) => {
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* Create Group Chat Dialog */}
+        <Dialog 
+          open={createGroupDialogOpen} 
+          onOpenChange={(open) => {
+            setCreateGroupDialogOpen(open);
+            if (!open) {
+              // Reset states when dialog is closed
+              setNewGroupName('');
+              setSelectedUsers([]);
+              setUserSearchQuery('');
+              setUserSearchResults([]);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md rounded-lg">
+            <DialogHeader>
+              <DialogTitle>Create group chat</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4 mt-4">
+              <div>
+                <label htmlFor="group-name" className="text-sm font-medium mb-1 block">
+                  Group name
+                </label>
+                <Input
+                  id="group-name"
+                  placeholder="Enter group name"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-1 block">
+                  Add members ({selectedUsers.length} selected)
+                </label>
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search users..."
+                    className="pl-9"
+                    value={userSearchQuery}
+                    onChange={async (e) => {
+                      const query = e.target.value;
+                      setUserSearchQuery(query);
+                      
+                      if (!query.trim()) {
+                        setUserSearchResults([]);
+                        return;
+                      }
+                      
+                      try {
+                        const response = await fetch(`/api/users?search=${encodeURIComponent(query)}`);
+                        
+                        if (!response.ok) {
+                          throw new Error('Failed to search users');
+                        }
+                        
+                        const users = await response.json();
+                        
+                        // Filter out already selected users and current user
+                        setUserSearchResults(users.filter((u: User) => 
+                          u.id !== user?.id && !selectedUsers.some(selected => selected.id === u.id)
+                        ));
+                      } catch (error) {
+                        console.error('Error searching users:', error);
+                      }
+                    }}
+                  />
+                </div>
+                
+                {/* Display search results */}
+                {userSearchResults.length > 0 && (
+                  <ScrollArea className="h-36 mb-2 border rounded-md">
+                    <div className="p-1">
+                      {userSearchResults.map((foundUser) => (
+                        <div
+                          key={foundUser.id}
+                          className="flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                          onClick={() => {
+                            setSelectedUsers([...selectedUsers, foundUser]);
+                            setUserSearchResults(userSearchResults.filter(u => u.id !== foundUser.id));
+                            setUserSearchQuery('');
+                          }}
+                        >
+                          <Avatar className="h-8 w-8 mr-2">
+                            <AvatarImage src={foundUser.profileImageUrl} alt={foundUser.displayName} />
+                            <AvatarFallback>{foundUser.displayName.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{foundUser.displayName}</p>
+                            <p className="text-xs text-gray-500 truncate">{foundUser.username}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+                
+                {/* Display selected users */}
+                {selectedUsers.length > 0 && (
+                  <div className="border rounded-md p-2">
+                    <ScrollArea className="max-h-24">
+                      <div className="flex flex-wrap gap-2">
+                        {selectedUsers.map((selectedUser) => (
+                          <div 
+                            key={selectedUser.id} 
+                            className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-1"
+                          >
+                            <Avatar className="h-5 w-5">
+                              <AvatarImage src={selectedUser.profileImageUrl} alt={selectedUser.displayName} />
+                              <AvatarFallback>{selectedUser.displayName.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs">{selectedUser.displayName}</span>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-4 w-4 p-0 rounded-full"
+                              onClick={() => setSelectedUsers(selectedUsers.filter(u => u.id !== selectedUser.id))}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <DialogFooter className="flex justify-between mt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setCreateGroupDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!newGroupName.trim() || selectedUsers.length < 1}
+                onClick={async () => {
+                  if (!user) return;
+                  
+                  try {
+                    // Create a new group with the current user and selected users
+                    const userIds = [user.id, ...selectedUsers.map(u => u.id)];
+                    const conversationId = await createConversation(userIds, newGroupName);
+                    
+                    // Close the dialog
+                    setCreateGroupDialogOpen(false);
+                    
+                    // Refresh the group conversation list
+                    await fetchGroupConversations();
+                    
+                    // Share the post to the newly created group
+                    const postLink = `${window.location.origin}/post/${post.id}`;
+                    const postPreview = {
+                      type: 'post_share',
+                      postId: post.id,
+                      content: post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''),
+                      imageUrl: post.imageUrl || null,
+                      authorName: post.user.displayName,
+                      authorImage: post.user.profileImageUrl,
+                      likes: post.likes,
+                      comments: totalCommentCount,
+                      link: postLink
+                    };
+                    
+                    // Stringify the JSON to send as message content
+                    const messageContent = JSON.stringify(postPreview);
+                    
+                    // Send message to the group
+                    await sendMessage(conversationId, user.id, messageContent);
+                    
+                    // Close share dialog and clear all search states
+                    setShareDialogOpen(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setGroupSearchQuery('');
+                    setFilteredGroupConversations(groupConversations);
+                  } catch (error) {
+                    console.error('Error creating group chat:', error);
+                    toast({
+                      title: "Error",
+                      description: "Failed to create group chat. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                Create & Share
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {showComments && currentUser && (
           <CommentSection 
