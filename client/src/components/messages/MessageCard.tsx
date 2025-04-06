@@ -38,6 +38,7 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
     setReplyingToMessage, 
     deleteMessage
   } = useMessaging();
+  const [, setLocation] = useLocation();
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
@@ -260,8 +261,7 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                                 const { navigateToPost } = useAppStore.getState();
                                 navigateToPost(parsedContent.postId);
                                 
-                                // Use wouter to navigate to the home route
-                                const [, setLocation] = useLocation();
+                                // Use the already declared setLocation to navigate to the home route
                                 setLocation('/');
                               }
                             }}
