@@ -581,6 +581,36 @@ export const useMessaging = create<MessagingState>((set, get) => ({
         throw new Error('All user IDs must be numbers');
       }
       
+      // If this is a direct message (only 2 users and no name), check if conversation already exists
+      if (userIds.length === 2 && !name) {
+        const { user } = useAuthStore.getState();
+        if (user) {
+          // Ensure we have the latest conversations
+          await get().fetchConversations(user.id);
+          const { conversations } = get();
+          
+          // For direct messages, find a non-group conversation that has exactly these two users
+          const existingConversation = conversations.find(conv => {
+            // If it's a group chat, skip it
+            if (conv.isGroup) return false;
+            
+            // Check if conversation has exactly these two participants
+            const participantIds = conv.participants.map(p => p.userId);
+            return (
+              participantIds.length === 2 && 
+              participantIds.includes(userIds[0]) && 
+              participantIds.includes(userIds[1])
+            );
+          });
+          
+          if (existingConversation) {
+            console.log('Found existing conversation:', existingConversation.id);
+            return existingConversation.id;
+          }
+        }
+      }
+      
+      // If no existing conversation was found or this is a group chat, create a new one
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

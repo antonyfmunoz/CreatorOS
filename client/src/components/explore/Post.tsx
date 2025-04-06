@@ -300,7 +300,7 @@ const Post = ({ post }: PostProps) => {
                 <Share2 className="h-5 w-5" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md rounded-lg">
               <DialogHeader>
                 <DialogTitle>Share post</DialogTitle>
               </DialogHeader>
