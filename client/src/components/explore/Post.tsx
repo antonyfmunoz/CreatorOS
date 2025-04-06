@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon } from 'lucide-react';
+import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Post as PostType, User } from '@/types';
+import { Post as PostType, User, Conversation } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
@@ -34,6 +34,10 @@ const Post = ({ post }: PostProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedTab, setSelectedTab] = useState('message'); // Default to message tab
+  const [groupConversations, setGroupConversations] = useState<Conversation[]>([]);
+  const [filteredGroupConversations, setFilteredGroupConversations] = useState<Conversation[]>([]);
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   
   // Use local storage to remember liked posts across refreshes
   const [likedPosts, setLikedPosts] = useState<number[]>(() => {
@@ -153,6 +157,110 @@ const Post = ({ post }: PostProps) => {
 
   const handleShare = () => {
     setShareDialogOpen(true);
+    
+    // Fetch user's group conversations when the share dialog opens
+    if (user && user.id) {
+      fetchGroupConversations();
+    }
+  };
+  
+  // Fetch the user's group chat conversations
+  const fetchGroupConversations = async () => {
+    if (!user) return;
+    
+    setIsLoadingGroups(true);
+    
+    try {
+      const response = await fetch(`/api/users/${user.id}/conversations`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user conversations');
+      }
+      
+      const allConversations = await response.json();
+      
+      // Filter to only include group conversations
+      const groups = allConversations.filter((conversation: Conversation) => 
+        conversation.isGroup === true
+      );
+      
+      setGroupConversations(groups);
+      setFilteredGroupConversations(groups); // Initialize filtered list with all groups
+    } catch (error) {
+      console.error('Error fetching group conversations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your group chats. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+  
+  // Handle group search
+  const handleGroupSearch = (query: string) => {
+    setGroupSearchQuery(query);
+    
+    if (!query.trim()) {
+      // If query is empty, show all group conversations
+      setFilteredGroupConversations(groupConversations);
+      return;
+    }
+    
+    // Filter group conversations by name
+    const filtered = groupConversations.filter(conversation => {
+      const name = conversation.name || 'Group Chat';
+      return name.toLowerCase().includes(query.toLowerCase());
+    });
+    
+    setFilteredGroupConversations(filtered);
+  };
+  
+  // Update filtered groups when groupConversations changes
+  useEffect(() => {
+    setFilteredGroupConversations(groupConversations);
+  }, [groupConversations]);
+  
+  // Share post to a group conversation
+  const shareWithGroup = async (conversation: Conversation) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to share with groups.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      // Create post share message with link
+      const postLink = `${window.location.origin}/post/${post.id}`;
+      const messageContent = `Check out this post: ${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}\n${postLink}`;
+      
+      // Send message to the group
+      await sendMessage(conversation.id, user.id, messageContent);
+      
+      // Show success message
+      toast({
+        title: "Post shared",
+        description: `Post shared with ${conversation.name || 'group'} chat`,
+      });
+      
+      // Close dialog and clear all search states
+      setShareDialogOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setGroupSearchQuery('');
+      setFilteredGroupConversations(groupConversations);
+    } catch (error) {
+      console.error('Error sharing post to group:', error);
+      toast({
+        title: "Error",
+        description: "Failed to share post with the group. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   
   const copyPostLink = () => {
@@ -234,10 +342,12 @@ const Post = ({ post }: PostProps) => {
         description: `Post shared with ${targetUser.displayName} via message`,
       });
       
-      // Close dialog and clear search
+      // Close dialog and clear all search states
       setShareDialogOpen(false);
       setSearchQuery('');
       setSearchResults([]);
+      setGroupSearchQuery('');
+      setFilteredGroupConversations(groupConversations);
       
     } catch (error) {
       console.error('Error sharing post:', error);
@@ -303,7 +413,19 @@ const Post = ({ post }: PostProps) => {
             </Button>
           </div>
           
-          <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+          <Dialog 
+            open={shareDialogOpen} 
+            onOpenChange={(open) => {
+              setShareDialogOpen(open);
+              if (!open) {
+                // Reset search states when dialog is closed
+                setSearchQuery('');
+                setSearchResults([]);
+                setGroupSearchQuery('');
+                setFilteredGroupConversations(groupConversations);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare}>
                 <Share2 className="h-5 w-5" />
@@ -323,7 +445,17 @@ const Post = ({ post }: PostProps) => {
                     className="gap-1"
                   >
                     <MessageSquare className="h-4 w-4" />
-                    <span>Message</span>
+                    <span>Direct</span>
+                  </Button>
+                  
+                  <Button
+                    variant={selectedTab === 'group' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedTab('group')}
+                    className="gap-1"
+                  >
+                    <Users className="h-4 w-4" />
+                    <span>Groups</span>
                   </Button>
                   
                   <Button
@@ -384,6 +516,67 @@ const Post = ({ post }: PostProps) => {
                       <p className="text-center py-4 text-gray-500">
                         Search for users to share this post with
                       </p>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
+              
+              {selectedTab === 'group' && (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search group chats..."
+                      className="pl-9"
+                      value={groupSearchQuery}
+                      onChange={(e) => handleGroupSearch(e.target.value)}
+                    />
+                  </div>
+                  
+                  <ScrollArea className="h-60">
+                    {isLoadingGroups ? (
+                      <div className="flex justify-center items-center py-6">
+                        <p className="text-muted-foreground">Loading your group chats...</p>
+                      </div>
+                    ) : groupConversations.length > 0 ? (
+                      filteredGroupConversations.length > 0 ? (
+                        <div className="space-y-2">
+                          {filteredGroupConversations.map((conversation) => (
+                            <div
+                              key={conversation.id}
+                              className="flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                              onClick={() => shareWithGroup(conversation)}
+                            >
+                              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center mr-2">
+                                <Users className="h-5 w-5 text-primary" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{conversation.name || 'Group Chat'}</p>
+                                <p className="text-xs text-gray-500 truncate">
+                                  {conversation.participants && 
+                                    `${conversation.participants.length} members`}
+                                </p>
+                              </div>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                <Send className="h-4 w-4" />
+                                <span className="sr-only">Send</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-center py-4 text-gray-500">
+                          No groups found matching "{groupSearchQuery}"
+                        </p>
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                        <p className="font-medium mb-1">No group chats found</p>
+                        <p className="text-sm text-muted-foreground max-w-xs">
+                          You haven't created any group chats yet. Create a group chat from the Messages panel to share posts with multiple people.
+                        </p>
+                      </div>
                     )}
                   </ScrollArea>
                 </div>
