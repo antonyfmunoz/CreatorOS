@@ -188,4 +188,5 @@ export interface Story {
   createdAt: string;
   viewCount: number;
   user: User;
+  hasAudio?: boolean;
 }
