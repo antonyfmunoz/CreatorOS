@@ -498,7 +498,7 @@ const SingleComment = ({
       
       <Avatar 
         className="w-8 h-8 shrink-0 cursor-pointer"
-        onClick={() => setLocation(`/profile/${comment.userId}`)}
+        onClick={() => setLocation(`/user/${comment.user.username}`)}
       >
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
@@ -508,7 +508,7 @@ const SingleComment = ({
           <div className="flex justify-between">
             <p 
               className="font-medium text-sm cursor-pointer hover:text-primary hover:underline"
-              onClick={() => setLocation(`/profile/${comment.userId}`)}
+              onClick={() => setLocation(`/user/${comment.user.username}`)}
             >
               {comment.user.displayName}
             </p>

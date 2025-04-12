@@ -44,6 +44,7 @@ function Router() {
       <Route path="/communities" component={Communities} />
       <Route path="/profile" component={Profile} />
       <Route path="/profile/:id" component={Profile} />
+      <Route path="/user/:username" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );

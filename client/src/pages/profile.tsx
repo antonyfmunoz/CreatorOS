@@ -13,12 +13,49 @@ import { User, Product } from "@/types";
 import { useParams } from "wouter";
 
 const Profile = () => {
-  const params = useParams();
-  // If we have an ID in the URL, use it, otherwise default to 1
-  const userId = params.id ? parseInt(params.id) : 1;
+  const params = useParams<{ id?: string; username?: string }>();
+  let queryKey: any[] = ['/api/users'];
+  
+  // Handle different routing patterns:
+  // 1. /profile/:id - numeric ID-based route
+  // 2. /user/:username - username-based route (Instagram style)
+  // 3. /profile (no params) - default to current user profile
+  if (params.id) {
+    // ID-based route
+    const userId = parseInt(params.id);
+    queryKey = ['/api/users', userId];
+  } else if (params.username) {
+    // Username-based route (Instagram style)
+    queryKey = ['/api/users/by-username', params.username];
+  } else {
+    // Default to user ID 1 if no parameters
+    queryKey = ['/api/users', 1];
+  }
   
   const { data: user, isLoading: isLoadingUser } = useQuery<User>({
-    queryKey: ['/api/users', userId],
+    queryKey: queryKey,
+    queryFn: async () => {
+      let url = '/api/users';
+      
+      if (params.id) {
+        url = `/api/users/${params.id}`;
+      } else if (params.username) {
+        // Fetch by username
+        const res = await fetch(`/api/users?username=${params.username}`);
+        if (!res.ok) throw new Error('Failed to fetch user');
+        const users = await res.json();
+        // Find the user with matching username
+        const user = users.find((u: User) => u.username === params.username);
+        if (!user) throw new Error('User not found');
+        return user;
+      } else {
+        url = '/api/users/1'; // Default user
+      }
+      
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch user');
+      return res.json();
+    }
   });
   
   const { data: products, isLoading: isLoadingProducts } = useQuery<Product[]>({
@@ -88,10 +125,10 @@ const Profile = () => {
       </div>
       
       {/* Revenue Chart */}
-      <RevenueChart userId={userId} />
+      <RevenueChart userId={user?.id || 1} />
       
       {/* CRM Contact List */}
-      <ContactList userId={userId} />
+      <ContactList userId={user?.id || 1} />
       
       {/* Create New Product */}
       <ProductForm />
