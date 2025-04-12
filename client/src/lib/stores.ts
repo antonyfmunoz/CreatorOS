@@ -22,7 +22,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       set({ isLoading: true });
       
-      // Find user by username
+      // For demo purposes, we're just using the first user from the list
       const response = await fetch('/api/users');
       const users = await response.json();
       
@@ -32,10 +32,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('User not found');
       }
       
-      // In a real app, you would validate the password on the server here
-      // For simplicity in this example, we're just checking if the user exists
-      
-      // Set the user in the store
       set({ 
         user, 
         isAuthenticated: true, 
@@ -53,21 +49,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       set({ isLoading: true });
       
-      // Send a POST request to create the user
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to register');
-      }
-      
-      const user = await response.json();
+      // In a real app, we would send a POST request to register the user
+      // For now, mock by returning user data
+      const user = {
+        id: 11, // Mock ID
+        role: 'creator',
+        xpPoints: 0,
+        level: 1,
+        createdAt: new Date().toISOString(),
+        ...userData
+      } as User;
       
       set({ 
         user, 
