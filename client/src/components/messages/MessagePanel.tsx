@@ -40,6 +40,7 @@ interface MessagePanelProps {
 
 const MessagePanel = () => {
   const { user } = useAuthStore();
+  const [, setLocation] = useLocation();
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserType[]>([]);
@@ -280,6 +281,17 @@ const MessagePanel = () => {
     
     return otherParticipant?.user?.displayName || 'Unknown User';
   };
+  
+  // Get the other user ID for direct messages (for profile navigation)
+  const getOtherUserIdForDM = (conversation: Conversation) => {
+    if (conversation.name) return null; // Group chat, no direct user to navigate to
+    
+    const otherParticipant = conversation.participants?.find(
+      p => p.userId !== user?.id
+    );
+    
+    return otherParticipant?.userId || null;
+  };
 
   // Handle confirming delete conversation
   const handleConfirmDelete = async () => {
@@ -324,9 +336,28 @@ const MessagePanel = () => {
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <SheetTitle className="font-semibold">
-              {conversations.find(c => c.id === selectedConversation)
-                ? getConversationName(conversations.find(c => c.id === selectedConversation)!)
-                : 'Chat'}
+              {(() => {
+                const conversation = conversations.find(c => c.id === selectedConversation);
+                if (!conversation) return 'Chat';
+                
+                const otherUserId = getOtherUserIdForDM(conversation);
+                
+                // Only make direct message names clickable (not group chats)
+                return otherUserId ? (
+                  <span 
+                    className="cursor-pointer hover:text-primary hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering other click handlers
+                      // Navigate to user profile using client-side routing
+                      setLocation(`/profile/${otherUserId}`);
+                    }}
+                  >
+                    {getConversationName(conversation)}
+                  </span>
+                ) : (
+                  getConversationName(conversation)
+                );
+              })()}
             </SheetTitle>
             <SheetClose asChild>
               <Button variant="ghost" size="icon">
