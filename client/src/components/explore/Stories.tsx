@@ -9,7 +9,10 @@ import {
   DialogTitle,
   DialogDescription,
   DialogClose,
+  DialogPortal,
+  DialogOverlay,
 } from '@/components/ui/dialog';
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -126,13 +129,18 @@ const Stories = () => {
               </DialogDescription>
             </VisuallyHidden>
             
+            {/* Custom X close button with no backgrounds */}
             <X 
-              className="fixed top-4 right-4 z-10 h-8 w-8 text-white cursor-pointer hover:text-gray-300" 
+              className="absolute top-4 right-4 z-50 h-10 w-10 text-white cursor-pointer hover:text-gray-300" 
               onClick={handleStoryClose}
+              strokeWidth={2}
             />
             
+            {/* Hidden component with styling to hide the default close button */}
+            <div style={{ display: 'none' }} className="stories-custom-dialog" />
+            
             {/* Story content */}
-            <div className="relative w-full h-screen flex items-center justify-center" style={{
+            <div className="relative w-full h-screen flex items-center justify-center stories-custom-dialog" style={{
               backgroundColor: '#000',
             }}>
               {/* Story image */}
