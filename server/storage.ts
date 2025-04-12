@@ -20,9 +20,14 @@ import {
 import { db } from "./db";
 import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
 import crypto from "crypto";
+import session from "express-session";
+import createMemoryStore from "memorystore";
 
 // Storage interface for the application
 export interface IStorage {
+  // Session store for authentication
+  sessionStore: session.Store;
+  
   // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -149,6 +154,9 @@ export class MemStorage implements IStorage {
   private conversationParticipants: Map<number, ConversationParticipant>;
   private directMessages: Map<number, DirectMessage>;
   private stories: Map<number, Story>;
+  
+  // Session store for authentication
+  public sessionStore: session.Store;
 
   private userIdCounter = 1;
   private postIdCounter = 1;
@@ -185,6 +193,12 @@ export class MemStorage implements IStorage {
     this.conversationParticipants = new Map();
     this.directMessages = new Map();
     this.stories = new Map();
+    
+    // Initialize the session store
+    const MemoryStore = createMemoryStore(session);
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000, // prune expired entries every 24h
+    });
     
     // Initialize with sample data
     this.initializeData();
