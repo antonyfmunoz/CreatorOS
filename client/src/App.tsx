@@ -8,6 +8,7 @@ import Marketplace from "@/pages/marketplace";
 import AI from "@/pages/ai";
 import Communities from "@/pages/communities";
 import Profile from "@/pages/profile";
+import AuthPage from "@/pages/auth-page";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications, useAuthStore } from "@/lib/stores";
@@ -15,6 +16,8 @@ import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
+import { ProtectedRoute } from "./lib/protected-route";
+import { AuthProvider } from "./hooks/use-auth";
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -38,13 +41,14 @@ function Router() {
   
   return (
     <Switch>
-      <Route path="/" component={Explore} />
-      <Route path="/marketplace" component={Marketplace} />
-      <Route path="/ai" component={AI} />
-      <Route path="/communities" component={Communities} />
-      <Route path="/profile" component={Profile} />
-      <Route path="/profile/:id" component={Profile} />
-      <Route path="/user/:username" component={Profile} />
+      <Route path="/auth" component={AuthPage} />
+      <ProtectedRoute path="/" component={Explore} />
+      <ProtectedRoute path="/marketplace" component={Marketplace} />
+      <ProtectedRoute path="/ai" component={AI} />
+      <ProtectedRoute path="/communities" component={Communities} />
+      <ProtectedRoute path="/profile" component={Profile} />
+      <ProtectedRoute path="/profile/:id" component={Profile} />
+      <ProtectedRoute path="/user/:username" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -55,42 +59,20 @@ function App() {
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   
-  // Get user from auth store
-  const { user: authUser, setUser } = useAuthStore();
-  
-  // Initialize with a test user if none exists
-  useEffect(() => {
-    if (!currentUser || !authUser) {
-      // This is only for testing - in a real app, you'd get this from authentication
-      const testUser = {
-        id: 11,
-        username: "testuser",
-        displayName: "Test User",
-        bio: "This is a test user for notification testing",
-        role: "user",
-        xpPoints: 100,
-        level: 1,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Set in both stores to ensure consistency
-      setCurrentUser(testUser);
-      setUser(testUser);
-    }
-  }, [currentUser, setCurrentUser, authUser, setUser]);
-  
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="app-container">
-        <main className="tab-content">
-          <Router />
-        </main>
-        {/* Notification components moved to the Explore page header */}
-        <BottomNavigation />
-        {isOpen && <ChatInterface />}
-      </div>
-      <Toaster />
-      <ToastContainer />
+      <AuthProvider>
+        <div className="app-container">
+          <main className="tab-content">
+            <Router />
+          </main>
+          {/* Notification components moved to the Explore page header */}
+          <BottomNavigation />
+          {isOpen && <ChatInterface />}
+        </div>
+        <Toaster />
+        <ToastContainer />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -28,5 +28,5 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     );
   }
 
-  return <Route path={path} component={Component} />;
+  return <Route path={path} component={Component} />
 }

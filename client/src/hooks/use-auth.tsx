@@ -4,7 +4,7 @@ import {
   useMutation,
   UseMutationResult,
 } from "@tanstack/react-query";
-import { User, InsertUser } from "@/types";
+import { User } from "@/types";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +27,7 @@ type RegisterData = {
   displayName: string;
   password: string;
   bio?: string;
+  role?: string;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
