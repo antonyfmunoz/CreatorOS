@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
-import { insertCommentSchema } from "../shared/schema";
+import { insertCommentSchema, insertStorySchema } from "../shared/schema";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
