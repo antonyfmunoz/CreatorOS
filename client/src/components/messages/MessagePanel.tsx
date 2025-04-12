@@ -13,7 +13,7 @@ import { DirectMessage, Conversation, User as UserType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -467,16 +467,50 @@ const MessagePanel = () => {
                         className="flex items-center space-x-4"
                         onClick={() => setSelectedConversation(conversation.id)}
                       >
-                        <Avatar>
-                          <AvatarFallback className={conversation.name ? "bg-primary text-primary-foreground" : ""}>
-                            {getConversationName(conversation).charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
+                        {(() => {
+                          const otherUserId = getOtherUserIdForDM(conversation);
+                          
+                          return otherUserId ? (
+                            <Avatar 
+                              className="cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation(); // Don't trigger conversation selection
+                                setLocation(`/profile/${otherUserId}`);
+                              }}
+                            >
+                              <AvatarFallback>
+                                {getConversationName(conversation).charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <Avatar>
+                              <AvatarFallback className="bg-primary text-primary-foreground">
+                                {getConversationName(conversation).charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                          );
+                        })()}
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center">
                             <p className="font-medium truncate flex items-center">
                               {conversation.name && <Users className="h-3 w-3 mr-1 text-muted-foreground" />}
-                              {getConversationName(conversation)}
+                              {(() => {
+                                const otherUserId = getOtherUserIdForDM(conversation);
+                                
+                                return otherUserId ? (
+                                  <span 
+                                    className="cursor-pointer hover:text-primary hover:underline"
+                                    onClick={(e) => {
+                                      e.stopPropagation(); // Don't trigger conversation selection
+                                      setLocation(`/profile/${otherUserId}`);
+                                    }}
+                                  >
+                                    {getConversationName(conversation)}
+                                  </span>
+                                ) : (
+                                  getConversationName(conversation)
+                                );
+                              })()}
                             </p>
                             {conversation.lastMessage && (
                               <p className="text-xs text-muted-foreground">
