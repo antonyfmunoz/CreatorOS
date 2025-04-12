@@ -10,10 +10,12 @@ import DocumentEditor from "@/components/profile/DocumentEditor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { User, Product } from "@/types";
+import { useParams } from "wouter";
 
 const Profile = () => {
-  // For demo, we'll use a fixed user ID of 1
-  const userId = 1;
+  const params = useParams();
+  // If we have an ID in the URL, use it, otherwise default to 1
+  const userId = params.id ? parseInt(params.id) : 1;
   
   const { data: user, isLoading: isLoadingUser } = useQuery<User>({
     queryKey: ['/api/users', userId],

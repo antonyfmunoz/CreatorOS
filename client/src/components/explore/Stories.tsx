@@ -13,9 +13,11 @@ import { X, Heart, Send, Share, Music, Volume2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import StoryProgress from './StoryProgress';
+import { useLocation } from 'wouter';
 
 const Stories = () => {
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [currentUserStories, setCurrentUserStories] = useState<Story[]>([]);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
@@ -283,7 +285,8 @@ const Stories = () => {
                   onClick={(e) => {
                     e.stopPropagation();
                     handleStoryClose();
-                    window.location.href = `/profile/${selectedStory.user.id}`;
+                    // Navigate to user profile using wouter
+                    setLocation(`/profile/${selectedStory.user.id}`);
                   }}
                 >
                   <Avatar className="h-10 w-10 mr-3 border-2 border-white hover:border-primary transition-colors">

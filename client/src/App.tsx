@@ -43,6 +43,7 @@ function Router() {
       <Route path="/ai" component={AI} />
       <Route path="/communities" component={Communities} />
       <Route path="/profile" component={Profile} />
+      <Route path="/profile/:id" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );
