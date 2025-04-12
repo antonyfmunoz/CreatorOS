@@ -278,8 +278,15 @@ const Stories = () => {
               
               {/* User info */}
               <div className="absolute top-8 left-0 right-0 z-20 px-4 flex items-center justify-between">
-                <div className="flex items-center">
-                  <Avatar className="h-10 w-10 mr-3 border-2 border-white">
+                <div 
+                  className="flex items-center cursor-pointer" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStoryClose();
+                    window.location.href = `/profile/${selectedStory.user.id}`;
+                  }}
+                >
+                  <Avatar className="h-10 w-10 mr-3 border-2 border-white hover:border-primary transition-colors">
                     <AvatarImage 
                       src={selectedStory.user.profileImageUrl} 
                       alt={selectedStory.user.displayName} 
@@ -287,7 +294,7 @@ const Stories = () => {
                     <AvatarFallback>{selectedStory.user.displayName.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div className="text-white">
-                    <div className="text-base font-semibold">{selectedStory.user.displayName}</div>
+                    <div className="text-base font-semibold hover:underline">{selectedStory.user.displayName}</div>
                     <div className="text-xs opacity-80">
                       {new Date(selectedStory.createdAt).toLocaleString(undefined, { 
                         hour: 'numeric', 
