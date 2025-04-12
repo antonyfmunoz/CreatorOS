@@ -16,6 +16,7 @@ import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -39,14 +40,18 @@ function Router() {
   
   return (
     <Switch>
+      {/* Public routes */}
       <Route path="/" component={Explore} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/marketplace" component={Marketplace} />
-      <Route path="/ai" component={AI} />
-      <Route path="/communities" component={Communities} />
-      <Route path="/profile" component={Profile} />
-      <Route path="/profile/:id" component={Profile} />
       <Route path="/user/:username" component={Profile} />
+
+      {/* Protected routes - require authentication */}
+      <ProtectedRoute path="/ai" component={AI} />
+      <ProtectedRoute path="/communities" component={Communities} />
+      <ProtectedRoute path="/profile" component={Profile} />
+      <ProtectedRoute path="/profile/:id" component={Profile} />
+      
       <Route component={NotFound} />
     </Switch>
   );
