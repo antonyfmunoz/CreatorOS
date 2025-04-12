@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Comment, Post, User, Post as PostType } from '@/types';
+import { useLocation } from 'wouter';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +53,7 @@ const SingleComment = ({
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [_, setLocation] = useLocation();
   
   // Check if the current user is the author of the comment
   const isAuthor = currentUser?.id === comment.userId;
@@ -491,14 +493,22 @@ const SingleComment = ({
         </AlertDialogContent>
       </AlertDialog>
       
-      <Avatar className="w-8 h-8 shrink-0">
+      <Avatar 
+        className="w-8 h-8 shrink-0 cursor-pointer"
+        onClick={() => setLocation(`/profile/${comment.userId}`)}
+      >
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
         <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between">
-            <p className="font-medium text-sm">{comment.user.displayName}</p>
+            <p 
+              className="font-medium text-sm cursor-pointer hover:text-primary hover:underline"
+              onClick={() => setLocation(`/profile/${comment.userId}`)}
+            >
+              {comment.user.displayName}
+            </p>
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">
                 {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
