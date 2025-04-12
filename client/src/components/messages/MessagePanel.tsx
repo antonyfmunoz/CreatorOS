@@ -504,26 +504,7 @@ const MessagePanel = () => {
                           <div className="flex justify-between items-center">
                             <p className="font-medium truncate flex items-center">
                               {conversation.name && <Users className="h-3 w-3 mr-1 text-muted-foreground" />}
-                              {(() => {
-                                const otherUserId = getOtherUserIdForDM(conversation);
-                                
-                                return otherUserId ? (
-                                  <span 
-                                    className="cursor-pointer hover:text-primary hover:underline"
-                                    onClick={(e) => {
-                                      e.stopPropagation(); // Don't trigger conversation selection
-                                      // Close the message panel first
-                                      closeMessagePanel();
-                                      // Navigate to user profile
-                                      setLocation(`/profile/${otherUserId}`);
-                                    }}
-                                  >
-                                    {getConversationName(conversation)}
-                                  </span>
-                                ) : (
-                                  getConversationName(conversation)
-                                );
-                              })()}
+                              {getConversationName(conversation)}
                             </p>
                             {conversation.lastMessage && (
                               <p className="text-xs text-muted-foreground">
