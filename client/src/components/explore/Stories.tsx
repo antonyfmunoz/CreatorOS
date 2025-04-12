@@ -127,14 +127,10 @@ const Stories = () => {
             </VisuallyHidden>
             
             <div className="fixed top-4 right-4 z-10">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-10 w-10 text-white p-0"
+              <X 
+                className="h-8 w-8 text-white cursor-pointer" 
                 onClick={handleStoryClose}
-              >
-                <X className="h-8 w-8" />
-              </Button>
+              />
             </div>
             
             {/* Story content */}
