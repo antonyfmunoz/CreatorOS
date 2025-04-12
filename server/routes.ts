@@ -29,6 +29,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch users" });
     }
   });
+  
+  // Get user by username - IMPORTANT: This must come before the :id route
+  app.get("/api/users/username/:username", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername(req.params.username);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user by username" });
+    }
+  });
 
   app.get("/api/users/:id", async (req, res) => {
     try {
@@ -39,6 +52,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(user);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+  
+  // Create a new user
+  app.post("/api/users", async (req, res) => {
+    try {
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+      
+      // Create the user
+      const user = await storage.createUser(req.body);
+      res.status(201).json(user);
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      res.status(500).json({ message: "Failed to create user" });
     }
   });
 

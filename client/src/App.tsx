@@ -58,45 +58,43 @@ function App() {
   // Get user from auth store
   const { user: authUser, setUser } = useAuthStore();
   
-  // Initialize with your user account
+  // Initialize with your user account (Antony Munoz) instead of John Doe
   useEffect(() => {
-    const fetchOrCreateUser = async () => {
+    const setupUserAccount = async () => {
       if (!currentUser || !authUser) {
         try {
-          // Try to get your user account first
-          const res = await fetch('/api/users?username=antonyfmunoz');
-          const users = await res.json();
+          // Just create a user for Antony Munoz - we'll handle if it exists in the backend
+          const createRes = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              username: "antonyfmunoz",
+              password: "password123",
+              displayName: "Antony Munoz",
+              bio: "Creator & Developer",
+              profileImageUrl: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5",
+              role: "creator"
+            })
+          });
           
-          let userAccount;
-          
-          // If user doesn't exist, create a new one
-          if (!users.find(u => u.username === 'antonyfmunoz')) {
-            const createRes = await fetch('/api/users', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                username: "antonyfmunoz",
-                password: "password123",
-                displayName: "Antony Munoz",
-                bio: "Creator & Developer",
-                profileImageUrl: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5",
-                role: "creator"
-              })
-            });
-            
-            if (createRes.ok) {
-              userAccount = await createRes.json();
-            }
+          // If we created a new user or it already exists, the server should return the user object
+          if (createRes.ok) {
+            const user = await createRes.json();
+            setCurrentUser(user);
+            setUser(user);
           } else {
-            userAccount = users.find(u => u.username === 'antonyfmunoz');
-          }
-          
-          if (userAccount) {
-            // Set in both stores to ensure consistency
-            setCurrentUser(userAccount);
-            setUser(userAccount);
+            // If there was an error creating the user, try to fetch it directly
+            const usersRes = await fetch('/api/users');
+            const users = await usersRes.json();
+            
+            // Find the antonyfmunoz user
+            const antonyfmunozUser = users.find((u: any) => u.username === 'antonyfmunoz');
+            if (antonyfmunozUser) {
+              setCurrentUser(antonyfmunozUser);
+              setUser(antonyfmunozUser);
+            }
           }
         } catch (error) {
           console.error('Error setting up user account:', error);
@@ -104,7 +102,7 @@ function App() {
       }
     };
     
-    fetchOrCreateUser();
+    setupUserAccount();
   }, [currentUser, setCurrentUser, authUser, setUser]);
   
   return (
