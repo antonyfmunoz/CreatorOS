@@ -68,6 +68,15 @@ const SingleComment = ({
     }
   }) as { data: (Comment & { user: User })[], isLoading: boolean };
   
+  // Debug log for comment structure
+  useEffect(() => {
+    console.log('Comment structure:', { 
+      id: comment.id,
+      userId: comment.userId,
+      user: comment.user
+    });
+  }, [comment]);
+  
   // Update showReplies when forceShowReplies changes or when we get replies
   useEffect(() => {
     if (forceShowReplies || (replies && replies.length > 0)) {
@@ -661,7 +670,9 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     queryFn: async () => {
       const res = await fetch(`/api/posts/${post.id}/comments`);
       if (!res.ok) throw new Error('Failed to fetch comments');
-      return res.json();
+      const data = await res.json();
+      console.log('Fetched comments data:', data);
+      return data;
     }
   });
 
