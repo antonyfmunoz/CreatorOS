@@ -177,3 +177,15 @@ export interface DirectMessage {
   replyToMessage?: DirectMessage | null;
   reactions?: Record<string, number>; // Store reactions like { "❤️": 3, "👍": 2 }
 }
+
+export interface Story {
+  id: number;
+  userId: number;
+  imageUrl: string;
+  text?: string;
+  backgroundColor?: string;
+  expiresAt: string;
+  createdAt: string;
+  viewCount: number;
+  user: User;
+}
