@@ -68,14 +68,8 @@ const SingleComment = ({
     }
   }) as { data: (Comment & { user: User })[], isLoading: boolean };
   
-  // Debug log for comment structure
-  useEffect(() => {
-    console.log('Comment structure:', { 
-      id: comment.id,
-      userId: comment.userId,
-      user: comment.user
-    });
-  }, [comment]);
+  // We've identified the issue - we have both comment.userId and comment.user.id
+  // So we need to be consistent in our navigation
   
   // Update showReplies when forceShowReplies changes or when we get replies
   useEffect(() => {
@@ -504,7 +498,7 @@ const SingleComment = ({
       
       <Avatar 
         className="w-8 h-8 shrink-0 cursor-pointer"
-        onClick={() => setLocation(`/profile/${comment.user.id}`)}
+        onClick={() => setLocation(`/profile/${comment.userId}`)}
       >
         <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
@@ -514,7 +508,7 @@ const SingleComment = ({
           <div className="flex justify-between">
             <p 
               className="font-medium text-sm cursor-pointer hover:text-primary hover:underline"
-              onClick={() => setLocation(`/profile/${comment.user.id}`)}
+              onClick={() => setLocation(`/profile/${comment.userId}`)}
             >
               {comment.user.displayName}
             </p>
@@ -670,9 +664,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     queryFn: async () => {
       const res = await fetch(`/api/posts/${post.id}/comments`);
       if (!res.ok) throw new Error('Failed to fetch comments');
-      const data = await res.json();
-      console.log('Fetched comments data:', data);
-      return data;
+      return res.json();
     }
   });
 
