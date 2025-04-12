@@ -18,10 +18,10 @@ import {
   stories, type Story, type InsertStory
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
-import crypto from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
+import crypto from "crypto";
 
 // Storage interface for the application
 export interface IStorage {
@@ -1395,6 +1395,35 @@ export class MemStorage implements IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  public sessionStore: session.Store;
+  
+  constructor() {
+    // Using dynamic import for ES modules compatibility
+    import('connect-pg-simple').then(connectPgModule => {
+      const connectPg = connectPgModule.default;
+      const PostgresStore = connectPg(session);
+      
+      // Initialize session store with PostgreSQL
+      this.sessionStore = new PostgresStore({
+        conString: process.env.DATABASE_URL,
+        createTableIfMissing: true,
+        tableName: 'session'
+      });
+    }).catch(err => {
+      console.error('Failed to initialize PostgreSQL session store:', err);
+      // Fallback to memory store if PostgreSQL connection fails
+      const MemoryStore = createMemoryStore(session);
+      this.sessionStore = new MemoryStore({
+        checkPeriod: 86400000,
+      });
+    });
+    
+    // Initialize with a temporary memory store until PostgreSQL store is ready
+    const MemoryStore = createMemoryStore(session);
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000,
+    });
+  }
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));

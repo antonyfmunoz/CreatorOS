@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import OpenAI from "openai";
 import { insertCommentSchema, insertStorySchema, stories } from "../shared/schema";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
+import { setupAuth } from "./auth";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -11,6 +12,9 @@ const openai = new OpenAI({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Set up authentication routes and middleware
+  setupAuth(app);
+  
   // prefix all routes with /api
   
   // User routes
