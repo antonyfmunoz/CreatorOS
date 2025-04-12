@@ -130,10 +130,10 @@ const Stories = () => {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 text-white"
+                className="h-10 w-10 text-white p-0"
                 onClick={handleStoryClose}
               >
-                <X className="h-6 w-6" />
+                <X className="h-8 w-8" />
               </Button>
             </div>
             
@@ -141,13 +141,12 @@ const Stories = () => {
             <div className="relative w-full h-screen flex items-center justify-center" style={{
               backgroundColor: '#000',
             }}>
-              {selectedStory.mediaUrl && (
-                <img 
-                  src={selectedStory.mediaUrl} 
-                  alt={`Story by ${selectedStory.user.displayName}`}
-                  className="max-w-full max-h-[85vh] object-contain mx-auto" 
-                />
-              )}
+              {/* Story image */}
+              <img 
+                src={selectedStory.mediaUrl} 
+                alt={`Story by ${selectedStory.user.displayName}`}
+                className="max-w-full max-h-[85vh] object-contain mx-auto" 
+              />
               
               {/* Caption overlay */}
               {selectedStory.caption && (
