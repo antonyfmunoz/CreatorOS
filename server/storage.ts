@@ -18,7 +18,7 @@ import {
   stories, type Story, type InsertStory
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
 import crypto from "crypto";
 
 // Storage interface for the application
