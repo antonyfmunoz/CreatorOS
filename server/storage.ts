@@ -501,6 +501,35 @@ export class MemStorage implements IStorage {
       </ul>
       <p>Click to edit this document and add your own content...</p>`,
     });
+    
+    // Create sample stories
+    this.createStory({
+      userId: 2,
+      mediaUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978',
+      mediaType: 'image',
+      caption: 'Working on new marketing strategies!',
+    });
+    
+    this.createStory({
+      userId: 3,
+      mediaUrl: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085',
+      mediaType: 'image',
+      caption: 'Coding session in progress',
+    });
+    
+    this.createStory({
+      userId: 4,
+      mediaUrl: 'https://images.unsplash.com/photo-1561070791-2526d30994b5',
+      mediaType: 'image',
+      caption: 'New design concept',
+    });
+    
+    this.createStory({
+      userId: 5,
+      mediaUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',
+      mediaType: 'image',
+      caption: 'Behind the scenes of our latest social campaign',
+    });
   }
 
   // User operations
@@ -1278,6 +1307,76 @@ export class MemStorage implements IStorage {
         message.senderId !== userId && 
         !message.read
       ).length;
+  }
+  
+  // Story operations
+  async getStories(): Promise<(Story & { user: User })[]> {
+    // Sort by creation date in descending order (newest first)
+    return Array.from(this.stories.values())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(story => {
+        const user = this.users.get(story.userId)!;
+        return { ...story, user };
+      });
+  }
+
+  async getUserStories(userId: number): Promise<(Story & { user: User })[]> {
+    // Get stories for a specific user
+    return Array.from(this.stories.values())
+      .filter(story => story.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(story => {
+        const user = this.users.get(story.userId)!;
+        return { ...story, user };
+      });
+  }
+
+  async getStoryById(id: number): Promise<(Story & { user: User }) | undefined> {
+    const story = this.stories.get(id);
+    if (!story) return undefined;
+    
+    const user = this.users.get(story.userId)!;
+    return { ...story, user };
+  }
+
+  async createStory(insertStory: InsertStory): Promise<Story> {
+    const id = this.storyIdCounter++;
+    const now = new Date();
+    
+    // Calculate expiration time (24 hours from now)
+    const expiresAt = new Date(now);
+    expiresAt.setHours(expiresAt.getHours() + 24);
+    
+    const story: Story = {
+      ...insertStory,
+      id,
+      createdAt: now,
+      expiresAt,
+      viewCount: 0,
+      // Ensure required fields have default values
+      caption: insertStory.caption ?? null,
+      mediaType: insertStory.mediaType ?? 'image',
+    };
+    
+    this.stories.set(id, story);
+    return story;
+  }
+
+  async deleteStory(id: number): Promise<void> {
+    if (!this.stories.has(id)) {
+      throw new Error('Story not found');
+    }
+    
+    this.stories.delete(id);
+  }
+
+  async incrementStoryViewCount(id: number): Promise<Story> {
+    const story = this.stories.get(id);
+    if (!story) throw new Error('Story not found');
+    
+    story.viewCount++;
+    this.stories.set(id, story);
+    return story;
   }
 }
 
