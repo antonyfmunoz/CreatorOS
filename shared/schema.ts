@@ -222,6 +222,25 @@ export const insertDocumentSchema = createInsertSchema(documents).pick({
   content: true,
 });
 
+// Story schema
+export const stories = pgTable("stories", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  mediaUrl: text("media_url").notNull(),
+  mediaType: text("media_type").default("image").notNull(), // image or video
+  caption: text("caption"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),  // Stories expire after 24 hours
+  viewCount: integer("view_count").default(0).notNull(),
+});
+
+export const insertStorySchema = createInsertSchema(stories).pick({
+  userId: true,
+  mediaUrl: true,
+  mediaType: true,
+  caption: true,
+});
+
 // Notification schema
 export const notifications = pgTable("notifications", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -311,6 +330,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   revenues: many(revenue),
   contacts: many(contacts),
   documents: many(documents),
+  stories: many(stories),
   notifications: many(notifications),
   relatedToNotifications: many(notifications, { relationName: "related_user" }),
   conversationParticipants: many(conversationParticipants),
@@ -446,3 +466,6 @@ export type InsertConversationParticipant = z.infer<typeof insertConversationPar
 
 export type DirectMessage = typeof directMessages.$inferSelect;
 export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;
+
+export type Story = typeof stories.$inferSelect;
+export type InsertStory = z.infer<typeof insertStorySchema>;
