@@ -67,7 +67,8 @@ const MessagePanel = () => {
     setEditingMessageId,
     setReplyingToMessage,
     markConversationAsRead,
-    createConversation
+    createConversation,
+    closeMessagePanel
   } = useMessaging();
 
   // Fetch conversations when component mounts
@@ -469,15 +470,24 @@ const MessagePanel = () => {
                       >
                         {(() => {
                           const otherUserId = getOtherUserIdForDM(conversation);
+                          const otherParticipant = conversation.participants?.find(
+                            p => p.userId !== user?.id
+                          );
                           
                           return otherUserId ? (
                             <Avatar 
                               className="cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation(); // Don't trigger conversation selection
+                                // Close the message panel first
+                                closeMessagePanel();
+                                // Navigate to user profile
                                 setLocation(`/profile/${otherUserId}`);
                               }}
                             >
+                              {otherParticipant?.user?.profileImageUrl && (
+                                <AvatarImage src={otherParticipant.user.profileImageUrl} />
+                              )}
                               <AvatarFallback>
                                 {getConversationName(conversation).charAt(0)}
                               </AvatarFallback>
@@ -502,6 +512,9 @@ const MessagePanel = () => {
                                     className="cursor-pointer hover:text-primary hover:underline"
                                     onClick={(e) => {
                                       e.stopPropagation(); // Don't trigger conversation selection
+                                      // Close the message panel first
+                                      closeMessagePanel();
+                                      // Navigate to user profile
                                       setLocation(`/profile/${otherUserId}`);
                                     }}
                                   >
