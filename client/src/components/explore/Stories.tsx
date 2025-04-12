@@ -126,12 +126,10 @@ const Stories = () => {
               </DialogDescription>
             </VisuallyHidden>
             
-            <div className="fixed top-4 right-4 z-10">
-              <X 
-                className="h-8 w-8 text-white cursor-pointer" 
-                onClick={handleStoryClose}
-              />
-            </div>
+            <X 
+              className="fixed top-4 right-4 z-10 h-8 w-8 text-white cursor-pointer hover:text-gray-300" 
+              onClick={handleStoryClose}
+            />
             
             {/* Story content */}
             <div className="relative w-full h-screen flex items-center justify-center" style={{
