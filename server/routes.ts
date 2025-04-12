@@ -2,7 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
-import { insertCommentSchema, insertStorySchema } from "../shared/schema";
+import { insertCommentSchema, insertStorySchema, stories } from "../shared/schema";
+import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -769,6 +770,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting all notifications:", error);
       res.status(500).json({ message: "Failed to delete all notifications" });
+    }
+  });
+
+  // Story routes
+  // Get all stories
+  app.get("/api/stories", async (req, res) => {
+    try {
+      const stories = await storage.getStories();
+      res.json(stories);
+    } catch (error) {
+      console.error("Error fetching stories:", error);
+      res.status(500).json({ message: "Failed to fetch stories" });
+    }
+  });
+
+  // Get stories by user ID
+  app.get("/api/users/:userId/stories", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const stories = await storage.getUserStories(userId);
+      res.json(stories);
+    } catch (error) {
+      console.error("Error fetching user stories:", error);
+      res.status(500).json({ message: "Failed to fetch user stories" });
+    }
+  });
+
+  // Get a specific story by ID
+  app.get("/api/stories/:id", async (req, res) => {
+    try {
+      const storyId = parseInt(req.params.id);
+      const story = await storage.getStoryById(storyId);
+      
+      if (!story) {
+        return res.status(404).json({ message: "Story not found" });
+      }
+      
+      res.json(story);
+    } catch (error) {
+      console.error("Error fetching story:", error);
+      res.status(500).json({ message: "Failed to fetch story" });
+    }
+  });
+
+  // Create a new story
+  app.post("/api/stories", async (req, res) => {
+    try {
+      const validatedData = insertStorySchema.parse(req.body);
+      const story = await storage.createStory(validatedData);
+      res.status(201).json(story);
+    } catch (error) {
+      console.error("Error creating story:", error);
+      res.status(400).json({ 
+        message: "Failed to create story", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  // Delete a story
+  app.delete("/api/stories/:id", async (req, res) => {
+    try {
+      const storyId = parseInt(req.params.id);
+      await storage.deleteStory(storyId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting story:", error);
+      res.status(500).json({ message: "Failed to delete story" });
+    }
+  });
+
+  // Increment view count for a story
+  app.post("/api/stories/:id/view", async (req, res) => {
+    try {
+      const storyId = parseInt(req.params.id);
+      const updatedStory = await storage.incrementStoryViewCount(storyId);
+      res.json(updatedStory);
+    } catch (error) {
+      console.error("Error incrementing story view count:", error);
+      res.status(500).json({ message: "Failed to increment story view count" });
     }
   });
 

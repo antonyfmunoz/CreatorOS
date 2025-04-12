@@ -2249,6 +2249,100 @@ export class DatabaseStorage implements IStorage {
 
     return result[0].count;
   }
+  
+  // Story operations
+  async getStories(): Promise<(Story & { user: User })[]> {
+    // Get all stories ordered by creation date (newest first)
+    // Filter out expired stories (older than 24 hours)
+    const now = new Date();
+    
+    const result = await db.select({
+      story: stories,
+      user: users,
+    })
+      .from(stories)
+      .innerJoin(users, eq(stories.userId, users.id))
+      .where(or(
+        isNull(stories.expiresAt),
+        gt(stories.expiresAt, now)
+      ))
+      .orderBy(desc(stories.createdAt));
+    
+    return result.map(({ story, user }) => ({ ...story, user }));
+  }
+
+  async getUserStories(userId: number): Promise<(Story & { user: User })[]> {
+    // Get stories for a specific user
+    // Filter out expired stories (older than 24 hours)
+    const now = new Date();
+    
+    const result = await db.select({
+      story: stories,
+      user: users,
+    })
+      .from(stories)
+      .innerJoin(users, eq(stories.userId, users.id))
+      .where(and(
+        eq(stories.userId, userId),
+        or(
+          isNull(stories.expiresAt),
+          gt(stories.expiresAt, now)
+        )
+      ))
+      .orderBy(desc(stories.createdAt));
+    
+    return result.map(({ story, user }) => ({ ...story, user }));
+  }
+
+  async getStoryById(id: number): Promise<(Story & { user: User }) | undefined> {
+    const [result] = await db.select({
+      story: stories,
+      user: users,
+    })
+      .from(stories)
+      .innerJoin(users, eq(stories.userId, users.id))
+      .where(eq(stories.id, id));
+    
+    if (!result) return undefined;
+    return { ...result.story, user: result.user };
+  }
+
+  async createStory(insertStory: InsertStory): Promise<Story> {
+    // Calculate expiration time (24 hours from now)
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setHours(expiresAt.getHours() + 24);
+    
+    const [story] = await db.insert(stories)
+      .values({
+        ...insertStory,
+        viewCount: 0,
+        expiresAt,
+      })
+      .returning();
+    
+    return story;
+  }
+
+  async deleteStory(id: number): Promise<void> {
+    const [story] = await db.select().from(stories).where(eq(stories.id, id));
+    if (!story) throw new Error(`Story with id ${id} not found`);
+    
+    await db.delete(stories).where(eq(stories.id, id));
+  }
+
+  async incrementStoryViewCount(id: number): Promise<Story> {
+    const [story] = await db.select().from(stories).where(eq(stories.id, id));
+    if (!story) throw new Error(`Story with id ${id} not found`);
+    
+    const [updatedStory] = await db
+      .update(stories)
+      .set({ viewCount: story.viewCount + 1 })
+      .where(eq(stories.id, id))
+      .returning();
+    
+    return updatedStory;
+  }
 }
 
 // Replace MemStorage with DatabaseStorage
