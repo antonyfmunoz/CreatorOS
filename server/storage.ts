@@ -14,7 +14,8 @@ import {
   notifications, type Notification, type InsertNotification,
   conversations, type Conversation, type InsertConversation,
   conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
-  directMessages, type DirectMessage, type InsertDirectMessage
+  directMessages, type DirectMessage, type InsertDirectMessage,
+  stories, type Story, type InsertStory
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, isNull, inArray, count, or, not, exists, sql } from "drizzle-orm";
@@ -120,6 +121,14 @@ export interface IStorage {
   markMessageAsRead(id: number): Promise<DirectMessage>;
   markConversationAsRead(conversationId: number, userId: number): Promise<void>;
   getUnreadMessageCountForUser(userId: number): Promise<number>;
+  
+  // Story operations
+  getStories(): Promise<(Story & { user: User })[]>;
+  getUserStories(userId: number): Promise<(Story & { user: User })[]>;
+  getStoryById(id: number): Promise<(Story & { user: User }) | undefined>;
+  createStory(story: InsertStory): Promise<Story>;
+  deleteStory(id: number): Promise<void>;
+  incrementStoryViewCount(id: number): Promise<Story>;
 }
 
 export class MemStorage implements IStorage {
@@ -139,6 +148,7 @@ export class MemStorage implements IStorage {
   private conversations: Map<number, Conversation>;
   private conversationParticipants: Map<number, ConversationParticipant>;
   private directMessages: Map<number, DirectMessage>;
+  private stories: Map<number, Story>;
 
   private userIdCounter = 1;
   private postIdCounter = 1;
@@ -155,6 +165,7 @@ export class MemStorage implements IStorage {
   private conversationIdCounter = 1;
   private conversationParticipantIdCounter = 1;
   private directMessageIdCounter = 1;
+  private storyIdCounter = 1;
 
   constructor() {
     this.users = new Map();
@@ -173,6 +184,7 @@ export class MemStorage implements IStorage {
     this.conversations = new Map();
     this.conversationParticipants = new Map();
     this.directMessages = new Map();
+    this.stories = new Map();
     
     // Initialize with sample data
     this.initializeData();
