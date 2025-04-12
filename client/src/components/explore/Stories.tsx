@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Story, User } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -6,13 +6,16 @@ import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
   DialogClose,
 } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { apiRequest } from '@/lib/queryClient';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 const Stories = () => {
+  const queryClient = useQueryClient();
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   
   // Fetch stories
@@ -51,9 +54,11 @@ const Stories = () => {
       
       // Increment view count
       try {
-        await apiRequest(`/api/stories/${story.id}/view`, {
+        await fetch(`/api/stories/${story.id}/view`, {
           method: 'POST',
         });
+        // Invalidate the stories query to refresh the view count
+        queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
       } catch (error) {
         console.error('Failed to increment view count:', error);
       }
@@ -113,52 +118,61 @@ const Stories = () => {
       {/* Story Viewer Dialog */}
       {selectedStory && (
         <Dialog open={!!selectedStory} onOpenChange={handleStoryClose}>
-          <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-transparent border-0 shadow-none">
-            <div className="relative w-full max-h-[80vh] overflow-hidden rounded-lg">
-              <DialogClose className="absolute right-2 top-2 z-10">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </DialogClose>
+          <DialogContent className="p-0 overflow-hidden bg-black border-0 shadow-none max-w-none h-screen w-screen rounded-none">
+            <VisuallyHidden>
+              <DialogTitle>Story from {selectedStory.user.displayName}</DialogTitle>
+              <DialogDescription>
+                Story content posted on {new Date(selectedStory.createdAt).toLocaleString()}
+              </DialogDescription>
+            </VisuallyHidden>
+            
+            <div className="fixed top-4 right-4 z-10">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 text-white"
+                onClick={handleStoryClose}
+              >
+                <X className="h-6 w-6" />
+              </Button>
+            </div>
+            
+            {/* Story content */}
+            <div className="relative w-full h-screen flex items-center justify-center" style={{
+              backgroundColor: '#000',
+            }}>
+              {selectedStory.mediaUrl && (
+                <img 
+                  src={selectedStory.mediaUrl} 
+                  alt={`Story by ${selectedStory.user.displayName}`}
+                  className="max-w-full max-h-[85vh] object-contain mx-auto" 
+                />
+              )}
               
-              {/* Story content */}
-              <div className="relative overflow-hidden" style={{
-                backgroundColor: selectedStory.backgroundColor || '#000',
-                minHeight: '60vh',
-              }}>
-                {selectedStory.imageUrl && (
-                  <img 
-                    src={selectedStory.imageUrl} 
-                    alt="Story" 
-                    className="w-full h-auto object-contain mx-auto" 
+              {/* Caption overlay */}
+              {selectedStory.caption && (
+                <div className="absolute bottom-20 left-0 right-0 p-6 text-white text-center bg-gradient-to-t from-black/70 to-transparent">
+                  <p className="text-lg font-medium">{selectedStory.caption}</p>
+                </div>
+              )}
+              
+              {/* User info */}
+              <div className="absolute top-4 left-4 right-20 p-4 flex items-center">
+                <Avatar className="h-10 w-10 mr-3 border-2 border-primary">
+                  <AvatarImage 
+                    src={selectedStory.user.profileImageUrl} 
+                    alt={selectedStory.user.displayName} 
                   />
-                )}
-                
-                {/* Text overlay */}
-                {selectedStory.text && (
-                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white text-center bg-gradient-to-t from-black/60 to-transparent">
-                    {selectedStory.text}
-                  </div>
-                )}
-                
-                {/* User info */}
-                <div className="absolute top-0 left-0 right-0 p-4 flex items-center">
-                  <Avatar className="h-8 w-8 mr-2">
-                    <AvatarImage 
-                      src={selectedStory.user.profileImageUrl} 
-                      alt={selectedStory.user.displayName} 
-                    />
-                    <AvatarFallback>{selectedStory.user.displayName.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="text-white">
-                    <div className="text-sm font-semibold">{selectedStory.user.displayName}</div>
-                    <div className="text-xs opacity-70">
-                      {new Date(selectedStory.createdAt).toLocaleString()}
-                    </div>
+                  <AvatarFallback>{selectedStory.user.displayName.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="text-white">
+                  <div className="text-base font-semibold">{selectedStory.user.displayName}</div>
+                  <div className="text-sm opacity-80">
+                    {new Date(selectedStory.createdAt).toLocaleString(undefined, { 
+                      hour: 'numeric', 
+                      minute: 'numeric',
+                      hour12: true
+                    })}
                   </div>
                 </div>
               </div>
