@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,17 +10,18 @@ import Communities from "@/pages/communities";
 import Profile from "@/pages/profile";
 import AuthPage from "@/pages/auth-page";
 import BottomNavigation from "@/components/layout/BottomNavigation";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications, useAuthStore } from "@/lib/stores";
 import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
 import { ProtectedRoute } from "./lib/protected-route";
-import { AuthProvider } from "./hooks/use-auth";
+import { AuthProvider, useAuth } from "./hooks/use-auth";
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
+  const { logoutMutation } = useAuth();
   
   // Update the route when active tab changes
   useEffect(() => {
@@ -39,9 +40,16 @@ function Router() {
     }
   }, [setActiveTab]);
   
+  // Logout handler for the /logout route
+  const handleLogout = useCallback(() => {
+    logoutMutation.mutate();
+    return <Redirect to="/auth" />;
+  }, [logoutMutation]);
+  
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
+      <Route path="/logout" component={handleLogout} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/ai" component={AI} />
