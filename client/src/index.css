@@ -40,3 +40,8 @@
     @apply w-full h-full;
   }
 }
+
+/* Hide the default close button in story dialog */
+.story-dialog [data-radix-dialog-close] {
+  display: none !important;
+}

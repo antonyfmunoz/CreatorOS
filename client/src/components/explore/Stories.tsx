@@ -121,7 +121,7 @@ const Stories = () => {
       {/* Story Viewer Dialog */}
       {selectedStory && (
         <Dialog open={!!selectedStory} onOpenChange={handleStoryClose}>
-          <DialogContent className="p-0 overflow-hidden bg-black border-0 shadow-none max-w-none h-screen w-screen rounded-none">
+          <DialogContent className="story-dialog p-0 overflow-hidden bg-black border-0 shadow-none max-w-none h-screen w-screen rounded-none">
             <VisuallyHidden>
               <DialogTitle>Story from {selectedStory.user.displayName}</DialogTitle>
               <DialogDescription>
@@ -135,9 +135,6 @@ const Stories = () => {
               onClick={handleStoryClose}
               strokeWidth={2}
             />
-            
-            {/* Hidden component with styling to hide the default close button */}
-            <div style={{ display: 'none' }} className="stories-custom-dialog" />
             
             {/* Story content */}
             <div className="relative w-full h-screen flex items-center justify-center stories-custom-dialog" style={{
