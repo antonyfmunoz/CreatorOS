@@ -13,6 +13,7 @@ import { useAuthStore, useMessaging } from '@/lib/stores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { useLocation } from 'wouter';
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,7 @@ const Post = ({ post }: PostProps) => {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { createConversation, sendMessage } = useMessaging();
+  const [, setLocation] = useLocation();
 
   // Get the current user
   const { data: users } = useQuery<User[]>({
@@ -403,12 +405,20 @@ const Post = ({ post }: PostProps) => {
     <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
       <CardContent className="p-4">
         <div className="flex items-center mb-3">
-          <Avatar className="w-10 h-10 mr-3">
+          <Avatar 
+            className="w-10 h-10 mr-3 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+            onClick={() => setLocation(`/profile/${post.user.id}`)}
+          >
             <AvatarImage src={post.user.profileImageUrl} alt={post.user.displayName} />
             <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-semibold">{post.user.displayName}</p>
+            <p 
+              className="font-semibold cursor-pointer hover:text-primary hover:underline" 
+              onClick={() => setLocation(`/profile/${post.user.id}`)}
+            >
+              {post.user.displayName}
+            </p>
             <p className="text-xs text-gray-500">{post.user.bio || 'Creator'} • {formattedDate}</p>
           </div>
           <Button variant="ghost" size="icon" className="ml-auto">
