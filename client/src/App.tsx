@@ -58,25 +58,53 @@ function App() {
   // Get user from auth store
   const { user: authUser, setUser } = useAuthStore();
   
-  // Initialize with a test user if none exists
+  // Initialize with your user account
   useEffect(() => {
-    if (!currentUser || !authUser) {
-      // This is only for testing - in a real app, you'd get this from authentication
-      const testUser = {
-        id: 11,
-        username: "testuser",
-        displayName: "Test User",
-        bio: "This is a test user for notification testing",
-        role: "user",
-        xpPoints: 100,
-        level: 1,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Set in both stores to ensure consistency
-      setCurrentUser(testUser);
-      setUser(testUser);
-    }
+    const fetchOrCreateUser = async () => {
+      if (!currentUser || !authUser) {
+        try {
+          // Try to get your user account first
+          const res = await fetch('/api/users?username=antonyfmunoz');
+          const users = await res.json();
+          
+          let userAccount;
+          
+          // If user doesn't exist, create a new one
+          if (!users.find(u => u.username === 'antonyfmunoz')) {
+            const createRes = await fetch('/api/users', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                username: "antonyfmunoz",
+                password: "password123",
+                displayName: "Antony Munoz",
+                bio: "Creator & Developer",
+                profileImageUrl: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5",
+                role: "creator"
+              })
+            });
+            
+            if (createRes.ok) {
+              userAccount = await createRes.json();
+            }
+          } else {
+            userAccount = users.find(u => u.username === 'antonyfmunoz');
+          }
+          
+          if (userAccount) {
+            // Set in both stores to ensure consistency
+            setCurrentUser(userAccount);
+            setUser(userAccount);
+          }
+        } catch (error) {
+          console.error('Error setting up user account:', error);
+        }
+      }
+    };
+    
+    fetchOrCreateUser();
   }, [currentUser, setCurrentUser, authUser, setUser]);
   
   return (
