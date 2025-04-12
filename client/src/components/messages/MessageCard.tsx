@@ -164,7 +164,19 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
       
       <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[80%] gap-2`}>
         {!isOwnMessage && (
-          <Avatar className="h-8 w-8 mt-1">
+          <Avatar 
+            className="h-8 w-8 mt-1 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (message.sender?.id) {
+                // Close the message panel
+                const { closeMessagePanel } = useMessaging.getState();
+                closeMessagePanel();
+                // Navigate to user profile
+                setLocation(`/profile/${message.sender.id}`);
+              }
+            }}
+          >
             <AvatarImage src={message.sender?.profileImageUrl} />
             <AvatarFallback>{message.sender?.displayName?.charAt(0) || 'U'}</AvatarFallback>
           </Avatar>
@@ -186,7 +198,19 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
           
           <div className="space-y-1">
             {!isOwnMessage && (
-              <div className="text-xs text-muted-foreground ml-2">
+              <div 
+                className="text-xs text-muted-foreground ml-2 cursor-pointer hover:text-primary hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (message.sender?.id) {
+                    // Close the message panel
+                    const { closeMessagePanel } = useMessaging.getState();
+                    closeMessagePanel();
+                    // Navigate to user profile
+                    setLocation(`/profile/${message.sender.id}`);
+                  }
+                }}
+              >
                 {message.sender?.displayName || 'Unknown'}
               </div>
             )}
