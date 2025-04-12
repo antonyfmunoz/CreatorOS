@@ -181,9 +181,9 @@ export interface DirectMessage {
 export interface Story {
   id: number;
   userId: number;
-  imageUrl: string;
-  text?: string;
-  backgroundColor?: string;
+  mediaUrl: string;
+  mediaType: string;
+  caption?: string;
   expiresAt: string;
   createdAt: string;
   viewCount: number;
