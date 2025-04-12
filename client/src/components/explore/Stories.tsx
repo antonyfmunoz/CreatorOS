@@ -327,14 +327,22 @@ const Stories = () => {
               {/* Footer with input and action buttons */}
               <div className="absolute bottom-0 left-0 right-0 z-20 p-4 bg-gradient-to-t from-black/60 to-transparent">
                 <div className="flex items-center space-x-3">
-                  <Input 
-                    placeholder="Send message..." 
-                    className="bg-white/10 border-0 text-white placeholder:text-white/60 h-12 rounded-full px-5"
-                  />
+                  <div 
+                    className="bg-white/10 border-0 text-white placeholder:text-white/60 h-12 rounded-full px-5 flex-1 flex items-center cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-white/60">Send message...</span>
+                  </div>
                   <div className="flex items-center space-x-4 text-white">
-                    <Heart className="h-6 w-6 cursor-pointer hover:text-red-500 transition-colors" />
-                    <Send className="h-6 w-6 cursor-pointer hover:text-blue-400 transition-colors" />
-                    <Share className="h-6 w-6 cursor-pointer hover:text-green-400 transition-colors" />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Heart className="h-6 w-6 cursor-pointer hover:text-red-500 transition-colors" />
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Send className="h-6 w-6 cursor-pointer hover:text-blue-400 transition-colors" />
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Send className="h-6 w-6 cursor-pointer hover:text-green-400 transition-colors transform rotate-90" />
+                    </div>
                   </div>
                 </div>
               </div>
