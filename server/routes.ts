@@ -64,10 +64,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You can only update your own profile" });
       }
       
-      const { displayName, bio, profileImageUrl } = req.body;
+      const { username, displayName, bio, profileImageUrl } = req.body;
       
       // Only allow updating specific fields
       const userData: Partial<any> = {};
+      if (username !== undefined) userData.username = username.toLowerCase();
       if (displayName !== undefined) userData.displayName = displayName;
       if (bio !== undefined) userData.bio = bio;
       if (profileImageUrl !== undefined) userData.profileImageUrl = profileImageUrl;

@@ -23,6 +23,7 @@ type LoginData = Pick<InsertUser, "username" | "password">;
 
 type UpdateProfileData = {
   id: number;
+  username?: string;
   displayName?: string;
   bio?: string | null;
   profileImageUrl?: string | null;

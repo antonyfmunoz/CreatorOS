@@ -33,7 +33,7 @@ const profileSchema = z.object({
     message: "Username cannot be more than 20 characters."
   }).regex(/^[a-z0-9_.]+$/, {
     message: "Username can only contain lowercase letters, numbers, periods and underscores."
-  }),
+  }).transform(val => val.toLowerCase()),
   bio: z.string().max(150, {
     message: "Bio cannot be more than 150 characters."
   }).optional(),
@@ -77,8 +77,11 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   };
   
   function onSubmit(values: ProfileFormValues) {
+    // Ensure username is always lowercase
+    const lowercaseUsername = values.username.toLowerCase();
+    
     // Check if username has changed and if it's different from the current username
-    if (values.username !== user.username) {
+    if (lowercaseUsername !== user.username.toLowerCase()) {
       // Add username validation in the future if needed
       toast({
         title: "Changing username",
@@ -86,9 +89,10 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
       });
     }
     
-    // First update the profile text fields
+    // First update the profile text fields with lowercase username
     updateProfileMutation.mutate({
       id: user.id,
+      username: lowercaseUsername,
       displayName: values.displayName,
       bio: values.bio || null,
     }, {
@@ -154,7 +158,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
         <Button
           disabled={!isDirty || isSaving}
           onClick={form.handleSubmit(onSubmit)}
-          className="text-blue-500 font-semibold bg-transparent hover:bg-transparent hover:text-blue-600 px-0 py-0 h-auto"
+          className="text-black font-semibold bg-transparent hover:bg-transparent hover:text-gray-600 px-0 py-0 h-auto"
           variant="ghost"
         >
           {isSaving ? (
