@@ -153,15 +153,23 @@ const Profile = () => {
   }
   
   return (
-    <div className="px-4 pt-4 pb-20">
-      {/* Instagram-style username header with gear icon */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">@{user?.username}</h1>
+    <div className="pb-20">
+      {/* Instagram-style username header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center">
+          <h1 className="text-base font-normal">{user?.username}</h1>
+          {/* Instagram-style verified checkmark (only for UI matching) */}
+          <div className="ml-1 text-blue-500 text-base">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.498 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zm7.007 6.387a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+            </svg>
+          </div>
+        </div>
         
-        {isOwnProfile ? (
+        {isOwnProfile && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="p-2">
+              <Button variant="ghost" size="icon" className="p-1">
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -175,72 +183,93 @@ const Profile = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        )}
       </div>
       
-      {/* Profile Info - Instagram Style */}
-      <div className="flex mb-6">
-        {/* Large Avatar on left */}
-        <Avatar className="w-20 h-20 mr-6">
-          <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
-          <AvatarFallback>
-            {user?.displayName?.charAt(0) || "U"}
-          </AvatarFallback>
-        </Avatar>
-        
-        {/* Profile stats and buttons on right */}
-        <div className="flex-1">
-          {/* Display name in bold */}
-          <h2 className="text-lg font-bold mb-1">{user?.displayName}</h2>
-          
-          {/* Instagram-style Stats - 3 column */}
-          <div className="flex space-x-4 mb-3">
-            <div className="text-center">
-              <span className="font-semibold">{stats.products}</span>
-              <span className="text-sm ml-1">products</span>
-            </div>
-            <div className="text-center">
-              <span className="font-semibold">{stats.followers}</span>
-              <span className="text-sm ml-1">followers</span>
-            </div>
-            <div className="text-center">
-              <span className="font-semibold">{stats.revenue}</span>
-              <span className="text-sm ml-1">revenue</span>
-            </div>
+      {/* Profile Info Section */}
+      <div className="px-4 pt-4 pb-2">
+        {/* Avatar and Stats Row */}
+        <div className="flex mb-5">
+          {/* Avatar */}
+          <div className="mr-7">
+            <Avatar className="w-[77px] h-[77px]">
+              <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
+              <AvatarFallback>
+                {user?.displayName?.charAt(0) || "U"}
+              </AvatarFallback>
+            </Avatar>
           </div>
           
-          {/* Edit profile button (if own profile) */}
-          {isOwnProfile && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="w-full h-8 text-sm font-medium"
-              onClick={() => setIsEditProfileOpen(true)}
-            >
-              Edit Profile
-            </Button>
-          )}
+          {/* Stats in 3 columns */}
+          <div className="flex flex-1 items-center">
+            <div className="flex-1 text-center">
+              <div className="text-base font-semibold">{stats.products}</div>
+              <div className="text-xs">posts</div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className="text-base font-semibold">{stats.followers}</div>
+              <div className="text-xs">followers</div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className="text-base font-semibold">1.2K</div>
+              <div className="text-xs">following</div>
+            </div>
+          </div>
         </div>
-      </div>
-      
-      {/* Bio section */}
-      <div className="mb-6">
-        <p className="text-sm">{user?.bio || "No bio yet"}</p>
+        
+        {/* Name and Bio */}
+        <div className="mb-3">
+          <div className="font-semibold text-sm leading-5">{user?.displayName}</div>
+          <div className="text-sm leading-5 mt-1">{user?.bio || "Creator OS user"}</div>
+        </div>
+        
+        {/* Edit Profile Button */}
+        {isOwnProfile && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full h-[30px] text-sm font-medium rounded-md"
+            onClick={() => setIsEditProfileOpen(true)}
+          >
+            Edit Profile
+          </Button>
+        )}
       </div>
       
       {/* Instagram-style Tab Navigation */}
-      <div className="border-t border-gray-200 mb-4">
-        <div className="flex justify-around -mt-px">
-          <button className="py-3 text-blue-500 border-t-2 border-blue-500 flex-1 flex justify-center">
-            <GridIcon className="h-6 w-6" />
+      <div className="border-t mt-2">
+        <div className="grid grid-cols-3">
+          <button className="py-2.5 text-blue-500 border-t border-blue-500 flex justify-center">
+            <GridIcon className="h-5 w-5" />
           </button>
-          <button className="py-3 text-gray-500 flex-1 flex justify-center">
-            <BarChart3Icon className="h-6 w-6" />
+          <button className="py-2.5 text-gray-400 flex justify-center">
+            <BookmarkIcon className="h-5 w-5" />
           </button>
-          <button className="py-3 text-gray-500 flex-1 flex justify-center">
-            <BookmarkIcon className="h-6 w-6" />
+          <button className="py-2.5 text-gray-400 flex justify-center">
+            <UserIcon className="h-5 w-5" />
           </button>
         </div>
+      </div>
+      
+      {/* Instagram-style Grid Layout for Posts - Exact Instagram look with no gap */}
+      <div className="grid grid-cols-3 gap-px bg-gray-100">
+        {Array(9).fill(0).map((_, index) => (
+          <div key={index} className="aspect-square bg-white">
+            {products && products[index % products.length] ? (
+              <div className="w-full h-full bg-gray-200 relative">
+                <div className="absolute inset-0 flex items-center justify-center p-1">
+                  <p className="text-xs text-center truncate">
+                    {products[index % products.length].title?.substring(0, 15)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                <GridIcon className="h-5 w-5 text-gray-400" />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
       
       {/* Only show these sections for the user's own profile */}
