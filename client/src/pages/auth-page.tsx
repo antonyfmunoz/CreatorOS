@@ -30,7 +30,6 @@ const registerSchema = z.object({
   displayName: z.string().min(2, "Display name must be at least 2 characters long"),
   password: z.string().min(6, "Password must be at least 6 characters long"),
   confirmPassword: z.string(),
-  bio: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -68,7 +67,6 @@ const AuthPage = () => {
       displayName: "",
       password: "",
       confirmPassword: "",
-      bio: "",
     },
   });
 
@@ -230,23 +228,6 @@ const AuthPage = () => {
                           <Input
                             type="password"
                             placeholder="••••••••"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={registerForm.control}
-                    name="bio"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bio (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Tell us about yourself"
                             {...field}
                           />
                         </FormControl>
