@@ -12,7 +12,8 @@ import { Post as PostType, User, Conversation } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
-import { useAuthStore, useMessaging } from '@/lib/stores';
+import { useMessaging } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -72,7 +73,7 @@ const Post = ({ post }: PostProps) => {
   const isSaved = savedPosts.includes(post.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const { createConversation, sendMessage } = useMessaging();
   const [, setLocation] = useLocation();
 
