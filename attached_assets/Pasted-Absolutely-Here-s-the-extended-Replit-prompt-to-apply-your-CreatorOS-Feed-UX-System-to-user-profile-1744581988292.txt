@@ -1,0 +1,129 @@
+Absolutely. Here’s the extended Replit prompt to apply your CreatorOS Feed UX System to user profiles, blending the current layout with a profile feed style similar to X (Twitter):
+
+⸻
+
+Replit Prompt: CreatorOS Profile Page with Integrated Feed (Inspired by X)
+
+Extend the CreatorOS UI system to include a mobile-first, modern Profile Page for each user. This page should reuse your existing post card system (including voice posts, filters, etc.) and display the user’s content in a scrollable feed under a sleek profile header, styled similarly to X (Twitter). The Floating Action Button (FAB), dark mode compatibility, and filtering should remain consistent.
+
+⸻
+
+1. Sticky Profile Header (X-Inspired)
+
+<Header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 shadow-sm">
+  <span className="text-xl font-semibold text-black dark:text-white">{user.name}</span>
+</Header>
+
+	•	Shows user’s name
+	•	Optionally add a back button
+	•	Always sticky during scroll
+
+⸻
+
+2. Profile Info Section (Top of Feed)
+
+<ProfileHeader>
+  <div className="flex flex-col items-center py-4">
+    <img src={user.profileImage} className="w-24 h-24 rounded-full object-cover" />
+    <h2 className="font-semibold text-lg">{user.name}</h2>
+    <p className="text-gray-500">@{user.username}</p>
+    <p className="text-sm mt-2 whitespace-pre-line">{user.bio}</p>
+    {user.links.length > 0 && (
+      <div className="mt-2">
+        {user.links.map(link => <a href={link} className="text-blue-500 underline">{link}</a>)}
+      </div>
+    )}
+  </div>
+</ProfileHeader>
+
+	•	Full-width, centered layout
+	•	Shows:
+	•	Profile picture
+	•	Name, @username
+	•	Bio (multi-line)
+	•	External links
+
+⸻
+
+3. Filter Dropdown (Optional)
+
+If a user has mixed content types:
+
+<DropdownMenu
+  items={["All", "Videos", "Shorts", "Photos", "Threads", "Audio"]}
+  onSelect={setFilter}
+/>
+
+	•	Applies filter to user’s personal feed below
+
+⸻
+
+4. Reused Feed Card System
+
+<PostFeed posts={filteredUserPosts}>
+  <PostCard />
+  <VoicePostCard />
+</PostFeed>
+
+	•	Reuse the same post rendering components you built for the main feed
+	•	Automatically sort by newest first
+	•	If typeFilter is active, only show matching types
+
+⸻
+
+5. Floating Action Button (FAB)
+
+Remains visible on profile screens:
+
+<button
+  className="fixed bottom-20 right-5 z-50 p-4 rounded-full shadow-lg
+  bg-white text-black dark:bg-black dark:text-white transition-colors"
+>
+  +
+</button>
+
+	•	Opens new post modal
+	•	Matches feed FAB behavior
+
+⸻
+
+6. Dark/Light Mode Compatibility
+
+Inherit dark/light mode logic from global layout:
+	•	TailwindCSS dark: utilities
+	•	Toggle via Profile Tab or system setting
+	•	All text, buttons, and feed cards should adapt
+
+⸻
+
+7. Backend Enhancements (Express)
+
+GET /profile/:username
+// Returns profile info, bio, image, links
+
+GET /profile/:username/posts?type=photo|video|voice
+// Returns only the user’s posts filtered by type
+
+
+
+⸻
+
+8. Mobile UX Enhancements
+	•	Use sticky header for username
+	•	Allow infinite scroll (optional)
+	•	Support external links in bio
+	•	Add hover states for web (if needed)
+
+⸻
+
+Component Breakdown
+	•	ProfilePage.jsx
+	•	ProfileHeader.jsx
+	•	PostFeed.jsx (reused)
+	•	VoicePostCard.jsx (reused)
+	•	DropdownMenu.jsx (reused)
+	•	FAB.jsx (reused)
+
+⸻
+
+Would you like a matching UI render of this profile design, dark mode version, or component code next?
