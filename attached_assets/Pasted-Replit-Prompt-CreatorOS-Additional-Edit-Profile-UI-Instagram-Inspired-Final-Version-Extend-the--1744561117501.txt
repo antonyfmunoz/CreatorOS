@@ -1,0 +1,119 @@
+Replit Prompt: CreatorOS Additional Edit Profile UI (Instagram-Inspired, Final Version)
+
+Extend the CreatorOS application with a modern, responsive Edit Profile page inspired by Instagram’s layout. This view should include editable fields, profile picture upload (centered at the top), and optimized mobile layout.
+
+⸻
+
+1. FRONTEND (React + TailwindCSS)
+
+Component Structure
+
+<EditProfilePage>
+  <Header title="Edit Profile" />
+
+  <section className="flex flex-col items-center py-4">
+    <ProfileImageUploader
+      imageUrl={user.profileImage}
+      onUpload={handleUpload}
+    />
+    <button className="text-black-500 text-sm mt-2" onClick={triggerUpload}>
+      Edit picture
+    </button>
+  </section>
+
+  <Form className="px-4 space-y-4">
+    <TextField label="Name" value={user.name} onChange={setName} />
+    <TextField label="Username" value={user.username} onChange={setUsername} />
+    <Textarea label="Bio" value={user.bio} onChange={setBio} rows={4} />
+    <LinkEditor value={user.links} onChange={setLinks} />
+    <SaveButton onClick={handleSubmit} />
+  </Form>
+</EditProfilePage>
+
+
+
+⸻
+
+2. FEATURES & LAYOUT
+
+✅ Sticky Header
+	•	Title: "Edit Profile"
+	•	Left: optional Back icon
+	•	Top-aligned and sticky during scroll
+
+✅ Profile Picture (Centered at Top)
+	•	Displayed in circular frame
+	•	Positioned centered at top, just like Instagram
+	•	Tapping “Edit Picture” opens file picker
+
+<input
+  type="file"
+  accept="image/*"
+  className="hidden"
+  ref={fileRef}
+  onChange={handleImageUpload}
+/>
+
+	•	Enforce square aspect ratio, auto-crop to circle display
+
+✅ Editable Fields
+	•	Name (max: 30 chars)
+	•	Username (auto-lowercase, validated, unique)
+	•	Bio (multi-line, emojis allowed)
+	•	Links (show inline or via pop-up modal)
+
+✅ Save Button
+	•	Bottom of page or sticky
+	•	Disabled unless changes detected
+	•	Submits data via PUT /api/profile/:userId
+	•	Optional confirmation toast: “Profile Updated”
+
+⸻
+
+3. BACKEND (Express.js + Multer)
+
+Routes:
+
+GET /api/profile/:userId
+PUT /api/profile/:userId
+POST /api/profile/:userId/upload-profile-image
+
+Backend Logic:
+	•	Image uploads saved to /uploads/profile/
+	•	On success, returns a public imageUrl
+	•	Input validations:
+	•	Username format (alphanumeric, max 20)
+	•	Bio max length (150 chars)
+	•	Sanitization to prevent XSS
+
+⸻
+
+4. STYLING & UX
+	•	Mobile-first layout
+	•	TailwindCSS spacing, borders, typography
+	•	Profile picture styled as:
+
+rounded-full w-24 h-24 object-cover border border-gray-300
+
+	•	Field labels with font-medium
+	•	Inputs with rounded-sm borders and subtle shadows
+	•	Adaptive to dark/light mode using dark: utilities
+
+⸻
+
+5. OPTIONAL ENHANCEMENTS
+	•	Upload progress bar
+	•	Image preview before saving
+	•	Auto-resize image to optimal mobile resolution
+
+⸻
+
+6. COMPONENTS TO BUILD
+	•	EditProfilePage.jsx
+	•	ProfileImageUploader.jsx
+	•	TextField.jsx
+	•	Textarea.jsx
+	•	LinkEditor.jsx
+	•	SaveButton.jsx
+
+⸻

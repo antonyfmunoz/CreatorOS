@@ -8,7 +8,7 @@ import RevenueChart from "@/components/profile/RevenueChart";
 import ContactList from "@/components/profile/ContactList";
 import ProductForm from "@/components/profile/ProductForm";
 import DocumentEditor from "@/components/profile/DocumentEditor";
-import ProfileEditForm from "@/components/profile/ProfileEditForm";
+import InstagramEditProfile from "@/components/profile/InstagramEditProfile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Product } from "@/types";
@@ -178,7 +178,7 @@ const Profile = () => {
       {/* Profile Header */}
       <div className="flex items-center mb-6">
         <Avatar className="w-16 h-16 mr-4">
-          <AvatarImage src={user?.profileImageUrl} alt={user?.displayName || "User"} />
+          <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
           <AvatarFallback>
             {user?.displayName?.charAt(0) || "U"}
           </AvatarFallback>
@@ -211,9 +211,9 @@ const Profile = () => {
           {/* Document Editor */}
           <DocumentEditor />
           
-          {/* Profile Edit Dialog */}
+          {/* Instagram-style Profile Edit Page */}
           {isEditProfileOpen && user && (
-            <ProfileEditForm 
+            <InstagramEditProfile
               user={user} 
               isOpen={isEditProfileOpen} 
               onClose={() => setIsEditProfileOpen(false)} 
