@@ -2,6 +2,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Camera, Image as ImageIcon } from "lucide-react";
+import { 
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 
 interface ProfileImagePickerProps {
   isOpen: boolean;
@@ -22,7 +26,7 @@ export default function ProfileImagePicker({
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset state when closed
+  // Reset state when dialog closes
   useEffect(() => {
     if (!isOpen) {
       setImgSrc("");
@@ -141,99 +145,100 @@ export default function ProfileImagePicker({
   const openFilePicker = () => {
     fileInputRef.current?.click();
   };
-
-  // If not open, don't render anything
-  if (!isOpen) return null;
-
-  // Render library view or cropping view
+  
+  // Use Dialog for better accessibility and positioning
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <button 
-          onClick={onClose}
-          className="text-white hover:text-gray-300 transition-colors"
-        >
-          Cancel
-        </button>
-        <div className="font-semibold text-center">
-          {showLibrary ? "Library" : "1 Photo Selected"}
-        </div>
-        <button 
-          onClick={handleDone}
-          className="text-blue-500 hover:text-blue-400 transition-colors"
-          disabled={!completedCrop || showLibrary}
-          style={{ opacity: !completedCrop || showLibrary ? 0.5 : 1 }}
-        >
-          Done
-        </button>
-      </div>
-      
-      {/* Content */}
-      {showLibrary ? (
-        // Library selection UI
-        <div className="flex-1 flex flex-col">
-          <div 
-            className="flex-1 flex flex-col items-center justify-center bg-gray-900 p-6"
-            onClick={openFilePicker}
-          >
-            <div className="text-center mb-6">
-              <ImageIcon size={64} className="mx-auto mb-4 text-gray-500" />
-              <p className="text-gray-400">Tap to select a photo from your library</p>
+    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+      <DialogContent className="w-full h-[100dvh] max-w-full p-0 rounded-none border-none bg-black text-white">
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+            <button 
+              onClick={onClose}
+              className="text-white hover:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <div className="font-semibold text-center">
+              {showLibrary ? "Library" : "1 Photo Selected"}
             </div>
-          </div>
-          
-          {/* Bottom action buttons */}
-          <div className="grid grid-cols-2 border-t border-gray-800">
             <button 
-              className="py-4 text-center flex flex-col items-center justify-center gap-1 hover:bg-gray-900"
-              onClick={openFilePicker}
+              onClick={handleDone}
+              className="text-blue-500 hover:text-blue-400 transition-colors"
+              disabled={!completedCrop || showLibrary}
+              style={{ opacity: !completedCrop || showLibrary ? 0.5 : 1 }}
             >
-              <ImageIcon size={24} className="text-gray-300" />
-              <span>Photo Library</span>
-            </button>
-            <button 
-              className="py-4 text-center flex flex-col items-center justify-center gap-1 hover:bg-gray-900 border-l border-gray-800"
-              onClick={openFilePicker}
-            >
-              <Camera size={24} className="text-gray-300" />
-              <span>Take Photo</span>
+              Done
             </button>
           </div>
           
-          {/* Hidden file input */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={(e) => handleFileSelected(e.target.files)}
-          />
-        </div>
-      ) : (
-        // Cropping UI
-        <div className="flex-1 bg-gray-900 flex items-center justify-center">
-          {!!imgSrc && (
-            <ReactCrop
-              crop={crop}
-              locked={true}
-              onChange={(_, percentCrop) => setCrop(percentCrop)}
-              onComplete={(c) => setCompletedCrop(c)}
-              aspect={1}
-              circularCrop
-              className="h-full w-full flex items-center justify-center"
-            >
-              <img
-                ref={imgRef}
-                alt="Upload"
-                src={imgSrc}
-                onLoad={onImageLoad}
-                className="max-w-full max-h-full object-contain"
+          {/* Content */}
+          {showLibrary ? (
+            // Library selection UI
+            <div className="flex-1 flex flex-col">
+              <div 
+                className="flex-1 flex flex-col items-center justify-center bg-gray-900 p-6"
+                onClick={openFilePicker}
+              >
+                <div className="text-center mb-6">
+                  <ImageIcon size={64} className="mx-auto mb-4 text-gray-500" />
+                  <p className="text-gray-400">Tap to select a photo from your library</p>
+                </div>
+              </div>
+              
+              {/* Bottom action buttons */}
+              <div className="grid grid-cols-2 border-t border-gray-800">
+                <button 
+                  className="py-4 text-center flex flex-col items-center justify-center gap-1 hover:bg-gray-900"
+                  onClick={openFilePicker}
+                >
+                  <ImageIcon size={24} className="text-gray-300" />
+                  <span>Photo Library</span>
+                </button>
+                <button 
+                  className="py-4 text-center flex flex-col items-center justify-center gap-1 hover:bg-gray-900 border-l border-gray-800"
+                  onClick={openFilePicker}
+                >
+                  <Camera size={24} className="text-gray-300" />
+                  <span>Take Photo</span>
+                </button>
+              </div>
+              
+              {/* Hidden file input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={(e) => handleFileSelected(e.target.files)}
               />
-            </ReactCrop>
+            </div>
+          ) : (
+            // Cropping UI
+            <div className="flex-1 bg-gray-900 flex items-center justify-center">
+              {!!imgSrc && (
+                <ReactCrop
+                  crop={crop}
+                  locked={true}
+                  onChange={(_, percentCrop) => setCrop(percentCrop)}
+                  onComplete={(c) => setCompletedCrop(c)}
+                  aspect={1}
+                  circularCrop
+                  className="h-full w-full flex items-center justify-center"
+                >
+                  <img
+                    ref={imgRef}
+                    alt="Upload"
+                    src={imgSrc}
+                    onLoad={onImageLoad}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </ReactCrop>
+              )}
+            </div>
           )}
         </div>
-      )}
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
