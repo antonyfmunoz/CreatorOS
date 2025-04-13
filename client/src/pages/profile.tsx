@@ -262,7 +262,7 @@ const Profile = () => {
       {/* Instagram-style username header - without badge */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center">
-          <h1 className="text-base font-normal lowercase">{user?.username}</h1>
+          <h1 className="text-lg font-bold lowercase">{user?.username}</h1>
         </div>
         
         {isOwnProfile && (
