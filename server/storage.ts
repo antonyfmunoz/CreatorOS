@@ -58,6 +58,7 @@ export interface IStorage {
   savePost(userId: number, postId: number): Promise<void>;
   unsavePost(userId: number, postId: number): Promise<void>;
   getSavedPosts(userId: number): Promise<(Post & { user: User })[]>;
+  getPostCountByUser(userId: number): Promise<number>;
 
   // Comment operations
   getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
