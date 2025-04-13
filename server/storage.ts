@@ -16,7 +16,8 @@ import {
   conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
   directMessages, type DirectMessage, type InsertDirectMessage,
   stories, type Story, type InsertStory,
-  savedPosts, type SavedPost, type InsertSavedPost
+  savedPosts, type SavedPost, type InsertSavedPost,
+  followers, type Follower, type InsertFollower
 } from "@shared/schema";
 import { db } from "./db";
 import session from "express-session";
@@ -36,6 +37,15 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: Partial<User>): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  
+  // Follower operations
+  followUser(followerId: number, followedId: number): Promise<void>;
+  unfollowUser(followerId: number, followedId: number): Promise<void>;
+  getFollowers(userId: number): Promise<User[]>;
+  getFollowing(userId: number): Promise<User[]>;
+  getFollowerCount(userId: number): Promise<number>;
+  getFollowingCount(userId: number): Promise<number>;
+  isFollowing(followerId: number, followedId: number): Promise<boolean>;
 
   // Post operations
   getPosts(): Promise<(Post & { user: User })[]>;
@@ -161,6 +171,7 @@ export class MemStorage implements IStorage {
   private conversationParticipants: Map<number, ConversationParticipant>;
   private directMessages: Map<number, DirectMessage>;
   private stories: Map<number, Story>;
+  private followers: Map<number, Follower>;
   
   // Session store for authentication
   public sessionStore: session.Store;
@@ -181,6 +192,7 @@ export class MemStorage implements IStorage {
   private conversationParticipantIdCounter = 1;
   private directMessageIdCounter = 1;
   private storyIdCounter = 1;
+  private followerIdCounter = 1;
 
   constructor() {
     this.users = new Map();
@@ -200,6 +212,7 @@ export class MemStorage implements IStorage {
     this.conversationParticipants = new Map();
     this.directMessages = new Map();
     this.stories = new Map();
+    this.followers = new Map();
     
     // Initialize the session store
     const MemoryStore = createMemoryStore(session);
@@ -613,6 +626,91 @@ export class MemStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+
+  // Follower operations
+  async followUser(followerId: number, followedId: number): Promise<void> {
+    // Check that both users exist
+    const follower = this.users.get(followerId);
+    const followed = this.users.get(followedId);
+    
+    if (!follower) throw new Error('Follower user not found');
+    if (!followed) throw new Error('Followed user not found');
+    if (followerId === followedId) throw new Error('Users cannot follow themselves');
+
+    // Check if already following
+    const isAlreadyFollowing = await this.isFollowing(followerId, followedId);
+    if (isAlreadyFollowing) return; // Already following, nothing to do
+
+    // Create the follow relationship
+    const id = this.followerIdCounter++;
+    const now = new Date();
+    const followerRecord: Follower = {
+      id,
+      followerId,
+      followedId,
+      createdAt: now
+    };
+    
+    this.followers.set(id, followerRecord);
+  }
+
+  async unfollowUser(followerId: number, followedId: number): Promise<void> {
+    // Find the follow relationship
+    const relationship = Array.from(this.followers.values()).find(
+      f => f.followerId === followerId && f.followedId === followedId
+    );
+    
+    if (!relationship) return; // Not following, nothing to do
+    
+    // Remove the relationship
+    this.followers.delete(relationship.id);
+  }
+
+  async getFollowers(userId: number): Promise<User[]> {
+    // Check if user exists
+    if (!this.users.has(userId)) throw new Error('User not found');
+    
+    // Find all followers of this user
+    const followerIds = Array.from(this.followers.values())
+      .filter(f => f.followedId === userId)
+      .map(f => f.followerId);
+    
+    // Get the user objects for each follower
+    return followerIds.map(id => this.users.get(id)!);
+  }
+  
+  async getFollowing(userId: number): Promise<User[]> {
+    // Check if user exists
+    if (!this.users.has(userId)) throw new Error('User not found');
+    
+    // Find all users this user is following
+    const followingIds = Array.from(this.followers.values())
+      .filter(f => f.followerId === userId)
+      .map(f => f.followedId);
+    
+    // Get the user objects for each followed user
+    return followingIds.map(id => this.users.get(id)!);
+  }
+  
+  async getFollowerCount(userId: number): Promise<number> {
+    // Count how many users follow this user
+    return Array.from(this.followers.values())
+      .filter(f => f.followedId === userId)
+      .length;
+  }
+  
+  async getFollowingCount(userId: number): Promise<number> {
+    // Count how many users this user follows
+    return Array.from(this.followers.values())
+      .filter(f => f.followerId === userId)
+      .length;
+  }
+  
+  async isFollowing(followerId: number, followedId: number): Promise<boolean> {
+    // Check if follower is following followed
+    return Array.from(this.followers.values())
+      .some(f => f.followerId === followerId && f.followedId === followedId);
   }
 
   // Post operations
