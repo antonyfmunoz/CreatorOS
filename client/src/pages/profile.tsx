@@ -31,6 +31,8 @@ const Profile = () => {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const { user: currentUser, isLoading: isAuthLoading, logoutMutation } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   // Determine if we're looking at the current user's profile
   const isOwnProfile = !params.id && !params.username;
@@ -108,6 +110,74 @@ const Profile = () => {
       const res = await fetch(`/api/users/${user?.id}/following/count`);
       if (!res.ok) return 0;
       return res.json();
+    }
+  });
+  
+  // Check if the logged-in user is following this profile
+  const { data: isFollowing, isLoading: isLoadingFollowStatus } = useQuery<boolean>({
+    queryKey: ['/api/users/is-following', currentUser?.id, user?.id],
+    enabled: !!currentUser && !!user && !isOwnProfile,
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${currentUser?.id}/is-following/${user?.id}`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data.isFollowing;
+    }
+  });
+  
+  // Follow user mutation
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentUser || !user) return;
+      return apiRequest('POST', '/api/users/follow', {
+        followerId: currentUser.id,
+        followedId: user.id
+      });
+    },
+    onSuccess: () => {
+      // Invalidate follower count and follow status
+      queryClient.invalidateQueries({ queryKey: ['/api/users/followers/count', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users/is-following', currentUser?.id, user?.id] });
+      
+      toast({
+        title: "Success!",
+        description: `You're now following ${user?.displayName || user?.username}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to follow",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  // Unfollow user mutation
+  const unfollowMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentUser || !user) return;
+      return apiRequest('POST', '/api/users/unfollow', {
+        followerId: currentUser.id,
+        followedId: user.id
+      });
+    },
+    onSuccess: () => {
+      // Invalidate follower count and follow status
+      queryClient.invalidateQueries({ queryKey: ['/api/users/followers/count', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users/is-following', currentUser?.id, user?.id] });
+      
+      toast({
+        title: "Success!",
+        description: `You've unfollowed ${user?.displayName || user?.username}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to unfollow",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   });
 
@@ -266,8 +336,8 @@ const Profile = () => {
           <div className="text-sm leading-5 mt-1">{user?.bio || "Creator OS user"}</div>
         </div>
         
-        {/* Edit Profile Button */}
-        {isOwnProfile && (
+        {/* Edit Profile Button or Follow/Unfollow Button */}
+        {isOwnProfile ? (
           <Button 
             variant="outline" 
             size="sm" 
@@ -275,6 +345,43 @@ const Profile = () => {
             onClick={() => setIsEditProfileOpen(true)}
           >
             Edit Profile
+          </Button>
+        ) : currentUser ? (
+          isLoadingFollowStatus ? (
+            <Button variant="outline" size="sm" className="w-full h-[30px] text-sm font-medium rounded-md" disabled>
+              <span className="animate-pulse">Loading...</span>
+            </Button>
+          ) : isFollowing ? (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full h-[30px] text-sm font-medium rounded-md"
+              onClick={() => unfollowMutation.mutate()}
+              disabled={unfollowMutation.isPending}
+            >
+              <UserMinus className="mr-1 h-3.5 w-3.5" />
+              {unfollowMutation.isPending ? "Unfollowing..." : "Unfollow"}
+            </Button>
+          ) : (
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="w-full h-[30px] text-sm font-medium rounded-md"
+              onClick={() => followMutation.mutate()}
+              disabled={followMutation.isPending}
+            >
+              <UserPlus className="mr-1 h-3.5 w-3.5" />
+              {followMutation.isPending ? "Following..." : "Follow"}
+            </Button>
+          )
+        ) : (
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="w-full h-[30px] text-sm font-medium rounded-md"
+            onClick={handleLogin}
+          >
+            <LogIn className="mr-1 h-3.5 w-3.5" /> Sign in to follow
           </Button>
         )}
       </div>
