@@ -40,7 +40,7 @@ interface MessagePanelProps {
 }
 
 const MessagePanel = () => {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
