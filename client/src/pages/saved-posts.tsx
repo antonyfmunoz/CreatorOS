@@ -3,6 +3,7 @@ import { Post as PostType } from "@shared/schema";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppStore } from "@/lib/stores";
 import { User as UserIcon, ArrowLeft, ImageIcon, BookmarkIcon } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ const SavedPostsPage = () => {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedTab, setSelectedTab] = useState("posts");
+  const { navigateToPost } = useAppStore();
   
   // Fetch saved posts for the user
   const { data: savedPosts, isLoading } = useQuery<(PostType & { user: any })[]>({
@@ -70,7 +72,10 @@ const SavedPostsPage = () => {
                   <div 
                     key={post.id} 
                     className="aspect-square relative cursor-pointer"
-                    onClick={() => setLocation(`/post/${post.id}`)}
+                    onClick={() => {
+                      navigateToPost(post.id);
+                      setLocation('/');
+                    }}
                   >
                     {post.imageUrl ? (
                       <img 
