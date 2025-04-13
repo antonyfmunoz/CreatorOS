@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, User as UserIcon, Users, X } from 'lucide-react';
+import { 
+  Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, 
+  User as UserIcon, Users, X, Pencil, Trash, Bookmark, Edit, Save 
+} from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,6 +26,14 @@ import {
   DialogFooter,
   DialogClose
 } from "@/components/ui/dialog";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
 
 interface PostProps {
   post: PostType;
@@ -50,8 +61,15 @@ const Post = ({ post }: PostProps) => {
     const saved = localStorage.getItem('likedPosts');
     return saved ? JSON.parse(saved) : [];
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [savedPosts, setSavedPosts] = useState<number[]>(() => {
+    const saved = localStorage.getItem('savedPosts');
+    return saved ? JSON.parse(saved) : [];
+  });
   
   const isLiked = likedPosts.includes(post.id);
+  const isSaved = savedPosts.includes(post.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -99,6 +117,11 @@ const Post = ({ post }: PostProps) => {
   useEffect(() => {
     localStorage.setItem('likedPosts', JSON.stringify(likedPosts));
   }, [likedPosts]);
+  
+  // Save saved posts to local storage
+  useEffect(() => {
+    localStorage.setItem('savedPosts', JSON.stringify(savedPosts));
+  }, [savedPosts]);
 
   const likePostMutation = useMutation({
     mutationFn: async () => {
@@ -398,8 +421,162 @@ const Post = ({ post }: PostProps) => {
     }
   };
 
+  // Update post mutation
+  const updatePostMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('PATCH', `/api/posts/${post.id}`, { content: editContent });
+      return res.json();
+    },
+    onSuccess: (updatedPost) => {
+      // Update the post in the cache directly without refetching
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(p => p.id === post.id ? { ...p, content: updatedPost.content } : p);
+      });
+      
+      // Exit editing mode and show success toast
+      setIsEditing(false);
+      toast({
+        title: "Post Updated",
+        description: "Your post has been updated successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update the post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Delete post mutation
+  const deletePostMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest('DELETE', `/api/posts/${post.id}`, null);
+    },
+    onSuccess: () => {
+      // Remove the post from the cache
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.filter(p => p.id !== post.id);
+      });
+      
+      toast({
+        title: "Post Deleted",
+        description: "Your post has been deleted successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete the post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Save post mutation
+  const savePostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+      await apiRequest('POST', `/api/posts/${post.id}/save`, { userId: user.id });
+    },
+    onSuccess: () => {
+      // Add the post to saved posts
+      setSavedPosts(prev => [...prev, post.id]);
+      
+      toast({
+        title: "Post Saved",
+        description: "This post has been added to your saved items.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save the post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Unsave post mutation
+  const unsavePostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+      await apiRequest('POST', `/api/posts/${post.id}/unsave`, { userId: user.id });
+    },
+    onSuccess: () => {
+      // Remove the post from saved posts
+      setSavedPosts(prev => prev.filter(id => id !== post.id));
+      
+      toast({
+        title: "Post Unsaved",
+        description: "This post has been removed from your saved items.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to unsave the post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Handle edit post
+  const handleEditPost = () => {
+    setIsEditing(true);
+  };
+
+  // Handle save post changes
+  const handleSavePostChanges = () => {
+    if (editContent.trim().length === 0) {
+      toast({
+        title: "Error",
+        description: "Post content cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updatePostMutation.mutate();
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditContent(post.content);
+    setIsEditing(false);
+  };
+
+  // Handle delete post with confirmation
+  const handleDeletePost = () => {
+    if (confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+      deletePostMutation.mutate();
+    }
+  };
+
+  // Handle save/unsave post toggle
+  const handleSaveToggle = () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to save posts.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (isSaved) {
+      unsavePostMutation.mutate();
+    } else {
+      savePostMutation.mutate();
+    }
+  };
+
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
-  const isPending = likePostMutation.isPending || unlikePostMutation.isPending;
+  const isPending = likePostMutation.isPending || unlikePostMutation.isPending || 
+                   updatePostMutation.isPending || deletePostMutation.isPending || 
+                   savePostMutation.isPending || unsavePostMutation.isPending;
 
   return (
     <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
@@ -421,12 +598,92 @@ const Post = ({ post }: PostProps) => {
             </p>
             <p className="text-xs text-gray-500">{post.user.bio || 'Creator'} • {formattedDate}</p>
           </div>
-          <Button variant="ghost" size="icon" className="ml-auto">
-            <MoreHorizontal className="h-5 w-5 text-gray-400" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="ml-auto">
+                <MoreHorizontal className="h-5 w-5 text-gray-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {user && user.id === post.userId ? (
+                // Post owner menu options
+                <>
+                  <DropdownMenuItem className="cursor-pointer" onClick={handleEditPost}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    <span>Edit Post</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    className="cursor-pointer text-destructive" 
+                    onClick={handleDeletePost}
+                    disabled={deletePostMutation.isPending}
+                  >
+                    <Trash className="mr-2 h-4 w-4" />
+                    <span>Delete Post</span>
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                // Viewer menu options
+                <>
+                  <DropdownMenuItem 
+                    className="cursor-pointer" 
+                    onClick={handleSaveToggle}
+                    disabled={savePostMutation.isPending || unsavePostMutation.isPending}
+                  >
+                    {isSaved ? (
+                      <>
+                        <Bookmark className="mr-2 h-4 w-4 fill-primary text-primary" />
+                        <span>Unsave Post</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        <span>Save Post</span>
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         
-        <p className="mb-4">{post.content}</p>
+        {isEditing ? (
+          <div className="mb-4">
+            <Textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="mb-3 min-h-[100px]"
+              placeholder="Edit your post content..."
+            />
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleCancelEdit}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleSavePostChanges}
+                disabled={updatePostMutation.isPending}
+              >
+                {updatePostMutation.isPending ? (
+                  <>
+                    <span className="animate-spin mr-2">○</span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="mb-4">{post.content}</p>
+        )}
         
         {post.imageUrl && (
           <img 
