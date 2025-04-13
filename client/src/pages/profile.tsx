@@ -154,23 +154,14 @@ const Profile = () => {
   
   return (
     <div className="px-4 pt-4 pb-20">
-      {/* Profile Header */}
-      <div className="flex items-center mb-6">
-        <Avatar className="w-16 h-16 mr-4">
-          <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
-          <AvatarFallback>
-            {user?.displayName?.charAt(0) || "U"}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-xl font-bold">{user?.displayName}</h1>
-          <p className="text-gray-500">{user?.bio || "No bio yet"}</p>
-        </div>
+      {/* Instagram-style top nav with gear icon */}
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold">{user?.displayName}</h1>
         
         {isOwnProfile ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="ml-auto p-2 rounded-full bg-gray-100">
+              <Button variant="ghost" size="icon" className="p-2">
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -187,11 +178,43 @@ const Profile = () => {
         ) : null}
       </div>
       
-      {/* Dashboard Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard title="Followers" value={stats.followers} />
-        <StatCard title="Revenue" value={stats.revenue} />
-        <StatCard title="Products" value={stats.products} />
+      {/* Profile Info */}
+      <div className="flex mb-6">
+        <Avatar className="w-16 h-16 mr-4">
+          <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
+          <AvatarFallback>
+            {user?.displayName?.charAt(0) || "U"}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex flex-col justify-center">
+          <p className="text-gray-500 mb-2">{user?.bio || "No bio yet"}</p>
+          {isOwnProfile && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-8 text-sm font-medium"
+              onClick={() => setIsEditProfileOpen(true)}
+            >
+              Edit Profile
+            </Button>
+          )}
+        </div>
+      </div>
+      
+      {/* Instagram-style Stats */}
+      <div className="flex justify-around border-y py-3 mb-6">
+        <div className="text-center">
+          <div className="font-semibold">{stats.products}</div>
+          <div className="text-xs text-gray-500">Products</div>
+        </div>
+        <div className="text-center">
+          <div className="font-semibold">{stats.followers}</div>
+          <div className="text-xs text-gray-500">Followers</div>
+        </div>
+        <div className="text-center">
+          <div className="font-semibold">{stats.revenue}</div>
+          <div className="text-xs text-gray-500">Revenue</div>
+        </div>
       </div>
       
       {/* Only show these sections for the user's own profile */}
