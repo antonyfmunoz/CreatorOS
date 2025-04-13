@@ -178,7 +178,7 @@ const Profile = () => {
       {/* Profile Header */}
       <div className="flex items-center mb-6">
         <Avatar className="w-16 h-16 mr-4">
-          <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
+          <AvatarImage src={user?.profileImageUrl} alt={user?.displayName || "User"} />
           <AvatarFallback>
             {user?.displayName?.charAt(0) || "U"}
           </AvatarFallback>
@@ -213,7 +213,7 @@ const Profile = () => {
           
           {/* Profile Edit Dialog */}
           {isEditProfileOpen && user && (
-            <ProfileEditForm
+            <ProfileEditForm 
               user={user} 
               isOpen={isEditProfileOpen} 
               onClose={() => setIsEditProfileOpen(false)} 
