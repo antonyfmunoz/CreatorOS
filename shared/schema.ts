@@ -191,6 +191,24 @@ export const insertChannelMessageSchema = createInsertSchema(channelMessages).pi
   isPinned: true,
 });
 
+// Followers schema
+export const followers = pgTable("followers", {
+  id: serial("id").primaryKey(),
+  followerId: integer("follower_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  followedId: integer("followed_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // Create a unique constraint so a user can only follow another user once
+    followerFollowedUnique: unique("follower_followed_unique").on(table.followerId, table.followedId),
+  };
+});
+
+export const insertFollowerSchema = createInsertSchema(followers).pick({
+  followerId: true,
+  followedId: true,
+});
+
 // Revenue data schema for dashboard
 export const revenue = pgTable("revenue", {
   id: serial("id").primaryKey(),
@@ -354,6 +372,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   conversationParticipants: many(conversationParticipants),
   sentMessages: many(directMessages, { relationName: "sender" }),
   savedPosts: many(savedPosts),
+  followers: many(followers, { relationName: "followed" }),
+  following: many(followers, { relationName: "follower" }),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -443,6 +463,11 @@ export const directMessagesRelations = relations(directMessages, ({ one }) => ({
   }),
 }));
 
+export const followersRelations = relations(followers, ({ one }) => ({
+  follower: one(users, { fields: [followers.followerId], references: [users.id], relationName: "follower" }),
+  followed: one(users, { fields: [followers.followedId], references: [users.id], relationName: "followed" }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -497,3 +522,6 @@ export type InsertStory = z.infer<typeof insertStorySchema>;
 
 export type SavedPost = typeof savedPosts.$inferSelect;
 export type InsertSavedPost = z.infer<typeof insertSavedPostSchema>;
+
+export type Follower = typeof followers.$inferSelect;
+export type InsertFollower = z.infer<typeof insertFollowerSchema>;
