@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import { 
   Dialog,
   DialogContent,
@@ -24,10 +24,9 @@ import {
 } from "@/components/ui/form";
 import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2, Upload, X, Check } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import 'react-image-crop/dist/ReactCrop.css';
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop, PixelCrop } from 'react-image-crop';
+import ProfileImagePicker from "./ProfileImagePicker";
 
 // Define the form schema
 const profileSchema = z.object({
@@ -49,14 +48,7 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
   const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.profileImageUrl || undefined);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-  
-  // Cropping state
-  const [crop, setCrop] = useState<Crop>();
-  const [completedCrop, setCompletedCrop] = useState<Crop>();
-  const [isCropping, setIsCropping] = useState(false);
-  const [imgSrc, setImgSrc] = useState<string>("");
+  const [showImagePicker, setShowImagePicker] = useState(false);
   
   // Set up form with default values from user data
   const form = useForm<ProfileFormValues>({
@@ -67,131 +59,21 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
     },
   });
 
-  // Center and create initial crop with aspect ratio
-  const createFixedCenterCrop = useCallback(
-    (mediaWidth: number, mediaHeight: number) => {
-      // Use the smaller dimension to create a square crop
-      const size = Math.min(mediaWidth, mediaHeight);
-      
-      // Calculate position to center crop
-      const x = (mediaWidth - size) / 2;
-      const y = (mediaHeight - size) / 2;
-      
-      // Create fixed crop with absolute position
-      return {
-        unit: 'px',
-        x,
-        y,
-        width: size,
-        height: size,
-      } as Crop;
-    },
-    [],
-  );
-
-  // When image loads, set up initial crop
-  function onImageLoad(e: React.SyntheticEvent<HTMLImageElement>) {
-    const { width, height } = e.currentTarget;
+  // Handle selected image from picker
+  const handleImageSelected = (file: File) => {
+    setSelectedImage(file);
     
-    // Set initial fixed crop 
-    setCrop(createFixedCenterCrop(width, height));
-    setCompletedCrop(createFixedCenterCrop(width, height));
-  }
-
-  // Handle image selection
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedImage(file);
-      
-      // Create a src URL for the cropper
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImgSrc(reader.result as string);
-        setIsCropping(true); // Show cropping interface
-      };
-      reader.readAsDataURL(file);
-    }
+    // Create preview URL for the cropped image
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
   
-  // Convert the cropped area to a File object
-  const getCroppedImg = useCallback(() => {
-    if (!imgRef.current || !completedCrop) return;
-    
-    const image = imgRef.current;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Set canvas size to be square with the crop width/height
-    const size = completedCrop.width;
-    canvas.width = size;
-    canvas.height = size;
-    
-    // Optional: Create a circular clipping path
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
-    ctx.clip();
-    
-    // Draw the cropped image onto the canvas
-    // With 'px' unit we can use the values directly
-    ctx.drawImage(
-      image,
-      completedCrop.x,
-      completedCrop.y,
-      completedCrop.width,
-      completedCrop.height,
-      0,
-      0,
-      size,
-      size
-    );
-    
-    // Convert canvas to blob
-    return new Promise<File>((resolve) => {
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const file = new File([blob], "cropped-profile.png", { 
-          type: "image/png" 
-        });
-        resolve(file);
-      }, 'image/png');
-    });
-  }, [completedCrop]);
-
-  // Handle saving the cropped image
-  const handleCropSave = async () => {
-    if (!completedCrop) return;
-    
-    try {
-      const croppedFile = await getCroppedImg();
-      if (croppedFile) {
-        setSelectedImage(croppedFile);
-        
-        // Create preview URL for the cropped image
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPreviewUrl(reader.result as string);
-          setIsCropping(false); // Hide cropping interface
-        };
-        reader.readAsDataURL(croppedFile);
-      }
-    } catch (error) {
-      console.error('Error cropping image:', error);
-    }
-  };
-  
-  // Cancel cropping
-  const handleCropCancel = () => {
-    setIsCropping(false);
-    if (!previewUrl) {
-      setSelectedImage(null);
-    }
-  };
-  
-  // Trigger file input click
-  const handleImageClick = () => {
-    fileInputRef.current?.click();
+  // Open image picker
+  const handleChooseImage = () => {
+    setShowImagePicker(true);
   };
   
   function onSubmit(values: ProfileFormValues) {
@@ -220,71 +102,17 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
-      <DialogContent className="w-full h-[100dvh] max-w-full p-0 rounded-none border-none overflow-auto">
-        <div className="p-4 sm:p-6 max-w-3xl mx-auto">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="text-2xl">{isCropping ? "Crop Profile Image" : "Edit Profile"}</DialogTitle>
-            <DialogDescription className="text-base">
-              {isCropping ? "Adjust the crop area for your profile picture" : "Update your personal information"}
-            </DialogDescription>
-          </DialogHeader>
-        
-          {isCropping ? (
-            <div className="space-y-4">
-              <div className="flex flex-col items-center">
-                {!!imgSrc && (
-                  <div className="relative">
-                    <ReactCrop
-                      crop={crop}
-                      locked={true} // Lock the crop box so it can't be moved/resized
-                      onChange={(_, percentCrop) => setCrop(percentCrop)}
-                      onComplete={(c) => setCompletedCrop(c)}
-                      aspect={1}
-                      circularCrop
-                      ruleOfThirds
-                      className="max-h-[350px]"
-                    >
-                      <img
-                        ref={imgRef}
-                        alt="Upload"
-                        src={imgSrc}
-                        onLoad={onImageLoad}
-                        className="max-w-full h-auto"
-                        style={{ 
-                          maxHeight: '350px',
-                          objectFit: 'contain'
-                        }}
-                      />
-                    </ReactCrop>
-                  </div>
-                )}
-                <div className="text-center mt-2 text-sm text-muted-foreground">
-                  Drag the image to adjust position within the circular area.
-                </div>
-              </div>
-              
-              <div className="flex justify-end gap-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={handleCropCancel}
-                  className="flex items-center"
-                >
-                  <X className="mr-2 h-4 w-4" />
-                  Cancel
-                </Button>
-                <Button 
-                  type="button" 
-                  onClick={handleCropSave}
-                  className="flex items-center"
-                >
-                  <Check className="mr-2 h-4 w-4" />
-                  Apply Crop
-                </Button>
-              </div>
-            </div>
-          ) : (
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+        <DialogContent className="w-full h-[100dvh] max-w-full p-0 rounded-none border-none overflow-auto">
+          <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+            <DialogHeader className="mb-6">
+              <DialogTitle className="text-2xl">Edit Profile</DialogTitle>
+              <DialogDescription className="text-base">
+                Update your personal information
+              </DialogDescription>
+            </DialogHeader>
+            
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -324,7 +152,7 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
                   <div className="flex flex-col items-center gap-4">
                     <div 
                       className="relative cursor-pointer group"
-                      onClick={handleImageClick}
+                      onClick={handleChooseImage}
                     >
                       <Avatar className="w-24 h-24">
                         <AvatarImage src={previewUrl ? previewUrl : undefined} alt={user.displayName} />
@@ -337,20 +165,12 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
                       </div>
                     </div>
                     
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                    />
-                    
                     <div className="text-center">
                       <Button 
                         type="button" 
                         variant="outline" 
                         size="sm"
-                        onClick={handleImageClick}
+                        onClick={handleChooseImage}
                       >
                         Choose Image
                       </Button>
@@ -386,9 +206,16 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
                 </DialogFooter>
               </form>
             </Form>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Instagram-style image picker */}
+      <ProfileImagePicker 
+        isOpen={showImagePicker}
+        onClose={() => setShowImagePicker(false)}
+        onImageSelected={handleImageSelected}
+      />
+    </>
   );
 }
