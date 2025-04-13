@@ -1677,6 +1677,108 @@ export class DatabaseStorage implements IStorage {
     return updatedUser;
   }
 
+  // Follower operations
+  async followUser(followerId: number, followedId: number): Promise<void> {
+    // Check that both users exist
+    const follower = await this.getUser(followerId);
+    const followed = await this.getUser(followedId);
+    
+    if (!follower) throw new Error('Follower user not found');
+    if (!followed) throw new Error('Followed user not found');
+    if (followerId === followedId) throw new Error('Users cannot follow themselves');
+
+    // Check if already following
+    const isAlreadyFollowing = await this.isFollowing(followerId, followedId);
+    if (isAlreadyFollowing) return; // Already following, nothing to do
+
+    // Create the follow relationship
+    await db.insert(followers).values({
+      followerId,
+      followedId,
+      createdAt: new Date()
+    });
+  }
+
+  async unfollowUser(followerId: number, followedId: number): Promise<void> {
+    // Delete the follow relationship
+    await db.delete(followers)
+      .where(and(
+        eq(followers.followerId, followerId),
+        eq(followers.followedId, followedId)
+      ));
+  }
+
+  async getFollowers(userId: number): Promise<User[]> {
+    // Check if user exists
+    const user = await this.getUser(userId);
+    if (!user) throw new Error('User not found');
+    
+    // Find all followers of this user
+    const result = await db
+      .select({
+        follower: users
+      })
+      .from(followers)
+      .innerJoin(users, eq(followers.followerId, users.id))
+      .where(eq(followers.followedId, userId));
+    
+    return result.map(row => row.follower);
+  }
+  
+  async getFollowing(userId: number): Promise<User[]> {
+    // Check if user exists
+    const user = await this.getUser(userId);
+    if (!user) throw new Error('User not found');
+    
+    // Find all users this user is following
+    const result = await db
+      .select({
+        followed: users
+      })
+      .from(followers)
+      .innerJoin(users, eq(followers.followedId, users.id))
+      .where(eq(followers.followerId, userId));
+    
+    return result.map(row => row.followed);
+  }
+  
+  async getFollowerCount(userId: number): Promise<number> {
+    // Count how many users follow this user
+    const [result] = await db
+      .select({
+        count: count()
+      })
+      .from(followers)
+      .where(eq(followers.followedId, userId));
+    
+    return result?.count || 0;
+  }
+  
+  async getFollowingCount(userId: number): Promise<number> {
+    // Count how many users this user follows
+    const [result] = await db
+      .select({
+        count: count()
+      })
+      .from(followers)
+      .where(eq(followers.followerId, userId));
+    
+    return result?.count || 0;
+  }
+  
+  async isFollowing(followerId: number, followedId: number): Promise<boolean> {
+    // Check if follower is following followed
+    const [result] = await db
+      .select()
+      .from(followers)
+      .where(and(
+        eq(followers.followerId, followerId),
+        eq(followers.followedId, followedId)
+      ));
+    
+    return !!result;
+  }
+
   // Post operations
   async getPosts(): Promise<(Post & { user: User })[]> {
     const result = await db.select({

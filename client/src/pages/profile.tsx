@@ -88,9 +88,31 @@ const Profile = () => {
     queryKey: ['/api/products'],
   });
   
+  // Fetch follower/following counts
+  const { data: followerCount, isLoading: isLoadingFollowers } = useQuery<number>({
+    queryKey: ['/api/users/followers/count', user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${user?.id}/followers/count`);
+      if (!res.ok) return 0;
+      return res.json();
+    }
+  });
+  
+  const { data: followingCount, isLoading: isLoadingFollowing } = useQuery<number>({
+    queryKey: ['/api/users/following/count', user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${user?.id}/following/count`);
+      if (!res.ok) return 0;
+      return res.json();
+    }
+  });
+
   // Calculate stats for user
   const stats = {
-    followers: "2.4K",
+    followers: isLoadingFollowers ? "..." : (followerCount || 0).toString(),
+    following: isLoadingFollowing ? "..." : (followingCount || 0).toString(),
     revenue: products ? `$${(products.reduce((sum, product) => sum + product.price, 0)).toFixed(2)}` : "$0.00",
     products: products ? products.length.toString() : "0",
   };
@@ -208,7 +230,7 @@ const Profile = () => {
               <div className="text-xs">followers</div>
             </div>
             <div className="flex-1 text-center">
-              <div className="text-base font-semibold">1.2K</div>
+              <div className="text-base font-semibold">{stats.following}</div>
               <div className="text-xs">following</div>
             </div>
           </div>

@@ -81,6 +81,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Follower routes - follow a user
+  app.post("/api/users/:id/follow", async (req, res) => {
+    try {
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const followerId = req.user!.id;
+      const followedId = parseInt(req.params.id);
+      
+      // Cannot follow yourself
+      if (followerId === followedId) {
+        return res.status(400).json({ message: "You cannot follow yourself" });
+      }
+      
+      await storage.followUser(followerId, followedId);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error following user:", error);
+      res.status(500).json({ message: "Failed to follow user" });
+    }
+  });
+  
+  // Unfollow a user
+  app.post("/api/users/:id/unfollow", async (req, res) => {
+    try {
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const followerId = req.user!.id;
+      const followedId = parseInt(req.params.id);
+      
+      await storage.unfollowUser(followerId, followedId);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error unfollowing user:", error);
+      res.status(500).json({ message: "Failed to unfollow user" });
+    }
+  });
+  
+  // Get followers count for a user
+  app.get("/api/users/:id/followers/count", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const count = await storage.getFollowerCount(userId);
+      res.json(count);
+    } catch (error) {
+      console.error("Error getting follower count:", error);
+      res.status(500).json({ message: "Failed to get follower count" });
+    }
+  });
+  
+  // Get following count for a user
+  app.get("/api/users/:id/following/count", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const count = await storage.getFollowingCount(userId);
+      res.json(count);
+    } catch (error) {
+      console.error("Error getting following count:", error);
+      res.status(500).json({ message: "Failed to get following count" });
+    }
+  });
+  
+  // Get followers for a user
+  app.get("/api/users/:id/followers", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const followers = await storage.getFollowers(userId);
+      res.json(followers);
+    } catch (error) {
+      console.error("Error getting followers:", error);
+      res.status(500).json({ message: "Failed to get followers" });
+    }
+  });
+  
+  // Get users a user is following
+  app.get("/api/users/:id/following", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const following = await storage.getFollowing(userId);
+      res.json(following);
+    } catch (error) {
+      console.error("Error getting following:", error);
+      res.status(500).json({ message: "Failed to get following" });
+    }
+  });
+  
+  // Check if a user is following another user
+  app.get("/api/users/:id/is-following/:targetId", async (req, res) => {
+    try {
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const followerId = req.user!.id;
+      const followedId = parseInt(req.params.targetId);
+      
+      const isFollowing = await storage.isFollowing(followerId, followedId);
+      res.json({ isFollowing });
+    } catch (error) {
+      console.error("Error checking follow status:", error);
+      res.status(500).json({ message: "Failed to check follow status" });
+    }
+  });
+  
   // Upload profile image
   app.post("/api/users/:id/profile-image", upload.single('image'), async (req, res) => {
     try {
