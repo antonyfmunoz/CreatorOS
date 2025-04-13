@@ -803,7 +803,7 @@ const Post = ({ post }: PostProps) => {
                             </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium">{user.displayName}</p>
-                              <p className="text-xs text-gray-500 truncate">{user.username}</p>
+                              <p className="text-xs text-gray-500 truncate lowercase">{user.username}</p>
                             </div>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
                               <Send className="h-4 w-4" />
@@ -1008,7 +1008,7 @@ const Post = ({ post }: PostProps) => {
                           </Avatar>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium">{foundUser.displayName}</p>
-                            <p className="text-xs text-gray-500 truncate">{foundUser.username}</p>
+                            <p className="text-xs text-gray-500 truncate lowercase">{foundUser.username}</p>
                           </div>
                         </div>
                       ))}
