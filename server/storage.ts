@@ -1825,6 +1825,18 @@ export class DatabaseStorage implements IStorage {
     if (!result) return undefined;
     return { ...result.post, user: result.user };
   }
+  
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User })[]> {
+    const result = await db.select({
+      post: posts,
+      user: users,
+    }).from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(eq(posts.userId, userId))
+      .orderBy(desc(posts.id)); // Sort newest first
+    
+    return result.map(({ post, user }) => ({ ...post, user }));
+  }
 
   async createPost(insertPost: InsertPost): Promise<Post> {
     const [post] = await db.insert(posts).values(insertPost).returning();
