@@ -26,8 +26,8 @@ import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Upload, X, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop, PixelCrop } from 'react-image-crop';
 
 // Define the form schema
 const profileSchema = z.object({
@@ -68,21 +68,23 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
   });
 
   // Center and create initial crop with aspect ratio
-  const centerAspectCrop = useCallback(
-    (mediaWidth: number, mediaHeight: number, aspect: number) => {
-      return centerCrop(
-        makeAspectCrop(
-          {
-            unit: '%',
-            width: 90,
-          },
-          aspect,
-          mediaWidth,
-          mediaHeight,
-        ),
-        mediaWidth,
-        mediaHeight,
-      )
+  const createFixedCenterCrop = useCallback(
+    (mediaWidth: number, mediaHeight: number) => {
+      // Use the smaller dimension to create a square crop
+      const size = Math.min(mediaWidth, mediaHeight);
+      
+      // Calculate position to center crop
+      const x = (mediaWidth - size) / 2;
+      const y = (mediaHeight - size) / 2;
+      
+      // Create fixed crop with absolute position
+      return {
+        unit: 'px',
+        x,
+        y,
+        width: size,
+        height: size,
+      } as Crop;
     },
     [],
   );
@@ -90,8 +92,10 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
   // When image loads, set up initial crop
   function onImageLoad(e: React.SyntheticEvent<HTMLImageElement>) {
     const { width, height } = e.currentTarget;
-    // Initialize with a centered circular crop
-    setCrop(centerAspectCrop(width, height, 1));
+    
+    // Set initial fixed crop 
+    setCrop(createFixedCenterCrop(width, height));
+    setCompletedCrop(createFixedCenterCrop(width, height));
   }
 
   // Handle image selection
@@ -118,26 +122,29 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Calculate pixel values from percentages
-    const scaleX = image.naturalWidth / 100;
-    const scaleY = image.naturalHeight / 100;
     
-    // Set canvas size to the cropped size
-    canvas.width = completedCrop.width * scaleX;
-    canvas.height = completedCrop.height * scaleY;
+    // Set canvas size to be square with the crop width/height
+    const size = completedCrop.width;
+    canvas.width = size;
+    canvas.height = size;
+    
+    // Optional: Create a circular clipping path
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+    ctx.clip();
     
     // Draw the cropped image onto the canvas
+    // With 'px' unit we can use the values directly
     ctx.drawImage(
       image,
-      completedCrop.x * scaleX,
-      completedCrop.y * scaleY,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY,
+      completedCrop.x,
+      completedCrop.y,
+      completedCrop.width,
+      completedCrop.height,
       0,
       0,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY
+      size,
+      size
     );
     
     // Convert canvas to blob
@@ -227,25 +234,33 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
             <div className="space-y-4">
               <div className="flex flex-col items-center">
                 {!!imgSrc && (
-                  <ReactCrop
-                    crop={crop}
-                    onChange={(c) => setCrop(c)}
-                    onComplete={(c) => setCompletedCrop(c)}
-                    aspect={1}
-                    circularCrop
-                    className="max-h-[300px] object-contain"
-                  >
-                    <img
-                      ref={imgRef}
-                      alt="Upload"
-                      src={imgSrc}
-                      onLoad={onImageLoad}
-                      className="max-w-full h-auto"
-                    />
-                  </ReactCrop>
+                  <div className="relative">
+                    <ReactCrop
+                      crop={crop}
+                      locked={true} // Lock the crop box so it can't be moved/resized
+                      onChange={(_, percentCrop) => setCrop(percentCrop)}
+                      onComplete={(c) => setCompletedCrop(c)}
+                      aspect={1}
+                      circularCrop
+                      ruleOfThirds
+                      className="max-h-[350px]"
+                    >
+                      <img
+                        ref={imgRef}
+                        alt="Upload"
+                        src={imgSrc}
+                        onLoad={onImageLoad}
+                        className="max-w-full h-auto"
+                        style={{ 
+                          maxHeight: '350px',
+                          objectFit: 'contain'
+                        }}
+                      />
+                    </ReactCrop>
+                  </div>
                 )}
                 <div className="text-center mt-2 text-sm text-muted-foreground">
-                  Drag to reposition. Resize using the corners.
+                  Drag the image to adjust position within the circular area.
                 </div>
               </div>
               
