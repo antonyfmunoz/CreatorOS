@@ -1597,6 +1597,82 @@ export class DatabaseStorage implements IStorage {
     
     return updatedPost;
   }
+  
+  async updatePost(id: number, content: string, imageUrl?: string): Promise<Post> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new Error(`Post with id ${id} not found`);
+    
+    const updateData: Partial<Post> = { content };
+    if (imageUrl !== undefined) {
+      updateData.imageUrl = imageUrl;
+    }
+    
+    const [updatedPost] = await db
+      .update(posts)
+      .set(updateData)
+      .where(eq(posts.id, id))
+      .returning();
+    
+    return updatedPost;
+  }
+  
+  async deletePost(id: number): Promise<void> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new Error(`Post with id ${id} not found`);
+    
+    // Delete the post (cascade will handle comments deletion due to foreign key constraint)
+    await db.delete(posts).where(eq(posts.id, id));
+  }
+  
+  async savePost(userId: number, postId: number): Promise<void> {
+    // Check if post exists
+    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
+    if (!post) throw new Error(`Post with id ${postId} not found`);
+    
+    // Check if user exists
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) throw new Error(`User with id ${userId} not found`);
+    
+    // Check if this post is already saved by this user
+    const [existingSave] = await db
+      .select()
+      .from(savedPosts)
+      .where(and(
+        eq(savedPosts.userId, userId),
+        eq(savedPosts.postId, postId)
+      ));
+    
+    // If the post is already saved, do nothing
+    if (existingSave) return;
+    
+    // Insert into savedPosts table
+    await db.insert(savedPosts).values({
+      userId,
+      postId
+    });
+  }
+  
+  async unsavePost(userId: number, postId: number): Promise<void> {
+    // Delete from savedPosts where userId and postId match
+    await db.delete(savedPosts)
+      .where(and(
+        eq(savedPosts.userId, userId),
+        eq(savedPosts.postId, postId)
+      ));
+  }
+  
+  async getSavedPosts(userId: number): Promise<(Post & { user: User })[]> {
+    const result = await db.select({
+      post: posts,
+      user: users,
+    }).from(savedPosts)
+      .innerJoin(posts, eq(savedPosts.postId, posts.id))
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(eq(savedPosts.userId, userId))
+      .orderBy(desc(savedPosts.id));
+    
+    return result.map(({ post, user }) => ({ ...post, user }));
+  }
 
   // Comment operations
   async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {

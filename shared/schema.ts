@@ -353,11 +353,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   relatedToNotifications: many(notifications, { relationName: "related_user" }),
   conversationParticipants: many(conversationParticipants),
   sentMessages: many(directMessages, { relationName: "sender" }),
+  savedPosts: many(savedPosts),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, { fields: [posts.userId], references: [users.id] }),
   comments: many(comments),
+  savedByUsers: many(savedPosts),
+}));
+
+export const savedPostsRelations = relations(savedPosts, ({ one }) => ({
+  user: one(users, { fields: [savedPosts.userId], references: [users.id] }),
+  post: one(posts, { fields: [savedPosts.postId], references: [posts.id] }),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -487,3 +494,6 @@ export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;
 
 export type Story = typeof stories.$inferSelect;
 export type InsertStory = z.infer<typeof insertStorySchema>;
+
+export type SavedPost = typeof savedPosts.$inferSelect;
+export type InsertSavedPost = z.infer<typeof insertSavedPostSchema>;
