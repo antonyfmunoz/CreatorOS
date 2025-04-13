@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { 
   Dialog,
   DialogContent,
@@ -20,10 +20,12 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Define the form schema
 const profileSchema = z.object({
@@ -31,7 +33,6 @@ const profileSchema = z.object({
     message: "Display name must be at least 2 characters.",
   }),
   bio: z.string().optional(),
-  profileImageUrl: z.string().url({ message: "Please provide a valid URL." }).optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -43,7 +44,10 @@ interface ProfileEditFormProps {
 }
 
 export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFormProps) {
-  const { updateProfileMutation } = useAuth();
+  const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(user.profileImageUrl);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Set up form with default values from user data
   const form = useForm<ProfileFormValues>({
@@ -51,19 +55,50 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
     defaultValues: {
       displayName: user.displayName,
       bio: user.bio || "",
-      profileImageUrl: user.profileImageUrl || "",
     },
   });
 
+  // Handle image selection
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedImage(file);
+      
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  // Trigger file input click
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+  
   function onSubmit(values: ProfileFormValues) {
+    // First update the profile text fields
     updateProfileMutation.mutate({
       id: user.id,
       displayName: values.displayName,
       bio: values.bio || null,
-      profileImageUrl: values.profileImageUrl || null,
     }, {
       onSuccess: () => {
-        onClose();
+        // If there's an image selected, upload it after updating profile
+        if (selectedImage) {
+          uploadProfileImageMutation.mutate({
+            id: user.id,
+            imageFile: selectedImage
+          }, {
+            onSuccess: () => {
+              onClose();
+            }
+          });
+        } else {
+          onClose();
+        }
       }
     });
   }
@@ -112,34 +147,62 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
               )}
             />
             
-            <FormField
-              control={form.control}
-              name="profileImageUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Profile Image URL</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://example.com/image.jpg" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="space-y-2">
+              <FormLabel>Profile Image</FormLabel>
+              <div className="flex flex-col items-center gap-4">
+                <div 
+                  className="relative cursor-pointer group"
+                  onClick={handleImageClick}
+                >
+                  <Avatar className="w-24 h-24">
+                    <AvatarImage src={previewUrl ? previewUrl : undefined} alt={user.displayName} />
+                    <AvatarFallback className="text-xl">
+                      {user.displayName?.charAt(0) || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Upload className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                />
+                
+                <div className="text-center">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleImageClick}
+                  >
+                    Choose Image
+                  </Button>
+                  <FormDescription className="text-xs mt-1">
+                    Tap to upload a profile picture from your device
+                  </FormDescription>
+                </div>
+              </div>
+            </div>
             
             <DialogFooter>
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={onClose}
-                disabled={updateProfileMutation.isPending}
+                disabled={updateProfileMutation.isPending || uploadProfileImageMutation.isPending}
               >
                 Cancel
               </Button>
               <Button 
                 type="submit"
-                disabled={updateProfileMutation.isPending}
+                disabled={updateProfileMutation.isPending || uploadProfileImageMutation.isPending}
               >
-                {updateProfileMutation.isPending ? (
+                {updateProfileMutation.isPending || uploadProfileImageMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...

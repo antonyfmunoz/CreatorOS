@@ -16,6 +16,7 @@ type AuthContextType = {
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<SelectUser, Error, InsertUser>;
   updateProfileMutation: UseMutationResult<SelectUser, Error, UpdateProfileData>;
+  uploadProfileImageMutation: UseMutationResult<{ user: SelectUser, imageUrl: string }, Error, UploadProfileImageData>;
 };
 
 type LoginData = Pick<InsertUser, "username" | "password">;
@@ -25,6 +26,11 @@ type UpdateProfileData = {
   displayName?: string;
   bio?: string;
   profileImageUrl?: string;
+};
+
+type UploadProfileImageData = {
+  id: number;
+  imageFile: File;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -111,6 +117,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     },
   });
+  
+  const uploadProfileImageMutation = useMutation({
+    mutationFn: async (data: UploadProfileImageData) => {
+      const { id, imageFile } = data;
+      
+      // Create form data for the file upload
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      
+      // Use fetch directly as the apiRequest helper doesn't support FormData
+      const res = await fetch(`/api/users/${id}/profile-image`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to upload image");
+      }
+      
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      // Update user in cache with the image URL that came back
+      queryClient.setQueryData(["/api/user"], data.user);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Profile image updated",
+        description: "Your profile image has been successfully updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Image upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   return (
     <AuthContext.Provider
@@ -122,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logoutMutation,
         registerMutation,
         updateProfileMutation,
+        uploadProfileImageMutation,
       }}
     >
       {children}
