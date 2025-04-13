@@ -50,6 +50,7 @@ export interface IStorage {
   // Post operations
   getPosts(): Promise<(Post & { user: User })[]>;
   getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
+  getPostsByUserId(userId: number): Promise<(Post & { user: User })[]>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
   deletePost(id: number): Promise<void>;
@@ -731,6 +732,17 @@ export class MemStorage implements IStorage {
     
     const user = this.users.get(post.userId)!;
     return { ...post, user };
+  }
+  
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User })[]> {
+    // Filter posts by userId and sort by ID in descending order (newest first)
+    return Array.from(this.posts.values())
+      .filter(post => post.userId === userId)
+      .sort((a, b) => b.id - a.id)
+      .map(post => {
+        const user = this.users.get(post.userId)!;
+        return { ...post, user };
+      });
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {

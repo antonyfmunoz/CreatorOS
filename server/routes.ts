@@ -393,6 +393,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch post count" });
     }
   });
+  
+  // Get posts by user ID
+  app.get("/api/users/:userId/posts", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const type = req.query.type as string | undefined;
+      const posts = await storage.getPostsByUserId(userId);
+      
+      // Filter by type if specified
+      if (type) {
+        const filteredPosts = posts.filter(post => {
+          if (type === 'photo' && post.imageUrl) return true;
+          if (type === 'text' && !post.imageUrl) return true;
+          return false;
+        });
+        return res.json(filteredPosts);
+      }
+      
+      res.json(posts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user posts" });
+    }
+  });
 
   app.post("/api/comments", async (req, res) => {
     try {
