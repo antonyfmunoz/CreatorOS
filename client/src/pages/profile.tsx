@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppStore } from "@/lib/stores";
-import { Settings, LogOut, LogIn, User as UserIcon, GridIcon, BarChart3Icon, BookmarkIcon } from "lucide-react";
+import { Settings, LogOut, LogIn, User as UserIcon, GridIcon, BarChart3Icon, BookmarkIcon, UserPlus, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StatCard from "@/components/profile/StatCard";
@@ -11,11 +11,13 @@ import DocumentEditor from "@/components/profile/DocumentEditor";
 import ProfileEditForm from "@/components/profile/ProfileEditForm";
 import EditProfilePage from "@/components/profile/EditProfilePage";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Product } from "@/types";
 import { User } from "@shared/schema";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
