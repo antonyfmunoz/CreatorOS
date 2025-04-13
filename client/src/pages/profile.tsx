@@ -197,7 +197,7 @@ const Profile = () => {
     followers: isLoadingFollowers ? "..." : (followerCount || 0).toString(),
     following: isLoadingFollowing ? "..." : (followingCount || 0).toString(),
     revenue: products ? `$${(products.reduce((sum, product) => sum + product.price, 0)).toFixed(2)}` : "$0.00",
-    products: products ? products.length.toString() : "0",
+    posts: isLoadingPostCount ? "..." : (postCount?.count || 0).toString(),
   };
   
   const handleLogout = () => {
@@ -305,7 +305,7 @@ const Profile = () => {
           {/* Stats in 3 columns */}
           <div className="flex flex-1 items-center">
             <div className="flex-1 text-center">
-              <div className="text-base font-semibold">{stats.products}</div>
+              <div className="text-base font-semibold">{stats.posts}</div>
               <div className="text-xs">posts</div>
             </div>
             <div 
