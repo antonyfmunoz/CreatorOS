@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import ProfileEditForm from "@/components/profile/ProfileEditForm";
 import EditProfilePage from "@/components/profile/EditProfilePage";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -279,6 +278,19 @@ const Profile = () => {
                 <BookmarkIcon className="mr-2 h-4 w-4" /> Saved
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setLocation("/revenue")}>
+                <DollarSign className="mr-2 h-4 w-4" /> Revenue
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation("/contacts")}>
+                <UsersIcon className="mr-2 h-4 w-4" /> Contacts
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation("/create-product")}>
+                <ShoppingBag className="mr-2 h-4 w-4" /> Create Product
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation("/documents")}>
+                <FileText className="mr-2 h-4 w-4" /> Documents
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-500">
                 <LogOut className="mr-2 h-4 w-4" /> Logout
               </DropdownMenuItem>
@@ -399,31 +411,14 @@ const Profile = () => {
       {/* Placeholder for future tab content - empty section */}
       <div className="border-t mt-6 mb-6"></div>
       
-      {/* Only show these sections for the user's own profile */}
-      {isOwnProfile && (
-        <>
-          {/* Revenue Chart */}
-          <RevenueChart userId={user?.id || 1} />
-          
-          {/* CRM Contact List */}
-          <ContactList userId={user?.id || 1} />
-          
-          {/* Create New Product */}
-          <ProductForm />
-          
-          {/* Document Editor */}
-          <DocumentEditor />
-          
-          {/* Instagram-style Edit Profile Page */}
-          {isEditProfileOpen && user && (
-            <div className="fixed inset-0 bg-white z-50">
-              <EditProfilePage 
-                user={user} 
-                onClose={() => setIsEditProfileOpen(false)} 
-              />
-            </div>
-          )}
-        </>
+      {/* Only show the edit profile page for the user's own profile */}
+      {isOwnProfile && isEditProfileOpen && user && (
+        <div className="fixed inset-0 bg-white z-50">
+          <EditProfilePage 
+            user={user} 
+            onClose={() => setIsEditProfileOpen(false)} 
+          />
+        </div>
       )}
     </div>
   );
