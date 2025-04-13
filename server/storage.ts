@@ -15,12 +15,13 @@ import {
   conversations, type Conversation, type InsertConversation,
   conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
   directMessages, type DirectMessage, type InsertDirectMessage,
-  stories, type Story, type InsertStory
+  stories, type Story, type InsertStory,
+  savedPosts, type SavedPost, type InsertSavedPost
 } from "@shared/schema";
 import { db } from "./db";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
 import crypto from "crypto";
 
 // Storage interface for the application

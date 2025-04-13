@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useAppStore } from "@/lib/stores";
-import { Settings } from "lucide-react";
+import { Settings, LogOut, LogIn, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StatCard from "@/components/profile/StatCard";
@@ -7,33 +8,55 @@ import RevenueChart from "@/components/profile/RevenueChart";
 import ContactList from "@/components/profile/ContactList";
 import ProductForm from "@/components/profile/ProductForm";
 import DocumentEditor from "@/components/profile/DocumentEditor";
+import ProfileEditForm from "@/components/profile/ProfileEditForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { User, Product } from "@/types";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Profile = () => {
+  const [, setLocation] = useLocation();
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const { user: currentUser, isLoading: isAuthLoading, logoutMutation } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
+  
+  // Determine if we're looking at the current user's profile
+  const isOwnProfile = !params.id && !params.username;
+  
   let queryKey: any[] = ['/api/users'];
+  let profileUser = currentUser;
   
   // Handle different routing patterns:
   // 1. /profile/:id - numeric ID-based route
   // 2. /user/:username - username-based route (Instagram style)
-  // 3. /profile (no params) - default to current user profile
+  // 3. /profile (no params) - current user profile
   if (params.id) {
     // ID-based route
     const userId = parseInt(params.id);
     queryKey = ['/api/users', userId];
+    profileUser = null; // Will be fetched
   } else if (params.username) {
     // Username-based route (Instagram style)
     queryKey = ['/api/users/by-username', params.username];
-  } else {
-    // Default to user ID 1 if no parameters
-    queryKey = ['/api/users', 1];
+    profileUser = null; // Will be fetched
+  } else if (!currentUser && !isAuthLoading) {
+    // Not logged in and viewing own profile - redirect to auth
+    setLocation("/auth");
+    return null;
   }
   
-  const { data: user, isLoading: isLoadingUser } = useQuery<User>({
+  // Only fetch profile if it's not the current user
+  const { data: fetchedUser, isLoading: isLoadingUser } = useQuery<User>({
     queryKey: queryKey,
+    enabled: !isOwnProfile, // Only run query if not viewing own profile
     queryFn: async () => {
       let url = '/api/users';
       
@@ -48,8 +71,6 @@ const Profile = () => {
         const user = users.find((u: User) => u.username === params.username);
         if (!user) throw new Error('User not found');
         return user;
-      } else {
-        url = '/api/users/1'; // Default user
       }
       
       const res = await fetch(url);
@@ -57,6 +78,9 @@ const Profile = () => {
       return res.json();
     }
   });
+  
+  // Use either the fetched user or current user based on route
+  const user = isOwnProfile ? currentUser : fetchedUser;
   
   const { data: products, isLoading: isLoadingProducts } = useQuery<Product[]>({
     queryKey: ['/api/products'],
@@ -69,7 +93,15 @@ const Profile = () => {
     products: products ? products.length.toString() : "0",
   };
   
-  if (isLoadingUser) {
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
+  
+  const handleLogin = () => {
+    setLocation("/auth");
+  };
+  
+  if (isAuthLoading || (isLoadingUser && !isOwnProfile)) {
     return (
       <div className="px-4 pt-4 pb-20">
         <div className="flex items-center mb-6">
@@ -98,6 +130,26 @@ const Profile = () => {
     );
   }
   
+  // Handle case where we are not logged in
+  if (!currentUser && !user) {
+    return (
+      <div className="px-4 pt-4 pb-20 flex flex-col items-center justify-center min-h-[70vh]">
+        <div className="text-center mb-6">
+          <Avatar className="w-20 h-20 mx-auto mb-4">
+            <AvatarFallback>
+              <UserIcon className="h-10 w-10" />
+            </AvatarFallback>
+          </Avatar>
+          <h1 className="text-2xl font-bold mb-2">Sign In Required</h1>
+          <p className="text-gray-500 mb-8">Please sign in to view your profile</p>
+          <Button onClick={handleLogin} className="mx-auto">
+            <LogIn className="mr-2 h-4 w-4" /> Sign In
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="px-4 pt-4 pb-20">
       {/* Profile Header */}
@@ -110,11 +162,27 @@ const Profile = () => {
         </Avatar>
         <div>
           <h1 className="text-xl font-bold">{user?.displayName}</h1>
-          <p className="text-gray-500">{user?.bio}</p>
+          <p className="text-gray-500">{user?.bio || "No bio yet"}</p>
         </div>
-        <Button variant="outline" size="icon" className="ml-auto p-2 rounded-full bg-gray-100">
-          <Settings className="h-5 w-5" />
-        </Button>
+        
+        {isOwnProfile ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="ml-auto p-2 rounded-full bg-gray-100">
+                <Settings className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setIsEditProfileOpen(true)}>
+                Edit Profile
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-red-500">
+                <LogOut className="mr-2 h-4 w-4" /> Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       
       {/* Dashboard Stats */}
@@ -124,17 +192,31 @@ const Profile = () => {
         <StatCard title="Products" value={stats.products} />
       </div>
       
-      {/* Revenue Chart */}
-      <RevenueChart userId={user?.id || 1} />
-      
-      {/* CRM Contact List */}
-      <ContactList userId={user?.id || 1} />
-      
-      {/* Create New Product */}
-      <ProductForm />
-      
-      {/* Document Editor */}
-      <DocumentEditor />
+      {/* Only show these sections for the user's own profile */}
+      {isOwnProfile && (
+        <>
+          {/* Revenue Chart */}
+          <RevenueChart userId={user?.id || 1} />
+          
+          {/* CRM Contact List */}
+          <ContactList userId={user?.id || 1} />
+          
+          {/* Create New Product */}
+          <ProductForm />
+          
+          {/* Document Editor */}
+          <DocumentEditor />
+          
+          {/* Profile Edit Dialog */}
+          {isEditProfileOpen && user && (
+            <ProfileEditForm 
+              user={user} 
+              isOpen={isEditProfileOpen} 
+              onClose={() => setIsEditProfileOpen(false)} 
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };
