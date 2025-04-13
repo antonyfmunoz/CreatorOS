@@ -12,7 +12,7 @@ import AuthPage from "@/pages/auth-page";
 import SavedPostsPage from "@/pages/saved-posts";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
-import { useAppStore, useAIChatStore, useNotifications, useAuthStore } from "@/lib/stores";
+import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
 import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";

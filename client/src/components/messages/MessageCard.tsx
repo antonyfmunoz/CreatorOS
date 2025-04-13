@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, Reply, Edit, Trash2, X, Check, MoreHorizontal } from 'lucide-react';
-import { useAuthStore, useMessaging, useAppStore } from '@/lib/stores';
+import { useMessaging, useAppStore } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 import { useLocation } from 'wouter';
 import { DirectMessage, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +32,7 @@ interface MessageCardProps {
 }
 
 const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { 
     reactToMessage, 

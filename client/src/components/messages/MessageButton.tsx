@@ -3,11 +3,12 @@ import { MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import MessagePanel from './MessagePanel';
-import { useMessaging, useAuthStore } from '@/lib/stores';
+import { useMessaging } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 
 const MessageButton = () => {
   const { isMessagePanelOpen, toggleMessagePanel, closeMessagePanel, conversations } = useMessaging();
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   
   const unreadCount = conversations.reduce((total, conv) => total + (conv.unreadCount || 0), 0);
   

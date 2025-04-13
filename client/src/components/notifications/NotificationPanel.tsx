@@ -1,7 +1,8 @@
 import { X, Check, Trash2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useNotifications, useAuthStore } from '@/lib/stores';
+import { useNotifications } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 import { Avatar } from '@/components/ui/avatar';
 import { AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Link } from 'wouter';
@@ -31,7 +32,7 @@ const NotificationPanel = () => {
     deleteAllNotifications 
   } = useNotifications();
   
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   
   const getNotificationIcon = (type: string) => {
     switch (type) {

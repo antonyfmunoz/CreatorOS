@@ -4,7 +4,8 @@ import {
   MoreHorizontal, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuthStore, useMessaging } from '@/lib/stores';
+import { useMessaging } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';

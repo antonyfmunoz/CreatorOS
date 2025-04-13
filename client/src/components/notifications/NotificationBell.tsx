@@ -3,11 +3,12 @@ import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import NotificationPanel from './NotificationPanel';
-import { useNotifications, useAuthStore } from '@/lib/stores';
+import { useNotifications } from '@/lib/stores';
+import { useAuth } from '@/hooks/use-auth';
 
 const NotificationBell = () => {
   const { isNotificationPanelOpen, toggleNotificationPanel, closeNotificationPanel, unreadCount, fetchNotifications } = useNotifications();
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   
   // Fetch notifications when user is available
   useEffect(() => {
