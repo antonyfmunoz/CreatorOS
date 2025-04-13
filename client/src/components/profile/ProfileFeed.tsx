@@ -87,12 +87,12 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="text">Text</TabsTrigger>
-          <TabsTrigger value="photo">Photos</TabsTrigger>
-          <TabsTrigger value="audio">Audio</TabsTrigger>
-          <TabsTrigger value="video">Video</TabsTrigger>
+        <TabsList className="flex w-full overflow-x-auto">
+          <TabsTrigger value="all" className="flex-1 px-2 min-w-0">All</TabsTrigger>
+          <TabsTrigger value="text" className="flex-1 px-2 min-w-0">Text</TabsTrigger>
+          <TabsTrigger value="photo" className="flex-1 px-2 min-w-0">Photos</TabsTrigger>
+          <TabsTrigger value="audio" className="flex-1 px-2 min-w-0">Audio</TabsTrigger>
+          <TabsTrigger value="video" className="flex-1 px-2 min-w-0">Video</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-0">
@@ -162,14 +162,14 @@ function renderPosts(
         <h3 className="text-lg font-medium">No posts yet</h3>
         <p className="text-muted-foreground text-sm mt-1">
           {type === "photo"
-            ? `@${username} hasn't shared any photos`
+            ? `@${username.toLowerCase()} hasn't shared any photos`
             : type === "text"
-            ? `@${username} hasn't written any text posts`
+            ? `@${username.toLowerCase()} hasn't written any text posts`
             : type === "audio"
-            ? `@${username} hasn't shared any audio posts`
+            ? `@${username.toLowerCase()} hasn't shared any audio posts`
             : type === "video"
-            ? `@${username} hasn't shared any video posts`
-            : `When @${username} shares posts, you'll see them here`}
+            ? `@${username.toLowerCase()} hasn't shared any video posts`
+            : `When @${username.toLowerCase()} shares posts, you'll see them here`}
         </p>
       </div>
     );
@@ -206,7 +206,7 @@ const PostItem = ({ post }: { post: PostType }) => {
             >
               {post.user.displayName}
             </p>
-            <p className="text-gray-500 text-sm ml-1">@{post.user.username} · {formattedDate}</p>
+            <p className="text-gray-500 text-sm ml-1">@{post.user.username.toLowerCase()} · {formattedDate}</p>
           </div>
           <p className="mt-1 text-sm">{post.content}</p>
           
