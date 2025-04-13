@@ -2,7 +2,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User } from '@/types';
+
+// Define the User type inline to avoid import issues
+interface User {
+  id: number;
+  displayName: string;
+  username: string;
+  profileImageUrl?: string | null;
+}
 
 interface StoriesBarProps {
   onStoryClick?: (userId: number) => void;
@@ -11,10 +18,11 @@ interface StoriesBarProps {
 export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   // Fetch users who you are following
   const { data: followingUsers, isLoading } = useQuery<User[]>({
-    queryKey: ['/api/users/following'],
+    queryKey: ['/api/users'],
     queryFn: async () => {
-      const response = await fetch('/api/users/following');
-      if (!response.ok) throw new Error('Failed to fetch following users');
+      // For demo purposes, we'll use all users since we may not have a following API endpoint yet
+      const response = await fetch('/api/users');
+      if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     }
   });

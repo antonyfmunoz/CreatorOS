@@ -219,6 +219,7 @@ const Stories = () => {
               key={user.id} 
               className="flex flex-col items-center cursor-pointer" 
               onClick={() => handleStoryClick(user.id)}
+              data-user-id={user.id}
             >
               <div className={`w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-0.5 ${
                 storiesByUser && storiesByUser[user.id] ? 'opacity-100' : 'opacity-50'

@@ -3,27 +3,53 @@ import { Post as PostType } from "@/types";
 import Stories from "@/components/explore/Stories";
 import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
+
+// Import new feed components
+import { Tabs, TabType } from "@/components/feed/Tabs";
+import { FilterDropdown, ContentFilterType } from "@/components/feed/FilterDropdown";
+import { VoicePostCard } from "@/components/feed/VoicePostCard";
+import { FloatingActionButton } from "@/components/feed/FloatingActionButton";
+import { StoriesBar } from "@/components/feed/StoriesBar";
 
 const Explore = () => {
   const queryClient = useQueryClient();
   const { targetPostId, clearTargetPost } = useAppStore();
   const { toast } = useToast();
   
+  // Feed Tab State
+  const [activeTab, setActiveTab] = useState<TabType>("forYou");
+  
+  // Content Filter State
+  const [contentFilter, setContentFilter] = useState<ContentFilterType>("all");
+  
   // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
-    queryKey: ["/api/posts"],
+    queryKey: ["/api/posts", activeTab, contentFilter],
     // Set a longer staleTime to prevent unnecessary refetching
     staleTime: 1000 * 60 * 5, // 5 minutes
     // Make sure posts are stable even on refresh
     select: (data) => {
       if (!data) return [];
-      // Create a copy and sort by ID to ensure consistent order
-      return [...data].sort((a, b) => b.id - a.id);
+      // Filter posts based on selected content type
+      let filteredPosts = [...data];
+      
+      if (contentFilter === "photo") {
+        filteredPosts = filteredPosts.filter(post => post.imageUrl);
+      } else if (contentFilter === "audio") {
+        filteredPosts = filteredPosts.filter(post => post.audioUrl);
+      } else if (contentFilter === "video") {
+        filteredPosts = filteredPosts.filter(post => post.videoUrl);
+      } else if (contentFilter === "thread") {
+        filteredPosts = filteredPosts.filter(post => !post.imageUrl && !post.audioUrl && !post.videoUrl);
+      }
+      
+      // Sort by ID to ensure consistent order
+      return filteredPosts.sort((a, b) => b.id - a.id);
     },
   });
   
@@ -34,14 +60,18 @@ const Explore = () => {
       setTimeout(() => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
-          // Get the top navbar and stories container
-          const navbarElement = document.querySelector('.flex.justify-between.items-center.mb-6');
+          // Get the top navbar and tabs/stories container
+          const headerElement = document.querySelector('.sticky.top-0');
+          const tabsElement = document.querySelector('.feed-tabs');
           const storiesElement = document.querySelector('.stories-container');
           
-          // Calculate the offset (navbar + stories + some padding)
+          // Calculate the offset (header + tabs + stories + padding)
           let offset = 20; // Start with some minimal padding
-          if (navbarElement) {
-            offset += navbarElement.clientHeight;
+          if (headerElement) {
+            offset += headerElement.clientHeight;
+          }
+          if (tabsElement) {
+            offset += tabsElement.clientHeight;
           }
           if (storiesElement) {
             offset += storiesElement.clientHeight;
@@ -68,7 +98,6 @@ const Explore = () => {
           }, 2000);
         } else {
           // If post not found, just clear the target post ID without showing a toast
-          // This removes the toast notification when a post can't be found
           console.log('Post not found in feed:', targetPostId);
           clearTargetPost();
         }
@@ -77,28 +106,49 @@ const Explore = () => {
   }, [isLoading, posts, targetPostId, clearTargetPost]);
 
   // Sort posts by ID in descending order to maintain consistent position
-  // This ensures posts don't jump around when comments are added/removed
   const sortedPosts = useMemo(() => {
     if (!posts) return [];
-    // Create a copy of the posts array to avoid modifying the original
     return [...posts].sort((a, b) => b.id - a.id);
   }, [posts]);
 
+  // Callback for story click in the following tab
+  const handleStoryClick = (userId: number) => {
+    // Use existing Stories component functionality
+    const storyElement = document.querySelector(`.stories-container [data-user-id="${userId}"]`) as HTMLElement;
+    if (storyElement) {
+      storyElement.click();
+    }
+  };
+
   return (
-    <div className="px-4 pt-4 pb-20">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">CreatorOS</h1>
-        <div className="flex space-x-3">
+    <div className="pb-20">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
+        <span className="text-xl font-semibold text-black dark:text-white">CreatorOS</span>
+        <div className="flex items-center space-x-3">
+          <FilterDropdown selectedFilter={contentFilter} onSelect={setContentFilter} />
           <NotificationBell />
           <MessageButton />
         </div>
+      </header>
+
+      {/* Feed Tabs */}
+      <div className="feed-tabs">
+        <Tabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
-      {/* Stories */}
-      <Stories />
+      {/* Stories Bar - Only shown in Following tab */}
+      {activeTab === "following" && (
+        <StoriesBar onStoryClick={handleStoryClick} />
+      )}
+
+      {/* Original Stories component for compatibility */}
+      <div className="hidden">
+        <Stories />
+      </div>
 
       {/* Content Feed */}
-      <div className="space-y-6">
+      <div className="space-y-6 px-4 mt-4">
         {isLoading ? (
           // Loading skeletons
           Array(3)
@@ -127,16 +177,46 @@ const Explore = () => {
               </div>
             ))
         ) : (
-          sortedPosts.map((post) => <Post key={post.id} post={post} />)
-        )}
-
-        {posts?.length === 0 && !isLoading && (
-          <div className="text-center py-10">
-            <h3 className="text-xl font-medium mb-2">No posts yet</h3>
-            <p className="text-gray-500">Start following creators to see posts in your feed</p>
-          </div>
+          <>
+            {/* Example Voice Post Card - we'll show this only for demonstration */}
+            {contentFilter === "audio" && (
+              <VoicePostCard
+                user={{
+                  id: 1,
+                  name: "Voice Demo",
+                  username: "voicedemo",
+                  avatar: "https://avatars.githubusercontent.com/u/1?v=4"
+                }}
+                audioUrl="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"
+                transcript="This is an example voice post with a transcript that can be toggled. The actual audio is from a free source for demonstration purposes."
+                createdAt={new Date().toISOString()}
+                likes={42}
+                comments={7}
+              />
+            )}
+            
+            {/* Regular post listing */}
+            {sortedPosts.map((post) => <Post key={post.id} post={post} />)}
+            
+            {/* Empty state */}
+            {posts?.length === 0 && !isLoading && (
+              <div className="text-center py-10">
+                <h3 className="text-xl font-medium mb-2">No posts yet</h3>
+                <p className="text-gray-500">
+                  {activeTab === "following" 
+                    ? "Start following creators to see posts in your feed" 
+                    : contentFilter !== "all"
+                      ? `No ${contentFilter} content available`
+                      : "We'll show posts here as they become available"}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
+      
+      {/* Floating Action Button */}
+      <FloatingActionButton />
     </div>
   );
 };
