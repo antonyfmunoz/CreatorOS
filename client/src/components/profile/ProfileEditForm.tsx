@@ -46,7 +46,7 @@ interface ProfileEditFormProps {
 export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFormProps) {
   const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(user.profileImageUrl);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.profileImageUrl || undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Set up form with default values from user data
