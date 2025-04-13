@@ -413,16 +413,16 @@ const MessagePanel = () => {
           // Tabs for conversations and search
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="px-4 pt-2">
-              <TabsList className="w-full">
-                <TabsTrigger value="conversations" className="flex-1">
+              <TabsList className="w-full flex gap-1.5">
+                <TabsTrigger value="conversations" className="flex-1 text-sm">
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Conversations
                 </TabsTrigger>
-                <TabsTrigger value="search" className="flex-1">
+                <TabsTrigger value="search" className="flex-1 text-sm">
                   <Search className="h-4 w-4 mr-2" />
                   Search
                 </TabsTrigger>
-                <TabsTrigger value="create-group" className="flex-1">
+                <TabsTrigger value="create-group" className="flex-1 text-sm">
                   <Users className="h-4 w-4 mr-2" />
                   Group
                 </TabsTrigger>
