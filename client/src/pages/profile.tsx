@@ -8,7 +8,7 @@ import RevenueChart from "@/components/profile/RevenueChart";
 import ContactList from "@/components/profile/ContactList";
 import ProductForm from "@/components/profile/ProductForm";
 import DocumentEditor from "@/components/profile/DocumentEditor";
-import InstagramEditProfile from "@/components/profile/InstagramEditProfile";
+import ProfileEditForm from "@/components/profile/ProfileEditForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Product } from "@/types";
@@ -211,9 +211,9 @@ const Profile = () => {
           {/* Document Editor */}
           <DocumentEditor />
           
-          {/* Instagram-style Profile Edit Page */}
+          {/* Profile Edit Dialog */}
           {isEditProfileOpen && user && (
-            <InstagramEditProfile
+            <ProfileEditForm
               user={user} 
               isOpen={isEditProfileOpen} 
               onClose={() => setIsEditProfileOpen(false)} 
