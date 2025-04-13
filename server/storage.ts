@@ -39,8 +39,13 @@ export interface IStorage {
   getPosts(): Promise<(Post & { user: User })[]>;
   getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
   createPost(post: InsertPost): Promise<Post>;
+  updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
+  deletePost(id: number): Promise<void>;
   likePost(id: number): Promise<Post>;
   unlikePost(id: number): Promise<Post>;
+  savePost(userId: number, postId: number): Promise<void>;
+  unsavePost(userId: number, postId: number): Promise<void>;
+  getSavedPosts(userId: number): Promise<(Post & { user: User })[]>;
 
   // Comment operations
   getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
@@ -645,6 +650,79 @@ export class MemStorage implements IStorage {
     post.likes = Math.max(0, post.likes - 1);
     this.posts.set(id, post);
     return post;
+  }
+
+  async updatePost(id: number, content: string, imageUrl?: string): Promise<Post> {
+    const post = this.posts.get(id);
+    if (!post) throw new Error('Post not found');
+    
+    post.content = content;
+    if (imageUrl !== undefined) {
+      post.imageUrl = imageUrl;
+    }
+    
+    this.posts.set(id, post);
+    return post;
+  }
+
+  async deletePost(id: number): Promise<void> {
+    if (!this.posts.has(id)) throw new Error('Post not found');
+    
+    // Delete the post
+    this.posts.delete(id);
+    
+    // Also delete all comments associated with this post
+    const commentsToDelete = Array.from(this.comments.values())
+      .filter(comment => comment.postId === id);
+      
+    for (const comment of commentsToDelete) {
+      this.comments.delete(comment.id);
+    }
+  }
+
+  // In-memory map to track saved posts for each user
+  private savedPosts: Map<number, Set<number>> = new Map();
+
+  async savePost(userId: number, postId: number): Promise<void> {
+    // Check if post exists
+    const post = this.posts.get(postId);
+    if (!post) throw new Error('Post not found');
+    
+    // Check if user exists
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    
+    // Initialize user's saved posts set if it doesn't exist
+    if (!this.savedPosts.has(userId)) {
+      this.savedPosts.set(userId, new Set());
+    }
+    
+    // Add post to user's saved posts
+    const userSavedPosts = this.savedPosts.get(userId)!;
+    userSavedPosts.add(postId);
+  }
+
+  async unsavePost(userId: number, postId: number): Promise<void> {
+    // Check if user has any saved posts
+    const userSavedPosts = this.savedPosts.get(userId);
+    if (!userSavedPosts) return;
+    
+    // Remove post from user's saved posts
+    userSavedPosts.delete(postId);
+  }
+
+  async getSavedPosts(userId: number): Promise<(Post & { user: User })[]> {
+    const userSavedPosts = this.savedPosts.get(userId);
+    if (!userSavedPosts || userSavedPosts.size === 0) return [];
+    
+    // Get all saved posts with user information
+    return Array.from(userSavedPosts)
+      .map(postId => this.posts.get(postId))
+      .filter((post): post is Post => post !== undefined)
+      .map(post => {
+        const user = this.users.get(post.userId)!;
+        return { ...post, user };
+      });
   }
 
   // Comment operations
