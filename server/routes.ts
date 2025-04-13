@@ -383,6 +383,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch comment count" });
     }
   });
+  
+  // Get post count for a user
+  app.get("/api/users/:userId/post-count", async (req, res) => {
+    try {
+      const count = await storage.getPostCountByUser(parseInt(req.params.userId));
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch post count" });
+    }
+  });
 
   app.post("/api/comments", async (req, res) => {
     try {

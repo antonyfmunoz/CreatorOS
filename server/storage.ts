@@ -840,6 +840,16 @@ export class MemStorage implements IStorage {
         return { ...post, user };
       });
   }
+  
+  async getPostCountByUser(userId: number): Promise<number> {
+    // Check if user exists
+    if (!this.users.has(userId)) throw new Error('User not found');
+    
+    // Count posts belonging to the user
+    return Array.from(this.posts.values())
+      .filter(post => post.userId === userId)
+      .length;
+  }
 
   // Comment operations
   async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
@@ -1912,6 +1922,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(savedPosts.id));
     
     return result.map(({ post, user }) => ({ ...post, user }));
+  }
+  
+  async getPostCountByUser(userId: number): Promise<number> {
+    const result = await db.select({ count: count() })
+      .from(posts)
+      .where(eq(posts.userId, userId));
+    
+    return result[0].count;
   }
 
   // Comment operations

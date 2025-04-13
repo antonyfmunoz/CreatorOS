@@ -113,6 +113,17 @@ const Profile = () => {
     }
   });
   
+  // Fetch post count
+  const { data: postCount, isLoading: isLoadingPostCount } = useQuery<{ count: number }>({
+    queryKey: ['/api/users/post-count', user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${user?.id}/post-count`);
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    }
+  });
+  
   // Check if the logged-in user is following this profile
   const { data: isFollowing, isLoading: isLoadingFollowStatus } = useQuery<boolean>({
     queryKey: ['/api/users/is-following', currentUser?.id, user?.id],
