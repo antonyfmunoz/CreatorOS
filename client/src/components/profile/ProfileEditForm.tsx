@@ -26,7 +26,7 @@ import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Upload } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import InstagramImagePicker from "./InstagramImagePicker";
+import SimpleImagePicker from "./SimpleImagePicker";
 
 // Define the form schema
 const profileSchema = z.object({
@@ -210,8 +210,8 @@ export default function ProfileEditForm({ user, isOpen, onClose }: ProfileEditFo
         </DialogContent>
       </Dialog>
 
-      {/* Instagram-style image picker */}
-      <InstagramImagePicker 
+      {/* Simple image picker */}
+      <SimpleImagePicker 
         isOpen={showImagePicker}
         onClose={() => setShowImagePicker(false)}
         onImageSelected={handleImageSelected}
