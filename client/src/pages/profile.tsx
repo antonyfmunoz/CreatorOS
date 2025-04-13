@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppStore } from "@/lib/stores";
-import { Settings, LogOut, LogIn, User as UserIcon } from "lucide-react";
+import { Settings, LogOut, LogIn, User as UserIcon, GridIcon, BarChart3Icon, BookmarkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import StatCard from "@/components/profile/StatCard";
@@ -154,9 +154,9 @@ const Profile = () => {
   
   return (
     <div className="px-4 pt-4 pb-20">
-      {/* Instagram-style top nav with gear icon */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">{user?.displayName}</h1>
+      {/* Instagram-style username header with gear icon */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold">@{user?.username}</h1>
         
         {isOwnProfile ? (
           <DropdownMenu>
@@ -178,21 +178,43 @@ const Profile = () => {
         ) : null}
       </div>
       
-      {/* Profile Info */}
+      {/* Profile Info - Instagram Style */}
       <div className="flex mb-6">
-        <Avatar className="w-16 h-16 mr-4">
+        {/* Large Avatar on left */}
+        <Avatar className="w-20 h-20 mr-6">
           <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
           <AvatarFallback>
             {user?.displayName?.charAt(0) || "U"}
           </AvatarFallback>
         </Avatar>
-        <div className="flex flex-col justify-center">
-          <p className="text-gray-500 mb-2">{user?.bio || "No bio yet"}</p>
+        
+        {/* Profile stats and buttons on right */}
+        <div className="flex-1">
+          {/* Display name in bold */}
+          <h2 className="text-lg font-bold mb-1">{user?.displayName}</h2>
+          
+          {/* Instagram-style Stats - 3 column */}
+          <div className="flex space-x-4 mb-3">
+            <div className="text-center">
+              <span className="font-semibold">{stats.products}</span>
+              <span className="text-sm ml-1">products</span>
+            </div>
+            <div className="text-center">
+              <span className="font-semibold">{stats.followers}</span>
+              <span className="text-sm ml-1">followers</span>
+            </div>
+            <div className="text-center">
+              <span className="font-semibold">{stats.revenue}</span>
+              <span className="text-sm ml-1">revenue</span>
+            </div>
+          </div>
+          
+          {/* Edit profile button (if own profile) */}
           {isOwnProfile && (
             <Button 
               variant="outline" 
               size="sm" 
-              className="h-8 text-sm font-medium"
+              className="w-full h-8 text-sm font-medium"
               onClick={() => setIsEditProfileOpen(true)}
             >
               Edit Profile
@@ -201,19 +223,23 @@ const Profile = () => {
         </div>
       </div>
       
-      {/* Instagram-style Stats */}
-      <div className="flex justify-around border-y py-3 mb-6">
-        <div className="text-center">
-          <div className="font-semibold">{stats.products}</div>
-          <div className="text-xs text-gray-500">Products</div>
-        </div>
-        <div className="text-center">
-          <div className="font-semibold">{stats.followers}</div>
-          <div className="text-xs text-gray-500">Followers</div>
-        </div>
-        <div className="text-center">
-          <div className="font-semibold">{stats.revenue}</div>
-          <div className="text-xs text-gray-500">Revenue</div>
+      {/* Bio section */}
+      <div className="mb-6">
+        <p className="text-sm">{user?.bio || "No bio yet"}</p>
+      </div>
+      
+      {/* Instagram-style Tab Navigation */}
+      <div className="border-t border-gray-200 mb-4">
+        <div className="flex justify-around -mt-px">
+          <button className="py-3 text-blue-500 border-t-2 border-blue-500 flex-1 flex justify-center">
+            <GridIcon className="h-6 w-6" />
+          </button>
+          <button className="py-3 text-gray-500 flex-1 flex justify-center">
+            <BarChart3Icon className="h-6 w-6" />
+          </button>
+          <button className="py-3 text-gray-500 flex-1 flex justify-center">
+            <BookmarkIcon className="h-6 w-6" />
+          </button>
         </div>
       </div>
       
