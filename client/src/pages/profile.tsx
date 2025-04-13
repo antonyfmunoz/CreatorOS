@@ -5,6 +5,7 @@ import {
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
   FileText, DollarSign, UsersIcon, ShoppingBag
 } from "lucide-react";
+import ProfileFeed from "@/components/profile/ProfileFeed";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfilePage from "@/components/profile/EditProfilePage";
@@ -408,8 +409,16 @@ const Profile = () => {
         )}
       </div>
       
-      {/* Placeholder for future tab content - empty section */}
-      <div className="border-t mt-6 mb-6"></div>
+      {/* Profile feed with posts - X-inspired layout */}
+      <div className="border-t mt-4"></div>
+      
+      {/* Show the user's posts in X/Twitter style feed layout */}
+      {user && (
+        <ProfileFeed 
+          userId={user.id} 
+          username={user.username}
+        />
+      )}
       
       {/* Only show the edit profile page for the user's own profile */}
       {isOwnProfile && isEditProfileOpen && user && (
