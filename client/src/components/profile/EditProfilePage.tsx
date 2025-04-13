@@ -49,6 +49,7 @@ interface EditProfilePageProps {
 export default function EditProfilePage({ user, onClose }: EditProfilePageProps) {
   const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.profileImageUrl || undefined);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -78,8 +79,11 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   function onSubmit(values: ProfileFormValues) {
     // Check if username has changed and if it's different from the current username
     if (values.username !== user.username) {
-      // You might want to check if username is already taken
-      // This would require an API call to validate
+      // Add username validation in the future if needed
+      toast({
+        title: "Changing username",
+        description: "Your username will be updated",
+      });
     }
     
     // First update the profile text fields
@@ -91,17 +95,44 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
       onSuccess: () => {
         // If there's an image selected, upload it after updating profile
         if (selectedImage) {
+          toast({
+            title: "Uploading image",
+            description: "Updating your profile picture...",
+          });
+          
           uploadProfileImageMutation.mutate({
             id: user.id,
             imageFile: selectedImage
           }, {
             onSuccess: () => {
+              toast({
+                title: "Success",
+                description: "Your profile has been updated successfully!",
+              });
               onClose();
+            },
+            onError: (error) => {
+              toast({
+                title: "Image upload failed",
+                description: error.message,
+                variant: "destructive",
+              });
             }
           });
         } else {
+          toast({
+            title: "Success",
+            description: "Your profile has been updated successfully!",
+          });
           onClose();
         }
+      },
+      onError: (error) => {
+        toast({
+          title: "Update failed",
+          description: error.message,
+          variant: "destructive",
+        });
       }
     });
   }
@@ -151,34 +182,45 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
                 // Create a preview URL
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                  // Set image for preview
+                  if (typeof reader.result === 'string') {
+                    setPreviewUrl(reader.result);
+                  }
+                  // Set file for uploading
                   setSelectedImage(file);
                 };
                 reader.readAsDataURL(file);
-                
-                // Pass the file to handler
-                handleImageUpload(file);
               }}
             />
             
-            {/* Avatar display */}
-            <Avatar className="w-24 h-24 border border-gray-200">
-              <AvatarImage 
-                src={selectedImage ? URL.createObjectURL(selectedImage) : (user.profileImageUrl || undefined)} 
-                alt="Profile" 
-                className="object-cover" 
-              />
-              <AvatarFallback className="bg-gray-100">
-                <Camera className="h-8 w-8 text-gray-500" />
-              </AvatarFallback>
-            </Avatar>
+            {/* Avatar display with overlay */}
+            <div 
+              className="relative cursor-pointer group"
+              onClick={triggerUpload}
+            >
+              <Avatar className="w-24 h-24 border border-gray-200">
+                <AvatarImage 
+                  src={previewUrl} 
+                  alt="Profile" 
+                  className="object-cover" 
+                />
+                <AvatarFallback className="bg-gray-100">
+                  <Camera className="h-8 w-8 text-gray-500" />
+                </AvatarFallback>
+              </Avatar>
+              
+              {/* Overlay with camera icon on hover */}
+              <div className="absolute inset-0 bg-black bg-opacity-30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <Camera className="h-8 w-8 text-white" />
+              </div>
+            </div>
+            
+            <button 
+              className="text-blue-500 text-sm font-medium mt-3"
+              onClick={triggerUpload}
+            >
+              Change profile photo
+            </button>
           </div>
-          <button 
-            className="text-blue-500 text-sm font-medium mt-3"
-            onClick={triggerUpload}
-          >
-            Edit picture
-          </button>
         </section>
 
         {/* Form */}
