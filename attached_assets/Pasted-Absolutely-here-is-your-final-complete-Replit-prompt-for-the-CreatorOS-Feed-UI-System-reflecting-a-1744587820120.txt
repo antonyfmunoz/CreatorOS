@@ -1,0 +1,163 @@
+Absolutely—here is your final, complete Replit prompt for the CreatorOS Feed UI System, reflecting all revisions to date.
+
+⸻
+
+Replit Prompt: CreatorOS Feed UX System (Finalized MVP Prompt)
+
+You are extending an existing React + TailwindCSS + Node.js application called CreatorOS, which already includes a bottom navigation bar and basic post feed structure.
+
+This prompt will add a fully functional, mobile-first feed experience that includes dual-tab navigation, dynamic content filtering, voice posts, a sticky header, dark/light theming, and a context-aware floating action button.
+
+⸻
+
+1. Sticky Header
+
+At the top of the feed, implement a sticky Header with:
+
+<Header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
+  <span className="text-xl font-semibold text-black dark:text-white">CreatorOS</span>
+  <button>
+    <FilterIcon className="h-6 w-6 text-black dark:text-white" />
+  </button>
+</Header>
+
+	•	Sticky at the top of the viewport
+	•	Filter icon opens a dropdown filter menu
+
+⸻
+
+2. Tab Navigation: “For You” / “Following”
+
+Below the header, include tabs:
+
+<Tabs activeTab={tab} onChange={setTab}>
+  <Tab label="For You" />
+  <Tab label="Following" />
+</Tabs>
+
+	•	Active tab is underlined
+	•	Switches between two content states
+	•	Use useState("forYou" | "following")
+
+⸻
+
+3. Stories Row (Following Tab Only)
+
+Conditionally show a stories carousel only when tab === "following":
+
+{tab === "following" && <StoriesBar users={followingUsers} />}
+
+	•	Horizontal scroll view of user avatars and names
+
+⸻
+
+4. Content Filter Dropdown
+
+Toggled by the funnel icon in the header:
+
+<DropdownMenu items={["Videos", "Shorts", "Photos", "Threads", "Audio"]} onSelect={setFilter} />
+
+	•	Default: all content types shown
+	•	Selecting one filters posts by type
+	•	Highlight the selected filter visually
+
+⸻
+
+5. VoicePostCard Component
+
+Render a voice-based post with playback and transcription toggle:
+
+<VoicePostCard
+  user={{ name: "Kai", avatar: "/kai.jpg" }}
+  audioUrl="https://example.com/audio.mp3"
+  transcript="This is what I said..."
+  createdAt="5m ago"
+/>
+
+Includes:
+	•	Circular Play/Pause button
+	•	Animated waveform
+	•	“Transcribe” button (toggles transcript text below)
+
+⸻
+
+6. Floating Action Button (FAB)
+
+<button
+  className="fixed bottom-20 right-5 z-50 p-4 rounded-full shadow-lg
+  bg-white text-black dark:bg-black dark:text-white transition-colors"
+>
+  +
+</button>
+
+	•	Appears in both For You and Following views
+	•	Opens modal to create new post
+	•	Position: bottom-right, above nav bar
+	•	Respects dark/light mode
+
+⸻
+
+7. Bottom Navigation Bar (Existing)
+
+Replace Explore with Home tab icon:
+
+<BottomNav>
+  <NavItem icon="home" label="Home" />
+  <NavItem icon="store" label="Marketplace" />
+  <NavItem icon="bot" label="AI Agents" />
+  <NavItem icon="group" label="Communities" />
+  <NavItem icon="user" label="Profile" />
+</BottomNav>
+
+
+
+⸻
+
+8. Dark/Light Mode Toggle (Profile Tab)
+
+Add a theme toggle in the Profile tab:
+
+<ToggleSwitch
+  label="Dark Mode"
+  checked={theme === "dark"}
+  onChange={() => setTheme(theme === "dark" ? "light" : "dark")}
+/>
+
+	•	Use Tailwind’s dark: classes globally
+	•	Set theme state in localStorage or global context
+
+⸻
+
+9. Backend API Enhancements (Express)
+
+// Get posts by type
+GET /feed?type=video|short|photo|thread|audio
+
+// Create new post
+POST /post
+{
+  type: "voice" | "text" | "image" | "short" | "video",
+  content,
+  mediaUrl?,
+  transcript?
+}
+
+// (Optional) Transcribe voice
+POST /transcribe
+{
+  audioBlob
+}
+
+
+
+⸻
+
+Execution Notes
+	•	Fully mobile responsive
+	•	Use Tailwind for spacing, color, and responsiveness
+	•	Modularize: Header, Tabs, VoicePostCard, FAB, StoriesBar
+	•	Follow dark/light mode standards across UI
+
+⸻
+
+
