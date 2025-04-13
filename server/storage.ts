@@ -563,6 +563,21 @@ export class MemStorage implements IStorage {
       (user) => user.username === username,
     );
   }
+
+  async updateUser(id: number, userData: Partial<User>): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Only update allowed fields
+    if (userData.displayName !== undefined) user.displayName = userData.displayName;
+    if (userData.bio !== undefined) user.bio = userData.bio;
+    if (userData.profileImageUrl !== undefined) user.profileImageUrl = userData.profileImageUrl;
+    
+    this.users.set(id, user);
+    return user;
+  }
   
   async searchUsersByUsername(query: string): Promise<User[]> {
     // Convert to lowercase and remove @ prefix if exists

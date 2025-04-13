@@ -45,6 +45,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
+  
+  // Update user profile
+  app.patch("/api/users/:id", async (req, res) => {
+    try {
+      // Verify user is authenticated and updating their own profile
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const userId = parseInt(req.params.id);
+      
+      // Only allow users to update their own profile
+      if (req.user!.id !== userId) {
+        return res.status(403).json({ message: "You can only update your own profile" });
+      }
+      
+      const { displayName, bio, profileImageUrl } = req.body;
+      
+      // Only allow updating specific fields
+      const userData: Partial<any> = {};
+      if (displayName !== undefined) userData.displayName = displayName;
+      if (bio !== undefined) userData.bio = bio;
+      if (profileImageUrl !== undefined) userData.profileImageUrl = profileImageUrl;
+      
+      const updatedUser = await storage.updateUser(userId, userData);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Failed to update user profile" });
+    }
+  });
 
   // Post routes
   app.get("/api/posts", async (req, res) => {

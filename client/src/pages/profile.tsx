@@ -11,7 +11,8 @@ import DocumentEditor from "@/components/profile/DocumentEditor";
 import ProfileEditForm from "@/components/profile/ProfileEditForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
-import { User, Product } from "@/types";
+import { Product } from "@/types";
+import { User } from "@shared/schema";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
