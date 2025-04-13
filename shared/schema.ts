@@ -43,6 +43,24 @@ export const insertPostSchema = createInsertSchema(posts).pick({
   imageUrl: true,
 });
 
+// Saved Posts schema - junction table for users and their saved posts
+export const savedPosts = pgTable("saved_posts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }).notNull(),
+  savedAt: timestamp("saved_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // Make sure a user can only save a post once (unique constraint)
+    userPostUnique: unique().on(table.userId, table.postId)
+  };
+});
+
+export const insertSavedPostSchema = createInsertSchema(savedPosts).pick({
+  userId: true,
+  postId: true,
+});
+
 // Comment schema
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),

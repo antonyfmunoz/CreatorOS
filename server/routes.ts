@@ -82,6 +82,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to unlike post" });
     }
   });
+  
+  // Update post route
+  app.patch("/api/posts/:id", async (req, res) => {
+    try {
+      // Verify user is authenticated and is the post owner
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const postId = parseInt(req.params.id);
+      const { content } = req.body;
+      
+      if (!content || content.trim() === "") {
+        return res.status(400).json({ message: "Content cannot be empty" });
+      }
+      
+      // Optional image URL update
+      const imageUrl = req.body.imageUrl;
+      
+      const post = await storage.updatePost(postId, content, imageUrl);
+      res.json(post);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update post" });
+    }
+  });
+  
+  // Delete post route
+  app.delete("/api/posts/:id", async (req, res) => {
+    try {
+      // Verify user is authenticated and is the post owner
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const postId = parseInt(req.params.id);
+      
+      await storage.deletePost(postId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete post" });
+    }
+  });
+  
+  // Save post route
+  app.post("/api/posts/:id/save", async (req, res) => {
+    try {
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const postId = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      await storage.savePost(userId, postId);
+      res.status(200).json({ message: "Post saved successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save post" });
+    }
+  });
+  
+  // Unsave post route
+  app.post("/api/posts/:id/unsave", async (req, res) => {
+    try {
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const postId = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      await storage.unsavePost(userId, postId);
+      res.status(200).json({ message: "Post unsaved successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to unsave post" });
+    }
+  });
+  
+  // Get saved posts for a user
+  app.get("/api/users/:id/saved-posts", async (req, res) => {
+    try {
+      // Verify user is authenticated and requesting their own saved posts
+      if (!req.isAuthenticated() || req.user!.id !== parseInt(req.params.id)) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+      
+      const userId = parseInt(req.params.id);
+      const savedPosts = await storage.getSavedPosts(userId);
+      res.json(savedPosts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch saved posts" });
+    }
+  });
 
   // Comment routes
   app.get("/api/posts/:postId/comments", async (req, res) => {
