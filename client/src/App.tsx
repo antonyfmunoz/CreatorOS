@@ -9,6 +9,7 @@ import AI from "@/pages/ai";
 import Communities from "@/pages/communities";
 import Profile from "@/pages/profile";
 import AuthPage from "@/pages/auth-page";
+import SavedPostsPage from "@/pages/saved-posts";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications, useAuthStore } from "@/lib/stores";
@@ -57,6 +58,7 @@ function Router() {
       <ProtectedRoute path="/profile" component={Profile} />
       <ProtectedRoute path="/profile/:id" component={Profile} />
       <ProtectedRoute path="/user/:username" component={Profile} />
+      <ProtectedRoute path="/saved-posts" component={SavedPostsPage} />
       <Route component={NotFound} />
     </Switch>
   );

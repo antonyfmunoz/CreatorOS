@@ -480,18 +480,23 @@ const Post = ({ post }: PostProps) => {
   const savePostMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('User not authenticated');
-      await apiRequest('POST', `/api/posts/${post.id}/save`, { userId: user.id });
+      // We don't need to send userId in the body as the server extracts it from the session
+      await apiRequest('POST', `/api/posts/${post.id}/save`, {});
     },
     onSuccess: () => {
       // Add the post to saved posts
       setSavedPosts(prev => [...prev, post.id]);
+      
+      // Update the global cache to reflect that this post is saved
+      queryClient.invalidateQueries({queryKey: [`/api/users/${user?.id}/saved-posts`]});
       
       toast({
         title: "Post Saved",
         description: "This post has been added to your saved items.",
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Error saving post:', error);
       toast({
         title: "Error",
         description: "Failed to save the post. Please try again.",
@@ -504,18 +509,23 @@ const Post = ({ post }: PostProps) => {
   const unsavePostMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('User not authenticated');
-      await apiRequest('POST', `/api/posts/${post.id}/unsave`, { userId: user.id });
+      // We don't need to send userId in the body as the server extracts it from the session
+      await apiRequest('POST', `/api/posts/${post.id}/unsave`, {});
     },
     onSuccess: () => {
       // Remove the post from saved posts
       setSavedPosts(prev => prev.filter(id => id !== post.id));
+      
+      // Update the global cache to reflect that this post is unsaved
+      queryClient.invalidateQueries({queryKey: [`/api/users/${user?.id}/saved-posts`]});
       
       toast({
         title: "Post Unsaved",
         description: "This post has been removed from your saved items.",
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Error unsaving post:', error);
       toast({
         title: "Error",
         description: "Failed to unsave the post. Please try again.",
