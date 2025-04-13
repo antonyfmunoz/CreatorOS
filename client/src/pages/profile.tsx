@@ -152,24 +152,13 @@ const Profile = () => {
   }
   
   return (
-    <div className="px-4 pt-4 pb-20">
-      {/* Profile Header */}
-      <div className="flex items-center mb-6">
-        <Avatar className="w-16 h-16 mr-4">
-          <AvatarImage src={user?.profileImageUrl} alt={user?.displayName || "User"} />
-          <AvatarFallback>
-            {user?.displayName?.charAt(0) || "U"}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-xl font-bold">{user?.displayName}</h1>
-          <p className="text-gray-500">{user?.bio || "No bio yet"}</p>
-        </div>
-        
-        {isOwnProfile ? (
+    <div className="px-4 pt-4 pb-20 relative">
+      {/* Settings Gear Icon - Positioned in the top right corner */}
+      {isOwnProfile && (
+        <div className="absolute top-2 right-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="ml-auto p-2 rounded-full bg-gray-100">
+              <Button variant="outline" size="icon" className="p-2 rounded-full bg-gray-100">
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -183,7 +172,21 @@ const Profile = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        </div>
+      )}
+      
+      {/* Profile Header */}
+      <div className="flex items-center mb-6">
+        <Avatar className="w-16 h-16 mr-4">
+          <AvatarImage src={user?.profileImageUrl} alt={user?.displayName || "User"} />
+          <AvatarFallback>
+            {user?.displayName?.charAt(0) || "U"}
+          </AvatarFallback>
+        </Avatar>
+        <div>
+          <h1 className="text-xl font-bold">{user?.displayName}</h1>
+          <p className="text-gray-500">{user?.bio || "No bio yet"}</p>
+        </div>
       </div>
       
       {/* Dashboard Stats */}
