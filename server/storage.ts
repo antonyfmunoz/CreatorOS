@@ -34,6 +34,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   searchUsersByUsername(query: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, userData: Partial<User>): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
   // Post operations
@@ -1539,6 +1540,28 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+  
+  async updateUser(id: number, userData: Partial<User>): Promise<User> {
+    // Make sure we don't update sensitive fields like password or username
+    const allowedFields: Partial<User> = {};
+    
+    if (userData.displayName !== undefined) allowedFields.displayName = userData.displayName;
+    if (userData.bio !== undefined) allowedFields.bio = userData.bio;
+    if (userData.profileImageUrl !== undefined) allowedFields.profileImageUrl = userData.profileImageUrl;
+    
+    // Update the user record
+    const [updatedUser] = await db
+      .update(users)
+      .set(allowedFields)
+      .where(eq(users.id, id))
+      .returning();
+      
+    if (!updatedUser) {
+      throw new Error('User not found or could not be updated');
+    }
+    
+    return updatedUser;
   }
 
   // Post operations
