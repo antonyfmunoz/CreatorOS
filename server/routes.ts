@@ -5,6 +5,9 @@ import OpenAI from "openai";
 import { insertCommentSchema, insertStorySchema, insertSavedPostSchema, stories, savedPosts } from "../shared/schema";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
 import { setupAuth } from "./auth";
+import upload from "./upload";
+import path from "path";
+import fs from "fs";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -74,6 +77,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Failed to update user profile" });
+    }
+  });
+  
+  // Upload profile image
+  app.post("/api/users/:id/profile-image", upload.single('image'), async (req, res) => {
+    try {
+      // Verify user is authenticated and uploading their own profile image
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const userId = parseInt(req.params.id);
+      
+      // Only allow users to update their own profile
+      if (req.user!.id !== userId) {
+        return res.status(403).json({ message: "You can only update your own profile" });
+      }
+      
+      // Ensure the file was uploaded
+      if (!req.file) {
+        return res.status(400).json({ message: "No image file provided" });
+      }
+      
+      // Create URL path to image
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const filePath = req.file.path.replace(process.cwd(), '');
+      const fileUrl = `${baseUrl}${filePath.replace(/\\/g, '/')}`;
+      
+      // Update user profile with new image URL
+      const updatedUser = await storage.updateUser(userId, {
+        profileImageUrl: fileUrl
+      });
+      
+      res.json({ 
+        success: true, 
+        message: "Profile image uploaded successfully",
+        user: updatedUser,
+        imageUrl: fileUrl
+      });
+    } catch (error) {
+      console.error("Error uploading profile image:", error);
+      res.status(500).json({ message: "Failed to upload profile image" });
     }
   });
 
