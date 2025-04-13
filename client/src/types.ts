@@ -5,6 +5,8 @@ export interface Post {
   userId: number;
   content: string;
   imageUrl: string | null;
+  audioUrl?: string | null;
+  videoUrl?: string | null;
   likes: number;
   comments: number;
   createdAt: string | Date;

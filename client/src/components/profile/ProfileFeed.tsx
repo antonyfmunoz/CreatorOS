@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Post as PostType, User } from "@/types";
+import { Post as PostType } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
-import { Heart, MessageSquare, Share2, Image as ImageIcon } from "lucide-react";
+import { 
+  Heart, MessageSquare, Share2, Image as ImageIcon, 
+  Music, Video 
+} from "lucide-react";
 import { useLocation } from "wouter";
 
 interface ProfileFeedProps {
@@ -84,10 +87,12 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <TabsList className="grid grid-cols-3 w-full">
+        <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="text">Text</TabsTrigger>
           <TabsTrigger value="photo">Photos</TabsTrigger>
+          <TabsTrigger value="audio">Audio</TabsTrigger>
+          <TabsTrigger value="video">Video</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-0">
@@ -111,6 +116,24 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
             "photo"
           )}
         </TabsContent>
+        
+        <TabsContent value="audio" className="mt-0">
+          {renderPosts(
+            posts?.filter(post => post.audioUrl),
+            true, // Currently no audio posts supported
+            username,
+            "audio"
+          )}
+        </TabsContent>
+        
+        <TabsContent value="video" className="mt-0">
+          {renderPosts(
+            posts?.filter(post => post.videoUrl),
+            true, // Currently no video posts supported
+            username,
+            "video"
+          )}
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -128,6 +151,10 @@ function renderPosts(
         <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
           {type === "photo" ? (
             <ImageIcon className="h-6 w-6 text-muted-foreground" />
+          ) : type === "audio" ? (
+            <Music className="h-6 w-6 text-muted-foreground" />
+          ) : type === "video" ? (
+            <Video className="h-6 w-6 text-muted-foreground" />
           ) : (
             <MessageSquare className="h-6 w-6 text-muted-foreground" />
           )}
@@ -138,6 +165,10 @@ function renderPosts(
             ? `@${username} hasn't shared any photos`
             : type === "text"
             ? `@${username} hasn't written any text posts`
+            : type === "audio"
+            ? `@${username} hasn't shared any audio posts`
+            : type === "video"
+            ? `@${username} hasn't shared any video posts`
             : `When @${username} shares posts, you'll see them here`}
         </p>
       </div>
@@ -164,7 +195,7 @@ const PostItem = ({ post }: { post: PostType }) => {
           className="w-10 h-10 mr-3 cursor-pointer"
           onClick={() => setLocation(`/profile/${post.user.id}`)}
         >
-          <AvatarImage src={post.user.profileImageUrl} alt={post.user.displayName} />
+          <AvatarImage src={post.user.profileImageUrl || undefined} alt={post.user.displayName} />
           <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
         </Avatar>
         <div className="flex-1">
@@ -186,6 +217,30 @@ const PostItem = ({ post }: { post: PostType }) => {
                 alt="Post content" 
                 className="w-full h-auto rounded-lg border border-border" 
               />
+            </div>
+          )}
+          
+          {post.audioUrl && (
+            <div className="mt-2">
+              <audio 
+                controls 
+                className="w-full rounded-lg border border-border bg-muted p-1"
+              >
+                <source src={post.audioUrl} />
+                Your browser does not support the audio element.
+              </audio>
+            </div>
+          )}
+          
+          {post.videoUrl && (
+            <div className="mt-2">
+              <video 
+                controls 
+                className="w-full h-auto rounded-lg border border-border" 
+              >
+                <source src={post.videoUrl} />
+                Your browser does not support the video element.
+              </video>
             </div>
           )}
           
