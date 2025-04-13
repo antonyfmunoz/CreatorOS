@@ -87,13 +87,15 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <TabsList className="flex w-full overflow-x-auto">
-          <TabsTrigger value="all" className="flex-1 px-2 min-w-0">All</TabsTrigger>
-          <TabsTrigger value="text" className="flex-1 px-2 min-w-0">Text</TabsTrigger>
-          <TabsTrigger value="photo" className="flex-1 px-2 min-w-0">Photos</TabsTrigger>
-          <TabsTrigger value="audio" className="flex-1 px-2 min-w-0">Audio</TabsTrigger>
-          <TabsTrigger value="video" className="flex-1 px-2 min-w-0">Video</TabsTrigger>
-        </TabsList>
+        <div className="px-4">
+          <TabsList className="flex w-full overflow-x-auto gap-1.5">
+            <TabsTrigger value="all" className="flex-1 px-2 min-w-0 text-sm">All</TabsTrigger>
+            <TabsTrigger value="text" className="flex-1 px-2 min-w-0 text-sm">Text</TabsTrigger>
+            <TabsTrigger value="photo" className="flex-1 px-2 min-w-0 text-sm">Photos</TabsTrigger>
+            <TabsTrigger value="audio" className="flex-1 px-2 min-w-0 text-sm">Audio</TabsTrigger>
+            <TabsTrigger value="video" className="flex-1 px-2 min-w-0 text-sm">Video</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="all" className="mt-0">
           {renderPosts(posts, noPosts, username)}
