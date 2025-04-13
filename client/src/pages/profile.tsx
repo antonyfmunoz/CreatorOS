@@ -225,11 +225,33 @@ const Profile = () => {
               <div className="text-base font-semibold">{stats.products}</div>
               <div className="text-xs">posts</div>
             </div>
-            <div className="flex-1 text-center">
+            <div 
+              className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1" 
+              onClick={() => {
+                if (params.username) {
+                  setLocation(`/user/${params.username}/followers`);
+                } else if (params.id) {
+                  setLocation(`/followers/${params.id}`);
+                } else {
+                  setLocation("/followers");
+                }
+              }}
+            >
               <div className="text-base font-semibold">{stats.followers}</div>
               <div className="text-xs">followers</div>
             </div>
-            <div className="flex-1 text-center">
+            <div 
+              className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1"
+              onClick={() => {
+                if (params.username) {
+                  setLocation(`/user/${params.username}/following`);
+                } else if (params.id) {
+                  setLocation(`/following/${params.id}`);
+                } else {
+                  setLocation("/following");
+                }
+              }}
+            >
               <div className="text-base font-semibold">{stats.following}</div>
               <div className="text-xs">following</div>
             </div>
