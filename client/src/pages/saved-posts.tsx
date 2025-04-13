@@ -3,7 +3,7 @@ import { Post as PostType } from "@shared/schema";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { UserIcon, ArrowLeft, ImageIcon } from "lucide-react";
+import { User as UserIcon, ArrowLeft, ImageIcon, BookmarkIcon } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";

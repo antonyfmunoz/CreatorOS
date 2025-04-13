@@ -172,7 +172,7 @@ const Profile = () => {
                 <Settings className="mr-2 h-4 w-4" /> Edit Profile
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocation("/saved-posts")}>
-                <Bookmark className="mr-2 h-4 w-4" /> Saved
+                <BookmarkIcon className="mr-2 h-4 w-4" /> Saved
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-500">
