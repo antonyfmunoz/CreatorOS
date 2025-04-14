@@ -720,7 +720,6 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
     
     const comment = {
       postId: post.id,
-      userId: currentUser.id,
       content: commentText,
       ...(replyingTo !== null ? { parentId: replyingTo } : {})
     };

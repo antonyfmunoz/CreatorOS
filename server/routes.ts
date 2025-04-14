@@ -419,9 +419,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/comments", async (req, res) => {
     try {
-      console.log("Creating comment with data:", req.body);
-      // Skip validation for now to debug
-      const comment = await storage.createComment(req.body);
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      // Use the authenticated user's ID instead of trusting the client
+      const commentData = {
+        ...req.body,
+        userId: req.user.id
+      };
+      
+      console.log("Creating comment with data:", commentData);
+      const comment = await storage.createComment(commentData);
       res.status(201).json(comment);
     } catch (error) {
       console.error("Error creating comment:", error);
