@@ -10,10 +10,10 @@ interface PostOptionsPanelProps {
 }
 
 export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelProps) => {
-  const [postToThreads, setPostToThreads] = useState(true);
-  const [postToFacebook, setPostToFacebook] = useState(true);
+  // These are placeholders until we have real connection status from the API
   const [addToStory, setAddToStory] = useState(false);
-  const [isOptionsExpanded, setIsOptionsExpanded] = useState(false);
+  // Default to true to show the connection options 
+  const [isOptionsExpanded, setIsOptionsExpanded] = useState(true);
   const { user } = useAuth();
   
   // Sample location suggestions - in a real app these would be dynamic based on user location
@@ -78,14 +78,20 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
 
       {/* Post to section */}
       <div className="px-4 py-3 border-b border-border">
-        <div className="flex justify-between items-center" onClick={() => setIsOptionsExpanded(!isOptionsExpanded)}>
+        <div 
+          className="flex justify-between items-center cursor-pointer" 
+          onClick={() => setIsOptionsExpanded(!isOptionsExpanded)}
+          role="button"
+          aria-expanded={isOptionsExpanded}
+          aria-controls="post-to-options"
+        >
           <span className="font-medium">Post to</span>
           <ChevronRight 
             className={`h-5 w-5 text-muted-foreground transform transition-transform ${isOptionsExpanded ? 'rotate-90' : ''}`} 
           />
         </div>
 
-        <div className={`space-y-3 mt-3 ${isOptionsExpanded ? 'block' : 'block'}`}>
+        <div id="post-to-options" className={`space-y-3 mt-3 ${isOptionsExpanded ? 'block' : 'hidden'}`}>
 
           {/* X/Twitter - Not connected */}
           <div className="flex justify-between items-center">
@@ -104,6 +110,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               variant="outline" 
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
+              aria-label="Connect to X (Twitter)"
             >
               Connect
             </Button>
@@ -126,6 +133,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               variant="outline" 
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
+              aria-label="Connect to Facebook"
             >
               Connect
             </Button>
@@ -150,6 +158,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               variant="outline" 
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
+              aria-label="Connect to Instagram"
             >
               Connect
             </Button>

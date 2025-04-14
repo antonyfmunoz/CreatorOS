@@ -180,7 +180,6 @@ export function FloatingActionButton() {
           // For fullscreen modals on audio/video/photo
           (postType === "audio" || postType === "video" || postType === "photo") && "sm:max-w-[100vw] w-screen h-screen max-h-screen p-0"
         )}
-        // The DialogTitle is included within each component to fix the accessibility warning
         aria-describedby="post-creation-description"
         >
           <div id="post-creation-description" className="sr-only">
