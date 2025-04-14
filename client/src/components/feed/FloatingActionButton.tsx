@@ -64,6 +64,22 @@ export function FloatingActionButton() {
     }
   };
 
+  // Get dialog title based on post type
+  const getDialogTitle = () => {
+    switch (postType) {
+      case "text":
+        return "Create Text Post";
+      case "photo":
+        return "Create Photo Post";
+      case "audio":
+        return "Create Audio Post";
+      case "video":
+        return "Create Video Post";
+      default:
+        return "Create Post";
+    }
+  };
+
   return (
     <>
       <div className="fixed bottom-[80px] right-5 z-50">
@@ -157,13 +173,20 @@ export function FloatingActionButton() {
         </Button>
       </div>
       
-      {/* Post creation modal - For text posts */}
+      {/* Post creation modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className={cn(
-          "sm:max-w-[550px]",
-          // For fullscreen modals on audio/video
+          "sm:max-w-[550px]", 
+          // For fullscreen modals on audio/video/photo
           (postType === "audio" || postType === "video" || postType === "photo") && "sm:max-w-[100vw] w-screen h-screen max-h-screen p-0"
-        )}>
+        )}
+        // The DialogTitle is included within each component to fix the accessibility warning
+        aria-describedby="post-creation-description"
+        >
+          <div id="post-creation-description" className="sr-only">
+            Use this form to create a new {postType} post for your followers.
+          </div>
+          
           {renderModalContent()}
         </DialogContent>
       </Dialog>

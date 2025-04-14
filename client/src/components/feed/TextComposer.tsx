@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { DialogTitle } from "@/components/ui/dialog";
 
 interface TextComposerProps {
   onClose: () => void;
@@ -12,7 +13,7 @@ interface TextComposerProps {
 
 export const TextComposer = ({ onClose }: TextComposerProps) => {
   const [content, setContent] = useState("");
-  const [showComposer, setShowComposer] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const { toast } = useToast();
   const { user } = useAuth();
@@ -67,78 +68,59 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     });
   };
 
-  const handleNext = () => {
-    setShowComposer(false);
-  };
-
-  if (!showComposer) {
-    return (
-      <div className="flex flex-col h-full bg-black text-white">
-        {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-800">
-          <button 
-            className="text-white flex items-center" 
-            onClick={() => setShowComposer(true)}
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            New reel
-          </button>
-          <button 
-            className="text-blue-500 font-medium"
-            onClick={handleSubmit}
-            disabled={createPostMutation.isPending || !content.trim()}
-          >
-            {createPostMutation.isPending ? "Sharing..." : "Share"}
-          </button>
+  return (
+    <div className="flex flex-col h-full overflow-hidden bg-black text-white">
+      <DialogTitle className="sr-only">Create New Post</DialogTitle>
+      
+      {/* Top Bar */}
+      <div className="flex justify-between items-center p-4 border-b border-gray-800">
+        <button 
+          className="text-white" 
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <h2 className="text-lg font-medium text-white">New post</h2>
+        <button 
+          className="text-blue-500 font-medium"
+          onClick={handleSubmit}
+          disabled={createPostMutation.isPending || !content.trim()}
+        >
+          {createPostMutation.isPending ? "Sharing..." : "Share"}
+        </button>
+      </div>
+      
+      {/* Scrollable Container */}
+      <div 
+        ref={scrollContainerRef}
+        className="flex-grow overflow-y-auto"
+      >
+        {/* X-Style Compose Area */}
+        <div className="p-4 border-b border-gray-800">
+          <textarea
+            className="bg-transparent text-lg placeholder-gray-500 resize-none outline-none w-full min-h-[150px]"
+            placeholder="What's happening?"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            disabled={createPostMutation.isPending}
+          ></textarea>
+          
+          {/* Toolbar */}
+          <div className="flex space-x-4 mt-4 text-gray-400 text-xl">
+            <button>🅰️</button>
+            <button>🖼️</button>
+            <button>🚀</button>
+            <button>🎥</button>
+            <button>GIF</button>
+            <button>📍</button>
+          </div>
         </div>
-
+        
         {/* Options Panel */}
         <PostOptionsPanel 
           content={content}
           onContentChange={setContent}
         />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-background text-foreground">
-      {/* Top Bar */}
-      <div className="flex justify-between items-center p-4 border-b">
-        <button 
-          className="text-sm" 
-          onClick={onClose}
-        >
-          Cancel
-        </button>
-        <button 
-          className="bg-primary text-primary-foreground text-sm px-4 py-1 rounded-full"
-          onClick={handleNext}
-          disabled={!content.trim()}
-        >
-          Next
-        </button>
-      </div>
-      
-      {/* X-Style Compose Area */}
-      <div className="flex flex-col p-4 flex-grow">
-        <textarea
-          className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full flex-grow"
-          placeholder="What's happening?"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          disabled={createPostMutation.isPending}
-        ></textarea>
-        
-        {/* Toolbar */}
-        <div className="flex space-x-4 mt-4 text-primary text-xl">
-          <button>🅰️</button>
-          <button>🖼️</button>
-          <button>🚀</button>
-          <button>🎥</button>
-          <button>GIF</button>
-          <button>📍</button>
-        </div>
       </div>
     </div>
   );
