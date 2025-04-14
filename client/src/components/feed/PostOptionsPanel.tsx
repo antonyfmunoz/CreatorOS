@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { ChevronRight, Users, MapPin, Music, BrainCircuit, Eye, Search, Share2, MoreHorizontal, Hash, BarChart2, Search as SearchIcon } from "lucide-react";
+import { ChevronRight, Users, MapPin, Eye, Share2, Hash, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PostOptionsPanelProps {
@@ -12,17 +10,11 @@ interface PostOptionsPanelProps {
 }
 
 export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelProps) => {
-  const [isAILabelEnabled, setIsAILabelEnabled] = useState(false);
-  const [isTrialEnabled, setIsTrialEnabled] = useState(false);
   const [postToThreads, setPostToThreads] = useState(true);
   const [postToFacebook, setPostToFacebook] = useState(true);
   const [addToStory, setAddToStory] = useState(false);
   const [isOptionsExpanded, setIsOptionsExpanded] = useState(false);
   const { user } = useAuth();
-  
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onContentChange(e.target.value);
-  };
   
   // Sample location suggestions - in a real app these would be dynamic based on user location
   const suggestedLocations = [
@@ -72,36 +64,6 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
         ))}
       </div>
 
-      {/* Rename Audio (show only for audio posts) */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
-        <div className="flex items-center space-x-2">
-          <Music className="h-5 w-5" />
-          <span>Rename audio</span>
-        </div>
-        <div className="flex items-center">
-          <span className="text-muted-foreground mr-2">Original audio</span>
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-        </div>
-      </div>
-
-      {/* AI Label */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
-        <div className="flex flex-col">
-          <div className="flex items-center space-x-2">
-            <BrainCircuit className="h-5 w-5" />
-            <span>Add AI Label</span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 ml-7">
-            We require you to label certain realistic content that's made with AI. 
-            <span className="text-primary ml-1">Learn more</span>
-          </p>
-        </div>
-        <Switch
-          checked={isAILabelEnabled}
-          onCheckedChange={setIsAILabelEnabled}
-        />
-      </div>
-
       {/* Audience */}
       <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
@@ -112,21 +74,6 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
           <span className="text-muted-foreground mr-2">Everyone</span>
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
-      </div>
-
-      {/* Trial */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
-        <div className="flex items-center space-x-2">
-          <Search className="h-5 w-5" />
-          <div className="flex items-center">
-            <span>Trial</span>
-            <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">NEW</span>
-          </div>
-        </div>
-        <Switch
-          checked={isTrialEnabled}
-          onCheckedChange={setIsTrialEnabled}
-        />
       </div>
 
       {/* Post to section */}
@@ -189,25 +136,6 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
             />
           </div>
         </div>
-      </div>
-
-      {/* More options */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
-        <div className="flex items-center space-x-2">
-          <MoreHorizontal className="h-5 w-5" />
-          <span>More options</span>
-        </div>
-        <ChevronRight className="h-5 w-5 text-muted-foreground" />
-      </div>
-
-      {/* Bottom action buttons */}
-      <div className="flex px-4 py-3 space-x-3 mt-auto">
-        <Button variant="outline" className="w-1/2">
-          Save draft
-        </Button>
-        <Button className="w-1/2">
-          Share
-        </Button>
       </div>
     </div>
   );
