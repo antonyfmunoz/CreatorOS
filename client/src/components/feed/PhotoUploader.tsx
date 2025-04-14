@@ -155,21 +155,12 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           {/* Caption input */}
           <div className="p-4 border-b">
             <textarea
-              className="w-full p-3 mb-4 bg-background border border-border rounded resize-none"
+              className="w-full p-3 bg-background border border-border rounded resize-none"
               placeholder="Write a caption..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
               disabled={createPostMutation.isPending}
             />
-            
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              className="w-full"
-              disabled={createPostMutation.isPending}
-            >
-              Change Photo
-            </Button>
           </div>
           
           {/* Options Panel */}
