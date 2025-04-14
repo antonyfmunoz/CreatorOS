@@ -107,7 +107,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
             />
           </div>
 
-          {/* Threads - Not connected */}
+          {/* X/Twitter - Not connected */}
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 rounded-full bg-neutral-200 flex items-center justify-center overflow-hidden">
@@ -115,7 +115,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               </div>
               <div className="flex flex-col">
                 <span className="flex items-center">
-                  <span className="text-muted-foreground">Connect Threads</span>
+                  <span className="text-muted-foreground">Connect X (Twitter)</span>
                 </span>
                 <span className="text-xs text-muted-foreground">Connect to share posts</span>
               </div>
@@ -138,6 +138,74 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               <div className="flex flex-col">
                 <span className="flex items-center">
                   <span className="text-muted-foreground">Connect Facebook</span>
+                </span>
+                <span className="text-xs text-muted-foreground">Connect to share posts</span>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full px-3 py-1 h-auto text-xs"
+            >
+              Connect
+            </Button>
+          </div>
+
+          {/* Instagram - Not connected */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center overflow-hidden">
+                <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                  <div className="w-4 h-4 rounded-full border-2 border-current"></div>
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <span className="flex items-center">
+                  <span className="text-muted-foreground">Connect Instagram</span>
+                </span>
+                <span className="text-xs text-muted-foreground">Connect to share posts</span>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full px-3 py-1 h-auto text-xs"
+            >
+              Connect
+            </Button>
+          </div>
+
+          {/* TikTok - Not connected */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center overflow-hidden">
+                <span className="text-white text-lg">♪</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="flex items-center">
+                  <span className="text-muted-foreground">Connect TikTok</span>
+                </span>
+                <span className="text-xs text-muted-foreground">Connect to share posts</span>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full px-3 py-1 h-auto text-xs"
+            >
+              Connect
+            </Button>
+          </div>
+
+          {/* YouTube - Not connected */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center overflow-hidden">
+                <span className="text-red-600 text-lg">▶</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="flex items-center">
+                  <span className="text-muted-foreground">Connect YouTube</span>
                 </span>
                 <span className="text-xs text-muted-foreground">Connect to share posts</span>
               </div>
