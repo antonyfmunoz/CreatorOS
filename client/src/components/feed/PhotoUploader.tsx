@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Upload, Loader2 } from "lucide-react";
+import { X, Upload, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -98,6 +98,12 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     createPostMutation.mutate(formData);
   };
   
+  const handleBack = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  
   // If image is selected, show the image editor and options
   if (imagePreview) {
     return (
@@ -106,7 +112,15 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         
         {/* Top Bar - Instagram-like header */}
         <div className="flex justify-between items-center p-4 border-b">
-          <button className="text-foreground" onClick={onClose}>Cancel</button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex items-center gap-1 px-2" 
+            onClick={handleBack}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
           <h2 className="text-lg font-medium">New post</h2>
           <Button 
             variant="ghost" 
@@ -150,11 +164,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             
             <Button
               variant="outline"
-              onClick={() => {
-                setImageFile(null);
-                setImagePreview(null);
-                if (fileInputRef.current) fileInputRef.current.value = '';
-              }}
+              onClick={handleBack}
               className="w-full"
               disabled={createPostMutation.isPending}
             >
