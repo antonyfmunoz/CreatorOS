@@ -18,22 +18,70 @@ const storage = multer.diskStorage({
     // Create unique filename with original extension
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, 'profile-' + uniqueSuffix + ext);
+    
+    // Add prefix based on file type (profile, image, audio, video)
+    let prefix = 'file';
+    
+    if (file.fieldname === 'profile') {
+      prefix = 'profile';
+    } else if (file.fieldname === 'image') {
+      prefix = 'image';
+    } else if (file.fieldname === 'audio') {
+      prefix = 'audio';
+    } else if (file.fieldname === 'video') {
+      prefix = 'video';
+    }
+    
+    cb(null, `${prefix}-${uniqueSuffix}${ext}`);
   }
 });
 
-// File filter to only allow certain image types
+// File filter function that adapts based on the field name
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = /jpeg|jpg|png|gif|webp/;
-  // Check extension
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  // Check mime type
-  const mimetype = allowedTypes.test(file.mimetype);
+  // Determine allowed types based on the field name
+  if (file.fieldname === 'profile' || file.fieldname === 'image') {
+    // For profile pictures and post images
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    // Check extension
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    // Check mime type
+    const mimetype = allowedTypes.test(file.mimetype);
 
-  if (mimetype && extname) {
-    return cb(null, true);
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  } else if (file.fieldname === 'audio') {
+    // For audio uploads
+    const allowedTypes = /mp3|wav|ogg|webm/;
+    // Check extension
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    // Check mime type (more permissive for audio)
+    const isAudio = file.mimetype.startsWith('audio/') || 
+                    file.mimetype === 'application/octet-stream'; // For some webm recordings
+
+    if (isAudio || extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed!'));
+    }
+  } else if (file.fieldname === 'video') {
+    // For video uploads
+    const allowedTypes = /mp4|webm|mov|avi/;
+    // Check extension
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    // Check mime type
+    const isVideo = file.mimetype.startsWith('video/');
+
+    if (isVideo || extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only video files are allowed!'));
+    }
   } else {
-    cb(new Error('Only image files are allowed!'));
+    // Default for other file types
+    cb(new Error('Unexpected file field'));
   }
 };
 

@@ -245,10 +245,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/posts", async (req, res) => {
     try {
-      const post = await storage.createPost(req.body);
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Add authenticated user's ID to the post data
+      const postData = {
+        ...req.body,
+        userId: req.user.id
+      };
+      
+      const post = await storage.createPost(postData);
       res.status(201).json(post);
     } catch (error) {
+      console.error("Error creating post:", error);
       res.status(500).json({ message: "Failed to create post" });
+    }
+  });
+  
+  // Handle media post uploads (image, audio, video)
+  app.post("/api/posts/media", upload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'audio', maxCount: 1 },
+    { name: 'video', maxCount: 1 }
+  ]), async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const { content, userId } = req.body;
+      
+      if (!content || !userId) {
+        return res.status(400).json({ message: "Content and userId are required" });
+      }
+      
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const postData: any = {
+        userId: parseInt(userId),
+        content,
+      };
+      
+      if (files.image && files.image[0]) {
+        // Handle image post
+        const imagePath = `/uploads/${files.image[0].filename}`;
+        postData.imageUrl = imagePath;
+        postData.mediaType = 'photo';
+      } else if (files.audio && files.audio[0]) {
+        // Handle audio post
+        const audioPath = `/uploads/${files.audio[0].filename}`;
+        postData.audioUrl = audioPath;
+        postData.mediaType = 'audio';
+      } else if (files.video && files.video[0]) {
+        // Handle video post
+        const videoPath = `/uploads/${files.video[0].filename}`;
+        postData.videoUrl = videoPath;
+        postData.mediaType = 'video';
+      } else {
+        return res.status(400).json({ message: "No media file provided" });
+      }
+      
+      const post = await storage.createPost(postData);
+      res.status(201).json(post);
+    } catch (error) {
+      console.error("Error creating media post:", error);
+      res.status(500).json({ message: "Failed to create media post" });
     }
   });
 
@@ -404,8 +465,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Filter by type if specified
       if (type) {
         const filteredPosts = posts.filter(post => {
+          // If post has a specific mediaType, use that
+          if (post.mediaType) {
+            return post.mediaType === type;
+          }
+          
+          // Legacy format fallback
           if (type === 'photo' && post.imageUrl) return true;
-          if (type === 'text' && !post.imageUrl) return true;
+          if (type === 'audio' && post.audioUrl) return true;
+          if (type === 'video' && post.videoUrl) return true;
+          if (type === 'text' && !post.imageUrl && !post.audioUrl && !post.videoUrl) return true;
+          
           return false;
         });
         return res.json(filteredPosts);
@@ -413,6 +483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(posts);
     } catch (error) {
+      console.error("Error fetching user posts:", error);
       res.status(500).json({ message: "Failed to fetch user posts" });
     }
   });

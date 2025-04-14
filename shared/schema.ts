@@ -32,6 +32,9 @@ export const posts = pgTable("posts", {
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
+  audioUrl: text("audio_url"),
+  videoUrl: text("video_url"),
+  mediaType: text("media_type").default("text"), // text, photo, audio, video
   likes: integer("likes").default(0).notNull(),
   comments: integer("comments").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -41,6 +44,9 @@ export const insertPostSchema = createInsertSchema(posts).pick({
   userId: true,
   content: true,
   imageUrl: true,
+  audioUrl: true,
+  videoUrl: true,
+  mediaType: true,
 });
 
 // Saved Posts schema - junction table for users and their saved posts
