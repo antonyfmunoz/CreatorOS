@@ -1,14 +1,15 @@
 import { Filter } from "lucide-react";
-import { 
+import {
   DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
-export type ContentFilterType = 'all' | 'video' | 'short' | 'photo' | 'thread' | 'audio';
+export type ContentFilterType = "all" | "photo" | "video" | "text" | "audio";
 
 interface FilterDropdownProps {
   selectedFilter: ContentFilterType;
@@ -16,32 +17,51 @@ interface FilterDropdownProps {
 }
 
 export const FilterDropdown = ({ selectedFilter, onSelect }: FilterDropdownProps) => {
-  const filters: { value: ContentFilterType; label: string }[] = [
-    { value: 'all', label: 'All Content' },
-    { value: 'video', label: 'Videos' },
-    { value: 'short', label: 'Shorts' },
-    { value: 'photo', label: 'Photos' },
-    { value: 'thread', label: 'Threads' },
-    { value: 'audio', label: 'Audio' },
-  ];
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9">
-          <Filter className="h-5 w-5 text-black dark:text-white" />
+        <Button variant="ghost" size="icon">
+          <Filter className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        {filters.map((filter) => (
-          <DropdownMenuCheckboxItem
-            key={filter.value}
-            checked={selectedFilter === filter.value}
-            onCheckedChange={() => onSelect(filter.value)}
-          >
-            {filter.label}
-          </DropdownMenuCheckboxItem>
-        ))}
+      <DropdownMenuContent className="w-40">
+        <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        
+        <DropdownMenuCheckboxItem
+          checked={selectedFilter === "all"}
+          onCheckedChange={() => onSelect("all")}
+        >
+          All Content
+        </DropdownMenuCheckboxItem>
+        
+        <DropdownMenuCheckboxItem
+          checked={selectedFilter === "video"}
+          onCheckedChange={() => onSelect("video")}
+        >
+          Videos
+        </DropdownMenuCheckboxItem>
+        
+        <DropdownMenuCheckboxItem
+          checked={selectedFilter === "photo"}
+          onCheckedChange={() => onSelect("photo")}
+        >
+          Photos
+        </DropdownMenuCheckboxItem>
+        
+        <DropdownMenuCheckboxItem
+          checked={selectedFilter === "text"}
+          onCheckedChange={() => onSelect("text")}
+        >
+          Text
+        </DropdownMenuCheckboxItem>
+        
+        <DropdownMenuCheckboxItem
+          checked={selectedFilter === "audio"}
+          onCheckedChange={() => onSelect("audio")}
+        >
+          Audio
+        </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

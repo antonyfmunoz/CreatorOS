@@ -1,53 +1,43 @@
-import { useState } from 'react';
+import { cn } from "@/lib/utils";
 
-export type TabType = 'forYou' | 'following';
+export type TabType = "forYou" | "following";
 
 interface TabsProps {
   activeTab: TabType;
   onChange: (tab: TabType) => void;
 }
 
-export const Tabs = ({ activeTab, onChange }: TabsProps) => {
+export function Tabs({ activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex w-full border-b">
-      <TabButton 
-        isActive={activeTab === 'forYou'} 
-        onClick={() => onChange('forYou')}
-        label="For You" 
-      />
-      <TabButton 
-        isActive={activeTab === 'following'} 
-        onClick={() => onChange('following')}
-        label="Following" 
-      />
+    <div className="flex border-b border-gray-200 dark:border-gray-800 w-full">
+      <button
+        onClick={() => onChange("forYou")}
+        className={cn(
+          "flex-1 py-3 text-sm font-medium text-center transition-colors relative",
+          activeTab === "forYou"
+            ? "text-black dark:text-white"
+            : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300"
+        )}
+      >
+        For You
+        {activeTab === "forYou" && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black dark:bg-white" />
+        )}
+      </button>
+      <button
+        onClick={() => onChange("following")}
+        className={cn(
+          "flex-1 py-3 text-sm font-medium text-center transition-colors relative",
+          activeTab === "following"
+            ? "text-black dark:text-white"
+            : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300"
+        )}
+      >
+        Following
+        {activeTab === "following" && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black dark:bg-white" />
+        )}
+      </button>
     </div>
   );
-};
-
-interface TabButtonProps {
-  isActive: boolean;
-  onClick: () => void;
-  label: string;
 }
-
-const TabButton = ({ isActive, onClick, label }: TabButtonProps) => {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 py-3 text-sm font-medium relative ${
-        isActive 
-          ? 'text-black dark:text-white' 
-          : 'text-gray-500 dark:text-gray-400'
-      }`}
-    >
-      {label}
-      {isActive && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black dark:bg-white" />
-      )}
-    </button>
-  );
-};
-
-export const Tab = ({ label }: { label: string }) => {
-  return null; // This is just a placeholder for documentation purposes
-};

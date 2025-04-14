@@ -44,7 +44,7 @@ const Explore = () => {
         filteredPosts = filteredPosts.filter(post => post.audioUrl);
       } else if (contentFilter === "video") {
         filteredPosts = filteredPosts.filter(post => post.videoUrl);
-      } else if (contentFilter === "thread") {
+      } else if (contentFilter === "text") {
         filteredPosts = filteredPosts.filter(post => !post.imageUrl && !post.audioUrl && !post.videoUrl);
       }
       
