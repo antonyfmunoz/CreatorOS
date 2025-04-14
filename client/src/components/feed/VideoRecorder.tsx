@@ -4,6 +4,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { X, Upload, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 
 interface VideoRecorderProps {
   onClose: () => void;
@@ -14,6 +16,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [content, setContent] = useState("");
+  const [activeTab, setActiveTab] = useState<"preview" | "options">("preview");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -102,74 +105,97 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
     setVideoDuration(video.duration);
   };
   
-  // Simple responsive TikTok-like UI that overlays the video feed
+  // TikTok-inspired UI with options panel
   return (
     <div className="relative w-full h-screen bg-background text-foreground">
       {videoPreview ? (
-        // Video preview mode
+        // Video preview mode with tabs
         <div className="flex flex-col h-full">
           {/* Top bar */}
-          <div className="flex justify-between items-center p-4">
+          <div className="flex justify-between items-center p-4 border-b">
             <button onClick={onClose} className="text-xl">✕</button>
-            <div className="text-sm">
+            <div className="text-sm font-medium">
               {videoDuration < 10 ? 'Short video' : 'Long video'}
             </div>
-            <div className="w-4"></div> {/* Empty space for symmetry */}
-          </div>
-          
-          {/* Video preview */}
-          <div className="flex-grow flex justify-center items-center bg-black">
-            <video 
-              ref={videoRef}
-              src={videoPreview} 
-              className="max-h-full max-w-full" 
-              controls
-              onLoadedMetadata={handleVideoMetadata}
-            />
-          </div>
-          
-          {/* Caption input */}
-          <div className="p-4">
-            <input
-              type="text"
-              className="w-full p-2 mb-4 border border-border rounded"
-              placeholder="Add a caption"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handlePost}
               disabled={createPostMutation.isPending}
-            />
-            
-            <div className="flex justify-between">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setVideoFile(null);
-                  setVideoPreview(null);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }}
-                disabled={createPostMutation.isPending}
-              >
-                Change Video
-              </Button>
-              
-              <Button 
-                onClick={handlePost}
-                disabled={createPostMutation.isPending || !videoFile}
-              >
-                {createPostMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Posting...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Post
-                  </>
-                )}
-              </Button>
-            </div>
+            >
+              Post
+            </Button>
           </div>
+          
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "preview" | "options")}>
+            <TabsList className="w-full grid grid-cols-2">
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="options">Options</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="preview" className="h-[calc(100vh-180px)] flex flex-col">
+              {/* Video preview */}
+              <div className="flex-grow flex justify-center items-center bg-black">
+                <video 
+                  ref={videoRef}
+                  src={videoPreview} 
+                  className="max-h-full max-w-full" 
+                  controls
+                  onLoadedMetadata={handleVideoMetadata}
+                />
+              </div>
+              
+              {/* Caption input */}
+              <div className="p-4">
+                <input
+                  type="text"
+                  className="w-full p-2 mb-4 border border-border rounded"
+                  placeholder="Add a caption"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  disabled={createPostMutation.isPending}
+                />
+                
+                <div className="flex justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setVideoFile(null);
+                      setVideoPreview(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    disabled={createPostMutation.isPending}
+                  >
+                    Change Video
+                  </Button>
+                  
+                  <Button 
+                    onClick={handlePost}
+                    disabled={createPostMutation.isPending || !videoFile}
+                  >
+                    {createPostMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Posting...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Post
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="options" className="h-[calc(100vh-180px)] overflow-y-auto">
+              <PostOptionsPanel 
+                content={content}
+                onContentChange={setContent}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       ) : (
         // Video selection mode with TikTok-inspired UI
@@ -178,7 +204,12 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
             <button className="text-foreground text-xl" onClick={onClose}>✕</button>
             <div className="flex space-x-2">
-              <button className="bg-muted px-3 py-1 rounded-full text-sm">Upload</button>
+              <button 
+                className="bg-muted px-3 py-1 rounded-full text-sm"
+                onClick={triggerFileSelect}
+              >
+                Upload
+              </button>
               <button className="bg-muted w-8 h-8 rounded-full text-sm flex items-center justify-center">15s</button>
             </div>
           </div>

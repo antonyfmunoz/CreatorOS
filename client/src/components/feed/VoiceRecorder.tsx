@@ -3,6 +3,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
+import { Button } from "@/components/ui/button";
+import { Loader2, X, Mic } from "lucide-react";
 
 interface VoiceRecorderProps {
   onClose: () => void;
@@ -12,12 +16,16 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [content, setContent] = useState("");
+  const [activeTab, setActiveTab] = useState<"recording" | "options">("recording");
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -26,7 +34,12 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   // Start recording automatically when component mounts
   useEffect(() => {
     startRecording();
-    return () => stopRecording();
+    return () => {
+      stopRecording();
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
   }, []);
 
   // Update timer when recording
@@ -46,6 +59,36 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
     };
   }, [isRecording]);
 
+  // Handle audio playback
+  useEffect(() => {
+    if (!audioRef.current || !audioUrl) return;
+    
+    const audio = audioRef.current;
+    
+    const handleEnded = () => {
+      setIsPlaying(false);
+    };
+    
+    audio.addEventListener('ended', handleEnded);
+    return () => {
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [audioUrl]);
+
+  // Update audio element when playing state changes
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.play().catch(err => {
+        console.error("Error playing audio:", err);
+        setIsPlaying(false);
+      });
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlaying]);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -64,6 +107,10 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(audioBlob);
+        
+        // Create audio URL for playback
+        const url = URL.createObjectURL(audioBlob);
+        setAudioUrl(url);
       };
       
       mediaRecorder.start();
@@ -87,6 +134,10 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       }
     }
+  };
+  
+  const togglePlayback = () => {
+    setIsPlaying(!isPlaying);
   };
 
   const createPostMutation = useMutation({
@@ -156,46 +207,121 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2 bg-background">
-      <div className="flex flex-col">
-        {/* Optional caption input */}
-        <input
-          type="text"
-          className="bg-background border border-border rounded-md p-2 mb-2 text-sm"
-          placeholder="Add caption (optional)"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          disabled={createPostMutation.isPending}
-        />
+    <div className="relative w-full h-screen bg-background text-foreground">
+      {/* Top bar */}
+      <div className="flex justify-between items-center p-4 border-b">
+        <button onClick={onClose} className="text-xl">✕</button>
+        <h2 className="text-lg font-medium">Voice Message</h2>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          disabled={createPostMutation.isPending || !audioBlob}
+          onClick={handleSend}
+        >
+          {createPostMutation.isPending ? "Sending..." : "Send"}
+        </Button>
+      </div>
+      
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "recording" | "options")}>
+        <TabsList className="w-full grid grid-cols-2">
+          <TabsTrigger value="recording">Recording</TabsTrigger>
+          <TabsTrigger value="options">Options</TabsTrigger>
+        </TabsList>
         
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <span className="text-foreground text-sm">{formatTime(recordingTime)}</span>
+        <TabsContent value="recording" className="h-[calc(100vh-180px)] flex flex-col">
+          {/* Telegram-inspired voice recorder UI */}
+          <div className="flex-grow flex flex-col items-center justify-center px-4">
             {isRecording ? (
-              <span className="text-muted-foreground text-sm">Slide to cancel</span>
+              <div className="flex flex-col items-center space-y-4">
+                <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center animate-pulse">
+                  <Mic className="h-10 w-10 text-primary-foreground" />
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-medium">{formatTime(recordingTime)}</div>
+                  <div className="text-muted-foreground">Recording...</div>
+                </div>
+                <Button 
+                  onClick={stopRecording} 
+                  variant="destructive"
+                >
+                  Stop Recording
+                </Button>
+              </div>
+            ) : audioUrl ? (
+              <div className="flex flex-col items-center space-y-4 w-full max-w-md">
+                <audio ref={audioRef} src={audioUrl} className="hidden" />
+                
+                <div 
+                  className={`w-20 h-20 rounded-full ${isPlaying ? 'bg-primary/80' : 'bg-primary'} flex items-center justify-center cursor-pointer`}
+                  onClick={togglePlayback}
+                >
+                  <span className="text-3xl">{isPlaying ? '❚❚' : '▶'}</span>
+                </div>
+                
+                <div className="text-center">
+                  <div className="text-xl font-medium">{formatTime(recordingTime)}</div>
+                  <div className="text-muted-foreground">
+                    {isPlaying ? 'Playing...' : 'Tap to play'}
+                  </div>
+                </div>
+                
+                <div className="w-full space-y-4 mt-4">
+                  <input
+                    type="text"
+                    className="w-full p-3 border border-border rounded"
+                    placeholder="Add caption (optional)"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    disabled={createPostMutation.isPending}
+                  />
+                  
+                  <div className="flex justify-between">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setAudioBlob(null);
+                        setAudioUrl(null);
+                        setIsPlaying(false);
+                        setRecordingTime(0);
+                        if (audioRef.current) {
+                          audioRef.current.pause();
+                        }
+                        startRecording();
+                      }}
+                      disabled={createPostMutation.isPending}
+                    >
+                      Record Again
+                    </Button>
+                    
+                    <Button 
+                      onClick={handleSend}
+                      disabled={createPostMutation.isPending}
+                    >
+                      {createPostMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : "Send"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             ) : (
-              <span className="text-muted-foreground text-sm">Recording complete</span>
+              <div className="flex flex-col items-center space-y-4">
+                <Button onClick={startRecording}>Start Recording</Button>
+              </div>
             )}
           </div>
-
-          {isRecording ? (
-            <button
-              onClick={stopRecording}
-              className="bg-primary w-14 h-14 rounded-full flex items-center justify-center"
-            >
-              <span className="text-2xl">🎙️</span>
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={createPostMutation.isPending || !audioBlob}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-full"
-            >
-              {createPostMutation.isPending ? "Sending..." : "Send"}
-            </button>
-          )}
-        </div>
-      </div>
+        </TabsContent>
+        
+        <TabsContent value="options" className="h-[calc(100vh-180px)] overflow-y-auto">
+          <PostOptionsPanel 
+            content={content}
+            onContentChange={setContent}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

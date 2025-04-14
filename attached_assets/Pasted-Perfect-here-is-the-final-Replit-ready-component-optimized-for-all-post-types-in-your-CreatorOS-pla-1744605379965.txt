@@ -1,0 +1,142 @@
+Perfect—here is the final Replit-ready component, optimized for all post types in your CreatorOS platform:
+	•	Text Posts (X-style)
+	•	Photo Posts (Instagram-style)
+	•	Video Posts (TikTok/YouTube-style)
+	•	Voice Posts (Telegram-style)
+
+This unified PostOptionsPanel should appear below or alongside any media/type modal, allowing shared access to audience controls, cross-posting, tags, location, monetization, and scheduling—no matter what content type is selected.
+
+⸻
+
+✅ Final PostOptionsPanel (Universal Post Metadata Layer)
+
+const PostOptionsPanel = () => {
+  return (
+    <div className="flex flex-col bg-black text-white space-y-6 px-4 py-6 text-sm">
+
+      {/* Audience */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <span className="text-lg">👁️</span>
+          <span>Audience</span>
+        </div>
+        <button className="text-gray-300">Everyone ➤</button>
+      </div>
+
+      {/* Also Share On */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <span className="text-lg">↗️</span>
+          <span>Also share on…</span>
+        </div>
+        <button className="text-gray-300">2 profiles ➤</button>
+      </div>
+
+      {/* Active Linked Profiles */}
+      <div className="text-gray-400 text-xs">
+        <span className="mr-2">@antonyf.munoz</span>
+        <span className="mr-2">•</span>
+        <span className="mr-2">Facebook · Antony F. Munoz</span>
+      </div>
+
+      {/* Optional Caption or Text Entry */}
+      <textarea
+        placeholder="Add a caption..."
+        className="w-full mt-4 bg-transparent text-white placeholder-gray-500 outline-none resize-none"
+        rows={2}
+      />
+
+      {/* Poll (Prompt intentionally excluded) */}
+      <div className="flex space-x-4 mt-2">
+        <button className="bg-gray-800 px-3 py-1 rounded-full">Poll</button>
+      </div>
+
+      {/* Tag People */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <span>🖼️</span>
+          <span>Tag people</span>
+        </div>
+        <button className="text-gray-300">➤</button>
+      </div>
+
+      {/* Location Tag */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <span>📍</span>
+          <span>Add location</span>
+        </div>
+        <button className="text-gray-300">➤</button>
+      </div>
+
+      {/* Suggested Location Chips */}
+      <div className="flex flex-wrap gap-2 text-sm text-black">
+        {[
+          "Garza Blanca Cancun",
+          "Garza Blanca Resort",
+          "Villa del Palmar"
+        ].map(loc => (
+          <span
+            key={loc}
+            className="bg-gray-200 dark:bg-gray-600 px-3 py-1 rounded-full text-sm text-white"
+          >
+            {loc}
+          </span>
+        ))}
+      </div>
+
+      {/* Monetization */}
+      <div className="mt-6 space-y-4">
+        <h3 className="text-gray-400 text-xs uppercase">Ads and monetization</h3>
+
+        <div className="flex justify-between items-center">
+          <span className="flex items-center space-x-2">
+            <span>📈</span>
+            <span>Boost post</span>
+          </span>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-blue-500"></div>
+          </label>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="flex items-center space-x-2">
+            <span>🤝</span>
+            <span>Partnership label & ads</span>
+          </span>
+          <button className="text-gray-300">➤</button>
+        </div>
+      </div>
+
+      {/* Schedule Post */}
+      <div className="mt-6 space-y-2">
+        <h3 className="text-gray-400 text-xs uppercase">Sharing preferences</h3>
+
+        <div className="flex justify-between items-center">
+          <span className="flex items-center space-x-2">
+            <span>⏰</span>
+            <span>Schedule this post</span>
+          </span>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-blue-500"></div>
+          </label>
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+
+
+⸻
+
+Summary:
+	•	✅ Works across all post types
+	•	✅ Includes audience, profiles, tagging, location, polls, monetization, scheduling
+	•	✅ Dark mode ready
+	•	✅ Built in React JSX + TailwindCSS
+
+Let me know if you want a matching PostComposerModal that wraps this UI with media, or backend schemas for this metadata.
