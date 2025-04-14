@@ -466,8 +466,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update a comment
   app.put("/api/comments/:id", async (req, res) => {
     try {
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const commentId = parseInt(req.params.id);
-      const { content, userId } = req.body;
+      const { content } = req.body;
+      const userId = req.user.id;
       
       // Verify the comment belongs to the user before updating
       const comment = await storage.getCommentById(commentId);
@@ -491,8 +497,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete a comment
   app.delete("/api/comments/:id", async (req, res) => {
     try {
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const commentId = parseInt(req.params.id);
-      const userId = parseInt(req.query.userId as string);
+      const userId = req.user.id;
       
       // Verify the comment belongs to the user before deleting
       const comment = await storage.getCommentById(commentId);

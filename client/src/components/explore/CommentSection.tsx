@@ -171,8 +171,8 @@ const SingleComment = ({
   // Mutation for unliking a comment
   // Mutation for updating a comment
   const updateCommentMutation = useMutation({
-    mutationFn: async ({ commentId, content, userId }: { commentId: number; content: string; userId: number }) => {
-      const res = await apiRequest('PUT', `/api/comments/${commentId}`, { content, userId });
+    mutationFn: async ({ commentId, content }: { commentId: number; content: string }) => {
+      const res = await apiRequest('PUT', `/api/comments/${commentId}`, { content });
       return res.json();
     },
     onMutate: async ({ commentId, content }) => {
@@ -254,8 +254,8 @@ const SingleComment = ({
   // Mutation for deleting a comment
   const deleteCommentMutation = useMutation({
     mutationFn: async (commentId: number) => {
-      // Pass the user ID as a query parameter
-      const res = await apiRequest('DELETE', `/api/comments/${commentId}?userId=${currentUser?.id}`);
+      // No need to pass userId as it's taken from session
+      const res = await apiRequest('DELETE', `/api/comments/${commentId}`);
       return commentId; // Just return the ID as there's no response body for 204
     },
     onMutate: async (commentId) => {
@@ -443,8 +443,7 @@ const SingleComment = ({
     
     updateCommentMutation.mutate({
       commentId: comment.id,
-      content: editedContent,
-      userId: currentUser.id
+      content: editedContent
     });
   };
   
@@ -670,7 +669,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
 
   // Mutation for creating a new comment
   const createCommentMutation = useMutation({
-    mutationFn: async (newComment: { postId: number; userId: number; content: string; parentId?: number }) => {
+    mutationFn: async (newComment: { postId: number; content: string; parentId?: number }) => {
       const res = await apiRequest('POST', '/api/comments', newComment);
       return res.json();
     },
