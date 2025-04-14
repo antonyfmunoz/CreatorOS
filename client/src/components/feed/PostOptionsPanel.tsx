@@ -14,6 +14,14 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
   const [addToStory, setAddToStory] = useState(false);
   // Default to true to show the connection options 
   const [isOptionsExpanded, setIsOptionsExpanded] = useState(true);
+  
+  // These handlers would initiate OAuth flows with each platform
+  const handleConnectPlatform = (platform: string) => {
+    // In a real implementation, this would redirect to the platform's OAuth page
+    console.log(`Connecting to ${platform}...`);
+    // Example of how this would work:
+    // window.location.href = `https://api.${platform}.com/oauth/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=${window.location.origin}/auth/callback&scope=read_user,write_post`;
+  };
   const { user } = useAuth();
   
   // Sample location suggestions - in a real app these would be dynamic based on user location
@@ -111,6 +119,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
               aria-label="Connect to X (Twitter)"
+              onClick={() => handleConnectPlatform('twitter')}
             >
               Connect
             </Button>
@@ -134,6 +143,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
               aria-label="Connect to Facebook"
+              onClick={() => handleConnectPlatform('facebook')}
             >
               Connect
             </Button>
@@ -159,6 +169,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
               aria-label="Connect to Instagram"
+              onClick={() => handleConnectPlatform('instagram')}
             >
               Connect
             </Button>
@@ -181,6 +192,8 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               variant="outline" 
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
+              aria-label="Connect to TikTok"
+              onClick={() => handleConnectPlatform('tiktok')}
             >
               Connect
             </Button>
@@ -203,6 +216,8 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               variant="outline" 
               size="sm" 
               className="rounded-full px-3 py-1 h-auto text-xs"
+              aria-label="Connect to YouTube"
+              onClick={() => handleConnectPlatform('youtube')}
             >
               Connect
             </Button>
@@ -217,6 +232,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
             <Switch
               checked={addToStory}
               onCheckedChange={setAddToStory}
+              aria-label="Add to your story"
             />
           </div>
         </div>
