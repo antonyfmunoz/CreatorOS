@@ -4,8 +4,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { Loader2 } from "lucide-react";
+import { Loader2, Type, Image, Rocket, Video, MapPin } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface TextComposerProps {
   onClose: () => void;
@@ -69,25 +70,32 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-black text-white">
+    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
       <DialogTitle className="sr-only">Create New Post</DialogTitle>
       
       {/* Top Bar */}
-      <div className="flex justify-between items-center p-4 border-b border-gray-800">
+      <div className="flex justify-between items-center p-4 border-b">
         <button 
-          className="text-white" 
+          className="text-foreground" 
           onClick={onClose}
         >
           Cancel
         </button>
-        <h2 className="text-lg font-medium text-white">New post</h2>
-        <button 
-          className="text-blue-500 font-medium"
+        <h2 className="text-lg font-medium">New post</h2>
+        <Button 
+          variant="ghost" 
+          size="sm"
           onClick={handleSubmit}
           disabled={createPostMutation.isPending || !content.trim()}
+          className="text-primary font-medium"
         >
-          {createPostMutation.isPending ? "Sharing..." : "Share"}
-        </button>
+          {createPostMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sharing...
+            </>
+          ) : "Share"}
+        </Button>
       </div>
       
       {/* Scrollable Container */}
@@ -96,9 +104,9 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         className="flex-grow overflow-y-auto"
       >
         {/* X-Style Compose Area */}
-        <div className="p-4 border-b border-gray-800">
+        <div className="p-4 border-b">
           <textarea
-            className="bg-transparent text-lg placeholder-gray-500 resize-none outline-none w-full min-h-[150px]"
+            className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full min-h-[150px]"
             placeholder="What's happening?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -106,13 +114,25 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           ></textarea>
           
           {/* Toolbar */}
-          <div className="flex space-x-4 mt-4 text-gray-400 text-xl">
-            <button>🅰️</button>
-            <button>🖼️</button>
-            <button>🚀</button>
-            <button>🎥</button>
-            <button>GIF</button>
-            <button>📍</button>
+          <div className="flex space-x-4 mt-4 text-muted-foreground">
+            <Button variant="ghost" size="icon">
+              <Type className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon">
+              <Image className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon">
+              <Rocket className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon">
+              <Video className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon">
+              <span className="text-sm font-bold">GIF</span>
+            </Button>
+            <Button variant="ghost" size="icon">
+              <MapPin className="h-5 w-5" />
+            </Button>
           </div>
         </div>
         

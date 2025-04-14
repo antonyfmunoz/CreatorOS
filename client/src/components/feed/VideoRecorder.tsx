@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Upload, CheckCircle, Loader2 } from "lucide-react";
+import { X, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -108,22 +108,29 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   // If video is selected, show the video editor and options
   if (videoPreview) {
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-black text-white">
+      <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
         <DialogTitle className="sr-only">Create New Video Post</DialogTitle>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-800">
-          <button className="text-white" onClick={onClose}>Cancel</button>
-          <div className="text-sm font-medium text-white">
+        <div className="flex justify-between items-center p-4 border-b">
+          <button className="text-foreground" onClick={onClose}>Cancel</button>
+          <div className="text-sm font-medium">
             {videoDuration < 10 ? 'Short video' : 'Long video'}
           </div>
-          <button 
-            className="text-blue-500 font-medium"
+          <Button 
+            variant="ghost" 
+            size="sm"
             onClick={handlePost}
             disabled={createPostMutation.isPending || !videoFile}
+            className="text-primary font-medium"
           >
-            {createPostMutation.isPending ? "Sharing..." : "Share"}
-          </button>
+            {createPostMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sharing...
+              </>
+            ) : "Share"}
+          </Button>
         </div>
         
         {/* Scrollable Content */}
@@ -132,7 +139,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           className="flex-grow overflow-y-auto"
         >
           {/* Video preview */}
-          <div className="w-full aspect-video bg-black flex items-center justify-center">
+          <div className="w-full aspect-video bg-muted flex items-center justify-center">
             <video 
               ref={videoRef}
               src={videoPreview} 
@@ -143,10 +150,10 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           </div>
           
           {/* Caption input */}
-          <div className="p-4 border-b border-gray-800">
+          <div className="p-4 border-b">
             <input
               type="text"
-              className="w-full p-3 mb-4 bg-transparent border border-gray-700 rounded text-white"
+              className="w-full p-3 mb-4 bg-background border border-border rounded"
               placeholder="Add a caption"
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -160,7 +167,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
                 setVideoPreview(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="w-full border-gray-700 text-white hover:bg-gray-800"
+              className="w-full"
               disabled={createPostMutation.isPending}
             >
               Change Video
@@ -179,39 +186,47 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   
   // TikTok-inspired UI for video selection
   return (
-    <div className="relative w-full h-screen bg-black text-white">
+    <div className="relative w-full h-screen bg-background text-foreground">
       <DialogTitle className="sr-only">Create New Video Post</DialogTitle>
       
       {/* Top Controls */}
       <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
-        <button className="text-white text-xl" onClick={onClose}>✕</button>
+        <button className="text-foreground text-xl" onClick={onClose}>✕</button>
         <div className="flex space-x-2">
-          <button 
-            className="bg-gray-800 px-3 py-1 rounded-full text-sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="rounded-full"
             onClick={triggerFileSelect}
           >
             Upload
-          </button>
-          <button className="bg-gray-800 w-8 h-8 rounded-full text-sm flex items-center justify-center">15s</button>
+          </Button>
+          <Button 
+            variant="outline" 
+            size="icon"
+            className="rounded-full w-8 h-8"
+          >
+            <span className="text-xs">15s</span>
+          </Button>
         </div>
       </div>
 
       {/* Center Upload Button */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <p className="text-lg mb-4 text-white">Select a video to upload</p>
+        <p className="text-lg mb-4">Select a video to upload</p>
         <button 
           onClick={triggerFileSelect}
           className="flex flex-col items-center justify-center space-y-2"
         >
-          <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center">
-            <Upload className="h-8 w-8 text-white" />
+          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
+            <Upload className="h-8 w-8 text-primary-foreground" />
           </div>
-          <span className="text-sm text-white">Tap to select</span>
+          <span className="text-sm">Tap to select</span>
         </button>
       </div>
 
       {/* Bottom Nav */}
-      <div className="absolute bottom-5 left-0 right-0 flex justify-around text-sm text-white">
+      <div className="absolute bottom-5 left-0 right-0 flex justify-around text-sm">
         <span>Video</span>
         <span className="font-bold">Short</span>
         <span>Live</span>

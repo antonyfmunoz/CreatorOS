@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Upload, CheckCircle, Loader2 } from "lucide-react";
+import { X, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -101,20 +101,27 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   // If image is selected, show the image editor and options
   if (imagePreview) {
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-black text-white">
+      <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
         <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-800">
-          <button className="text-white" onClick={onClose}>Cancel</button>
-          <h2 className="text-lg font-medium text-white">New post</h2>
-          <button 
-            className="text-blue-500 font-medium"
+        <div className="flex justify-between items-center p-4 border-b">
+          <button className="text-foreground" onClick={onClose}>Cancel</button>
+          <h2 className="text-lg font-medium">New post</h2>
+          <Button 
+            variant="ghost" 
+            size="sm"
             onClick={handlePost}
             disabled={createPostMutation.isPending || !imageFile}
+            className="text-primary font-medium"
           >
-            {createPostMutation.isPending ? "Sharing..." : "Share"}
-          </button>
+            {createPostMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sharing...
+              </>
+            ) : "Share"}
+          </Button>
         </div>
         
         {/* Scrollable Content */}
@@ -123,7 +130,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           className="flex-grow overflow-y-auto"
         >
           {/* Image preview */}
-          <div className="w-full aspect-square bg-black flex items-center justify-center">
+          <div className="w-full aspect-square bg-muted flex items-center justify-center">
             <img 
               src={imagePreview} 
               alt="Preview" 
@@ -132,9 +139,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           </div>
           
           {/* Caption input */}
-          <div className="p-4 border-b border-gray-800">
+          <div className="p-4 border-b">
             <textarea
-              className="w-full p-3 mb-4 bg-transparent border border-gray-700 rounded resize-none text-white"
+              className="w-full p-3 mb-4 bg-background border border-border rounded resize-none"
               placeholder="Write a caption..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -148,7 +155,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 setImagePreview(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="w-full border-gray-700 text-white hover:bg-gray-800"
+              className="w-full"
               disabled={createPostMutation.isPending}
             >
               Change Photo
@@ -167,32 +174,31 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   
   // Photo selection mode with Instagram-inspired UI
   return (
-    <div className="relative w-full h-screen bg-black text-white">
+    <div className="relative w-full h-screen bg-background text-foreground">
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
       {/* Top bar */}
-      <div className="flex justify-between items-center p-4 border-b border-gray-800">
-        <button onClick={onClose} className="text-white">✕</button>
+      <div className="flex justify-between items-center p-4 border-b">
+        <button onClick={onClose} className="text-foreground">✕</button>
         <h2 className="text-lg font-medium">New Post</h2>
         <div className="w-10"></div> {/* Empty space for symmetry */}
       </div>
 
       {/* Center Upload Button */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="bg-gray-800/50 rounded-lg p-10 flex flex-col items-center max-w-xs mx-auto">
+        <div className="bg-muted/50 rounded-lg p-10 flex flex-col items-center max-w-xs mx-auto">
           <div 
             onClick={triggerFileSelect}
-            className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mb-4 cursor-pointer"
+            className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mb-4 cursor-pointer"
           >
-            <Upload className="h-8 w-8 text-white" />
+            <Upload className="h-8 w-8 text-primary-foreground" />
           </div>
-          <p className="text-lg mb-2 text-white">Upload a photo</p>
-          <p className="text-sm text-gray-400 text-center mb-4">
+          <p className="text-lg mb-2">Upload a photo</p>
+          <p className="text-sm text-muted-foreground text-center mb-4">
             Share a photo with your followers
           </p>
           <Button 
-            onClick={triggerFileSelect} 
-            className="bg-blue-500 hover:bg-blue-600 text-white"
+            onClick={triggerFileSelect}
           >
             Select from device
           </Button>

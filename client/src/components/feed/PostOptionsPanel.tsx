@@ -3,7 +3,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Users, MapPin, Music, BrainCircuit, Eye, Search, Share2, MoreHorizontal, Hash, BarChart2, Search as SearchIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface PostOptionsPanelProps {
   content: string;
@@ -30,36 +31,36 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
   ];
 
   return (
-    <div className="flex flex-col space-y-2 px-0 py-0 text-sm bg-black text-white">
+    <div className="flex flex-col space-y-2 px-0 py-0 text-sm bg-background text-foreground">
       {/* Option Buttons */}
-      <div className="flex space-x-2 border-b border-gray-800 pb-3 px-4 pt-2">
-        <button className="bg-gray-800 px-4 py-2 rounded-full flex items-center justify-center">
-          <span className="mr-1">#</span> Hashtags
-        </button>
-        <button className="bg-gray-800 px-4 py-2 rounded-full flex items-center justify-center">
-          <span className="mr-1">☰</span> Poll
-        </button>
-        <button className="bg-gray-800 px-4 py-2 rounded-full flex items-center justify-center">
-          <span className="mr-1">🔍</span> Prompt
-        </button>
+      <div className="flex space-x-2 border-b border-border pb-3 px-4 pt-2">
+        <Button variant="outline" size="sm" className="rounded-full flex items-center">
+          <Hash className="h-4 w-4 mr-1" /> Hashtags
+        </Button>
+        <Button variant="outline" size="sm" className="rounded-full flex items-center">
+          <BarChart2 className="h-4 w-4 mr-1" /> Poll
+        </Button>
+        <Button variant="outline" size="sm" className="rounded-full flex items-center">
+          <SearchIcon className="h-4 w-4 mr-1" /> Prompt
+        </Button>
       </div>
 
       {/* Tag People */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">👤</span>
+          <Users className="h-5 w-5" />
           <span>Tag people</span>
         </div>
-        <ChevronRight className="h-5 w-5 text-gray-500" />
+        <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
 
       {/* Location Tag */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">📍</span>
+          <MapPin className="h-5 w-5" />
           <span>Add location</span>
         </div>
-        <ChevronRight className="h-5 w-5 text-gray-500" />
+        <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
 
       {/* Suggested Location Chips */}
@@ -67,7 +68,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
         {suggestedLocations.map(loc => (
           <span
             key={loc}
-            className="bg-gray-800 px-3 py-1 rounded-full text-sm whitespace-nowrap"
+            className="bg-muted px-3 py-1 rounded-full text-sm whitespace-nowrap"
           >
             {loc}
           </span>
@@ -75,70 +76,68 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
       </div>
 
       {/* Rename Audio (show only for audio posts) */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">🎵</span>
+          <Music className="h-5 w-5" />
           <span>Rename audio</span>
         </div>
         <div className="flex items-center">
-          <span className="text-gray-500 mr-2">Original audio</span>
-          <ChevronRight className="h-5 w-5 text-gray-500" />
+          <span className="text-muted-foreground mr-2">Original audio</span>
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </div>
 
       {/* AI Label */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex flex-col">
           <div className="flex items-center space-x-2">
-            <span className="text-xl">🤖</span>
+            <BrainCircuit className="h-5 w-5" />
             <span>Add AI Label</span>
           </div>
-          <p className="text-xs text-gray-500 mt-1 ml-7">
+          <p className="text-xs text-muted-foreground mt-1 ml-7">
             We require you to label certain realistic content that's made with AI. 
-            <span className="text-blue-400 ml-1">Learn more</span>
+            <span className="text-primary ml-1">Learn more</span>
           </p>
         </div>
         <Switch
           checked={isAILabelEnabled}
           onCheckedChange={setIsAILabelEnabled}
-          className="data-[state=checked]:bg-blue-500"
         />
       </div>
 
       {/* Audience */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">👁️</span>
+          <Eye className="h-5 w-5" />
           <span>Audience</span>
         </div>
         <div className="flex items-center">
-          <span className="text-gray-500 mr-2">Everyone</span>
-          <ChevronRight className="h-5 w-5 text-gray-500" />
+          <span className="text-muted-foreground mr-2">Everyone</span>
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </div>
 
       {/* Trial */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">🔍</span>
+          <Search className="h-5 w-5" />
           <div className="flex items-center">
             <span>Trial</span>
-            <span className="ml-2 text-xs bg-blue-500 px-2 py-0.5 rounded-full">NEW</span>
+            <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">NEW</span>
           </div>
         </div>
         <Switch
           checked={isTrialEnabled}
           onCheckedChange={setIsTrialEnabled}
-          className="data-[state=checked]:bg-blue-500"
         />
       </div>
 
       {/* Post to section */}
-      <div className="px-4 py-3 border-b border-gray-800">
+      <div className="px-4 py-3 border-b border-border">
         <div className="flex justify-between items-center" onClick={() => setIsOptionsExpanded(!isOptionsExpanded)}>
           <span className="font-medium">Post to</span>
           <ChevronRight 
-            className={`h-5 w-5 text-gray-500 transform transition-transform ${isOptionsExpanded ? 'rotate-90' : ''}`} 
+            className={`h-5 w-5 text-muted-foreground transform transition-transform ${isOptionsExpanded ? 'rotate-90' : ''}`} 
           />
         </div>
 
@@ -146,7 +145,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
           {/* User's profiles */}
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
                 {user?.profileImageUrl ? (
                   <img src={user.profileImageUrl} alt={user.username} className="w-full h-full object-cover" />
                 ) : (
@@ -155,13 +154,12 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               </div>
               <div className="flex flex-col">
                 <span>@{user?.username || 'username'}</span>
-                <span className="text-xs text-gray-500">Threads · Public</span>
+                <span className="text-xs text-muted-foreground">Threads · Public</span>
               </div>
             </div>
             <Switch
               checked={postToThreads}
               onCheckedChange={setPostToThreads}
-              className="data-[state=checked]:bg-blue-500"
             />
           </div>
 
@@ -173,48 +171,46 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               </div>
               <div className="flex flex-col">
                 <span>{user?.displayName || 'Display Name'}</span>
-                <span className="text-xs text-gray-500">Facebook · Public</span>
+                <span className="text-xs text-muted-foreground">Facebook · Public</span>
               </div>
             </div>
             <Switch
               checked={postToFacebook}
               onCheckedChange={setPostToFacebook}
-              className="data-[state=checked]:bg-blue-500"
             />
           </div>
 
           {/* Your story */}
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <span className="text-xl">📱</span>
+              <Share2 className="h-5 w-5" />
               <span>Your story</span>
             </div>
             <Switch
               checked={addToStory}
               onCheckedChange={setAddToStory}
-              className="data-[state=checked]:bg-blue-500"
             />
           </div>
         </div>
       </div>
 
       {/* More options */}
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border">
         <div className="flex items-center space-x-2">
-          <span className="text-xl">⋯</span>
+          <MoreHorizontal className="h-5 w-5" />
           <span>More options</span>
         </div>
-        <ChevronRight className="h-5 w-5 text-gray-500" />
+        <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
 
       {/* Bottom action buttons */}
       <div className="flex px-4 py-3 space-x-3 mt-auto">
-        <button className="w-1/2 py-2 border border-gray-600 rounded-md text-center">
+        <Button variant="outline" className="w-1/2">
           Save draft
-        </button>
-        <button className="w-1/2 py-2 bg-blue-600 rounded-md text-center">
+        </Button>
+        <Button className="w-1/2">
           Share
-        </button>
+        </Button>
       </div>
     </div>
   );

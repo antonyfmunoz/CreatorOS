@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mic } from "lucide-react";
+import { Loader2, Mic, Pause, Play } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
 
 interface VoiceRecorderProps {
@@ -207,20 +207,27 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-black text-white">
+    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
       <DialogTitle className="sr-only">Create New Voice Post</DialogTitle>
       
       {/* Top Bar */}
-      <div className="flex justify-between items-center p-4 border-b border-gray-800">
-        <button className="text-white" onClick={onClose}>Cancel</button>
-        <h2 className="text-lg font-medium text-white">Voice Message</h2>
-        <button 
-          className="text-blue-500 font-medium"
+      <div className="flex justify-between items-center p-4 border-b">
+        <button className="text-foreground" onClick={onClose}>Cancel</button>
+        <h2 className="text-lg font-medium">Voice Message</h2>
+        <Button 
+          variant="ghost" 
+          size="sm"
           onClick={handleSend}
           disabled={createPostMutation.isPending || !audioBlob}
+          className="text-primary font-medium"
         >
-          {createPostMutation.isPending ? "Sharing..." : "Share"}
-        </button>
+          {createPostMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sharing...
+            </>
+          ) : "Share"}
+        </Button>
       </div>
       
       {/* Scrollable Container */}
@@ -229,15 +236,15 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         className="flex-grow overflow-y-auto"
       >
         {/* Recording/Playback Area */}
-        <div className="flex flex-col items-center justify-center py-8 px-4 border-b border-gray-800">
+        <div className="flex flex-col items-center justify-center py-8 px-4 border-b">
           {isRecording ? (
             <div className="flex flex-col items-center space-y-4">
-              <div className="w-24 h-24 rounded-full bg-blue-500 flex items-center justify-center animate-pulse">
-                <Mic className="h-12 w-12 text-white" />
+              <div className="w-24 h-24 rounded-full bg-primary flex items-center justify-center animate-pulse">
+                <Mic className="h-12 w-12 text-primary-foreground" />
               </div>
               <div className="text-center">
                 <div className="text-2xl font-medium">{formatTime(recordingTime)}</div>
-                <div className="text-gray-400">Recording...</div>
+                <div className="text-muted-foreground">Recording...</div>
               </div>
               <Button 
                 onClick={stopRecording} 
@@ -251,16 +258,21 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
             <div className="flex flex-col items-center space-y-4 w-full max-w-md">
               <audio ref={audioRef} src={audioUrl} className="hidden" />
               
-              <div 
-                className={`w-24 h-24 rounded-full ${isPlaying ? 'bg-blue-500/80' : 'bg-blue-500'} flex items-center justify-center cursor-pointer`}
+              <Button 
+                variant="outline"
+                size="icon"
+                className={`w-24 h-24 rounded-full ${isPlaying ? 'bg-primary/10' : ''}`}
                 onClick={togglePlayback}
               >
-                <span className="text-3xl text-white">{isPlaying ? '❚❚' : '▶'}</span>
-              </div>
+                {isPlaying ? 
+                  <Pause className="h-12 w-12 text-primary" /> : 
+                  <Play className="h-12 w-12 text-primary" />
+                }
+              </Button>
               
               <div className="text-center">
                 <div className="text-xl font-medium">{formatTime(recordingTime)}</div>
-                <div className="text-gray-400">
+                <div className="text-muted-foreground">
                   {isPlaying ? 'Playing...' : 'Tap to play'}
                 </div>
               </div>
@@ -278,17 +290,14 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
                   startRecording();
                 }}
                 disabled={createPostMutation.isPending}
-                className="mt-4 border-gray-700 text-white hover:bg-gray-800"
+                className="mt-4"
               >
                 Record Again
               </Button>
             </div>
           ) : (
             <div className="flex flex-col items-center space-y-4">
-              <Button 
-                onClick={startRecording} 
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-              >
+              <Button onClick={startRecording}>
                 Start Recording
               </Button>
             </div>
@@ -297,10 +306,10 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         
         {/* Caption input - only show if recording is complete */}
         {audioBlob && (
-          <div className="p-4 border-b border-gray-800">
+          <div className="p-4 border-b">
             <input
               type="text"
-              className="w-full p-3 bg-transparent border border-gray-700 rounded text-white"
+              className="w-full p-3 bg-background border border-border rounded"
               placeholder="Add caption (optional)"
               value={content}
               onChange={(e) => setContent(e.target.value)}
