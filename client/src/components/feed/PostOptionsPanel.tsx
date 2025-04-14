@@ -86,26 +86,6 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
         </div>
 
         <div className={`space-y-3 mt-3 ${isOptionsExpanded ? 'block' : 'block'}`}>
-          {/* User's CreatorOS profile (always available) */}
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
-                {user?.profileImageUrl ? (
-                  <img src={user.profileImageUrl} alt={user.username} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-xs">{user?.username?.substring(0, 2).toUpperCase() || 'U'}</span>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span>@{user?.username || 'username'}</span>
-                <span className="text-xs text-muted-foreground">CreatorOS · Public</span>
-              </div>
-            </div>
-            <Switch
-              checked={true}
-              disabled={true}
-            />
-          </div>
 
           {/* X/Twitter - Not connected */}
           <div className="flex justify-between items-center">
