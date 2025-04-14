@@ -110,9 +110,6 @@ const Post = ({ post }: PostProps) => {
   // Use the total comment count from the database for the UI
   // This includes both top-level comments and all replies
   const totalCommentCount = commentCountData?.count || 0;
-  
-  // For demo purposes, use the first user as the current user
-  const currentUser = users?.[0];
 
   // Save liked posts to local storage
   useEffect(() => {
@@ -1126,10 +1123,10 @@ const Post = ({ post }: PostProps) => {
           </DialogContent>
         </Dialog>
 
-        {showComments && currentUser && (
+        {showComments && user && (
           <CommentSection 
             post={{...post, comments: totalCommentCount}} 
-            currentUser={currentUser} 
+            currentUser={user} 
           />
         )}
       </CardContent>
