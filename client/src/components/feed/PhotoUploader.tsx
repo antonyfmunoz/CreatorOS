@@ -2,9 +2,8 @@ import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Upload, CheckCircle, Loader2 } from "lucide-react";
+import { X, Upload, CheckCircle, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 
 interface PhotoUploaderProps {
@@ -15,7 +14,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [content, setContent] = useState("");
-  const [activeTab, setActiveTab] = useState<"preview" | "options">("preview");
+  const [showOptions, setShowOptions] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -98,11 +97,42 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     createPostMutation.mutate(formData);
   };
   
+  // Show options screen in Instagram style
+  if (showOptions && imagePreview) {
+    return (
+      <div className="flex flex-col h-full bg-black text-white">
+        {/* Top Bar - Instagram-like header */}
+        <div className="flex justify-between items-center p-4 border-b border-gray-800">
+          <button 
+            className="text-white flex items-center" 
+            onClick={() => setShowOptions(false)}
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            New reel
+          </button>
+          <button 
+            className="text-blue-500 font-medium"
+            onClick={handlePost}
+            disabled={createPostMutation.isPending || !imageFile}
+          >
+            {createPostMutation.isPending ? "Sharing..." : "Share"}
+          </button>
+        </div>
+
+        {/* Options Panel */}
+        <PostOptionsPanel 
+          content={content}
+          onContentChange={setContent}
+        />
+      </div>
+    );
+  }
+  
   // Instagram-inspired UI
   return (
     <div className="relative w-full h-screen bg-background text-foreground">
       {imagePreview ? (
-        // Image preview mode with tabs for Options
+        // Image preview mode
         <div className="flex flex-col h-full">
           {/* Top bar */}
           <div className="flex justify-between items-center p-4 border-b">
@@ -111,79 +141,47 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             <Button 
               variant="ghost" 
               size="sm" 
-              disabled={createPostMutation.isPending}
-              onClick={handlePost}
+              onClick={() => setShowOptions(true)}
             >
-              {createPostMutation.isPending ? "Posting..." : "Next"}
+              Next
             </Button>
           </div>
           
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "preview" | "options")}>
-            <TabsList className="w-full grid grid-cols-2">
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="options">Options</TabsTrigger>
-            </TabsList>
+          {/* Image preview */}
+          <div className="flex-grow flex justify-center items-center bg-black">
+            <img 
+              src={imagePreview} 
+              alt="Preview" 
+              className="max-h-full max-w-full object-contain" 
+            />
+          </div>
+          
+          {/* Caption input */}
+          <div className="p-4">
+            <textarea
+              className="w-full p-3 mb-4 border border-border rounded min-h-[100px] resize-none"
+              placeholder="Write a caption..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
             
-            <TabsContent value="preview" className="h-[calc(100vh-180px)] flex flex-col">
-              {/* Image preview */}
-              <div className="flex-grow flex justify-center items-center bg-black">
-                <img 
-                  src={imagePreview} 
-                  alt="Preview" 
-                  className="max-h-full max-w-full object-contain" 
-                />
-              </div>
+            <div className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setImageFile(null);
+                  setImagePreview(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+              >
+                Change Photo
+              </Button>
               
-              {/* Caption input */}
-              <div className="p-4">
-                <textarea
-                  className="w-full p-3 mb-4 border border-border rounded min-h-[100px] resize-none"
-                  placeholder="Write a caption..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  disabled={createPostMutation.isPending}
-                />
-                
-                <div className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setImageFile(null);
-                      setImagePreview(null);
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    disabled={createPostMutation.isPending}
-                  >
-                    Change Photo
-                  </Button>
-                  
-                  <Button 
-                    onClick={handlePost}
-                    disabled={createPostMutation.isPending || !imageFile}
-                  >
-                    {createPostMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Posting...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Post
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="options" className="h-[calc(100vh-180px)] overflow-y-auto">
-              <PostOptionsPanel 
-                content={content}
-                onContentChange={setContent}
-              />
-            </TabsContent>
-          </Tabs>
+              <Button onClick={() => setShowOptions(true)}>
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       ) : (
         // Photo selection mode with Instagram-inspired UI

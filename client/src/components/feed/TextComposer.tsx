@@ -4,8 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 
 interface TextComposerProps {
   onClose: () => void;
@@ -13,7 +12,7 @@ interface TextComposerProps {
 
 export const TextComposer = ({ onClose }: TextComposerProps) => {
   const [content, setContent] = useState("");
-  const [activeTab, setActiveTab] = useState<"compose" | "options">("compose");
+  const [showComposer, setShowComposer] = useState(true);
   
   const { toast } = useToast();
   const { user } = useAuth();
@@ -68,6 +67,40 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     });
   };
 
+  const handleNext = () => {
+    setShowComposer(false);
+  };
+
+  if (!showComposer) {
+    return (
+      <div className="flex flex-col h-full bg-black text-white">
+        {/* Top Bar - Instagram-like header */}
+        <div className="flex justify-between items-center p-4 border-b border-gray-800">
+          <button 
+            className="text-white flex items-center" 
+            onClick={() => setShowComposer(true)}
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            New reel
+          </button>
+          <button 
+            className="text-blue-500 font-medium"
+            onClick={handleSubmit}
+            disabled={createPostMutation.isPending || !content.trim()}
+          >
+            {createPostMutation.isPending ? "Sharing..." : "Share"}
+          </button>
+        </div>
+
+        {/* Options Panel */}
+        <PostOptionsPanel 
+          content={content}
+          onContentChange={setContent}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-background text-foreground">
       {/* Top Bar */}
@@ -80,54 +113,33 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         </button>
         <button 
           className="bg-primary text-primary-foreground text-sm px-4 py-1 rounded-full"
-          onClick={handleSubmit}
-          disabled={createPostMutation.isPending || !content.trim()}
+          onClick={handleNext}
+          disabled={!content.trim()}
         >
-          {createPostMutation.isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Posting...
-            </>
-          ) : "Post"}
+          Next
         </button>
       </div>
-
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "compose" | "options")}>
-        <TabsList className="w-full grid grid-cols-2">
-          <TabsTrigger value="compose">Compose</TabsTrigger>
-          <TabsTrigger value="options">Options</TabsTrigger>
-        </TabsList>
+      
+      {/* X-Style Compose Area */}
+      <div className="flex flex-col p-4 flex-grow">
+        <textarea
+          className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full flex-grow"
+          placeholder="What's happening?"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          disabled={createPostMutation.isPending}
+        ></textarea>
         
-        <TabsContent value="compose" className="p-4">
-          {/* X-Style Compose Area */}
-          <div className="flex flex-col">
-            <textarea
-              className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full min-h-[200px]"
-              placeholder="What's happening?"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              disabled={createPostMutation.isPending}
-            ></textarea>
-            
-            {/* Toolbar */}
-            <div className="flex space-x-4 mt-4 text-primary text-xl">
-              <button>🅰️</button>
-              <button>🖼️</button>
-              <button>🚀</button>
-              <button>🎥</button>
-              <button>GIF</button>
-              <button>📍</button>
-            </div>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="options">
-          <PostOptionsPanel 
-            content={content}
-            onContentChange={setContent}
-          />
-        </TabsContent>
-      </Tabs>
+        {/* Toolbar */}
+        <div className="flex space-x-4 mt-4 text-primary text-xl">
+          <button>🅰️</button>
+          <button>🖼️</button>
+          <button>🚀</button>
+          <button>🎥</button>
+          <button>GIF</button>
+          <button>📍</button>
+        </div>
+      </div>
     </div>
   );
 };

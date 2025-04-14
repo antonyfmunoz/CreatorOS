@@ -3,10 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { Button } from "@/components/ui/button";
-import { Loader2, X, Mic } from "lucide-react";
+import { Loader2, Mic, ArrowLeft } from "lucide-react";
 
 interface VoiceRecorderProps {
   onClose: () => void;
@@ -19,7 +18,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [content, setContent] = useState("");
-  const [activeTab, setActiveTab] = useState<"recording" | "options">("recording");
+  const [showOptions, setShowOptions] = useState(false);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -206,122 +205,133 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  // Show options screen in Instagram style
+  if (showOptions && audioBlob) {
+    return (
+      <div className="flex flex-col h-full bg-black text-white">
+        {/* Top Bar - Instagram-like header */}
+        <div className="flex justify-between items-center p-4 border-b border-gray-800">
+          <button 
+            className="text-white flex items-center" 
+            onClick={() => setShowOptions(false)}
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            New reel
+          </button>
+          <button 
+            className="text-blue-500 font-medium"
+            onClick={handleSend}
+            disabled={createPostMutation.isPending}
+          >
+            {createPostMutation.isPending ? "Sharing..." : "Share"}
+          </button>
+        </div>
+
+        {/* Options Panel */}
+        <PostOptionsPanel 
+          content={content}
+          onContentChange={setContent}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-screen bg-background text-foreground">
       {/* Top bar */}
       <div className="flex justify-between items-center p-4 border-b">
         <button onClick={onClose} className="text-xl">✕</button>
         <h2 className="text-lg font-medium">Voice Message</h2>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          disabled={createPostMutation.isPending || !audioBlob}
-          onClick={handleSend}
-        >
-          {createPostMutation.isPending ? "Sending..." : "Send"}
-        </Button>
+        {audioBlob && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowOptions(true)}
+          >
+            Next
+          </Button>
+        )}
       </div>
       
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "recording" | "options")}>
-        <TabsList className="w-full grid grid-cols-2">
-          <TabsTrigger value="recording">Recording</TabsTrigger>
-          <TabsTrigger value="options">Options</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="recording" className="h-[calc(100vh-180px)] flex flex-col">
-          {/* Telegram-inspired voice recorder UI */}
-          <div className="flex-grow flex flex-col items-center justify-center px-4">
-            {isRecording ? (
-              <div className="flex flex-col items-center space-y-4">
-                <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center animate-pulse">
-                  <Mic className="h-10 w-10 text-primary-foreground" />
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-medium">{formatTime(recordingTime)}</div>
-                  <div className="text-muted-foreground">Recording...</div>
-                </div>
-                <Button 
-                  onClick={stopRecording} 
-                  variant="destructive"
+      {/* Telegram-inspired voice recorder UI */}
+      <div className="flex-grow flex flex-col items-center justify-center px-4 h-[calc(100vh-70px)]">
+        {isRecording ? (
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center animate-pulse">
+              <Mic className="h-10 w-10 text-primary-foreground" />
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-medium">{formatTime(recordingTime)}</div>
+              <div className="text-muted-foreground">Recording...</div>
+            </div>
+            <Button 
+              onClick={stopRecording} 
+              variant="destructive"
+            >
+              Stop Recording
+            </Button>
+          </div>
+        ) : audioUrl ? (
+          <div className="flex flex-col items-center space-y-4 w-full max-w-md">
+            <audio ref={audioRef} src={audioUrl} className="hidden" />
+            
+            <div 
+              className={`w-20 h-20 rounded-full ${isPlaying ? 'bg-primary/80' : 'bg-primary'} flex items-center justify-center cursor-pointer`}
+              onClick={togglePlayback}
+            >
+              <span className="text-3xl">{isPlaying ? '❚❚' : '▶'}</span>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-xl font-medium">{formatTime(recordingTime)}</div>
+              <div className="text-muted-foreground">
+                {isPlaying ? 'Playing...' : 'Tap to play'}
+              </div>
+            </div>
+            
+            <div className="w-full space-y-4 mt-4">
+              <input
+                type="text"
+                className="w-full p-3 border border-border rounded"
+                placeholder="Add caption (optional)"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                disabled={createPostMutation.isPending}
+              />
+              
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAudioBlob(null);
+                    setAudioUrl(null);
+                    setIsPlaying(false);
+                    setRecordingTime(0);
+                    if (audioRef.current) {
+                      audioRef.current.pause();
+                    }
+                    startRecording();
+                  }}
+                  disabled={createPostMutation.isPending}
                 >
-                  Stop Recording
+                  Record Again
+                </Button>
+                
+                <Button 
+                  onClick={() => setShowOptions(true)}
+                  disabled={createPostMutation.isPending}
+                >
+                  Next
                 </Button>
               </div>
-            ) : audioUrl ? (
-              <div className="flex flex-col items-center space-y-4 w-full max-w-md">
-                <audio ref={audioRef} src={audioUrl} className="hidden" />
-                
-                <div 
-                  className={`w-20 h-20 rounded-full ${isPlaying ? 'bg-primary/80' : 'bg-primary'} flex items-center justify-center cursor-pointer`}
-                  onClick={togglePlayback}
-                >
-                  <span className="text-3xl">{isPlaying ? '❚❚' : '▶'}</span>
-                </div>
-                
-                <div className="text-center">
-                  <div className="text-xl font-medium">{formatTime(recordingTime)}</div>
-                  <div className="text-muted-foreground">
-                    {isPlaying ? 'Playing...' : 'Tap to play'}
-                  </div>
-                </div>
-                
-                <div className="w-full space-y-4 mt-4">
-                  <input
-                    type="text"
-                    className="w-full p-3 border border-border rounded"
-                    placeholder="Add caption (optional)"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    disabled={createPostMutation.isPending}
-                  />
-                  
-                  <div className="flex justify-between">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setAudioBlob(null);
-                        setAudioUrl(null);
-                        setIsPlaying(false);
-                        setRecordingTime(0);
-                        if (audioRef.current) {
-                          audioRef.current.pause();
-                        }
-                        startRecording();
-                      }}
-                      disabled={createPostMutation.isPending}
-                    >
-                      Record Again
-                    </Button>
-                    
-                    <Button 
-                      onClick={handleSend}
-                      disabled={createPostMutation.isPending}
-                    >
-                      {createPostMutation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : "Send"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center space-y-4">
-                <Button onClick={startRecording}>Start Recording</Button>
-              </div>
-            )}
+            </div>
           </div>
-        </TabsContent>
-        
-        <TabsContent value="options" className="h-[calc(100vh-180px)] overflow-y-auto">
-          <PostOptionsPanel 
-            content={content}
-            onContentChange={setContent}
-          />
-        </TabsContent>
-      </Tabs>
+        ) : (
+          <div className="flex flex-col items-center space-y-4">
+            <Button onClick={startRecording}>Start Recording</Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
