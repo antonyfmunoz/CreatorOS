@@ -86,7 +86,7 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
         </div>
 
         <div className={`space-y-3 mt-3 ${isOptionsExpanded ? 'block' : 'block'}`}>
-          {/* User's profiles */}
+          {/* User's CreatorOS profile (always available) */}
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
@@ -98,30 +98,57 @@ export const PostOptionsPanel = ({ content, onContentChange }: PostOptionsPanelP
               </div>
               <div className="flex flex-col">
                 <span>@{user?.username || 'username'}</span>
-                <span className="text-xs text-muted-foreground">Threads · Public</span>
+                <span className="text-xs text-muted-foreground">CreatorOS · Public</span>
               </div>
             </div>
             <Switch
-              checked={postToThreads}
-              onCheckedChange={setPostToThreads}
+              checked={true}
+              disabled={true}
             />
           </div>
 
-          {/* Facebook profile */}
+          {/* Threads - Not connected */}
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden">
-                <span className="text-white text-lg">f</span>
+              <div className="w-8 h-8 rounded-full bg-neutral-200 flex items-center justify-center overflow-hidden">
+                <span className="text-neutral-500 font-bold">𝕏</span>
               </div>
               <div className="flex flex-col">
-                <span>{user?.displayName || 'Display Name'}</span>
-                <span className="text-xs text-muted-foreground">Facebook · Public</span>
+                <span className="flex items-center">
+                  <span className="text-muted-foreground">Connect Threads</span>
+                </span>
+                <span className="text-xs text-muted-foreground">Connect to share posts</span>
               </div>
             </div>
-            <Switch
-              checked={postToFacebook}
-              onCheckedChange={setPostToFacebook}
-            />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full px-3 py-1 h-auto text-xs"
+            >
+              Connect
+            </Button>
+          </div>
+
+          {/* Facebook - Not connected */}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
+                <span className="text-blue-600 text-lg font-bold">f</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="flex items-center">
+                  <span className="text-muted-foreground">Connect Facebook</span>
+                </span>
+                <span className="text-xs text-muted-foreground">Connect to share posts</span>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full px-3 py-1 h-auto text-xs"
+            >
+              Connect
+            </Button>
           </div>
 
           {/* Your story */}
