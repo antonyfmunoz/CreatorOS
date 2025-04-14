@@ -1,0 +1,102 @@
+Absolutely—here is the clean, final version of your Replit-ready UI components without any optional suggestions. These are modular, ready to paste directly into your CreatorOS project.
+
+⸻
+
+1. Video Recorder UI (TikTok/Shorts Style)
+
+const VideoRecorderUI = () => {
+  return (
+    <div className="relative w-full h-screen bg-black text-white">
+      {/* Top Controls */}
+      <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
+        <button className="text-white text-xl">✕</button>
+        <button className="bg-gray-800 px-3 py-1 rounded-full text-sm">Add sound</button>
+        <button className="bg-gray-800 w-8 h-8 rounded-full text-sm">15s</button>
+      </div>
+
+      {/* Center Recording Button */}
+      <div className="absolute bottom-28 left-0 right-0 flex justify-center">
+        <button className="w-16 h-16 bg-red-600 rounded-full border-4 border-white"></button>
+      </div>
+
+      {/* Add & Drafts */}
+      <div className="absolute bottom-28 left-4 text-xs">Add</div>
+      <div className="absolute bottom-28 right-4 text-xs">Drafts</div>
+
+      {/* Bottom Nav */}
+      <div className="absolute bottom-5 left-0 right-0 flex justify-around text-sm text-white">
+        <span>Video</span>
+        <span className="font-bold">Short</span>
+        <span>Live</span>
+        <span>Post</span>
+      </div>
+    </div>
+  );
+};
+
+
+
+⸻
+
+2. Text Composer UI (X / Twitter Style)
+
+const TextComposerUI = () => {
+  return (
+    <div className="flex flex-col h-screen bg-black text-white px-4 py-2">
+      {/* Top Bar */}
+      <div className="flex justify-between items-center mb-4">
+        <button className="text-sm text-white">Cancel</button>
+        <button className="bg-blue-500 text-white text-sm px-4 py-1 rounded-full">Post</button>
+      </div>
+
+      {/* Input Area */}
+      <textarea
+        className="bg-transparent text-lg placeholder-gray-400 resize-none outline-none w-full"
+        placeholder="What’s happening?"
+        rows={4}
+      ></textarea>
+
+      {/* Toolbar */}
+      <div className="flex space-x-4 mt-4 text-blue-400 text-xl">
+        <button>🅰️</button>
+        <button>🖼️</button>
+        <button>🚀</button>
+        <button>🎥</button>
+        <button>GIF</button>
+        <button>📍</button>
+      </div>
+    </div>
+  );
+};
+
+
+
+⸻
+
+3. Voice Recorder UI (Telegram Style)
+
+const VoiceRecorderUI = ({ isRecording, onCancel }) => {
+  return (
+    <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2 bg-black">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <span className="text-white text-sm">0:04</span>
+          <span className="text-gray-500 text-sm">Slide to cancel</span>
+        </div>
+
+        <button
+          onClick={onCancel}
+          className="bg-blue-600 w-14 h-14 rounded-full flex items-center justify-center"
+        >
+          <span className="text-white text-2xl">🎙️</span>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+
+⸻
+
+Let me know when you’re ready for the full backend logic, trigger handlers, or if you want these styled for dark/light theme switching.
