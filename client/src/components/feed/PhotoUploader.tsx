@@ -510,15 +510,20 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 </div>
               )}
               
-              <div className="flex items-center justify-between py-2"
-                onClick={() => setIsLocationModalOpen(true)}
+              <Button 
+                variant="ghost" 
+                className="flex items-center justify-between w-full py-2 h-auto"
+                onClick={() => {
+                  setIsLocationModalOpen(true);
+                  console.log("Opening location modal", { isLocationModalOpen: true });
+                }}
               >
                 <div className="flex items-center gap-3">
                   <MapPin className="w-5 h-5" />
-                  <span>Add location</span>
+                  <span className="font-normal">Add location</span>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
+              </Button>
               
               {/* Location pills */}
               {selectedLocation && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Input } from "@/components/ui/input";
 import { X, ChevronRight, MapPin, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +37,14 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
+  // Reset search query when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearchQuery("");
+      console.log("Location picker opened");
+    }
+  }, [isOpen]);
+
   const formatPostCount = (count: number): string => {
     if (count >= 1000000) {
       return `${Math.floor(count / 1000000)}M posts`;
@@ -57,15 +65,17 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
     : sampleLocations;
 
   const handleSelectLocation = (location: LocationData) => {
+    console.log("Location selected:", location);
     onSelect(location);
-    toast({
-      title: "Location Added",
-      description: `Added ${location.name} to your post`,
-    });
     onClose();
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log("LocationPicker is closed");
+    return null;
+  }
+  
+  console.log("Rendering LocationPicker, isOpen:", isOpen);
 
   return (
     <div className="fixed inset-0 z-50 bg-background">
