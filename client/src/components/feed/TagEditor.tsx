@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus, X, Search, ArrowLeft, User } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
 interface TagEditorProps {
@@ -25,6 +26,7 @@ export interface TaggedUser {
 export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] }: TagEditorProps) => {
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>(initialTags);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchView, setIsSearchView] = useState(false);
   const { toast } = useToast();
   
   // Reset tags when opening
@@ -88,6 +90,77 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   
   if (!isOpen) return null;
   
+  // User search view
+  if (isSearchView) {
+    return (
+      <div className="fixed inset-0 z-50 bg-background">
+        <div className="flex flex-col h-full">
+          {/* Search header */}
+          <div className="flex items-center p-4 border-b">
+            <button 
+              onClick={() => setIsSearchView(false)} 
+              className="p-1 rounded-full mr-3"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-full"
+                autoFocus
+              />
+            </div>
+          </div>
+          
+          {/* Search results */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredUsers.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                No users found matching "{searchQuery}"
+              </div>
+            ) : (
+              <div className="divide-y">
+                {filteredUsers.map((user) => (
+                  <div 
+                    key={user.id}
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted"
+                    onClick={() => {
+                      handleAddTag(user);
+                      setIsSearchView(false);
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      {user.profileImageUrl ? (
+                        <Avatar className="h-10 w-10">
+                          <img src={user.profileImageUrl} alt={user.displayName} />
+                        </Avatar>
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
+                          <User className="h-5 w-5" />
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium">{user.displayName}</div>
+                        <div className="text-sm text-muted-foreground">@{user.username}</div>
+                      </div>
+                    </div>
+                    {taggedUsers.some(tagged => tagged.id === user.id) && (
+                      <div className="text-sm text-primary font-semibold">Tagged</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Main tag editor view
   return (
     <div className="fixed inset-0 z-50 bg-background">
       <div className="flex flex-col h-full">
@@ -143,16 +216,10 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
           <Button 
             variant="outline" 
             className="w-full justify-center gap-2 bg-background text-foreground border-border"
-            onClick={() => {
-              // In a real app, you'd show a user search/selection interface here
-              toast({
-                title: "Invite collaborators",
-                description: "You can invite others to collaborate on this post."
-              });
-            }}
+            onClick={() => setIsSearchView(true)}
           >
             <UserPlus size={18} />
-            <span>Invite collaborators</span>
+            <span>Tag users</span>
           </Button>
         </div>
       </div>
