@@ -418,6 +418,32 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </div>
               
+              {/* Location pills */}
+              <div className="flex flex-wrap gap-2 py-2">
+                <div 
+                  className="px-3 py-1 bg-muted rounded-full text-sm cursor-pointer"
+                  onClick={() => {
+                    toast({
+                      title: "Location Selected",
+                      description: "Villa del Palmar Cancun Beach Resort was selected as your location",
+                    });
+                  }}
+                >
+                  Villa del Palmar Cancun Beach Resort
+                </div>
+                <div 
+                  className="px-3 py-1 bg-muted rounded-full text-sm cursor-pointer"
+                  onClick={() => {
+                    toast({
+                      title: "Location Selected",
+                      description: "Davino Restaurante was selected as your location",
+                    });
+                  }}
+                >
+                  Davino Restaurante
+                </div>
+              </div>
+              
               <div className="flex items-center justify-between py-2"
                 onClick={() => {
                   toast({
@@ -464,7 +490,14 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                     onClick={() => {
                       toast({
                         title: "Connect X",
-                        description: "Link your X (Twitter) account to share posts",
+                        description: "Authentication required to link your X account.",
+                        action: (
+                          <div className="flex gap-2 mt-2">
+                            <Button variant="default" size="sm" onClick={() => toast({ title: "Connecting to X...", description: "Opening X authentication page" })}>
+                              Authenticate
+                            </Button>
+                          </div>
+                        ),
                       });
                     }}
                   >
@@ -490,7 +523,14 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                     onClick={() => {
                       toast({
                         title: "Connect Facebook",
-                        description: "Link your Facebook account to share posts",
+                        description: "Authentication required to link your Facebook account.",
+                        action: (
+                          <div className="flex gap-2 mt-2">
+                            <Button variant="default" size="sm" onClick={() => toast({ title: "Connecting to Facebook...", description: "Opening Facebook authentication page" })}>
+                              Authenticate
+                            </Button>
+                          </div>
+                        ),
                       });
                     }}
                   >
@@ -516,7 +556,80 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                     onClick={() => {
                       toast({
                         title: "Connect Instagram",
-                        description: "Link your Instagram account to share posts",
+                        description: "Authentication required to link your Instagram account.",
+                        action: (
+                          <div className="flex gap-2 mt-2">
+                            <Button variant="default" size="sm" onClick={() => toast({ title: "Connecting to Instagram...", description: "Opening Instagram authentication page" })}>
+                              Authenticate
+                            </Button>
+                          </div>
+                        ),
+                      });
+                    }}
+                  >
+                    Connect
+                  </Button>
+                </div>
+                
+                {/* TikTok */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold">TT</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span>Connect TikTok</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      toast({
+                        title: "Connect TikTok",
+                        description: "Authentication required to link your TikTok account.",
+                        action: (
+                          <div className="flex gap-2 mt-2">
+                            <Button variant="default" size="sm" onClick={() => toast({ title: "Connecting to TikTok...", description: "Opening TikTok authentication page" })}>
+                              Authenticate
+                            </Button>
+                          </div>
+                        ),
+                      });
+                    }}
+                  >
+                    Connect
+                  </Button>
+                </div>
+                
+                {/* YouTube */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center">
+                      <span className="text-xs font-bold">YT</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span>Connect YouTube</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      toast({
+                        title: "Connect YouTube",
+                        description: "Authentication required to link your YouTube account.",
+                        action: (
+                          <div className="flex gap-2 mt-2">
+                            <Button variant="default" size="sm" onClick={() => toast({ title: "Connecting to YouTube...", description: "Opening YouTube authentication page" })}>
+                              Authenticate
+                            </Button>
+                          </div>
+                        ),
                       });
                     }}
                   >
@@ -533,15 +646,37 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <span>Your story</span>
               </div>
               <div 
-                className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer"
+                className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer group"
                 onClick={() => {
-                  toast({
-                    title: "Add to Story",
-                    description: "This post will also be added to your story",
-                  });
+                  const toggle = document.getElementById('story-toggle');
+                  if (toggle) {
+                    const isActive = toggle.classList.contains('active');
+                    if (isActive) {
+                      toggle.classList.remove('active', 'bg-primary');
+                      toggle.classList.add('bg-gray-200');
+                      toggle.querySelector('div')?.classList.remove('translate-x-5');
+                      toggle.querySelector('div')?.classList.add('translate-x-0');
+                      
+                      toast({
+                        title: "Story disabled",
+                        description: "This post will not be added to your story",
+                      });
+                    } else {
+                      toggle.classList.add('active', 'bg-primary');
+                      toggle.classList.remove('bg-gray-200');
+                      toggle.querySelector('div')?.classList.add('translate-x-5');
+                      toggle.querySelector('div')?.classList.remove('translate-x-0');
+                      
+                      toast({
+                        title: "Added to Story",
+                        description: "This post will also be added to your story",
+                      });
+                    }
+                  }
                 }}
+                id="story-toggle"
               >
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out"></div>
               </div>
             </div>
           </div>

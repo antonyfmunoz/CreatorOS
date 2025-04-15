@@ -1,0 +1,188 @@
+To replicate the social platform connection buttons like the Instagram “New Post” UI shown in your screenshot, here’s a copy-paste ready code snippet for Replit that:
+	•	Mimics the UI layout
+	•	Makes each Connect button open a placeholder modal or action
+	•	Gives you a working foundation to plug in real APIs later (OAuth, ShareKit, etc.)
+
+⸻
+
+✅ HTML + JS CODE (Paste into Replit)
+
+index.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Social Platform Connector</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h2>New Post</h2>
+    <div class="section">
+      <button class="tag-btn"># Hashtags</button>
+      <button class="poll-btn">Poll</button>
+    </div>
+
+    <div class="section">
+      <label>Tag people</label>
+      <input type="text" placeholder="Tag usernames..." />
+    </div>
+
+    <div class="section">
+      <label>Add location</label>
+      <input type="text" placeholder="Location..." />
+    </div>
+
+    <div class="section">
+      <span class="pill">Villa del Palmar Cancun Beach Resort</span>
+      <span class="pill">Davino Restaurante</span>
+    </div>
+
+    <div class="section">
+      <label>Audience</label>
+      <select>
+        <option>Everyone</option>
+        <option>Followers Only</option>
+        <option>Close Friends</option>
+      </select>
+    </div>
+
+    <h3>Post to</h3>
+    <div class="platforms">
+      <div class="platform">
+        <span>X (Twitter)</span>
+        <button onclick="connectPlatform('X')">Connect</button>
+      </div>
+      <div class="platform">
+        <span>Facebook</span>
+        <button onclick="connectPlatform('Facebook')">Connect</button>
+      </div>
+      <div class="platform">
+        <span>Instagram</span>
+        <button onclick="connectPlatform('Instagram')">Connect</button>
+      </div>
+      <div class="platform">
+        <span>TikTok</span>
+        <button onclick="connectPlatform('TikTok')">Connect</button>
+      </div>
+      <div class="platform">
+        <span>YouTube</span>
+        <button onclick="connectPlatform('YouTube')">Connect</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <label>
+        <input type="checkbox" /> Your Story
+      </label>
+    </div>
+
+    <div id="modal" class="modal">
+      <p id="modal-text"></p>
+      <button onclick="closeModal()">Close</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+⸻
+
+style.css
+
+body {
+  font-family: Arial, sans-serif;
+  background: #fff;
+  color: #111;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 400px;
+  margin: auto;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+.platforms .platform {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pill {
+  display: inline-block;
+  background: #eee;
+  padding: 5px 10px;
+  border-radius: 20px;
+  margin-right: 5px;
+}
+
+button {
+  padding: 6px 12px;
+  border: none;
+  background-color: #008cff;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #005dc1;
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  background: white;
+  padding: 20px;
+  border: 1px solid #aaa;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  z-index: 999;
+  border-radius: 8px;
+}
+
+
+
+⸻
+
+app.js
+
+function connectPlatform(platformName) {
+  const modal = document.getElementById("modal");
+  const text = document.getElementById("modal-text");
+  text.innerText = `Pretending to connect to ${platformName}...`;
+  modal.style.display = "block";
+}
+
+function closeModal() {
+  document.getElementById("modal").style.display = "none";
+}
+
+
+
+⸻
+
+✅ What This Does:
+	•	Mirrors the UI structure of your screenshot
+	•	Makes each “Connect” button interactive
+	•	Displays a modal confirmation (placeholder for OAuth)
+	•	Sets up for real integration with share APIs in the future
+
+Would you like a follow-up version with:
+	•	Instagram Stories upload simulation?
+	•	OAuth starter hooks?
+	•	Feed-posting simulation to fake platforms for demo?
+
+Let me know and I’ll generate it.
