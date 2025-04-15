@@ -160,8 +160,8 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         
         {/* Top Bar - Instagram-like header */}
         <div className="flex justify-between items-center p-4 border-b h-[58px]">
-          <div className="w-10"></div> {/* Empty space for X button from DialogContent */}
-          <h2 className="text-lg font-medium">New post</h2>
+          <div className="w-10 h-6 flex items-center"></div> {/* Empty space matched to X button size */}
+          <h2 className="text-lg font-medium flex items-center">New post</h2>
           <Button 
             variant="ghost" 
             size="sm"
@@ -220,9 +220,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       
       {/* Top bar */}
       <div className="flex justify-between items-center p-4 border-b h-[58px]">
-        <div className="w-10"></div> {/* Empty space for symmetry */}
-        <h2 className="text-lg font-medium">New post</h2>
-        <div className="w-10"></div> {/* Empty space for symmetry */}
+        <div className="w-10 h-6 flex items-center"></div> {/* Empty space matched to X button size */}
+        <h2 className="text-lg font-medium flex items-center">New post</h2>
+        <div className="w-10 h-6 flex items-center"></div> {/* Empty space matched to X button size */}
       </div>
 
       {/* Center Upload Button */}
