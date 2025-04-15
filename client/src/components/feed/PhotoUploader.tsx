@@ -2,7 +2,21 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Upload, Loader2, X, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { 
+  Upload, 
+  Loader2, 
+  X, 
+  ChevronLeft, 
+  ChevronRight, 
+  Plus, 
+  Users, 
+  MapPin, 
+  Eye, 
+  Share,
+  BarChart2,
+  Instagram,
+  Facebook
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -341,11 +355,204 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             />
           </div>
           
-          {/* Options Panel */}
-          <PostOptionsPanel 
-            content={content}
-            onContentChange={setContent}
-          />
+          {/* Post options buttons */}
+          <div className="space-y-4">
+            {/* Hashtags and Poll buttons */}
+            <div className="flex gap-2 p-4 border-b">
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2 rounded-full" 
+                onClick={() => {
+                  toast({
+                    title: "Hashtags",
+                    description: "Add trending hashtags to increase post visibility",
+                  });
+                }}
+              >
+                <span className="text-lg">#</span> Hashtags
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2 rounded-full"
+                onClick={() => {
+                  toast({
+                    title: "Poll",
+                    description: "Create an interactive poll for your followers",
+                  });
+                }}
+              >
+                <BarChart2 className="w-4 h-4" /> Poll
+              </Button>
+            </div>
+            
+            {/* Tag people, location, audience */}
+            <div className="space-y-4 px-4 pb-4 border-b">
+              <div className="flex items-center justify-between py-2" 
+                onClick={() => {
+                  toast({
+                    title: "Tag People",
+                    description: "Tag people in your post",
+                  });
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5" />
+                  <span>Tag people</span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </div>
+              
+              <div className="flex items-center justify-between py-2"
+                onClick={() => {
+                  toast({
+                    title: "Add Location",
+                    description: "Add your current location or a custom location",
+                  });
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <MapPin className="w-5 h-5" />
+                  <span>Add location</span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </div>
+              
+              <div className="flex items-center justify-between py-2"
+                onClick={() => {
+                  toast({
+                    title: "Audience",
+                    description: "Choose who can see your post",
+                  });
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <Eye className="w-5 h-5" />
+                  <span>Audience</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Everyone</span>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </div>
+              </div>
+            </div>
+            
+            {/* Post to / Share to */}
+            <div className="px-4 pb-4 border-b">
+              <div className="flex items-center justify-between pb-3">
+                <span className="font-medium">Post to</span>
+                <ChevronRight className="w-5 h-5 text-muted-foreground transform rotate-90" />
+              </div>
+              
+              {/* Social platforms */}
+              <div className="space-y-3">
+                {/* X (Twitter) */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold">X</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span>Connect X (Twitter)</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      toast({
+                        title: "Connect X",
+                        description: "Link your X (Twitter) account to share posts",
+                      });
+                    }}
+                  >
+                    Connect
+                  </Button>
+                </div>
+                
+                {/* Facebook */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center">
+                      <Facebook className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span>Connect Facebook</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      toast({
+                        title: "Connect Facebook",
+                        description: "Link your Facebook account to share posts",
+                      });
+                    }}
+                  >
+                    Connect
+                  </Button>
+                </div>
+                
+                {/* Instagram */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-pink-500 via-purple-500 to-yellow-500 text-white rounded-full flex items-center justify-center">
+                      <Instagram className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span>Connect Instagram</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      toast({
+                        title: "Connect Instagram",
+                        description: "Link your Instagram account to share posts",
+                      });
+                    }}
+                  >
+                    Connect
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Your story toggle */}
+            <div className="flex items-center justify-between px-4 pb-4">
+              <div className="flex items-center gap-3">
+                <Share className="w-5 h-5" />
+                <span>Your story</span>
+              </div>
+              <div 
+                className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer"
+                onClick={() => {
+                  toast({
+                    title: "Add to Story",
+                    description: "This post will also be added to your story",
+                  });
+                }}
+              >
+                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Original Options Panel (keeping for reference) */}
+          <div className="hidden">
+            <PostOptionsPanel 
+              content={content}
+              onContentChange={setContent}
+            />
+          </div>
         </div>
       </div>
     );
