@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { X, Plus, Trash2 } from "lucide-react";
@@ -76,82 +75,81 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
-      <DialogContent className="p-0 overflow-hidden bg-background text-foreground w-full h-[100dvh] max-w-full sm:max-w-full inset-0 rounded-none">
-        <DialogTitle className="sr-only">Create Poll</DialogTitle>
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b">
-            <button 
-              onClick={onClose}
-              className="p-1 rounded-full"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            <h2 className="text-lg font-medium">Caption</h2>
-            <button 
-              onClick={handleSave}
-              className="text-primary font-semibold px-2"
-            >
-              OK
-            </button>
+    <div className="fixed inset-0 z-50 bg-background">
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b">
+          <button 
+            onClick={onClose}
+            className="p-1 rounded-full"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <h2 className="text-lg font-medium">Caption</h2>
+          <button 
+            onClick={handleSave}
+            className="text-primary font-semibold px-2"
+          >
+            OK
+          </button>
+        </div>
+
+        {/* Poll content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <Input
+            placeholder="Ask a poll question..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            className="bg-transparent border-0 border-b rounded-none placeholder:text-muted-foreground mb-4 px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+
+          {/* Poll options */}
+          <div className="space-y-3 mt-6">
+            {options.map((option, index) => (
+              <div key={index} className="relative">
+                <Input
+                  placeholder={index === 0 ? "Yes" : index === 1 ? "No" : `Option ${index + 1}`}
+                  value={option}
+                  onChange={(e) => handleOptionChange(index, e.target.value)}
+                  className="bg-muted rounded-md pr-10"
+                />
+                {index > 1 && (
+                  <button 
+                    onClick={() => handleRemoveOption(index)}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
 
-          {/* Poll content */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <Input
-              placeholder="Ask a poll question..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              className="bg-transparent border-0 border-b rounded-none placeholder:text-muted-foreground mb-4 px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
+          {/* Add another option button */}
+          <button 
+            onClick={handleAddOption}
+            className="w-full mt-4 py-3 border border-dashed border-border rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <span className="flex items-center">
+              <Plus className="h-4 w-4 mr-2" />
+              Add another option...
+            </span>
+          </button>
 
-            {/* Poll options */}
-            <div className="space-y-3 mt-6">
-              {options.map((option, index) => (
-                <div key={index} className="relative">
-                  <Input
-                    placeholder={index === 0 ? "Yes" : index === 1 ? "No" : `Option ${index + 1}`}
-                    value={option}
-                    onChange={(e) => handleOptionChange(index, e.target.value)}
-                    className="bg-muted rounded-md pr-10"
-                  />
-                  {index > 1 && (
-                    <button 
-                      onClick={() => handleRemoveOption(index)}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Add another option button */}
-            <button 
-              onClick={handleAddOption}
-              className="w-full mt-4 py-3 border border-dashed border-border rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground"
-            >
-              <span className="flex items-center">
-                <Plus className="h-4 w-4 mr-2" />
-                Add another option...
-              </span>
+          <p className="text-xs text-muted-foreground mt-4">
+            Polls cannot be edited after posting.
+          </p>
+          
+          <div className="flex justify-end mt-2">
+            <button className="text-sm text-destructive">
+              Delete
             </button>
-
-            <p className="text-xs text-muted-foreground mt-4">
-              Polls cannot be edited after posting.
-            </p>
-            
-            <div className="flex justify-end mt-2">
-              <button className="text-sm text-destructive">
-                Delete
-              </button>
-            </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 };

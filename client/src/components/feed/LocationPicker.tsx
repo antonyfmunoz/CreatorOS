@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { X, ChevronRight, MapPin, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -66,79 +65,78 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
-      <DialogContent className="p-0 overflow-hidden bg-background text-foreground w-full h-[100dvh] max-w-full sm:max-w-full inset-0 rounded-none">
-        <DialogTitle className="sr-only">Choose Location</DialogTitle>
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b">
-            <button 
-              onClick={onClose}
-              className="p-1 rounded-full"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <h2 className="text-lg font-medium">Locations</h2>
-            <button 
-              onClick={onClose}
-              className="text-primary font-semibold px-2"
-            >
-              Cancel
-            </button>
-          </div>
+    <div className="fixed inset-0 z-50 bg-background">
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b">
+          <button 
+            onClick={onClose}
+            className="p-1 rounded-full"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <h2 className="text-lg font-medium">Locations</h2>
+          <button 
+            onClick={onClose}
+            className="text-primary font-semibold px-2"
+          >
+            Cancel
+          </button>
+        </div>
 
-          {/* Search bar */}
-          <div className="px-4 py-2 border-b">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-muted text-foreground placeholder:text-muted-foreground pl-10 rounded-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
-          </div>
-
-          {/* Location list */}
-          <div className="flex-1 overflow-y-auto">
-            {filteredLocations.map((location, index) => (
-              <button 
-                key={index}
-                className="w-full text-left px-4 py-3 hover:bg-muted border-b border-border last:border-b-0"
-                onClick={() => handleSelectLocation(location)}
-              >
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-foreground">{location.name}</p>
-                    <div className="flex text-muted-foreground text-sm mt-1">
-                      {location.postCount !== undefined && (
-                        <span>{formatPostCount(location.postCount)}</span>
-                      )}
-                      {location.distance && (
-                        <>
-                          {location.postCount !== undefined && <span className="mx-1.5">•</span>}
-                          <span>{location.distance}</span>
-                        </>
-                      )}
-                      {location.address && (
-                        <>
-                          {(location.postCount !== undefined || location.distance) && <span className="mx-1.5">•</span>}
-                          <span className="truncate max-w-[200px]">{location.address}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="self-center">
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                </div>
-              </button>
-            ))}
+        {/* Search bar */}
+        <div className="px-4 py-2 border-b">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-muted text-foreground placeholder:text-muted-foreground pl-10 rounded-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Location list */}
+        <div className="flex-1 overflow-y-auto">
+          {filteredLocations.map((location, index) => (
+            <button 
+              key={index}
+              className="w-full text-left px-4 py-3 hover:bg-muted border-b border-border last:border-b-0"
+              onClick={() => handleSelectLocation(location)}
+            >
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-foreground">{location.name}</p>
+                  <div className="flex text-muted-foreground text-sm mt-1">
+                    {location.postCount !== undefined && (
+                      <span>{formatPostCount(location.postCount)}</span>
+                    )}
+                    {location.distance && (
+                      <>
+                        {location.postCount !== undefined && <span className="mx-1.5">•</span>}
+                        <span>{location.distance}</span>
+                      </>
+                    )}
+                    {location.address && (
+                      <>
+                        {(location.postCount !== undefined || location.distance) && <span className="mx-1.5">•</span>}
+                        <span className="truncate max-w-[200px]">{location.address}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="self-center">
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };
