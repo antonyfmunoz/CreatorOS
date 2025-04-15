@@ -17,6 +17,8 @@ import {
   Instagram,
   Facebook
 } from "lucide-react";
+import { PollCreator, type PollData } from "@/components/feed/PollCreator";
+import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +33,10 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [content, setContent] = useState("");
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
+  const [pollData, setPollData] = useState<PollData | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -357,20 +363,42 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           
           {/* Post options buttons */}
           <div className="space-y-4">
-            {/* Poll button */}
-            <div className="flex gap-2 p-4 border-b">              
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 rounded-full"
-                onClick={() => {
-                  toast({
-                    title: "Poll",
-                    description: "Create an interactive poll for your followers",
-                  });
-                }}
-              >
-                <BarChart2 className="w-4 h-4" /> Poll
-              </Button>
+            {/* Poll button and poll data */}
+            <div className="flex flex-col gap-2 p-4 border-b">
+              {pollData ? (
+                <div className="w-full">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-medium">{pollData.question}</div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-full"
+                      onClick={() => {
+                        setPollData(null);
+                        toast({
+                          title: "Poll Removed",
+                          description: "The poll has been removed from your post"
+                        });
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {pollData.options.map((option, i) => (
+                      <div key={i} className="bg-muted p-2 rounded-md">{option}</div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  className="flex items-center gap-2 rounded-full"
+                  onClick={() => setIsPollModalOpen(true)}
+                >
+                  <BarChart2 className="w-4 h-4" /> Poll
+                </Button>
+              )}
             </div>
             
             {/* Tag people, location, audience */}
@@ -391,12 +419,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               </div>
               
               <div className="flex items-center justify-between py-2"
-                onClick={() => {
-                  toast({
-                    title: "Add Location",
-                    description: "Add your current location or a custom location",
-                  });
-                }}
+                onClick={() => setIsLocationModalOpen(true)}
               >
                 <div className="flex items-center gap-3">
                   <MapPin className="w-5 h-5" />
@@ -406,30 +429,24 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               </div>
               
               {/* Location pills */}
-              <div className="flex flex-wrap gap-2 py-2">
-                <div 
-                  className="px-3 py-1 bg-muted rounded-full text-sm cursor-pointer"
-                  onClick={() => {
-                    toast({
-                      title: "Location Selected",
-                      description: "Villa del Palmar Cancun Beach Resort was selected as your location",
-                    });
-                  }}
-                >
-                  Villa del Palmar Cancun Beach Resort
+              {selectedLocation && (
+                <div className="flex flex-wrap gap-2 py-2">
+                  <div className="px-3 py-1 bg-primary/20 text-primary rounded-full text-sm flex items-center gap-1">
+                    <span>{selectedLocation.name}</span>
+                    <X 
+                      className="w-3.5 h-3.5 cursor-pointer ml-1 hover:text-destructive" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLocation(null);
+                        toast({
+                          title: "Location Removed",
+                          description: "The location has been removed from your post"
+                        });
+                      }} 
+                    />
+                  </div>
                 </div>
-                <div 
-                  className="px-3 py-1 bg-muted rounded-full text-sm cursor-pointer"
-                  onClick={() => {
-                    toast({
-                      title: "Location Selected",
-                      description: "Davino Restaurante was selected as your location",
-                    });
-                  }}
-                >
-                  Davino Restaurante
-                </div>
-              </div>
+              )}
               
               <div className="flex items-center justify-between py-2"
                 onClick={() => {
@@ -675,6 +692,32 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               onContentChange={setContent}
             />
           </div>
+
+          {/* Poll Modal */}
+          <PollCreator 
+            isOpen={isPollModalOpen}
+            onClose={() => setIsPollModalOpen(false)}
+            onSave={(data) => {
+              setPollData(data);
+              toast({
+                title: "Poll Added",
+                description: "Your poll has been added to the post"
+              });
+            }}
+          />
+
+          {/* Location Picker Modal */}
+          <LocationPicker 
+            isOpen={isLocationModalOpen}
+            onClose={() => setIsLocationModalOpen(false)}
+            onSelect={(location) => {
+              setSelectedLocation(location);
+              toast({
+                title: "Location Added",
+                description: `Added ${location.name} to your post`
+              });
+            }}
+          />
         </div>
       </div>
     );
