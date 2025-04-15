@@ -357,21 +357,8 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           
           {/* Post options buttons */}
           <div className="space-y-4">
-            {/* Hashtags and Poll buttons */}
-            <div className="flex gap-2 p-4 border-b">
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 rounded-full" 
-                onClick={() => {
-                  toast({
-                    title: "Hashtags",
-                    description: "Add trending hashtags to increase post visibility",
-                  });
-                }}
-              >
-                <span className="text-lg">#</span> Hashtags
-              </Button>
-              
+            {/* Poll button */}
+            <div className="flex gap-2 p-4 border-b">              
               <Button 
                 variant="outline" 
                 className="flex items-center gap-2 rounded-full"
