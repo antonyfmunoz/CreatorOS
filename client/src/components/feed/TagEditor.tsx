@@ -269,14 +269,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 </div>
               ))}
               
-              {/* Instructions overlay when no tags */}
-              {taggedUsers.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-black/50 text-white py-2 px-4 rounded-md">
-                    Click "Tag users" to add people to your photo
-                  </div>
-                </div>
-              )}
+              {/* No instructions overlay - cleaner interface */}
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -287,12 +280,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 onClick={() => setShowTagLabels(!showTagLabels)}
               />
               
-              {/* Instructions when no image */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/50 text-white py-2 px-4 rounded-md">
-                  This is a preview. Your actual photo will appear here.
-                </div>
-              </div>
+              {/* No instructions overlay */}
             </div>
           )}
         </div>
