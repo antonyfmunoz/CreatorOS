@@ -23,15 +23,15 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   
-  // Modified to handle custom close behavior
+  // Modified to handle custom close behavior for both screens
   const handleClose = useCallback(() => {
-    // If an image is uploaded, just clear it and go back to upload screen
+    // On the post creation screen with an uploaded image, go back to file selection
     if (imageFile) {
       setImageFile(null);
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } else {
-      // Otherwise, close the entire dialog
+      // On the initial file selection screen, close the entire dialog
       onClose();
     }
   }, [imageFile, onClose]);
@@ -141,7 +141,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b">
+        <div className="flex justify-between items-center p-4 border-b h-[58px]">
           <div className="w-10"></div> {/* Empty space for X button from DialogContent */}
           <h2 className="text-lg font-medium">New post</h2>
           <Button 
@@ -201,9 +201,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
       {/* Top bar */}
-      <div className="flex justify-between items-center p-4 border-b">
+      <div className="flex justify-between items-center p-4 border-b h-[58px]">
         <div className="w-10"></div> {/* Empty space for symmetry */}
-        <h2 className="text-lg font-medium">New Post</h2>
+        <h2 className="text-lg font-medium">New post</h2>
         <div className="w-10"></div> {/* Empty space for symmetry */}
       </div>
 
