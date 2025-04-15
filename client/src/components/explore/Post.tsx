@@ -604,7 +604,7 @@ const Post = ({ post }: PostProps) => {
             >
               {post.user.displayName}
             </p>
-            <p className="text-xs text-gray-500">{post.user.bio || 'Creator'} • {formattedDate}</p>
+            <p className="text-xs text-gray-500">{formattedDate}</p>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -697,7 +697,7 @@ const Post = ({ post }: PostProps) => {
           <img 
             src={post.imageUrl} 
             alt="Post content" 
-            className="w-full h-64 object-cover rounded-lg mb-4" 
+            className="w-full object-contain rounded-lg mb-4" 
           />
         )}
         
