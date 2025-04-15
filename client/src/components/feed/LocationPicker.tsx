@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { X, ChevronRight, MapPin, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -67,11 +67,12 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 overflow-hidden bg-gray-900 text-white w-full max-w-md max-h-[90vh] sm:max-h-[600px]">
+    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+      <DialogContent className="p-0 overflow-hidden bg-background text-foreground w-full h-[100dvh] max-w-full sm:max-w-full inset-0 rounded-none">
+        <DialogTitle className="sr-only">Choose Location</DialogTitle>
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b border-gray-800">
+          <div className="flex justify-between items-center p-4 border-b">
             <button 
               onClick={onClose}
               className="p-1 rounded-full"
@@ -81,21 +82,21 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
             <h2 className="text-lg font-medium">Locations</h2>
             <button 
               onClick={onClose}
-              className="text-blue-500 font-semibold px-2"
+              className="text-primary font-semibold px-2"
             >
               Cancel
             </button>
           </div>
 
           {/* Search bar */}
-          <div className="px-4 py-2 border-b border-gray-800">
+          <div className="px-4 py-2 border-b">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-gray-800 text-white placeholder-gray-500 pl-10 rounded-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="bg-muted text-foreground placeholder:text-muted-foreground pl-10 rounded-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
               />
             </div>
           </div>
@@ -105,13 +106,13 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
             {filteredLocations.map((location, index) => (
               <button 
                 key={index}
-                className="w-full text-left px-4 py-3 hover:bg-gray-800 border-b border-gray-800 last:border-b-0"
+                className="w-full text-left px-4 py-3 hover:bg-muted border-b border-border last:border-b-0"
                 onClick={() => handleSelectLocation(location)}
               >
                 <div className="flex justify-between">
                   <div>
-                    <p className="text-white">{location.name}</p>
-                    <div className="flex text-gray-500 text-sm mt-1">
+                    <p className="text-foreground">{location.name}</p>
+                    <div className="flex text-muted-foreground text-sm mt-1">
                       {location.postCount !== undefined && (
                         <span>{formatPostCount(location.postCount)}</span>
                       )}
@@ -130,7 +131,7 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
                     </div>
                   </div>
                   <div className="self-center">
-                    <ChevronRight className="h-5 w-5 text-gray-500" />
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </div>
               </button>

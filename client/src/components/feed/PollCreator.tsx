@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { X, Plus, Trash2 } from "lucide-react";
@@ -77,11 +77,12 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 overflow-hidden bg-black text-white w-full max-w-md max-h-[90vh] sm:max-h-[600px]">
+    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+      <DialogContent className="p-0 overflow-hidden bg-background text-foreground w-full h-[100dvh] max-w-full sm:max-w-full inset-0 rounded-none">
+        <DialogTitle className="sr-only">Create Poll</DialogTitle>
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b border-gray-800">
+          <div className="flex justify-between items-center p-4 border-b">
             <button 
               onClick={onClose}
               className="p-1 rounded-full"
@@ -91,7 +92,7 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
             <h2 className="text-lg font-medium">Caption</h2>
             <button 
               onClick={handleSave}
-              className="text-blue-500 font-semibold px-2"
+              className="text-primary font-semibold px-2"
             >
               OK
             </button>
@@ -103,7 +104,7 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
               placeholder="Ask a poll question..."
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              className="bg-transparent border-0 border-b border-gray-700 rounded-none text-white placeholder-gray-500 mb-4 px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="bg-transparent border-0 border-b rounded-none placeholder:text-muted-foreground mb-4 px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
 
             {/* Poll options */}
@@ -114,12 +115,12 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
                     placeholder={index === 0 ? "Yes" : index === 1 ? "No" : `Option ${index + 1}`}
                     value={option}
                     onChange={(e) => handleOptionChange(index, e.target.value)}
-                    className="bg-gray-800 text-white placeholder-gray-500 rounded-md pr-10"
+                    className="bg-muted rounded-md pr-10"
                   />
                   {index > 1 && (
                     <button 
                       onClick={() => handleRemoveOption(index)}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -131,7 +132,7 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
             {/* Add another option button */}
             <button 
               onClick={handleAddOption}
-              className="w-full mt-4 py-3 border border-dashed border-gray-600 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-300"
+              className="w-full mt-4 py-3 border border-dashed border-border rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
               <span className="flex items-center">
                 <Plus className="h-4 w-4 mr-2" />
@@ -139,12 +140,12 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
               </span>
             </button>
 
-            <p className="text-xs text-gray-500 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Polls cannot be edited after posting.
             </p>
             
             <div className="flex justify-end mt-2">
-              <button className="text-sm text-red-500">
+              <button className="text-sm text-destructive">
                 Delete
               </button>
             </div>
