@@ -181,6 +181,10 @@ export function FloatingActionButton() {
           (postType === "audio" || postType === "video" || postType === "photo") && "sm:max-w-[100vw] w-screen h-screen max-h-screen p-0"
         )}
         aria-describedby="post-creation-description"
+        // Ensure fixed height for the top bar area for consistent alignment of X button with headers
+        style={{ 
+          '--dialog-header-height': '58px' 
+        } as React.CSSProperties}
         >
           <div id="post-creation-description" className="sr-only">
             Use this form to create a new {postType} post for your followers.
