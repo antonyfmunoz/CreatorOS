@@ -40,6 +40,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [pollData, setPollData] = useState<PollData | null>(null);
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
+  const [showTagLabels, setShowTagLabels] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -232,6 +233,21 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     formData.append('mediaType', 'photo');
     formData.append('isCarousel', String(imageFiles.length > 1));
     
+    // Add tagged users data if present
+    if (taggedUsers.length > 0) {
+      formData.append('taggedUsers', JSON.stringify(taggedUsers));
+    }
+    
+    // Add location data if present
+    if (selectedLocation) {
+      formData.append('location', JSON.stringify(selectedLocation));
+    }
+    
+    // Add poll data if present
+    if (pollData) {
+      formData.append('pollData', JSON.stringify(pollData));
+    }
+    
     // Append all images to the FormData
     imageFiles.forEach((file, index) => {
       formData.append(`image${index}`, file);
@@ -279,12 +295,61 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           className="flex-grow overflow-y-auto"
         >
           {/* Image preview carousel */}
-          <div className="relative w-full aspect-square bg-muted flex items-center justify-center">
+          <div 
+            className="relative w-full aspect-square bg-muted flex items-center justify-center"
+            onClick={() => setShowTagLabels(!showTagLabels)}
+          >
             <img 
               src={imagePreviews[currentImageIndex]} 
               alt={`Preview ${currentImageIndex + 1}`} 
-              className="max-h-full max-w-full object-contain" 
+              className="max-h-full max-w-full object-contain cursor-pointer" 
             />
+            
+            {/* Tagged users indicators */}
+            {taggedUsers.length > 0 && currentImageIndex === 0 && (
+              <>
+                {taggedUsers.map((user) => (
+                  <div key={user.id} className="relative">
+                    {/* Tag dot */}
+                    <div 
+                      className="absolute w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
+                      style={{ 
+                        left: `${user.positionX * 100}%`, 
+                        top: `${user.positionY * 100}%`,
+                        zIndex: 10
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent toggling the labels
+                      }}
+                    >
+                      <span className="text-xs">{user.username.charAt(0).toUpperCase()}</span>
+                    </div>
+                    
+                    {/* Username label (visible only when showTagLabels is true) */}
+                    {showTagLabels && (
+                      <div 
+                        className="absolute bg-black/75 text-white py-1 px-2 rounded-md text-sm transform -translate-x-1/2 whitespace-nowrap"
+                        style={{ 
+                          left: `${user.positionX * 100}%`, 
+                          top: `${user.positionY * 100 + 3}%`, // Position below the tag dot
+                          zIndex: 20 
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // In a real app, navigate to the user's profile
+                          toast({
+                            title: "Navigating",
+                            description: `Going to @${user.username}'s profile`
+                          });
+                        }}
+                      >
+                        @{user.username}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
             
             {/* Navigation arrows for carousel */}
             {imagePreviews.length > 1 && (

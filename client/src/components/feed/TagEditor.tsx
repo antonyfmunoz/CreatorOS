@@ -27,6 +27,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>(initialTags);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchView, setIsSearchView] = useState(false);
+  const [showTagLabels, setShowTagLabels] = useState(false);
   const { toast } = useToast();
   
   // Reset tags when opening
@@ -178,35 +179,82 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
         {/* Image preview */}
         <div className="relative flex-1 overflow-hidden flex items-center justify-center">
           {image ? (
-            <div className="relative w-full h-full">
+            <div 
+              className="relative w-full h-full"
+              onClick={() => setShowTagLabels(!showTagLabels)}
+            >
               <img 
                 src={image} 
                 alt="Tag preview" 
-                className="max-h-full w-full h-full object-contain"
+                className="max-h-full w-full h-full object-contain cursor-pointer"
               />
               
-              {/* Tagged users indicators */}
+              {/* Tagged users indicators with username labels */}
               {taggedUsers.map((user) => (
-                <div 
-                  key={user.id}
-                  className="absolute w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
-                  style={{ 
-                    left: `${user.positionX * 100}%`, 
-                    top: `${user.positionY * 100}%` 
-                  }}
-                  onClick={() => handleRemoveTag(user.id)}
-                >
-                  <span className="text-xs">{user.username.charAt(0).toUpperCase()}</span>
+                <div key={user.id} className="relative">
+                  {/* Tag dot */}
+                  <div 
+                    className="absolute w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ 
+                      left: `${user.positionX * 100}%`, 
+                      top: `${user.positionY * 100}%` 
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent toggling the labels
+                      handleRemoveTag(user.id);
+                    }}
+                  >
+                    <span className="text-xs">{user.username.charAt(0).toUpperCase()}</span>
+                  </div>
+                  
+                  {/* Username label (visible only when showTagLabels is true) */}
+                  {showTagLabels && (
+                    <div 
+                      className="absolute bg-black/75 text-white py-1 px-2 rounded-md text-sm transform -translate-x-1/2 whitespace-nowrap"
+                      style={{ 
+                        left: `${user.positionX * 100}%`, 
+                        top: `${user.positionY * 100 + 3}%`, // Position below the tag dot
+                        zIndex: 20 
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // In a real app, navigate to the user's profile
+                        toast({
+                          title: "Navigating",
+                          description: `Going to @${user.username}'s profile`
+                        });
+                      }}
+                    >
+                      @{user.username}
+                    </div>
+                  )}
                 </div>
               ))}
+              
+              {/* Instructions overlay when no tags */}
+              {taggedUsers.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/50 text-white py-2 px-4 rounded-md">
+                    Click "Tag users" to add people to your photo
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <img 
                 src="/placeholder-tshirt.jpg" 
                 alt="Example item"
-                className="max-w-full max-h-full object-contain" 
+                className="max-w-full max-h-full object-contain cursor-pointer" 
+                onClick={() => setShowTagLabels(!showTagLabels)}
               />
+              
+              {/* Instructions when no image */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-black/50 text-white py-2 px-4 rounded-md">
+                  This is a preview. Your actual photo will appear here.
+                </div>
+              </div>
             </div>
           )}
         </div>
