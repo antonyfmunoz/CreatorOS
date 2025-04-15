@@ -180,7 +180,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       
       {/* Top bar */}
       <div className="flex justify-between items-center p-4 border-b">
-        <button onClick={onClose} className="text-foreground">✕</button>
+        <div className="w-10"></div> {/* Empty space for symmetry */}
         <h2 className="text-lg font-medium">New Post</h2>
         <div className="w-10"></div> {/* Empty space for symmetry */}
       </div>
