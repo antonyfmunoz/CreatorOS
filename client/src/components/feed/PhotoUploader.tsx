@@ -36,26 +36,44 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     }
   }, [imageFile, onClose]);
   
-  // Override the default Radix Dialog close behavior
+  // A safer implementation for custom X button behavior
   useEffect(() => {
-    // Find the DialogPrimitive.Close button - more specific selector
-    const closeButton = document.querySelector('[class*="DialogPrimitive__Close"]') as HTMLElement;
+    // Function that will be called when the component mounts
+    const timer = setTimeout(() => {
+      try {
+        // Find the DialogPrimitive.Close button - more specific selector
+        const closeButton = document.querySelector('[aria-label="Close"]') as HTMLElement | null;
+        
+        if (!closeButton) return;
+        
+        // Function to handle close button click
+        const handleCloseClick = (e: Event) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleClose();
+        };
+        
+        // Replace with our custom handler
+        closeButton.addEventListener('click', handleCloseClick);
+        
+        // Ensure cleanup is registered
+        const cleanup = () => {
+          closeButton.removeEventListener('click', handleCloseClick);
+        };
+        
+        // Store the original onclick if needed
+        const originalOnClick = closeButton.onclick;
+        
+        // Return cleanup function
+        return cleanup;
+      } catch (error) {
+        console.error("Error setting up close button handler:", error);
+      }
+    }, 100); // Small delay to ensure DOM is ready
     
-    if (!closeButton) return;
-    
-    // Function to handle close button click
-    const handleCloseClick = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handleClose();
-    };
-    
-    // Replace with our custom handler
-    closeButton.addEventListener('click', handleCloseClick);
-    
-    // Cleanup function
+    // Cleanup timeout on unmount
     return () => {
-      closeButton.removeEventListener('click', handleCloseClick);
+      clearTimeout(timer);
     };
   }, [handleClose]);
   
