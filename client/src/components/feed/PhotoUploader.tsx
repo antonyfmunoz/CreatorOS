@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
+import { TagEditor, type TaggedUser } from "@/components/feed/TagEditor";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -35,8 +36,10 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [content, setContent] = useState("");
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isTagEditorOpen, setIsTagEditorOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [pollData, setPollData] = useState<PollData | null>(null);
+  const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -404,12 +407,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             {/* Tag people, location, audience */}
             <div className="space-y-4 px-4 pb-4 border-b">
               <div className="flex items-center justify-between py-2" 
-                onClick={() => {
-                  toast({
-                    title: "Tag People",
-                    description: "Tag people in your post",
-                  });
-                }}
+                onClick={() => setIsTagEditorOpen(true)}
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-5 h-5" />
@@ -417,6 +415,31 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </div>
+              
+              {/* Tagged users pills */}
+              {taggedUsers.length > 0 && (
+                <div className="flex flex-wrap gap-2 py-2">
+                  {taggedUsers.map(user => (
+                    <div 
+                      key={user.id} 
+                      className="px-3 py-1 bg-primary/20 text-primary rounded-full text-sm flex items-center gap-1"
+                    >
+                      <span>{user.username}</span>
+                      <X 
+                        className="w-3.5 h-3.5 cursor-pointer ml-1 hover:text-destructive" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTaggedUsers(taggedUsers.filter(u => u.id !== user.id));
+                          toast({
+                            title: "Tag Removed",
+                            description: `${user.displayName} has been untagged from your post`
+                          });
+                        }} 
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
               
               <div className="flex items-center justify-between py-2"
                 onClick={() => setIsLocationModalOpen(true)}
