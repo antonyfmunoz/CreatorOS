@@ -103,13 +103,13 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
         </div>
         
         {/* Image preview */}
-        <div className="relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-900">
+        <div className="relative flex-1 overflow-hidden flex items-center justify-center">
           {image ? (
-            <div className="relative w-full max-h-full">
+            <div className="relative w-full h-full">
               <img 
                 src={image} 
                 alt="Tag preview" 
-                className="max-h-full max-w-full mx-auto object-contain"
+                className="max-h-full w-full h-full object-contain"
               />
               
               {/* Tagged users indicators */}
@@ -128,7 +128,13 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground">No image selected</div>
+            <div className="w-full h-full flex items-center justify-center">
+              <img 
+                src="/placeholder-tshirt.jpg" 
+                alt="Example item"
+                className="max-w-full max-h-full object-contain" 
+              />
+            </div>
           )}
         </div>
         
@@ -136,7 +142,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
         <div className="p-4 border-t">
           <Button 
             variant="outline" 
-            className="w-full justify-center gap-2"
+            className="w-full justify-center gap-2 bg-background text-foreground border-border"
             onClick={() => {
               // In a real app, you'd show a user search/selection interface here
               toast({

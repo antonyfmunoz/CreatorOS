@@ -741,6 +741,21 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               });
             }}
           />
+
+          {/* Tag Editor Modal */}
+          <TagEditor
+            isOpen={isTagEditorOpen}
+            onClose={() => setIsTagEditorOpen(false)}
+            image={currentImageIndex >= 0 ? imagePreviews[currentImageIndex] : undefined}
+            initialTags={taggedUsers}
+            onTagSave={(users) => {
+              setTaggedUsers(users);
+              toast({
+                title: "Tags Saved",
+                description: `${users.length} people tagged in your post`
+              });
+            }}
+          />
         </div>
       </div>
     );
