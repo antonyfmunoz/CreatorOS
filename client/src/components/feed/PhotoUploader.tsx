@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Upload, Loader2, ArrowLeft } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -22,6 +22,42 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Modified to handle custom close behavior
+  const handleClose = useCallback(() => {
+    // If an image is uploaded, just clear it and go back to upload screen
+    if (imageFile) {
+      setImageFile(null);
+      setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } else {
+      // Otherwise, close the entire dialog
+      onClose();
+    }
+  }, [imageFile, onClose]);
+  
+  // Override the default Radix Dialog close behavior
+  useEffect(() => {
+    // Find the DialogPrimitive.Close button - more specific selector
+    const closeButton = document.querySelector('[class*="DialogPrimitive__Close"]') as HTMLElement;
+    
+    if (!closeButton) return;
+    
+    // Function to handle close button click
+    const handleCloseClick = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleClose();
+    };
+    
+    // Replace with our custom handler
+    closeButton.addEventListener('click', handleCloseClick);
+    
+    // Cleanup function
+    return () => {
+      closeButton.removeEventListener('click', handleCloseClick);
+    };
+  }, [handleClose]);
   
   const triggerFileSelect = () => {
     if (fileInputRef.current) {
@@ -98,12 +134,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     createPostMutation.mutate(formData);
   };
   
-  const handleBack = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-  
   // If image is selected, show the image editor and options
   if (imagePreview) {
     return (
@@ -112,15 +142,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         
         {/* Top Bar - Instagram-like header */}
         <div className="flex justify-between items-center p-4 border-b">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="flex items-center gap-1 px-2" 
-            onClick={handleBack}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
+          <div className="w-10"></div> {/* Empty space for X button from DialogContent */}
           <h2 className="text-lg font-medium">New post</h2>
           <Button 
             variant="ghost" 
