@@ -264,45 +264,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Handle media post uploads (image, audio, video)
-  app.post("/api/posts/media", upload.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'audio', maxCount: 1 },
-    { name: 'video', maxCount: 1 }
-  ]), async (req, res) => {
+  app.post("/api/posts/media", upload.any(), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
-      const { content, userId } = req.body;
+      const { content, userId, mediaType, isCarousel } = req.body;
       
       if (!content || !userId) {
         return res.status(400).json({ message: "Content and userId are required" });
       }
       
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No media file provided" });
+      }
+      
       const postData: any = {
         userId: parseInt(userId),
         content,
+        mediaType: mediaType || 'photo',
       };
       
-      if (files.image && files.image[0]) {
-        // Handle image post
-        const imagePath = `/uploads/${files.image[0].filename}`;
-        postData.imageUrl = imagePath;
+      // Check if this is a carousel post (multiple images)
+      const isCarouselPost = isCarousel === 'true';
+      
+      if (mediaType === 'photo' || !mediaType) {
+        if (isCarouselPost && files.length > 1) {
+          // Handle carousel post (multiple images)
+          const imagePaths = files.map(file => `/uploads/${file.filename}`);
+          
+          // Store primary image in imageUrl
+          postData.imageUrl = imagePaths[0];
+          
+          // Store all images as JSON in a new carouselImages field
+          postData.carouselImages = JSON.stringify(imagePaths);
+        } else {
+          // Handle single image post
+          const imagePath = `/uploads/${files[0].filename}`;
+          postData.imageUrl = imagePath;
+          // Ensure carouselImages is null for single image posts
+          postData.carouselImages = null;
+        }
         postData.mediaType = 'photo';
-      } else if (files.audio && files.audio[0]) {
+      } else if (mediaType === 'audio') {
         // Handle audio post
-        const audioPath = `/uploads/${files.audio[0].filename}`;
+        const audioPath = `/uploads/${files[0].filename}`;
         postData.audioUrl = audioPath;
         postData.mediaType = 'audio';
-      } else if (files.video && files.video[0]) {
+      } else if (mediaType === 'video') {
         // Handle video post
-        const videoPath = `/uploads/${files.video[0].filename}`;
+        const videoPath = `/uploads/${files[0].filename}`;
         postData.videoUrl = videoPath;
         postData.mediaType = 'video';
       } else {
-        return res.status(400).json({ message: "No media file provided" });
+        return res.status(400).json({ message: "Invalid media type provided" });
       }
       
       const post = await storage.createPost(postData);

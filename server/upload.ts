@@ -38,8 +38,11 @@ const storage = multer.diskStorage({
 
 // File filter function that adapts based on the field name
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Determine allowed types based on the field name
-  if (file.fieldname === 'profile' || file.fieldname === 'image') {
+  // Determine allowed types based on the file type that comes from MediaType parameter
+  // or fall back to the field name if not specified
+  const mediaType = req.body.mediaType || file.fieldname;
+  
+  if (mediaType === 'photo' || file.fieldname === 'profile' || file.fieldname === 'image' || file.fieldname.startsWith('image')) {
     // For profile pictures and post images
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     // Check extension
