@@ -28,6 +28,8 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchView, setIsSearchView] = useState(false);
   const [showTagLabels, setShowTagLabels] = useState(false);
+  const [taggingPosition, setTaggingPosition] = useState<{x: number, y: number} | null>(null);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const { toast } = useToast();
   
   // Reset tags when opening
@@ -54,13 +56,8 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
     : sampleUsers;
   
   const handleAddTag = (user: any) => {
-    // In a real implementation, you'd let the user tap on the image to set the position
-    // For now, just place tags at random spots
-    const newTag: TaggedUser = {
-      ...user,
-      positionX: Math.random(),
-      positionY: Math.random()
-    };
+    // Store the selected user. We'll ask the user to tap where to place the tag
+    setSelectedUser(user);
     
     // Check if user is already tagged
     if (taggedUsers.some(tagged => tagged.id === user.id)) {
@@ -71,8 +68,40 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
       return;
     }
     
-    setTaggedUsers([...taggedUsers, newTag]);
+    toast({
+      title: "Tap to place tag",
+      description: "Tap on the image where you want to tag the user"
+    });
+    
     setSearchQuery('');
+    setIsSearchView(false);
+  };
+  
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    if (selectedUser) {
+      // Get click position relative to the image container
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      
+      // Create new tag at clicked position
+      const newTag: TaggedUser = {
+        ...selectedUser,
+        positionX: x,
+        positionY: y
+      };
+      
+      setTaggedUsers([...taggedUsers, newTag]);
+      setSelectedUser(null);
+      
+      toast({
+        title: "User tagged",
+        description: `${selectedUser.displayName} has been tagged at the selected position.`
+      });
+    } else {
+      // If not in tagging mode, toggle label visibility
+      setShowTagLabels(!showTagLabels);
+    }
   };
   
   const handleRemoveTag = (userId: number) => {
@@ -181,7 +210,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
           {image ? (
             <div 
               className="relative w-full h-full"
-              onClick={() => setShowTagLabels(!showTagLabels)}
+              onClick={handleImageClick}
             >
               <img 
                 src={image} 
@@ -189,12 +218,21 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 className="max-h-full w-full h-full object-contain cursor-pointer"
               />
               
+              {/* Show tagging prompt when in tagging mode */}
+              {selectedUser && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="bg-black/50 text-white py-2 px-4 rounded-md">
+                    Tap where you want to tag {selectedUser.displayName}
+                  </div>
+                </div>
+              )}
+              
               {/* Tagged users indicators with username labels */}
               {taggedUsers.map((user) => (
                 <div key={user.id} className="relative">
-                  {/* Tag dot */}
+                  {/* Instagram-style 'U' tag marker */}
                   <div 
-                    className="absolute w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
+                    className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white"
                     style={{ 
                       left: `${user.positionX * 100}%`, 
                       top: `${user.positionY * 100}%` 
@@ -204,16 +242,16 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                       handleRemoveTag(user.id);
                     }}
                   >
-                    <span className="text-xs">{user.username.charAt(0).toUpperCase()}</span>
+                    <span className="text-xs font-semibold">U</span>
                   </div>
                   
                   {/* Username label (visible only when showTagLabels is true) */}
                   {showTagLabels && (
                     <div 
-                      className="absolute bg-black/75 text-white py-1 px-2 rounded-md text-sm transform -translate-x-1/2 whitespace-nowrap"
+                      className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md"
                       style={{ 
                         left: `${user.positionX * 100}%`, 
-                        top: `${user.positionY * 100 + 3}%`, // Position below the tag dot
+                        top: `${user.positionY * 100 + 4}%`, // Position below the tag dot
                         zIndex: 20 
                       }}
                       onClick={(e) => {
@@ -225,7 +263,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                         });
                       }}
                     >
-                      @{user.username}
+                      {user.username}
                     </div>
                   )}
                 </div>

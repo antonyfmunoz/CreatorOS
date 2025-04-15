@@ -297,7 +297,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           {/* Image preview carousel */}
           <div 
             className="relative w-full aspect-square bg-muted flex items-center justify-center"
-            onClick={() => setShowTagLabels(!showTagLabels)}
+            onClick={() => {
+              if (taggedUsers.length > 0) {
+                setShowTagLabels(!showTagLabels);
+              }
+            }}
           >
             <img 
               src={imagePreviews[currentImageIndex]} 
@@ -310,9 +314,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <>
                 {taggedUsers.map((user) => (
                   <div key={user.id} className="relative">
-                    {/* Tag dot */}
+                    {/* Instagram-style 'U' tag marker */}
                     <div 
-                      className="absolute w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
+                      className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white"
                       style={{ 
                         left: `${user.positionX * 100}%`, 
                         top: `${user.positionY * 100}%`,
@@ -322,16 +326,16 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                         e.stopPropagation(); // Prevent toggling the labels
                       }}
                     >
-                      <span className="text-xs">{user.username.charAt(0).toUpperCase()}</span>
+                      <span className="text-xs font-semibold">U</span>
                     </div>
                     
                     {/* Username label (visible only when showTagLabels is true) */}
                     {showTagLabels && (
                       <div 
-                        className="absolute bg-black/75 text-white py-1 px-2 rounded-md text-sm transform -translate-x-1/2 whitespace-nowrap"
+                        className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md"
                         style={{ 
                           left: `${user.positionX * 100}%`, 
-                          top: `${user.positionY * 100 + 3}%`, // Position below the tag dot
+                          top: `${user.positionY * 100 + 4}%`, // Position below the tag dot
                           zIndex: 20 
                         }}
                         onClick={(e) => {
@@ -343,7 +347,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                           });
                         }}
                       >
-                        @{user.username}
+                        {user.username}
                       </div>
                     )}
                   </div>
