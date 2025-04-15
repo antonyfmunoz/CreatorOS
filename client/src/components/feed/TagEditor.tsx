@@ -230,7 +230,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
               {/* Tagged users indicators with username labels */}
               {taggedUsers.map((user) => (
                 <div key={user.id} className="relative">
-                  {/* Instagram-style 'U' tag marker */}
+                  {/* Instagram-style username initial tag marker */}
                   <div 
                     className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white"
                     style={{ 
@@ -242,7 +242,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                       handleRemoveTag(user.id);
                     }}
                   >
-                    <span className="text-xs font-semibold">U</span>
+                    <span className="text-xs font-semibold">{user.username.charAt(0).toUpperCase()}</span>
                   </div>
                   
                   {/* Username label (visible only when showTagLabels is true) */}
