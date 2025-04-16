@@ -10,6 +10,15 @@ export interface User {
   createdAt: string;
 }
 
+export interface TaggedUser {
+  id: number;
+  username: string;
+  displayName: string;
+  profileImageUrl?: string;
+  positionX: number;
+  positionY: number;
+}
+
 export interface Post {
   id: number;
   userId: number;
@@ -19,6 +28,7 @@ export interface Post {
   comments: number;
   createdAt: string;
   user: User;
+  taggedUsers?: TaggedUser[];
 }
 
 export interface Comment {

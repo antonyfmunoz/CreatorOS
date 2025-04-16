@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Post as PostType, User, Conversation } from '@/types';
+import { Post as PostType, User, Conversation, TaggedUser } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
@@ -64,6 +64,7 @@ const Post = ({ post }: PostProps) => {
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
+  const [showTags, setShowTags] = useState(false);
   const [savedPosts, setSavedPosts] = useState<number[]>(() => {
     const saved = localStorage.getItem('savedPosts');
     return saved ? JSON.parse(saved) : [];
@@ -694,11 +695,49 @@ const Post = ({ post }: PostProps) => {
         )}
         
         {post.imageUrl && (
-          <img 
-            src={post.imageUrl} 
-            alt="Post content" 
-            className="w-full object-contain rounded-lg mb-4" 
-          />
+          <div className="relative mb-4">
+            <img 
+              src={post.imageUrl} 
+              alt="Post content" 
+              className="w-full object-contain rounded-lg" 
+              onClick={() => setShowTags(!showTags)}
+            />
+            
+            {/* Tagged users overlay */}
+            {showTags && post.taggedUsers && post.taggedUsers.length > 0 && (
+              <div className="absolute inset-0">
+                {post.taggedUsers.map((taggedUser, index) => (
+                  <div 
+                    key={index}
+                    className="absolute"
+                    style={{
+                      left: `${taggedUser.positionX * 100}%`,
+                      top: `${taggedUser.positionY * 100}%`,
+                    }}
+                  >
+                    <div className="flex items-center bg-black bg-opacity-70 text-white rounded-full py-1 px-2 text-xs transform -translate-x-1/2 -translate-y-1/2">
+                      <Avatar className="h-6 w-6 mr-1">
+                        <AvatarImage src={taggedUser.profileImageUrl} />
+                        <AvatarFallback>{taggedUser.displayName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <span>{taggedUser.displayName}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Tag indicator button */}
+            {post.taggedUsers && post.taggedUsers.length > 0 && !showTags && (
+              <button 
+                className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white rounded-full p-1.5"
+                onClick={() => setShowTags(true)}
+              >
+                <UserIcon className="h-4 w-4" />
+                <span className="sr-only">Show tagged users</span>
+              </button>
+            )}
+          </div>
         )}
         
         <div className="flex items-center justify-between text-gray-500">
