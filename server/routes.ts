@@ -331,6 +331,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Tagged users API endpoint
+  app.post("/api/posts/:postId/tagged-users", async (req, res) => {
+    try {
+      const postId = parseInt(req.params.postId);
+      const { userId, positionX, positionY } = req.body;
+      
+      // Validate required fields
+      if (!userId || positionX === undefined || positionY === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      // Create the tagged user
+      const taggedUser = await db.insert(taggedUsers).values({
+        postId,
+        userId,
+        positionX,
+        positionY
+      }).returning();
+      
+      res.status(201).json(taggedUser[0]);
+    } catch (error) {
+      console.error("Error adding tagged user:", error);
+      res.status(500).json({ message: "Failed to add tagged user" });
+    }
+  });
+  
   app.post("/api/posts/:id/like", async (req, res) => {
     try {
       const post = await storage.likePost(parseInt(req.params.id));
