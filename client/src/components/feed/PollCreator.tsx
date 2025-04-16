@@ -75,7 +75,8 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
     onClose();
   };
 
-  if (!isOpen) return null;
+  // Since we're using conditional rendering in PhotoUploader, 
+  // we don't need to check isOpen here anymore
 
   return (
     <div className="fixed inset-0 z-50 bg-background">

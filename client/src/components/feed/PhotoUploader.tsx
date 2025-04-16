@@ -463,13 +463,16 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                   </div>
                 </div>
               ) : (
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2 rounded-full"
-                  onClick={() => setIsPollModalOpen(true)}
+                <button 
+                  type="button"
+                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
+                  onClick={() => {
+                    console.log("Opening poll modal");
+                    setIsPollModalOpen(true);
+                  }}
                 >
                   <BarChart2 className="w-4 h-4" /> Poll
-                </Button>
+                </button>
               )}
             </div>
             
@@ -796,17 +799,25 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           </div>
 
           {/* Poll Modal */}
-          <PollCreator 
-            isOpen={isPollModalOpen}
-            onClose={() => setIsPollModalOpen(false)}
-            onSave={(data) => {
-              setPollData(data);
-              toast({
-                title: "Poll Added",
-                description: "Your poll has been added to the post"
-              });
-            }}
-          />
+          {isPollModalOpen && (
+            <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+              <PollCreator 
+                isOpen={true}
+                onClose={() => {
+                  console.log("Closing poll modal");
+                  setIsPollModalOpen(false);
+                }}
+                onSave={(data) => {
+                  console.log("Poll data saved:", data);
+                  setPollData(data);
+                  toast({
+                    title: "Poll Added",
+                    description: "Your poll has been added to the post"
+                  });
+                }}
+              />
+            </div>
+          )}
 
           {/* Location Picker Modal */}
           {isLocationModalOpen && (
@@ -830,19 +841,27 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           )}
 
           {/* Tag Editor Modal */}
-          <TagEditor
-            isOpen={isTagEditorOpen}
-            onClose={() => setIsTagEditorOpen(false)}
-            image={currentImageIndex >= 0 ? imagePreviews[currentImageIndex] : undefined}
-            initialTags={taggedUsers}
-            onTagSave={(users) => {
-              setTaggedUsers(users);
-              toast({
-                title: "Tags Saved",
-                description: `${users.length} people tagged in your post`
-              });
-            }}
-          />
+          {isTagEditorOpen && (
+            <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+              <TagEditor
+                isOpen={true}
+                onClose={() => {
+                  console.log("Closing tag editor");
+                  setIsTagEditorOpen(false);
+                }}
+                image={currentImageIndex >= 0 ? imagePreviews[currentImageIndex] : undefined}
+                initialTags={taggedUsers}
+                onTagSave={(users) => {
+                  console.log("Tags saved:", users);
+                  setTaggedUsers(users);
+                  toast({
+                    title: "Tags Saved",
+                    description: `${users.length} people tagged in your post`
+                  });
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     );

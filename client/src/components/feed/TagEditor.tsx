@@ -118,7 +118,8 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
     });
   };
   
-  if (!isOpen) return null;
+  // Since we're using conditional rendering in PhotoUploader, 
+  // we don't need to check isOpen here anymore
   
   // User search view
   if (isSearchView) {
