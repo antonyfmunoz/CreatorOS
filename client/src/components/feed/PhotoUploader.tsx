@@ -382,15 +382,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               </>
             )}
             
-            {/* Remove current image button */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="absolute top-2 right-2 bg-background/80 hover:bg-background/80 hover:text-destructive rounded-full"
-              onClick={() => removeImage(currentImageIndex)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
+            {/* Remove current image button - hidden as requested */}
             
             {/* Add more images button */}
             <Button 
