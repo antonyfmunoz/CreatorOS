@@ -8,7 +8,35 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Post as PostType, User, Conversation, TaggedUser } from '@/types';
+import { Post as ImportedPostType, Conversation } from '@/types';
+
+// Extend the PostType to include taggedUsers
+interface PostType extends ImportedPostType {
+  taggedUsers?: TaggedUser[];
+}
+
+// Define a local User interface to avoid dependency issues
+interface User {
+  id: number;
+  username: string;
+  displayName: string;
+  profileImageUrl?: string;
+  bio?: string;
+  role: string;
+  xpPoints: number;
+  level: number;
+  createdAt: string;
+}
+
+// Define a local TaggedUser interface
+interface TaggedUser {
+  id: number;
+  username: string;
+  displayName: string;
+  profileImageUrl?: string;
+  positionX: number;
+  positionY: number;
+}
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import CommentSection from './CommentSection';
@@ -706,7 +734,7 @@ const Post = ({ post }: PostProps) => {
             {/* Tagged users overlay */}
             {showTags && post.taggedUsers && post.taggedUsers.length > 0 && (
               <div className="absolute inset-0">
-                {post.taggedUsers.map((taggedUser, index) => (
+                {post.taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}
                     className="absolute"
