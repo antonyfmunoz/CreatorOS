@@ -4,6 +4,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
 
 interface TagEditorProps {
   isOpen: boolean;
@@ -38,21 +39,23 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
     }
   }, [isOpen, initialTags]);
   
-  // Sample users (in a real app, you would fetch these from an API)
-  const sampleUsers = [
-    { id: 1, username: 'user1', displayName: 'User One', profileImageUrl: 'https://i.pravatar.cc/150?img=1' },
-    { id: 2, username: 'user2', displayName: 'User Two', profileImageUrl: 'https://i.pravatar.cc/150?img=2' },
-    { id: 3, username: 'user3', displayName: 'User Three', profileImageUrl: 'https://i.pravatar.cc/150?img=3' },
-    { id: 4, username: 'user4', displayName: 'User Four', profileImageUrl: 'https://i.pravatar.cc/150?img=4' },
-  ];
+  // Fetch real users from the database
+  const { data: users = [], isLoading } = useQuery<any[]>({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      const res = await fetch('/api/users');
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    }
+  });
 
   const filteredUsers = searchQuery 
-    ? sampleUsers.filter(
+    ? users.filter(
         user => 
           user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
           user.displayName.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : sampleUsers;
+    : users;
   
   const handleAddTag = (user: any) => {
     // Store the selected user. We'll ask the user to tap where to place the tag
