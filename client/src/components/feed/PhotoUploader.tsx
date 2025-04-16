@@ -235,6 +235,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     
     // Add tagged users data if present
     if (taggedUsers.length > 0) {
+      console.log('Tagged users being sent with post:', taggedUsers);
       formData.append('taggedUsers', JSON.stringify(taggedUsers));
     }
     
