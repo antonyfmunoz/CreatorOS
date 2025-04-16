@@ -81,12 +81,31 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
     console.log("Image clicked");
     
     if (selectedUser) {
-      // Get click position relative to the image container
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
+      // Find the img element with the specific id and get its position
+      const imgElement = document.getElementById('tag-image');
+      if (!imgElement) {
+        console.error("Image element with id 'tag-image' not found");
+        return;
+      }
+
+      const imgRect = imgElement.getBoundingClientRect();
       
-      console.log("Tag position calculated:", { x, y, rect, clientX: e.clientX, clientY: e.clientY });
+      // Calculate position relative to the image, not the container
+      let x = (e.clientX - imgRect.left) / imgRect.width;
+      let y = (e.clientY - imgRect.top) / imgRect.height;
+      
+      // Clamp values between 0 and 1
+      x = Math.max(0, Math.min(1, x));
+      y = Math.max(0, Math.min(1, y));
+      
+      console.log("Tag position calculated:", { 
+        x, y, 
+        imgRect, 
+        clientX: e.clientX, 
+        clientY: e.clientY,
+        imageWidth: imgRect.width,
+        imageHeight: imgRect.height
+      });
       
       // Store the position first
       setTaggingPosition({ x, y });
@@ -225,10 +244,14 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
           {image ? (
             <div 
               className="relative w-full h-full flex items-center justify-center" 
-              onClick={handleImageClick}
             >
-              <div className="relative" style={{ maxWidth: '100%', maxHeight: '100%', position: 'relative' }}>
+              <div 
+                className="relative" 
+                style={{ maxWidth: '100%', maxHeight: '100%', position: 'relative', display: 'inline-block' }}
+                onClick={handleImageClick}
+              >
                 <img 
+                  id="tag-image"
                   src={image} 
                   alt="Tag preview" 
                   className="cursor-pointer"
@@ -251,8 +274,10 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                     <div 
                       className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white z-30"
                       style={{ 
+                        position: 'absolute',
                         left: `${user.positionX * 100}%`, 
-                        top: `${user.positionY * 100}%` 
+                        top: `${user.positionY * 100}%`,
+                        pointerEvents: 'auto'
                       }}
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent toggling the labels
@@ -267,8 +292,10 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                       <div 
                         className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md z-20"
                         style={{ 
+                          position: 'absolute',
                           left: `${user.positionX * 100}%`, 
-                          top: `${user.positionY * 100 + 4}%` // Position below the tag dot
+                          top: `${user.positionY * 100 + 4}%`, // Position below the tag dot
+                          pointerEvents: 'auto'
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
