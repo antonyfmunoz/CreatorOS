@@ -733,7 +733,7 @@ const Post = ({ post }: PostProps) => {
             
             {/* Tagged users overlay */}
             {showTags && post.taggedUsers && post.taggedUsers.length > 0 && (
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 z-10">
                 {post.taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}

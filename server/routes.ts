@@ -325,7 +325,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid media type provided" });
       }
       
+      // Create the post first
       const post = await storage.createPost(postData);
+      
+      // Process tagged users if present
+      if (req.body.taggedUsers) {
+        try {
+          const taggedUsersData = JSON.parse(req.body.taggedUsers);
+          if (Array.isArray(taggedUsersData) && taggedUsersData.length > 0) {
+            // Insert each tagged user into the database
+            for (const taggedUser of taggedUsersData) {
+              await db.insert(taggedUsers).values({
+                postId: post.id,
+                userId: taggedUser.id,
+                positionX: taggedUser.positionX,
+                positionY: taggedUser.positionY
+              });
+            }
+            console.log(`Added ${taggedUsersData.length} tagged users to post ${post.id}`);
+          }
+        } catch (tagError) {
+          console.error("Error processing tagged users:", tagError);
+          // Continue even if tagging fails, the post is already created
+        }
+      }
+      
       res.status(201).json(post);
     } catch (error) {
       console.error("Error creating media post:", error);
