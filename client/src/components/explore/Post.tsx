@@ -136,6 +136,18 @@ const Post = ({ post }: PostProps) => {
     }
   });
   
+  // Fetch the tagged users for this post
+  const { data: taggedUsers = [] } = useQuery<TaggedUser[]>({
+    queryKey: ['/api/posts', post.id, 'tagged-users'],
+    queryFn: async () => {
+      const res = await fetch(`/api/posts/${post.id}/tagged-users`);
+      if (!res.ok) throw new Error('Failed to fetch tagged users');
+      return res.json();
+    },
+    // Only run this query when post has image and showTags is true
+    enabled: !!post.imageUrl && showImage && ((post.taggedUsers?.length ?? 0) > 0 || showTags)
+  });
+  
   // Use the total comment count from the database for the UI
   // This includes both top-level comments and all replies
   const totalCommentCount = commentCountData?.count || 0;

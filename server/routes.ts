@@ -2,7 +2,15 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
-import { insertCommentSchema, insertStorySchema, insertSavedPostSchema, stories, savedPosts, taggedUsers } from "../shared/schema";
+import { 
+  insertCommentSchema, 
+  insertStorySchema, 
+  insertSavedPostSchema, 
+  stories, 
+  savedPosts, 
+  taggedUsers,
+  users 
+} from "../shared/schema";
 import { db } from "./db";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
 import { setupAuth } from "./auth";
