@@ -1804,7 +1804,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User })[]> {
+  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1812,10 +1812,50 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(posts.userId, users.id))
       .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
     
-    return result.map(({ post, user }) => ({ ...post, user }));
+    // Fetch all tagged users for all posts in a batch
+    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    
+    // Get all post IDs
+    const postIds = postsWithUsers.map(post => post.id);
+    
+    if (postIds.length > 0) {
+      // Fetch tagged users for all posts
+      const taggedUsersResult = await db.select({
+        taggedUser: taggedUsers,
+        user: users,
+        postId: taggedUsers.postId,
+      }).from(taggedUsers)
+        .innerJoin(users, eq(taggedUsers.userId, users.id))
+        .where(inArray(taggedUsers.postId, postIds));
+      
+      // Group tagged users by post ID
+      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
+        if (!acc[postId]) {
+          acc[postId] = [];
+        }
+        
+        acc[postId].push({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          profileImageUrl: user.profileImageUrl,
+          positionX: taggedUser.positionX,
+          positionY: taggedUser.positionY,
+        });
+        
+        return acc;
+      }, {} as Record<number, TaggedUser[]>);
+      
+      // Add tagged users to their respective posts
+      postsWithUsers.forEach(post => {
+        post.taggedUsers = taggedUsersByPostId[post.id] || [];
+      });
+    }
+    
+    return postsWithUsers;
   }
 
-  async getPostById(id: number): Promise<(Post & { user: User }) | undefined> {
+  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] }) | undefined> {
     const [result] = await db.select({
       post: posts,
       user: users,
@@ -1824,10 +1864,35 @@ export class DatabaseStorage implements IStorage {
       .where(eq(posts.id, id));
     
     if (!result) return undefined;
-    return { ...result.post, user: result.user };
+    
+    const postWithUser = { ...result.post, user: result.user };
+    
+    // Fetch tagged users for this post
+    const taggedUsersResult = await db.select({
+      taggedUser: taggedUsers,
+      user: users,
+    }).from(taggedUsers)
+      .innerJoin(users, eq(taggedUsers.userId, users.id))
+      .where(eq(taggedUsers.postId, id));
+    
+    // Add tagged users to the post
+    if (taggedUsersResult.length > 0) {
+      postWithUser.taggedUsers = taggedUsersResult.map(({ taggedUser, user }) => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        profileImageUrl: user.profileImageUrl,
+        positionX: taggedUser.positionX,
+        positionY: taggedUser.positionY,
+      }));
+    } else {
+      postWithUser.taggedUsers = [];
+    }
+    
+    return postWithUser;
   }
   
-  async getPostsByUserId(userId: number): Promise<(Post & { user: User })[]> {
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1836,7 +1901,47 @@ export class DatabaseStorage implements IStorage {
       .where(eq(posts.userId, userId))
       .orderBy(desc(posts.id)); // Sort newest first
     
-    return result.map(({ post, user }) => ({ ...post, user }));
+    // Fetch all tagged users for all posts in a batch
+    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    
+    // Get all post IDs
+    const postIds = postsWithUsers.map(post => post.id);
+    
+    if (postIds.length > 0) {
+      // Fetch tagged users for all posts
+      const taggedUsersResult = await db.select({
+        taggedUser: taggedUsers,
+        user: users,
+        postId: taggedUsers.postId,
+      }).from(taggedUsers)
+        .innerJoin(users, eq(taggedUsers.userId, users.id))
+        .where(inArray(taggedUsers.postId, postIds));
+      
+      // Group tagged users by post ID
+      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
+        if (!acc[postId]) {
+          acc[postId] = [];
+        }
+        
+        acc[postId].push({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          profileImageUrl: user.profileImageUrl,
+          positionX: taggedUser.positionX,
+          positionY: taggedUser.positionY,
+        });
+        
+        return acc;
+      }, {} as Record<number, TaggedUser[]>);
+      
+      // Add tagged users to their respective posts
+      postsWithUsers.forEach(post => {
+        post.taggedUsers = taggedUsersByPostId[post.id] || [];
+      });
+    }
+    
+    return postsWithUsers;
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {
