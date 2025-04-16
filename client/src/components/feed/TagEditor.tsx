@@ -78,11 +78,18 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   };
   
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    console.log("Image clicked");
+    
     if (selectedUser) {
       // Get click position relative to the image container
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
+      
+      console.log("Tag position calculated:", { x, y, rect, clientX: e.clientX, clientY: e.clientY });
+      
+      // Store the position first
+      setTaggingPosition({ x, y });
       
       // Create new tag at clicked position
       const newTag: TaggedUser = {
@@ -91,8 +98,15 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
         positionY: y
       };
       
-      setTaggedUsers([...taggedUsers, newTag]);
+      // Add the new tag to the list
+      const updatedTags = [...taggedUsers, newTag];
+      setTaggedUsers(updatedTags);
+      
+      // Clear the selected user
       setSelectedUser(null);
+      
+      console.log("Tag added at position:", { x, y });
+      console.log("Updated tags:", updatedTags);
       
       toast({
         title: "User tagged",
@@ -206,71 +220,71 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
           </button>
         </div>
         
-        {/* Image preview */}
+        {/* Image preview with relative positioning */}
         <div className="relative flex-1 overflow-hidden flex items-center justify-center">
           {image ? (
             <div 
-              className="relative w-full h-full"
+              className="relative w-full h-full flex items-center justify-center" 
               onClick={handleImageClick}
             >
-              <img 
-                src={image} 
-                alt="Tag preview" 
-                className="max-h-full w-full h-full object-contain cursor-pointer"
-              />
-              
-              {/* Show tagging prompt when in tagging mode */}
-              {selectedUser && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="bg-black/50 text-white py-2 px-4 rounded-md">
-                    Tap where you want to tag {selectedUser.displayName}
+              <div className="relative" style={{ maxWidth: '100%', maxHeight: '100%', position: 'relative' }}>
+                <img 
+                  src={image} 
+                  alt="Tag preview" 
+                  className="cursor-pointer"
+                  style={{ display: 'block', maxWidth: '100%', maxHeight: '70vh', margin: '0 auto' }}
+                />
+                
+                {/* Show tagging prompt when in tagging mode */}
+                {selectedUser && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-black/50 text-white py-2 px-4 rounded-md">
+                      Tap where you want to tag {selectedUser.displayName}
+                    </div>
                   </div>
-                </div>
-              )}
-              
-              {/* Tagged users indicators with username labels */}
-              {taggedUsers.map((user) => (
-                <div key={user.id} className="relative">
-                  {/* Instagram-style username initial tag marker */}
-                  <div 
-                    className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white"
-                    style={{ 
-                      left: `${user.positionX * 100}%`, 
-                      top: `${user.positionY * 100}%` 
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent toggling the labels
-                      handleRemoveTag(user.id);
-                    }}
-                  >
-                    <span className="text-xs font-semibold">{user.username.charAt(0).toUpperCase()}</span>
-                  </div>
-                  
-                  {/* Username label (visible only when showTagLabels is true) */}
-                  {showTagLabels && (
+                )}
+                
+                {/* Tagged users indicators with username labels */}
+                {taggedUsers.map((user) => (
+                  <React.Fragment key={user.id}>
+                    {/* Instagram-style username initial tag marker */}
                     <div 
-                      className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md"
+                      className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white z-30"
                       style={{ 
                         left: `${user.positionX * 100}%`, 
-                        top: `${user.positionY * 100 + 4}%`, // Position below the tag dot
-                        zIndex: 20 
+                        top: `${user.positionY * 100}%` 
                       }}
                       onClick={(e) => {
-                        e.stopPropagation();
-                        // In a real app, navigate to the user's profile
-                        toast({
-                          title: "Navigating",
-                          description: `Going to @${user.username}'s profile`
-                        });
+                        e.stopPropagation(); // Prevent toggling the labels
+                        handleRemoveTag(user.id);
                       }}
                     >
-                      {user.username}
+                      <span className="text-xs font-semibold">{user.username.charAt(0).toUpperCase()}</span>
                     </div>
-                  )}
-                </div>
-              ))}
-              
-              {/* No instructions overlay - cleaner interface */}
+                    
+                    {/* Username label (visible only when showTagLabels is true) */}
+                    {showTagLabels && (
+                      <div 
+                        className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md z-20"
+                        style={{ 
+                          left: `${user.positionX * 100}%`, 
+                          top: `${user.positionY * 100 + 4}%` // Position below the tag dot
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // In a real app, navigate to the user's profile
+                          toast({
+                            title: "Navigating",
+                            description: `Going to @${user.username}'s profile`
+                          });
+                        }}
+                      >
+                        {user.username}
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -280,8 +294,6 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 className="max-w-full max-h-full object-contain cursor-pointer" 
                 onClick={() => setShowTagLabels(!showTagLabels)}
               />
-              
-              {/* No instructions overlay */}
             </div>
           )}
         </div>
