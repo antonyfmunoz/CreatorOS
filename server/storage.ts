@@ -17,7 +17,8 @@ import {
   directMessages, type DirectMessage, type InsertDirectMessage,
   stories, type Story, type InsertStory,
   savedPosts, type SavedPost, type InsertSavedPost,
-  followers, type Follower, type InsertFollower
+  followers, type Follower, type InsertFollower,
+  taggedUsers, type TaggedUser, type InsertTaggedUser
 } from "@shared/schema";
 import { db } from "./db";
 import session from "express-session";

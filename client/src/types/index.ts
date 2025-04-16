@@ -24,6 +24,9 @@ export interface Post {
   userId: number;
   content: string;
   imageUrl?: string;
+  audioUrl?: string;
+  videoUrl?: string;
+  mediaType?: string;
   likes: number;
   comments: number;
   createdAt: string;
