@@ -314,7 +314,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <>
                 {taggedUsers.map((user) => (
                   <div key={user.id} className="relative">
-                    {/* Instagram-style username initial tag marker */}
+                    {/* Instagram-style tag marker (removing the "U" icon as requested) */}
                     <div 
                       className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white"
                       style={{ 
@@ -326,7 +326,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                         e.stopPropagation(); // Prevent toggling the labels
                       }}
                     >
-                      <span className="text-xs font-semibold">{user.username.charAt(0).toUpperCase()}</span>
+                      {/* Letter removed as requested */}
                     </div>
                     
                     {/* Username label (visible only when showTagLabels is true) */}
