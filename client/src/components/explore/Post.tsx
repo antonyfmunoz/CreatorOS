@@ -736,7 +736,7 @@ const Post = ({ post }: PostProps) => {
             
             {/* Tagged users overlay */}
             {showTags && post.taggedUsers && post.taggedUsers.length > 0 && (
-              <div className="absolute inset-0 z-10">
+              <div className="absolute inset-0 z-10 bg-black bg-opacity-20">
                 {post.taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}
@@ -746,27 +746,31 @@ const Post = ({ post }: PostProps) => {
                       top: `${taggedUser.positionY * 100}%`,
                     }}
                   >
-                    <div className="flex items-center bg-black bg-opacity-70 text-white rounded-full py-1 px-2 text-xs transform -translate-x-1/2 -translate-y-1/2">
-                      <Avatar className="h-6 w-6 mr-1">
+                    <div className="flex items-center bg-primary text-white rounded-full py-1 px-3 text-xs transform -translate-x-1/2 -translate-y-1/2 shadow-lg animate-pulse-slow">
+                      <Avatar className="h-7 w-7 mr-2 border-2 border-white">
                         <AvatarImage src={taggedUser.profileImageUrl} />
                         <AvatarFallback>{taggedUser.displayName.charAt(0)}</AvatarFallback>
                       </Avatar>
-                      <span>{taggedUser.displayName}</span>
+                      <span className="font-medium">{taggedUser.displayName}</span>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             
-            {/* Tag indicator button */}
+            {/* Tag indicator button and tooltip */}
             {post.taggedUsers && post.taggedUsers.length > 0 && !showTags && (
-              <button 
-                className="absolute bottom-2 left-2 bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
-                onClick={() => setShowTags(true)}
-              >
-                <UserIcon className="h-5 w-5" />
-                <span className="sr-only">Show tagged users</span>
-              </button>
+              <div className="absolute bottom-2 left-2 flex items-center">
+                <button 
+                  className="bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
+                  onClick={() => setShowTags(true)}
+                >
+                  <UserIcon className="h-5 w-5" />
+                </button>
+                <div className="ml-2 text-xs bg-black bg-opacity-75 text-white py-1 px-2 rounded">
+                  Tap to view {post.taggedUsers.length} tagged {post.taggedUsers.length === 1 ? 'user' : 'users'}
+                </div>
+              </div>
             )}
           </div>
         )}
