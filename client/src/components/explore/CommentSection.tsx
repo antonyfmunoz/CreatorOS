@@ -9,6 +9,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Comment, Post, User, Post as PostType } from '@/types';
 import { useLocation } from 'wouter';
+import { parseUserTags } from '@/lib/textParser';
 import {
   DropdownMenu,
   DropdownMenuContent,
