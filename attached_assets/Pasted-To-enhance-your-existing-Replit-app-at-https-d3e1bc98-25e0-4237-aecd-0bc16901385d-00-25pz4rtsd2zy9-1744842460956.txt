@@ -1,0 +1,64 @@
+To enhance your existing Replit app at https://d3e1bc98-25e0-4237-aecd-0bc16901385d-00-25pz4rtsd2zy9.worf.replit.dev/ with an Instagram-style user tagging feature, you can implement the following approach. This will allow users to tag others using the @username format within captions or comments, with interactive links to user profiles.
+
+⸻
+
+🛠️ Implementation Steps
+
+1. Identify and Style User Tags in Text
+
+Use JavaScript to detect @username patterns in your captions or comments and convert them into clickable links.
+
+function parseUserTags(text) {
+  return text.replace(/@(\w+)/g, '<a href="/user/$1" class="user-tag">@$1</a>');
+}
+
+Apply this function to the content before rendering it:
+
+const captionElement = document.getElementById('caption');
+const rawText = captionElement.textContent;
+captionElement.innerHTML = parseUserTags(rawText);
+
+Ensure you have a CSS class to style the user tags:
+
+.user-tag {
+  color: #3897f0;
+  text-decoration: none;
+  cursor: pointer;
+}
+.user-tag:hover {
+  text-decoration: underline;
+}
+
+2. Handle Click Events on User Tags
+
+Add an event listener to handle clicks on user tags, directing users to the appropriate profile pages.
+
+document.addEventListener('click', function(event) {
+  if (event.target.classList.contains('user-tag')) {
+    event.preventDefault();
+    const username = event.target.textContent.slice(1); // Remove '@'
+    // Navigate to the user's profile page
+    window.location.href = `/user/${username}`;
+  }
+});
+
+Ensure that your application has routes set up to handle /user/:username paths, displaying the corresponding user profiles.
+
+3. Optional: Autocomplete for User Tags
+
+For an enhanced user experience, implement an autocomplete feature that suggests usernames as users type @ followed by characters. This involves:
+	•	Listening for input events in the caption/comment input fields.
+	•	Detecting when a user types @ followed by characters.
+	•	Fetching matching usernames from your database or API.
+	•	Displaying a dropdown list of suggestions.
+	•	Allowing users to select a username to auto-complete the tag.
+
+Implementing autocomplete requires additional UI components and backend support to fetch user data. If you’re interested in adding this feature, I can provide a more detailed implementation guide.
+
+⸻
+
+✅ Summary
+
+By integrating the above JavaScript and CSS into your Replit application, you can enable interactive user tagging similar to Instagram. Users will be able to tag others using the @username format, with tags rendered as clickable links to user profiles.
+
+If you need further assistance with backend integration, user profile routing, or implementing the autocomplete feature, feel free to ask!

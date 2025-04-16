@@ -46,6 +46,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useLocation } from 'wouter';
+import { parseUserTagsToJSX } from '@/lib/textParser';
 import {
   Dialog,
   DialogContent,
@@ -731,7 +732,7 @@ const Post = ({ post }: PostProps) => {
             </div>
           </div>
         ) : (
-          <p className="mb-4">{post.content}</p>
+          <p className="mb-4">{parseUserTagsToJSX(post.content)}</p>
         )}
         
         {post.imageUrl && (
