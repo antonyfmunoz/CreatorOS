@@ -727,8 +727,11 @@ const Post = ({ post }: PostProps) => {
             <img 
               src={post.imageUrl} 
               alt="Post content" 
-              className="w-full object-contain rounded-lg" 
-              onClick={() => setShowTags(!showTags)}
+              className={`w-full object-contain rounded-lg cursor-pointer ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
+              onClick={() => {
+                console.log("Image clicked, toggling tags. Tagged users:", post.taggedUsers);
+                setShowTags(!showTags);
+              }}
             />
             
             {/* Tagged users overlay */}
@@ -758,10 +761,10 @@ const Post = ({ post }: PostProps) => {
             {/* Tag indicator button */}
             {post.taggedUsers && post.taggedUsers.length > 0 && !showTags && (
               <button 
-                className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white rounded-full p-1.5"
+                className="absolute bottom-2 left-2 bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
                 onClick={() => setShowTags(true)}
               >
-                <UserIcon className="h-4 w-4" />
+                <UserIcon className="h-5 w-5" />
                 <span className="sr-only">Show tagged users</span>
               </button>
             )}
