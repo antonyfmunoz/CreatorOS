@@ -380,12 +380,43 @@ export const usersRelations = relations(users, ({ many }) => ({
   savedPosts: many(savedPosts),
   followers: many(followers, { relationName: "followed" }),
   following: many(followers, { relationName: "follower" }),
+  taggedIn: many(taggedUsers),
+}));
+
+// Tagged Users schema
+export const taggedUsers = pgTable("tagged_users", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").references(() => posts.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  positionX: doublePrecision("position_x").notNull(),
+  positionY: doublePrecision("position_y").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // User can only be tagged once in a specific position on a post
+    uniquePostUserPosition: unique("unique_post_user_position").on(
+      table.postId, table.userId, table.positionX, table.positionY
+    ),
+  };
+});
+
+export const insertTaggedUserSchema = createInsertSchema(taggedUsers).pick({
+  postId: true,
+  userId: true,
+  positionX: true,
+  positionY: true,
+});
+
+export const taggedUsersRelations = relations(taggedUsers, ({ one }) => ({
+  post: one(posts, { fields: [taggedUsers.postId], references: [posts.id] }),
+  user: one(users, { fields: [taggedUsers.userId], references: [users.id] }),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
   user: one(users, { fields: [posts.userId], references: [users.id] }),
   comments: many(comments),
   savedByUsers: many(savedPosts),
+  taggedUsers: many(taggedUsers),
 }));
 
 export const savedPostsRelations = relations(savedPosts, ({ one }) => ({
@@ -531,3 +562,6 @@ export type InsertSavedPost = z.infer<typeof insertSavedPostSchema>;
 
 export type Follower = typeof followers.$inferSelect;
 export type InsertFollower = z.infer<typeof insertFollowerSchema>;
+
+export type TaggedUser = typeof taggedUsers.$inferSelect;
+export type InsertTaggedUser = z.infer<typeof insertTaggedUserSchema>;
