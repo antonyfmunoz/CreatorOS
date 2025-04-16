@@ -27,7 +27,6 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>(initialTags);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchView, setIsSearchView] = useState(false);
-  const [showTagLabels, setShowTagLabels] = useState(false);
   const [taggingPosition, setTaggingPosition] = useState<{x: number, y: number} | null>(null);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const { toast } = useToast();
@@ -132,8 +131,9 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
         description: `${selectedUser.displayName} has been tagged at the selected position.`
       });
     } else {
-      // If not in tagging mode, toggle label visibility
-      setShowTagLabels(!showTagLabels);
+      // If not in tagging mode, we can optionally do something here.
+      // For now, we'll just log that the image was clicked with no tags to add
+      console.log("Image clicked, but no user selected for tagging");
     }
   };
   
@@ -263,6 +263,9 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="bg-black/50 text-white py-2 px-4 rounded-md">
                       Tap where you want to tag {selectedUser.displayName}
+                      <div className="text-xs mt-1 text-gray-300">
+                        You can drag to move tags & double-click to remove them
+                      </div>
                     </div>
                   </div>
                 )}
@@ -270,45 +273,124 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 {/* Tagged users indicators with username labels */}
                 {taggedUsers.map((user) => (
                   <React.Fragment key={user.id}>
-                    {/* Instagram-style username initial tag marker */}
+                    {/* Username tag marker */}
                     <div 
-                      className="absolute w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center cursor-pointer transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white z-30"
+                      className="absolute bg-blue-600 text-white rounded-md py-1 px-2 flex items-center justify-center cursor-move transform -translate-x-1/2 -translate-y-1/2 shadow-md border border-white z-30"
                       style={{ 
                         position: 'absolute',
                         left: `${user.positionX * 100}%`, 
                         top: `${user.positionY * 100}%`,
                         pointerEvents: 'auto'
                       }}
-                      onClick={(e) => {
+                      onMouseDown={(e) => {
                         e.stopPropagation(); // Prevent toggling the labels
+                        
+                        // Set up for dragging with mouse
+                        const startDrag = (moveEvent: MouseEvent) => {
+                          const imgElement = document.getElementById('tag-image');
+                          if (!imgElement) return;
+                          
+                          const imgRect = imgElement.getBoundingClientRect();
+                          
+                          // Calculate new position
+                          let newX = (moveEvent.clientX - imgRect.left) / imgRect.width;
+                          let newY = (moveEvent.clientY - imgRect.top) / imgRect.height;
+                          
+                          // Clamp values
+                          newX = Math.max(0, Math.min(1, newX));
+                          newY = Math.max(0, Math.min(1, newY));
+                          
+                          // Update the tag's position
+                          const updatedTags = taggedUsers.map(taggedUser => 
+                            taggedUser.id === user.id 
+                              ? { ...taggedUser, positionX: newX, positionY: newY }
+                              : taggedUser
+                          );
+                          
+                          setTaggedUsers(updatedTags);
+                        };
+                        
+                        // End drag
+                        const endDrag = () => {
+                          document.removeEventListener('mousemove', startDrag);
+                          document.removeEventListener('mouseup', endDrag);
+                        };
+                        
+                        // Add event listeners
+                        document.addEventListener('mousemove', startDrag);
+                        document.addEventListener('mouseup', endDrag);
+                      }}
+                      onTouchStart={(e) => {
+                        // Store the start time as a data attribute for long press detection
+                        e.currentTarget.setAttribute('data-touch-start-time', new Date().getTime().toString());
+                        
+                        e.stopPropagation(); // Prevent other handlers
+                        
+                        // Set up for dragging with touch
+                        const startTouchDrag = (touchEvent: TouchEvent) => {
+                          if (touchEvent.touches.length === 0) return;
+                          
+                          const touch = touchEvent.touches[0];
+                          const imgElement = document.getElementById('tag-image');
+                          if (!imgElement) return;
+                          
+                          const imgRect = imgElement.getBoundingClientRect();
+                          
+                          // Calculate new position
+                          let newX = (touch.clientX - imgRect.left) / imgRect.width;
+                          let newY = (touch.clientY - imgRect.top) / imgRect.height;
+                          
+                          // Clamp values
+                          newX = Math.max(0, Math.min(1, newX));
+                          newY = Math.max(0, Math.min(1, newY));
+                          
+                          // Update tag position
+                          const updatedTags = taggedUsers.map(taggedUser => 
+                            taggedUser.id === user.id 
+                              ? { ...taggedUser, positionX: newX, positionY: newY }
+                              : taggedUser
+                          );
+                          
+                          setTaggedUsers(updatedTags);
+                        };
+                        
+                        // End touch drag
+                        const endTouchDrag = () => {
+                          document.removeEventListener('touchmove', startTouchDrag);
+                          document.removeEventListener('touchend', endTouchDrag);
+                        };
+                        
+                        // Add touch event listeners
+                        document.addEventListener('touchmove', startTouchDrag);
+                        document.addEventListener('touchend', endTouchDrag);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
                         handleRemoveTag(user.id);
                       }}
+                      onTouchEnd={(e) => {
+                        // For mobile: implement a long press to remove
+                        if (e.changedTouches.length > 0) {
+                          const touchEndTime = new Date().getTime();
+                          const longPressThreshold = 500; // ms
+                          
+                          // If we have the touchStartTime stored as a data attribute
+                          const touchStartTime = parseInt(e.currentTarget.getAttribute('data-touch-start-time') || '0', 10);
+                          
+                          if (touchEndTime - touchStartTime > longPressThreshold) {
+                            e.stopPropagation();
+                            handleRemoveTag(user.id);
+                            
+                            toast({
+                              title: "Tag removed",
+                              description: `Removed tag for ${user.username}`
+                            });
+                          }
+                        }
+                      }}
                     >
-                      <span className="text-xs font-semibold">{user.username.charAt(0).toUpperCase()}</span>
+                      <span className="text-xs font-semibold">{user.username}</span>
                     </div>
-                    
-                    {/* Username label (visible only when showTagLabels is true) */}
-                    {showTagLabels && (
-                      <div 
-                        className="absolute bg-black/80 text-white py-1 px-3 text-sm transform -translate-x-1/2 whitespace-nowrap shadow-md z-20"
-                        style={{ 
-                          position: 'absolute',
-                          left: `${user.positionX * 100}%`, 
-                          top: `${user.positionY * 100 + 4}%`, // Position below the tag dot
-                          pointerEvents: 'auto'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // In a real app, navigate to the user's profile
-                          toast({
-                            title: "Navigating",
-                            description: `Going to @${user.username}'s profile`
-                          });
-                        }}
-                      >
-                        {user.username}
-                      </div>
-                    )}
                   </React.Fragment>
                 ))}
               </div>
@@ -319,7 +401,6 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                 src="/placeholder-tshirt.jpg" 
                 alt="Example item"
                 className="max-w-full max-h-full object-contain cursor-pointer" 
-                onClick={() => setShowTagLabels(!showTagLabels)}
               />
             </div>
           )}
