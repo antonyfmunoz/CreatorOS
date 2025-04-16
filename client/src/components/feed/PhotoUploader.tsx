@@ -475,15 +475,20 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             
             {/* Tag people, location, audience */}
             <div className="space-y-4 px-4 pb-4 border-b">
-              <div className="flex items-center justify-between py-2" 
-                onClick={() => setIsTagEditorOpen(true)}
+              <button 
+                type="button"
+                className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
+                onClick={() => {
+                  console.log("Opening tag editor");
+                  setIsTagEditorOpen(true);
+                }}
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-5 h-5" />
                   <span>Tag people</span>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
+              </button>
               
               {/* Tagged users pills */}
               {taggedUsers.length > 0 && (
@@ -510,20 +515,20 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 </div>
               )}
               
-              <Button 
-                variant="ghost" 
-                className="flex items-center justify-between w-full py-2 h-auto"
+              <button 
+                type="button"
+                className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
                 onClick={() => {
+                  console.log("Setting location modal to open");
                   setIsLocationModalOpen(true);
-                  console.log("Opening location modal", { isLocationModalOpen: true });
                 }}
               >
                 <div className="flex items-center gap-3">
                   <MapPin className="w-5 h-5" />
-                  <span className="font-normal">Add location</span>
+                  <span>Add location</span>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </Button>
+              </button>
               
               {/* Location pills */}
               {selectedLocation && (
@@ -804,17 +809,25 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           />
 
           {/* Location Picker Modal */}
-          <LocationPicker 
-            isOpen={isLocationModalOpen}
-            onClose={() => setIsLocationModalOpen(false)}
-            onSelect={(location) => {
-              setSelectedLocation(location);
-              toast({
-                title: "Location Added",
-                description: `Added ${location.name} to your post`
-              });
-            }}
-          />
+          {isLocationModalOpen && (
+            <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+              <LocationPicker 
+                isOpen={true}
+                onClose={() => {
+                  console.log("Closing location modal");
+                  setIsLocationModalOpen(false);
+                }}
+                onSelect={(location) => {
+                  console.log("Location selected:", location);
+                  setSelectedLocation(location);
+                  toast({
+                    title: "Location Added",
+                    description: `Added ${location.name} to your post`
+                  });
+                }}
+              />
+            </div>
+          )}
 
           {/* Tag Editor Modal */}
           <TagEditor

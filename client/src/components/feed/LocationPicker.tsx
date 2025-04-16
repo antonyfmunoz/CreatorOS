@@ -70,12 +70,8 @@ export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProp
     onClose();
   };
 
-  if (!isOpen) {
-    console.log("LocationPicker is closed");
-    return null;
-  }
-  
-  console.log("Rendering LocationPicker, isOpen:", isOpen);
+  // Since we're now conditionally rendering the entire component in PhotoUploader, 
+  // we don't need to check isOpen here anymore - but keeping the prop for consistency
 
   return (
     <div className="fixed inset-0 z-50 bg-background">
