@@ -2,7 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
-import { insertCommentSchema, insertStorySchema, insertSavedPostSchema, stories, savedPosts } from "../shared/schema";
+import { insertCommentSchema, insertStorySchema, insertSavedPostSchema, stories, savedPosts, taggedUsers } from "../shared/schema";
+import { db } from "./db";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
 import { setupAuth } from "./auth";
 import upload from "./upload";
@@ -239,6 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const posts = await storage.getPosts();
       res.json(posts);
     } catch (error) {
+      console.error("Error fetching posts:", error);
       res.status(500).json({ message: "Failed to fetch posts" });
     }
   });
