@@ -331,23 +331,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Process tagged users if present
       if (req.body.taggedUsers) {
         try {
+          console.log("Tagged users data from request:", req.body.taggedUsers);
+          
           const taggedUsersData = JSON.parse(req.body.taggedUsers);
+          console.log("Parsed tagged users data:", taggedUsersData);
+          
           if (Array.isArray(taggedUsersData) && taggedUsersData.length > 0) {
             // Insert each tagged user into the database
             for (const taggedUser of taggedUsersData) {
-              await db.insert(taggedUsers).values({
-                postId: post.id,
-                userId: taggedUser.id,
-                positionX: taggedUser.positionX,
-                positionY: taggedUser.positionY
-              });
+              console.log("Processing tagged user:", taggedUser);
+              
+              try {
+                await db.insert(taggedUsers).values({
+                  postId: post.id,
+                  userId: taggedUser.id,
+                  positionX: taggedUser.positionX,
+                  positionY: taggedUser.positionY
+                });
+                console.log(`Successfully added tagged user ${taggedUser.id} to post ${post.id}`);
+              } catch (insertError) {
+                console.error(`Error inserting tagged user ${taggedUser.id}:`, insertError);
+              }
             }
-            console.log(`Added ${taggedUsersData.length} tagged users to post ${post.id}`);
+            console.log(`Attempted to add ${taggedUsersData.length} tagged users to post ${post.id}`);
+          } else {
+            console.log("No valid tagged users data found in the array");
           }
         } catch (tagError) {
           console.error("Error processing tagged users:", tagError);
           // Continue even if tagging fails, the post is already created
         }
+      } else {
+        console.log("No tagged users found in request body");
       }
       
       res.status(201).json(post);
@@ -512,6 +527,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ count });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch comment count" });
+    }
+  });
+  
+  // Debug endpoint to check tagged users for a post
+  app.get("/api/posts/:postId/tagged-users", async (req, res) => {
+    try {
+      const postId = parseInt(req.params.postId);
+      
+      // Get tagged users directly from the database
+      const result = await db.select({
+        taggedUser: taggedUsers,
+        user: users,
+      }).from(taggedUsers)
+        .innerJoin(users, eq(taggedUsers.userId, users.id))
+        .where(eq(taggedUsers.postId, postId));
+      
+      // Format the response
+      const taggedUsersList = result.map(({ taggedUser, user }) => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        profileImageUrl: user.profileImageUrl,
+        positionX: taggedUser.positionX,
+        positionY: taggedUser.positionY,
+      }));
+      
+      console.log(`Found ${taggedUsersList.length} tagged users for post ${postId}`);
+      res.json(taggedUsersList);
+    } catch (error) {
+      console.error("Error getting tagged users:", error);
+      res.status(500).json({ message: "Failed to get tagged users" });
     }
   });
   
