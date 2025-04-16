@@ -635,7 +635,7 @@ const Post = ({ post }: PostProps) => {
             className="w-10 h-10 mr-3 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
             onClick={() => setLocation(`/profile/${post.user.id}`)}
           >
-            <AvatarImage src={post.user.profileImageUrl} alt={post.user.displayName} />
+            <AvatarImage src={post.user.profileImageUrl || undefined} alt={post.user.displayName} />
             <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
           <div>
@@ -760,7 +760,7 @@ const Post = ({ post }: PostProps) => {
                   >
                     <div className="flex items-center bg-primary text-white rounded-full py-1 px-3 text-xs transform -translate-x-1/2 -translate-y-1/2 shadow-lg animate-pulse-slow">
                       <Avatar className="h-7 w-7 mr-2 border-2 border-white">
-                        <AvatarImage src={taggedUser.profileImageUrl} />
+                        <AvatarImage src={taggedUser.profileImageUrl || undefined} />
                         <AvatarFallback>{taggedUser.displayName.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <span className="font-medium">{taggedUser.displayName}</span>
@@ -890,7 +890,7 @@ const Post = ({ post }: PostProps) => {
                             onClick={() => shareWithUser(user)}
                           >
                             <Avatar className="h-9 w-9 mr-2">
-                              <AvatarImage src={user.profileImageUrl} alt={user.displayName} />
+                              <AvatarImage src={user.profileImageUrl || undefined} alt={user.displayName} />
                               <AvatarFallback>
                                 <UserIcon className="h-5 w-5" />
                               </AvatarFallback>
@@ -1097,7 +1097,7 @@ const Post = ({ post }: PostProps) => {
                           }}
                         >
                           <Avatar className="h-8 w-8 mr-2">
-                            <AvatarImage src={foundUser.profileImageUrl} alt={foundUser.displayName} />
+                            <AvatarImage src={foundUser.profileImageUrl || undefined} alt={foundUser.displayName} />
                             <AvatarFallback>{foundUser.displayName.charAt(0)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
@@ -1121,7 +1121,7 @@ const Post = ({ post }: PostProps) => {
                             className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-1"
                           >
                             <Avatar className="h-5 w-5">
-                              <AvatarImage src={selectedUser.profileImageUrl} alt={selectedUser.displayName} />
+                              <AvatarImage src={selectedUser.profileImageUrl || undefined} alt={selectedUser.displayName} />
                               <AvatarFallback>{selectedUser.displayName.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <span className="text-xs">{selectedUser.displayName}</span>
@@ -1175,7 +1175,7 @@ const Post = ({ post }: PostProps) => {
                       content: post.content.substring(0, 60) + (post.content.length > 60 ? '...' : ''),
                       imageUrl: post.imageUrl || null,
                       authorName: post.user.displayName,
-                      authorImage: post.user.profileImageUrl,
+                      authorImage: post.user.profileImageUrl || '',
                       likes: post.likes,
                       comments: totalCommentCount,
                       link: postLink
