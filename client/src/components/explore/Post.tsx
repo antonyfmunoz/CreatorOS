@@ -144,8 +144,8 @@ const Post = ({ post }: PostProps) => {
       if (!res.ok) throw new Error('Failed to fetch tagged users');
       return res.json();
     },
-    // Only run this query when post has image and showTags is true
-    enabled: !!post.imageUrl && showImage && ((post.taggedUsers?.length ?? 0) > 0 || showTags)
+    // Run this query when post has image and when we're showing tags or the post already has tags
+    enabled: !!post.imageUrl && ((post.taggedUsers?.length ?? 0) > 0 || showTags)
   });
   
   // Use the total comment count from the database for the UI
@@ -747,9 +747,9 @@ const Post = ({ post }: PostProps) => {
             />
             
             {/* Tagged users overlay */}
-            {showTags && post.taggedUsers && post.taggedUsers.length > 0 && (
+            {showTags && taggedUsers.length > 0 && (
               <div className="absolute inset-0 z-10 bg-black bg-opacity-20">
-                {post.taggedUsers.map((taggedUser: TaggedUser, index: number) => (
+                {taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}
                     className="absolute"
@@ -771,7 +771,7 @@ const Post = ({ post }: PostProps) => {
             )}
             
             {/* Tag indicator button and tooltip */}
-            {post.taggedUsers && post.taggedUsers.length > 0 && !showTags && (
+            {taggedUsers.length > 0 && !showTags && (
               <div className="absolute bottom-2 left-2 flex items-center">
                 <button 
                   className="bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
@@ -780,7 +780,7 @@ const Post = ({ post }: PostProps) => {
                   <UserIcon className="h-5 w-5" />
                 </button>
                 <div className="ml-2 text-xs bg-black bg-opacity-75 text-white py-1 px-2 rounded">
-                  Tap to view {post.taggedUsers.length} tagged {post.taggedUsers.length === 1 ? 'user' : 'users'}
+                  Tap to view {taggedUsers.length} tagged {taggedUsers.length === 1 ? 'person' : 'people'}
                 </div>
               </div>
             )}
