@@ -583,7 +583,10 @@ const SingleComment = ({
             </div>
           ) : (
             <>
-              <p className="text-sm mt-1">{comment.content}</p>
+              <p 
+                className="text-sm mt-1" 
+                dangerouslySetInnerHTML={{ __html: parseUserTags(comment.content) }}
+              />
               
               <div className="flex items-center gap-3 mt-2">
                 <Button 
