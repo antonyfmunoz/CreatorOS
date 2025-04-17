@@ -766,7 +766,7 @@ const Post = ({ post }: PostProps) => {
                       className="bg-primary text-white rounded-full py-1 px-3 flex items-center text-xs transform -translate-x-1/2 -translate-y-1/2 shadow-lg cursor-pointer hover:bg-primary-dark"
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent toggling tags
-                        setLocation(`/profile/${taggedUser.username}`);
+                        setLocation(`/profile/${taggedUser.id}`);
                       }}
                     >
                       <span className="font-medium">@{taggedUser.username}</span>
