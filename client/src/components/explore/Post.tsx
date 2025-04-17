@@ -493,26 +493,25 @@ const Post = ({ post }: PostProps) => {
   // Delete post mutation
   const deletePostMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest('DELETE', `/api/posts/${post.id}`, null);
-    },
-    onSuccess: () => {
-      // Remove the post from the cache
+      // Remove post from cache immediately before API call
       queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
         if (!oldData) return oldData;
         return oldData.filter(p => p.id !== post.id);
       });
       
-      toast({
-        title: "Post Deleted",
-        description: "Your post has been deleted successfully.",
-      });
+      // Then make the API call
+      await apiRequest('DELETE', `/api/posts/${post.id}`, null);
     },
     onError: () => {
+      // Only show toast for errors
       toast({
         title: "Error",
         description: "Failed to delete the post. Please try again.",
         variant: "destructive",
       });
+      
+      // Restore the post in the cache if deletion fails
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
     }
   });
 
