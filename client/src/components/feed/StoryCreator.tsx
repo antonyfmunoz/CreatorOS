@@ -267,37 +267,48 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
   };
   
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white">
-        <DialogTitle className="px-4 py-3 text-center border-b">
-          {preview ? 'Create Story' : 'Add to Your Story'}
-        </DialogTitle>
+    <Dialog open={isOpen} onOpenChange={handleClose} modal={true}>
+      <DialogContent className="max-w-full h-[100vh] p-0 overflow-hidden bg-white border-0 sm:rounded-none">
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full h-8 w-8" 
+            onClick={handleClose}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <span className="font-semibold text-lg">
+            {preview ? 'Create Story' : 'Add to Your Story'}
+          </span>
+          <div className="w-8"></div> {/* Spacer for centering title */}
+        </div>
         
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center mt-16">
           {!preview && !cameraMode ? (
             <div className="p-8 flex flex-col items-center">
               <DialogDescription className="text-center mb-6">
                 Add photos or videos to your story. They'll disappear after 24 hours.
               </DialogDescription>
               
-              <div className="mb-6 flex gap-4">
+              <div className="w-full flex gap-2 px-2">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-24 w-32"
+                  className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="h-8 w-8 mb-2" />
+                  <Upload className="h-6 w-6 mb-2" />
                   <span>Upload</span>
                 </Button>
                 
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-24 w-32"
+                  className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
                   onClick={startCamera}
                 >
-                  <Camera className="h-8 w-8 mb-2" />
+                  <Camera className="h-6 w-6 mb-2" />
                   <span>Camera</span>
                 </Button>
                 
@@ -317,15 +328,15 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
               )}
             </div>
           ) : cameraMode ? (
-            <div className="relative w-full">
+            <div className="fixed inset-0 z-10 mt-12 bg-black">
               {/* Camera view */}
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col items-center h-full">
                 <video 
                   ref={videoRef}
                   autoPlay 
                   playsInline
                   muted
-                  className="w-full h-auto max-h-[70vh] bg-black"
+                  className="w-full h-full object-cover"
                   style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)' }} // Mirror for selfie view only
                 />
                 
@@ -333,11 +344,11 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 <canvas ref={canvasRef} className="hidden" />
                 
                 {/* Camera controls */}
-                <div className="p-4 flex justify-center w-full gap-4">
+                <div className="fixed bottom-10 inset-x-0 flex justify-center w-full gap-6">
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
                     onClick={stopCamera}
                   >
                     <X className="h-6 w-6" />
@@ -346,16 +357,16 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   <Button
                     variant="default"
                     size="icon"
-                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    className="rounded-full h-16 w-16 flex items-center justify-center"
                     onClick={capturePhoto}
                   >
-                    <div className="bg-white rounded-full h-10 w-10 border-2 border-primary"></div>
+                    <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
                   </Button>
                   
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
                     onClick={switchCamera}
                   >
                     <RefreshCw className="h-6 w-6" />
@@ -364,28 +375,30 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
               </div>
             </div>
           ) : (
-            <div className="w-full">
-              <div className="relative">
-                {preview && selectedFile?.type.startsWith('image/') && (
-                  <img 
-                    src={preview} 
-                    alt="Story preview" 
-                    className="max-h-[70vh] w-full object-contain"
-                  />
-                )}
-                {preview && selectedFile && !selectedFile.type.startsWith('image/') && (
-                  <video 
-                    src={preview} 
-                    controls 
-                    className="max-h-[70vh] w-full object-contain"
-                  />
-                )}
+            <div className="fixed inset-0 z-10 mt-12 bg-black">
+              <div className="relative h-full flex flex-col">
+                <div className="flex-grow flex items-center justify-center bg-black">
+                  {preview && selectedFile?.type.startsWith('image/') && (
+                    <img 
+                      src={preview} 
+                      alt="Story preview" 
+                      className="h-full w-full object-contain"
+                    />
+                  )}
+                  {preview && selectedFile && !selectedFile.type.startsWith('image/') && (
+                    <video 
+                      src={preview} 
+                      controls 
+                      className="h-full w-full object-contain"
+                    />
+                  )}
+                </div>
                 
-                {/* Close button */}
+                {/* Back button */}
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/50 text-white hover:bg-black/70"
+                  className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50"
                   onClick={() => {
                     if (preview) {
                       URL.revokeObjectURL(preview);
@@ -396,32 +409,32 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 >
                   <X className="h-4 w-4" />
                 </Button>
-              </div>
-              
-              {/* Caption input */}
-              <div className="p-4">
-                <textarea
-                  className="w-full p-3 border rounded-md resize-none"
-                  placeholder="Write a caption..."
-                  rows={2}
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                />
                 
-                <Button
-                  className="w-full mt-4"
-                  onClick={handleUpload}
-                  disabled={uploadMutation.isPending}
-                >
-                  {uploadMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    'Share to Story'
-                  )}
-                </Button>
+                {/* Caption input */}
+                <div className="p-4 bg-white dark:bg-gray-900">
+                  <textarea
+                    className="w-full p-3 border rounded-md resize-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    placeholder="Write a caption..."
+                    rows={2}
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                  />
+                  
+                  <Button
+                    className="w-full mt-4"
+                    onClick={handleUpload}
+                    disabled={uploadMutation.isPending}
+                  >
+                    {uploadMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      'Share to Story'
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
