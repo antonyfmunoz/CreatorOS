@@ -9,7 +9,8 @@ import {
   stories, 
   savedPosts, 
   taggedUsers,
-  users 
+  users,
+  posts
 } from "../shared/schema";
 import { db } from "./db";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
@@ -1422,11 +1423,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/stories/:id", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
+      console.log(`Manually deleting story ID: ${storyId}`);
       await storage.deleteStory(storyId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting story:", error);
       res.status(500).json({ message: "Failed to delete story" });
+    }
+  });
+  
+  // Force delete story ID 11 (special endpoint for immediate testing)
+  app.delete("/api/force-delete-story/11", async (req, res) => {
+    try {
+      console.log("Executing force delete of story ID 11");
+      
+      // Direct database operation to delete story 11
+      const result = await db.delete(stories).where(eq(stories.id, 11));
+      console.log(`Force delete result:`, result);
+      
+      res.status(200).json({ message: "Story ID 11 has been forcefully deleted" });
+    } catch (error) {
+      console.error("Error force deleting story:", error);
+      res.status(500).json({ message: "Failed to force delete story" });
     }
   });
 
