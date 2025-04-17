@@ -3,8 +3,10 @@ import { useAppStore } from "@/lib/stores";
 import { 
   Settings, LogOut, LogIn, User as UserIcon, GridIcon, 
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
-  FileText, DollarSign, UsersIcon, ShoppingBag
+  FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft
 } from "lucide-react";
+import { NotificationBell } from "@/components/notifications";
+import { MessageButton } from "@/components/messages";
 import ProfileFeed from "@/components/profile/ProfileFeed";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -258,13 +260,34 @@ const Profile = () => {
   
   return (
     <div className="pb-20">
-      {/* Instagram-style username header - without badge */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center">
-          <h1 className="text-lg font-bold lowercase">{user?.username}</h1>
-        </div>
-        
-        {isOwnProfile && (
+      {/* Sticky Header for viewing other users' profiles (similar to explore) */}
+      {!isOwnProfile && (
+        <header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="p-1" 
+              onClick={() => setLocation("/")}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <span className="text-lg font-semibold text-black dark:text-white lowercase">{user?.username}</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            <NotificationBell />
+            <MessageButton />
+          </div>
+        </header>
+      )}
+      
+      {/* Instagram-style username header - only for own profile */}
+      {isOwnProfile && (
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center">
+            <h1 className="text-lg font-bold lowercase">{user?.username}</h1>
+          </div>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="p-1">
@@ -297,8 +320,8 @@ const Profile = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-      </div>
+        </div>
+      )}
       
       {/* Profile Info Section */}
       <div className="px-4 pt-4 pb-2">
