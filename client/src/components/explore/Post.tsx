@@ -490,16 +490,9 @@ const Post = ({ post }: PostProps) => {
     }
   });
 
-  // Delete post mutation
+  // Delete post mutation - only for the API call
   const deletePostMutation = useMutation({
     mutationFn: async () => {
-      // Remove post from cache immediately before API call
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.filter(p => p.id !== post.id);
-      });
-      
-      // Then make the API call
       await apiRequest('DELETE', `/api/posts/${post.id}`, null);
     },
     onError: () => {
@@ -600,6 +593,19 @@ const Post = ({ post }: PostProps) => {
   // Handle delete post with confirmation
   const handleDeletePost = () => {
     if (confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+      // Immediately hide the post from UI before the API call completes
+      const postElement = document.getElementById(`post-${post.id}`);
+      if (postElement) {
+        postElement.style.display = 'none';
+      }
+      
+      // Also update the cache immediately
+      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.filter(p => p.id !== post.id);
+      });
+      
+      // Then call the API
       deletePostMutation.mutate();
     }
   };
