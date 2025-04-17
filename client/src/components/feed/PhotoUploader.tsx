@@ -769,29 +769,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 className={`w-12 h-6 ${addToStory ? 'bg-primary' : 'bg-gray-200'} rounded-full relative cursor-pointer group`}
                 onClick={() => {
                   setAddToStory(!addToStory);
-                  
-                  // Update the visual toggle without manipulating DOM directly
-                  const newValue = !addToStory;
-                  
-                  // Add a visual notification for Instagram-like UX
-                  if (newValue) {
-                    // Show "Added to Story" banner like Instagram but don't use toast
-                    const banner = document.createElement('div');
-                    banner.className = 'fixed top-16 left-0 right-0 mx-auto w-max bg-background shadow-lg rounded-lg py-3 px-4 z-50 flex items-center';
-                    banner.innerHTML = `
-                      <div class="font-medium">Added to Story</div>
-                    `;
-                    document.body.appendChild(banner);
-                    
-                    // Remove the banner after a short delay
-                    setTimeout(() => {
-                      banner.style.opacity = '0';
-                      banner.style.transition = 'opacity 0.3s ease-in-out';
-                      setTimeout(() => {
-                        document.body.removeChild(banner);
-                      }, 300);
-                    }, 1500);
-                  }
                 }}
                 id="story-toggle"
               >
