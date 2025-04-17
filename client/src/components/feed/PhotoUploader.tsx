@@ -15,7 +15,8 @@ import {
   Share,
   BarChart2,
   Instagram,
-  Facebook
+  Facebook,
+  ShoppingBag
 } from "lucide-react";
 import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
@@ -469,7 +470,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               )}
             </div>
             
-            {/* Tag people, location, audience */}
+            {/* Tag people, products, location, audience */}
             <div className="space-y-4 px-4 pb-4 border-b">
               <button 
                 type="button"
@@ -482,6 +483,24 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <div className="flex items-center gap-3">
                   <Users className="w-5 h-5" />
                   <span>Tag people</span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </button>
+              
+              {/* Tag product button */}
+              <button 
+                type="button"
+                className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
+                onClick={() => {
+                  toast({
+                    title: "Product tagging",
+                    description: "Product tagging feature coming soon!"
+                  });
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <ShoppingBag className="w-5 h-5" />
+                  <span>Tag product</span>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </button>
