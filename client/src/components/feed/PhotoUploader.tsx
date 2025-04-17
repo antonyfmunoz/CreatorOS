@@ -42,6 +42,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [pollData, setPollData] = useState<PollData | null>(null);
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
   const [showTagLabels, setShowTagLabels] = useState(false);
+  const [addToStory, setAddToStory] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -233,6 +234,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     formData.append('content', content || 'Photo post');
     formData.append('mediaType', 'photo');
     formData.append('isCarousel', String(imageFiles.length > 1));
+    formData.append('addToStory', String(addToStory));
     
     // Add tagged users data if present
     if (taggedUsers.length > 0) {
