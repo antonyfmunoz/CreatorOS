@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -9,7 +9,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Upload, X, Camera } from 'lucide-react';
+import { Loader2, Upload, X, Camera, RefreshCw } from 'lucide-react';
 
 interface StoryCreatorProps {
   isOpen: boolean;
@@ -21,9 +21,23 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
+  const [cameraMode, setCameraMode] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      // Clean up any camera streams when component unmounts
+      stopCamera();
+    };
+  }, []);
   
   // Handle file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,14 +115,108 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
     uploadMutation.mutate(formData);
   };
   
+  // Start camera
+  const startCamera = async () => {
+    try {
+      // Stop any existing streams
+      stopCamera();
+      
+      // Set camera mode
+      setCameraMode(true);
+      setCameraError(null);
+      
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user' }, 
+        audio: false 
+      });
+      
+      // Save stream reference
+      streamRef.current = stream;
+      
+      // Connect stream to video element if it exists
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setCameraError('Could not access camera. Please check permissions.');
+      setCameraMode(false);
+      
+      toast({
+        title: 'Camera Error',
+        description: 'Could not access camera. Please check permissions.',
+        variant: 'destructive'
+      });
+    }
+  };
+  
+  // Stop camera and clean up stream
+  const stopCamera = () => {
+    // Get all tracks from the stream and stop them
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    // Reset video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setCameraMode(false);
+  };
+  
+  // Capture photo from camera
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    // Set canvas size to match video dimensions
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw current video frame to canvas
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Flip horizontally for selfie view
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to a Blob (file)
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      
+      // Create a file from the blob
+      const file = new File([blob], `camera-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      // Set as selected file
+      setSelectedFile(file);
+      
+      // Create and set preview
+      const objectUrl = URL.createObjectURL(blob);
+      setPreview(objectUrl);
+      
+      // Exit camera mode
+      stopCamera();
+    }, 'image/jpeg', 0.95);
+  };
+  
   // Handle close with cleanup
   const handleClose = () => {
     if (preview) {
       URL.revokeObjectURL(preview);
     }
+    stopCamera(); // Ensure camera is stopped
     setSelectedFile(null);
     setPreview(null);
     setCaption('');
+    setCameraMode(false);
+    setCameraError(null);
     onClose();
   };
   
@@ -120,7 +228,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
         </DialogTitle>
         
         <div className="flex flex-col items-center justify-center">
-          {!preview ? (
+          {!preview && !cameraMode ? (
             <div className="p-8 flex flex-col items-center">
               <DialogDescription className="text-center mb-6">
                 Add photos or videos to your story. They'll disappear after 24 hours.
@@ -141,12 +249,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   variant="outline"
                   size="lg"
                   className="flex flex-col items-center justify-center h-24 w-32"
-                  onClick={() => {
-                    toast({
-                      title: 'Camera',
-                      description: 'Camera access coming soon!',
-                    });
-                  }}
+                  onClick={startCamera}
                 >
                   <Camera className="h-8 w-8 mb-2" />
                   <span>Camera</span>
@@ -159,6 +262,59 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   accept="image/*,video/*"
                   onChange={handleFileChange}
                 />
+              </div>
+              
+              {cameraError && (
+                <div className="text-red-500 text-center mt-2">
+                  {cameraError}
+                </div>
+              )}
+            </div>
+          ) : cameraMode ? (
+            <div className="relative w-full">
+              {/* Camera view */}
+              <div className="flex flex-col items-center">
+                <video 
+                  ref={videoRef}
+                  autoPlay 
+                  playsInline
+                  muted
+                  className="w-full h-auto max-h-[70vh] bg-black"
+                  style={{ transform: 'scaleX(-1)' }} // Mirror for selfie view
+                />
+                
+                {/* Hidden canvas for capturing images */}
+                <canvas ref={canvasRef} className="hidden" />
+                
+                {/* Camera controls */}
+                <div className="p-4 flex justify-center w-full gap-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    onClick={stopCamera}
+                  >
+                    <X className="h-6 w-6" />
+                  </Button>
+                  
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    onClick={capturePhoto}
+                  >
+                    <div className="bg-white rounded-full h-10 w-10 border-2 border-primary"></div>
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-14 w-14 flex items-center justify-center"
+                    onClick={startCamera} // Restart camera to switch cameras (future enhancement)
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
