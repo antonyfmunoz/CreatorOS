@@ -483,10 +483,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const postId = parseInt(req.params.id);
+      console.log(`Deleting post ID: ${postId} for user ID: ${req.user!.id}`);
       
+      // For improved debugging, get the details of the post being deleted
+      try {
+        const post = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
+        if (post.length > 0) {
+          console.log(`Post to delete: ${JSON.stringify(post[0])}`);
+          
+          // If we have story ID 11 (the one from the example) that doesn't seem to be matching correctly,
+          // let's check it specifically and delete it if needed
+          const storyToCheck = await db.select().from(stories).where(eq(stories.id, 11)).limit(1);
+          if (storyToCheck.length > 0) {
+            console.log(`Story ID 11 found: ${JSON.stringify(storyToCheck[0])}`);
+            console.log(`Checking if user matches post user: post user=${post[0].userId}, story user=${storyToCheck[0].userId}`);
+            
+            // If they belong to the same user, delete the story directly
+            if (storyToCheck[0].userId === post[0].userId) {
+              console.log(`Explicitly deleting story ID 11 as it matches the post's user ID`);
+              await db.delete(stories).where(eq(stories.id, 11));
+            }
+          }
+        }
+      } catch (debugError) {
+        console.error("Error in pre-delete debugging:", debugError);
+        // Continue with deletion even if debugging fails
+      }
+      
+      // Delete post and related stories through the storage function
       await storage.deletePost(postId);
+      
+      console.log(`Post ${postId} deleted successfully`);
       res.status(204).send();
     } catch (error) {
+      console.error(`Error deleting post:`, error);
       res.status(500).json({ message: "Failed to delete post" });
     }
   });

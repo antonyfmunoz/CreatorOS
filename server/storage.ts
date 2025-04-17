@@ -2001,23 +2001,38 @@ export class DatabaseStorage implements IStorage {
     if (!post) throw new Error(`Post with id ${id} not found`);
     
     // Find any stories that were created from this post
-    // Look for stories that match the post's media URL or have the same user ID
     try {
+      // Get the post's userId as we need to check both userId and mediaUrl
+      const userId = post.userId;
+      
       // Determine which media URL to look for based on post type
       const mediaUrl = post.mediaType === 'photo' ? post.imageUrl : 
                       post.mediaType === 'video' ? post.videoUrl :
                       post.mediaType === 'audio' ? post.audioUrl : null;
       
-      if (mediaUrl) {
-        console.log(`Checking for stories with mediaUrl: ${mediaUrl}`);
-        // Find and delete any stories that have the same media URL
-        const relatedStories = await db.select().from(stories).where(eq(stories.mediaUrl, mediaUrl));
+      // Debug information
+      console.log(`Post being deleted: ID=${id}, userId=${userId}, mediaType=${post.mediaType}, mediaUrl=${mediaUrl}`);
+      
+      if (userId && mediaUrl) {
+        console.log(`Looking for stories with userId=${userId} AND mediaUrl=${mediaUrl}`);
         
-        if (relatedStories.length > 0) {
-          console.log(`Found ${relatedStories.length} related stories to delete`);
-          for (const story of relatedStories) {
+        // Get all stories by this user first
+        const userStories = await db.select().from(stories).where(eq(stories.userId, userId));
+        console.log(`Found ${userStories.length} stories by user ID ${userId}`);
+        
+        // Filter for matching media URL and log all details for debugging
+        for (const story of userStories) {
+          console.log(`Checking story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
+          console.log(`Comparing: '${story.mediaUrl}' with '${mediaUrl}'`);
+          
+          // Check if the media URLs match or if one contains the other (to handle relative/absolute paths)
+          const isMatch = story.mediaUrl === mediaUrl || 
+                         story.mediaUrl.includes(mediaUrl) || 
+                         mediaUrl.includes(story.mediaUrl);
+          
+          if (isMatch) {
+            console.log(`MATCH FOUND! Deleting story with ID ${story.id}`);
             await db.delete(stories).where(eq(stories.id, story.id));
-            console.log(`Deleted story with ID ${story.id}`);
           }
         }
       }
