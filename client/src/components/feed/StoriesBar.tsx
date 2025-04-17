@@ -1,5 +1,4 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth';
@@ -68,8 +67,8 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   if (isLoading) {
     return (
       <div className="py-3 mb-4">
-        <ScrollArea className="w-full whitespace-nowrap">
-          <div className="flex space-x-4 px-4">
+        <div className="overflow-x-auto px-4">
+          <div className="flex space-x-4">
             {/* Current user story skeleton */}
             <div className="flex flex-col items-center">
               <Skeleton className="w-16 h-16 rounded-full" />
@@ -84,8 +83,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
               </div>
             ))}
           </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
       </div>
     );
   }
@@ -103,8 +101,8 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   return (
     <>
       <div className="py-3 mb-4">
-        <ScrollArea className="w-full whitespace-nowrap">
-          <div className="flex space-x-4 px-4">
+        <div className="overflow-x-auto px-4">
+          <div className="flex space-x-4">
             {/* Current user's story or create story button */}
             {currentUser && (
               <div 
@@ -141,28 +139,17 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
               </div>
             )}
             
-            {/* Other users' stories */}
-            {otherUsers.map((user) => {
-              const hasStory = storiesByUser[user.id]?.length > 0;
-              
-              return (
+            {/* Other users' stories - only show users with active stories */}
+            {otherUsers
+              .filter(user => storiesByUser[user.id]?.length > 0)
+              .map((user) => (
                 <div 
                   key={user.id}
                   className="flex flex-col items-center cursor-pointer"
-                  onClick={hasStory 
-                    ? () => onStoryClick && onStoryClick(user.id)
-                    : () => {
-                      toast({
-                        title: user.displayName,
-                        description: "This user has no active stories"
-                      });
-                    }
-                  }
+                  onClick={() => onStoryClick && onStoryClick(user.id)}
                   data-user-id={user.id}
                 >
-                  <div className={`w-16 h-16 rounded-full ${
-                    hasStory ? 'bg-gradient-to-r from-primary to-secondary p-0.5' : 'bg-gray-200 dark:bg-gray-700 p-0.5 opacity-70'
-                  }`}>
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-0.5">
                     <Avatar className="w-full h-full border-2 border-white">
                       <AvatarImage
                         src={user.profileImageUrl || undefined}
@@ -176,11 +163,10 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                     {user.displayName.split(' ')[0]}
                   </span>
                 </div>
-              );
-            })}
+              ))
+            }
           </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
       </div>
       
       {/* Story Creator Dialog */}
