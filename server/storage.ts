@@ -2013,29 +2013,72 @@ export class DatabaseStorage implements IStorage {
       // Debug information
       console.log(`Post being deleted: ID=${id}, userId=${userId}, mediaType=${post.mediaType}, mediaUrl=${mediaUrl}`);
       
-      if (userId && mediaUrl) {
-        console.log(`Looking for stories with userId=${userId} AND mediaUrl=${mediaUrl}`);
+      // New approach: If we're deleting a post, delete ALL stories by this user that were created 
+      // within a short time window of this post's creation time (5 minutes)
+      if (userId && post.createdAt) {
+        // Calculate a time window: 5 minutes before and after the post was created
+        const fiveMinutesInMs = 5 * 60 * 1000;
+        const postCreateTime = new Date(post.createdAt).getTime();
+        const minTime = new Date(postCreateTime - fiveMinutesInMs);
+        const maxTime = new Date(postCreateTime + fiveMinutesInMs);
         
-        // Get all stories by this user first
-        const userStories = await db.select().from(stories).where(eq(stories.userId, userId));
-        console.log(`Found ${userStories.length} stories by user ID ${userId}`);
+        console.log(`Checking for stories created between ${minTime.toISOString()} and ${maxTime.toISOString()}`);
         
-        // Filter for matching media URL and log all details for debugging
-        for (const story of userStories) {
-          console.log(`Checking story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
-          console.log(`Comparing: '${story.mediaUrl}' with '${mediaUrl}'`);
+        // Find stories by this user in the time window
+        const timeWindowStories = await db
+          .select()
+          .from(stories)
+          .where(
+            and(
+              eq(stories.userId, userId),
+              gt(stories.createdAt, minTime),
+              gt(maxTime, stories.createdAt)
+            )
+          );
+        
+        console.log(`Found ${timeWindowStories.length} stories in the time window`);
+        
+        // Delete all stories in this time window
+        for (const story of timeWindowStories) {
+          console.log(`Deleting story with ID ${story.id} from time window`);
+          await db.delete(stories).where(eq(stories.id, story.id));
+        }
+        
+        // Also try the media URL approach as a backup
+        if (mediaUrl) {
+          console.log(`Looking for stories with userId=${userId} AND mediaUrl matching ${mediaUrl}`);
           
-          // Check if the media URLs match or if one contains the other (to handle relative/absolute paths)
-          const isMatch = story.mediaUrl === mediaUrl || 
-                         story.mediaUrl.includes(mediaUrl) || 
-                         mediaUrl.includes(story.mediaUrl);
+          // Get all stories by this user first
+          const userStories = await db.select().from(stories).where(eq(stories.userId, userId));
+          console.log(`Found ${userStories.length} total stories by user ID ${userId}`);
           
-          if (isMatch) {
-            console.log(`MATCH FOUND! Deleting story with ID ${story.id}`);
-            await db.delete(stories).where(eq(stories.id, story.id));
+          // Filter for matching media URL and log all details for debugging
+          for (const story of userStories) {
+            console.log(`Checking story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
+            
+            // Check if the media URLs match or if one contains the other (to handle relative/absolute paths)
+            const isMatch = story.mediaUrl === mediaUrl || 
+                          story.mediaUrl.includes(mediaUrl) || 
+                          mediaUrl.includes(story.mediaUrl);
+            
+            // Additional check: Extract the base filename for comparison
+            const mediaUrlFilename = mediaUrl.split('/').pop()?.split('-').pop();
+            const storyUrlFilename = story.mediaUrl.split('/').pop()?.split('-').pop();
+            const filenameMatch = mediaUrlFilename && storyUrlFilename && 
+                                 mediaUrlFilename === storyUrlFilename;
+            
+            if (isMatch || filenameMatch) {
+              console.log(`MATCH FOUND! Deleting story with ID ${story.id}`);
+              await db.delete(stories).where(eq(stories.id, story.id));
+            }
           }
         }
       }
+      
+      // Finally, check if there are any orphaned stories (stories with no matching posts)
+      // This is a cleanup operation to ensure no dangling stories remain
+      await this.cleanupOrphanedStories();
+      
     } catch (error) {
       console.error("Error finding/deleting related stories:", error);
       // Continue with post deletion even if story deletion fails
@@ -2043,6 +2086,48 @@ export class DatabaseStorage implements IStorage {
     
     // Delete the post (cascade will handle comments deletion due to foreign key constraint)
     await db.delete(posts).where(eq(posts.id, id));
+  }
+  
+  // Helper method to clean up stories that no longer have associated posts
+  private async cleanupOrphanedStories(): Promise<void> {
+    try {
+      console.log("Running orphaned stories cleanup");
+      
+      // Get all stories
+      const allStories = await db.select().from(stories);
+      console.log(`Found ${allStories.length} total stories to check`);
+      
+      let cleanupCount = 0;
+      
+      // For each story, check if its associated post still exists
+      for (const story of allStories) {
+        // Skip stories without mediaUrl
+        if (!story.mediaUrl) continue;
+        
+        // Try to find any post with this media URL
+        const postsWithMedia = await db
+          .select()
+          .from(posts)
+          .where(
+            or(
+              eq(posts.imageUrl, story.mediaUrl),
+              eq(posts.videoUrl, story.mediaUrl),
+              eq(posts.audioUrl, story.mediaUrl)
+            )
+          );
+        
+        // If no posts found with this media URL, delete the story
+        if (postsWithMedia.length === 0) {
+          console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
+          await db.delete(stories).where(eq(stories.id, story.id));
+          cleanupCount++;
+        }
+      }
+      
+      console.log(`Cleanup complete. Deleted ${cleanupCount} orphaned stories.`);
+    } catch (error) {
+      console.error("Error cleaning up orphaned stories:", error);
+    }
   }
   
   async savePost(userId: number, postId: number): Promise<void> {
