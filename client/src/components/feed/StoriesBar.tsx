@@ -42,12 +42,14 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     queryKey: ['/api/users'],
   });
   
-  // Fetch all stories with reduced staleTime for more frequent updates
+  // Fetch all stories with aggressive settings to ensure freshness
   const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
     staleTime: 0, // Set to 0 to always fetch fresh data
-    refetchOnMount: true,
-    refetchOnWindowFocus: true
+    gcTime: 1000, // Set to 1 second to effectively disable caching (cacheTime was renamed to gcTime in v5)
+    refetchOnMount: "always", // Always refetch on mount
+    refetchOnWindowFocus: true, // Refetch when window gets focus
+    refetchInterval: 2000 // Refetch every 2 seconds when visible
   });
   
   // Always refetch stories data when component mounts

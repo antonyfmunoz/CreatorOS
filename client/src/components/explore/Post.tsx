@@ -495,6 +495,17 @@ const Post = ({ post }: PostProps) => {
     mutationFn: async () => {
       await apiRequest('DELETE', `/api/posts/${post.id}`, null);
     },
+    onSuccess: () => {
+      // Invalidate the stories query when a post is deleted
+      // This ensures that the stories bar and stories display are refreshed
+      queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+      
+      // Show success toast
+      toast({
+        title: "Success",
+        description: "Post deleted successfully.",
+      });
+    },
     onError: () => {
       // Only show toast for errors
       toast({

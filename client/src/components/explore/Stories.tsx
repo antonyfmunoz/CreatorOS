@@ -29,12 +29,14 @@ const Stories = () => {
   // Track where the user clicks to navigate stories
   const storyContainerRef = useRef<HTMLDivElement>(null);
   
-  // Fetch stories with optimization for immediate updates
+  // Fetch stories with aggressive settings to ensure freshness
   const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
-    staleTime: 0, // Always fetch fresh data
-    refetchOnMount: true,
-    refetchOnWindowFocus: true
+    staleTime: 0, // Set to 0 to always fetch fresh data
+    gcTime: 1000, // Set to 1 second to effectively disable caching (cacheTime was renamed to gcTime in v5)
+    refetchOnMount: "always", // Always refetch on mount
+    refetchOnWindowFocus: true, // Refetch when window gets focus
+    refetchInterval: 2000 // Refetch every 2 seconds when visible
   });
   
   // Fall back to users if there are no stories
