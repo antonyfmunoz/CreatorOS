@@ -137,8 +137,10 @@ const Explore = () => {
         <Tabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
-      {/* Stories Bar - Shown in all tabs */}
-      <StoriesBar onStoryClick={handleStoryClick} />
+      {/* Stories Bar - Only shown in Following tab */}
+      {activeTab === "following" && (
+        <StoriesBar onStoryClick={handleStoryClick} />
+      )}
 
       {/* Original Stories component for compatibility */}
       <div className="hidden">
