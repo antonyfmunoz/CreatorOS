@@ -752,7 +752,10 @@ const Post = ({ post }: PostProps) => {
             
             {/* Tagged users overlay - only show username fab when clicked */}
             {showTags && taggedUsers.length > 0 && (
-              <div className="absolute inset-0 z-10">
+              <div 
+                className="absolute inset-0 z-10"
+                onClick={() => setShowTags(false)}
+              >
                 {taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}
