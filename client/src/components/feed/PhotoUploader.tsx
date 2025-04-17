@@ -193,10 +193,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       return res.json();
     },
     onSuccess: () => {
-      toast({
-        title: 'Photos posted!',
-        description: `Your ${imageFiles.length > 1 ? 'carousel post' : 'photo'} has been successfully posted.`
-      });
+      // No toast notification, just update the cache and close
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       onClose();
     },
@@ -769,37 +766,36 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <span>Your story</span>
               </div>
               <div 
-                className="w-12 h-6 bg-gray-200 rounded-full relative cursor-pointer group"
+                className={`w-12 h-6 ${addToStory ? 'bg-primary' : 'bg-gray-200'} rounded-full relative cursor-pointer group`}
                 onClick={() => {
-                  const toggle = document.getElementById('story-toggle');
-                  if (toggle) {
-                    const isActive = toggle.classList.contains('active');
-                    if (isActive) {
-                      toggle.classList.remove('active', 'bg-primary');
-                      toggle.classList.add('bg-gray-200');
-                      toggle.querySelector('div')?.classList.remove('translate-x-5');
-                      toggle.querySelector('div')?.classList.add('translate-x-0');
-                      
-                      toast({
-                        title: "Story disabled",
-                        description: "This post will not be added to your story",
-                      });
-                    } else {
-                      toggle.classList.add('active', 'bg-primary');
-                      toggle.classList.remove('bg-gray-200');
-                      toggle.querySelector('div')?.classList.add('translate-x-5');
-                      toggle.querySelector('div')?.classList.remove('translate-x-0');
-                      
-                      toast({
-                        title: "Added to Story",
-                        description: "This post will also be added to your story",
-                      });
-                    }
+                  setAddToStory(!addToStory);
+                  
+                  // Update the visual toggle without manipulating DOM directly
+                  const newValue = !addToStory;
+                  
+                  // Add a visual notification for Instagram-like UX
+                  if (newValue) {
+                    // Show "Added to Story" banner like Instagram but don't use toast
+                    const banner = document.createElement('div');
+                    banner.className = 'fixed top-16 left-0 right-0 mx-auto w-max bg-background shadow-lg rounded-lg py-3 px-4 z-50 flex items-center';
+                    banner.innerHTML = `
+                      <div class="font-medium">Added to Story</div>
+                    `;
+                    document.body.appendChild(banner);
+                    
+                    // Remove the banner after a short delay
+                    setTimeout(() => {
+                      banner.style.opacity = '0';
+                      banner.style.transition = 'opacity 0.3s ease-in-out';
+                      setTimeout(() => {
+                        document.body.removeChild(banner);
+                      }, 300);
+                    }, 1500);
                   }
                 }}
                 id="story-toggle"
               >
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out"></div>
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out ${addToStory ? 'translate-x-5 left-2' : 'translate-x-0 left-1'}`}></div>
               </div>
             </div>
           </div>
