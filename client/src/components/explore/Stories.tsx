@@ -29,9 +29,12 @@ const Stories = () => {
   // Track where the user clicks to navigate stories
   const storyContainerRef = useRef<HTMLDivElement>(null);
   
-  // Fetch stories
-  const { data: stories, isLoading: storiesLoading } = useQuery<Story[]>({
+  // Fetch stories with optimization for immediate updates
+  const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
   });
   
   // Fall back to users if there are no stories
@@ -39,6 +42,12 @@ const Stories = () => {
     queryKey: ['/api/users'],
     enabled: !stories || stories.length === 0,
   });
+  
+  // Always refresh stories data when component mounts or story is viewed
+  useEffect(() => {
+    refetchStories();
+    console.log('Refreshing stories data on Stories component mount');
+  }, [refetchStories]);
   
   const isLoading = storiesLoading || ((!stories || stories.length === 0) && usersLoading);
   

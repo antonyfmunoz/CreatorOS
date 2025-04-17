@@ -193,13 +193,17 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       return res.json();
     },
     onSuccess: (data) => {
-      // No toast notification, just update the cache and close
+      // No toast notification, just update the cache
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
       // If adding to story, also invalidate stories query to refresh immediately
       if (addToStory) {
         console.log('Post added to story, refreshing stories data');
+        // Invalidate the cache first
         queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+        
+        // Force an immediate refetch to update the UI
+        queryClient.refetchQueries({ queryKey: ['/api/stories'] });
       }
       
       onClose();

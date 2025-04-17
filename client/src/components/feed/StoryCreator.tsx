@@ -58,11 +58,18 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate and immediately refetch stories data
+      console.log('Story created, refreshing stories data');
       queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+      
+      // Force an immediate refetch
+      queryClient.refetchQueries({ queryKey: ['/api/stories'] });
+      
       toast({
         title: 'Story uploaded',
         description: 'Your story has been successfully uploaded.',
       });
+      
       handleClose();
     },
     onError: (error) => {
