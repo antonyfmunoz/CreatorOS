@@ -2016,54 +2016,45 @@ export class DatabaseStorage implements IStorage {
       // New approach: If we're deleting a post, delete ALL stories by this user that were created 
       // within a short time window of this post's creation time (5 minutes)
       if (userId && post.createdAt) {
-        // Calculate a time window: 5 minutes before and after the post was created
-        const fiveMinutesInMs = 5 * 60 * 1000;
-        const postCreateTime = new Date(post.createdAt).getTime();
-        const minTime = new Date(postCreateTime - fiveMinutesInMs);
-        const maxTime = new Date(postCreateTime + fiveMinutesInMs);
+        // Skip the time window approach for now as it's causing errors
+        // Instead, get all stories for this user first
+        console.log(`Looking for stories with mediaUrl=${mediaUrl} by user ${userId}`);
         
-        console.log(`Checking for stories created between ${minTime.toISOString()} and ${maxTime.toISOString()}`);
-        
-        // Find stories by this user in the time window
-        const timeWindowStories = await db
+        // Get all stories by this user
+        const userStories = await db
           .select()
           .from(stories)
-          .where(
-            and(
-              eq(stories.userId, userId),
-              gt(stories.createdAt, minTime),
-              gt(maxTime, stories.createdAt)
-            )
-          );
+          .where(eq(stories.userId, userId));
         
-        console.log(`Found ${timeWindowStories.length} stories in the time window`);
+        console.log(`Found ${userStories.length} stories by this user`);
         
-        // Delete all stories in this time window
-        for (const story of timeWindowStories) {
-          console.log(`Deleting story with ID ${story.id} from time window`);
-          await db.delete(stories).where(eq(stories.id, story.id));
+        // Process all stories by this user
+        for (const story of userStories) {
+          console.log(`Checking story ID=${story.id} by user ${story.userId}`);
+          
+          // Check if the media URLs match directly when a post is deleted
+          if (mediaUrl && story.mediaUrl === mediaUrl) {
+            console.log(`Exact match found! Deleting story with ID ${story.id}`);
+            await db.delete(stories).where(eq(stories.id, story.id));
+          }
         }
         
-        // Also try the media URL approach as a backup
+        // Additional checks for the media URL
         if (mediaUrl) {
           console.log(`Looking for stories with userId=${userId} AND mediaUrl matching ${mediaUrl}`);
           
-          // Get all stories by this user first
-          const userStories = await db.select().from(stories).where(eq(stories.userId, userId));
-          console.log(`Found ${userStories.length} total stories by user ID ${userId}`);
-          
-          // Filter for matching media URL and log all details for debugging
+          // Filter all stories for this user again with advanced matching
           for (const story of userStories) {
-            console.log(`Checking story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
+            console.log(`Advanced check: story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
             
             // Check if the media URLs match or if one contains the other (to handle relative/absolute paths)
             const isMatch = story.mediaUrl === mediaUrl || 
-                          story.mediaUrl.includes(mediaUrl) || 
-                          mediaUrl.includes(story.mediaUrl);
+                          (story.mediaUrl?.includes(mediaUrl) || false) || 
+                          (mediaUrl?.includes(story.mediaUrl) || false);
             
             // Additional check: Extract the base filename for comparison
             const mediaUrlFilename = mediaUrl.split('/').pop()?.split('-').pop();
-            const storyUrlFilename = story.mediaUrl.split('/').pop()?.split('-').pop();
+            const storyUrlFilename = story.mediaUrl?.split('/').pop()?.split('-').pop();
             const filenameMatch = mediaUrlFilename && storyUrlFilename && 
                                  mediaUrlFilename === storyUrlFilename;
             
