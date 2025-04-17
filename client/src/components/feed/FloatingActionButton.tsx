@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Edit, Mic, Video, Camera, FilmIcon } from "lucide-react";
+import { Plus, Edit, Mic, Video, Camera, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { StoryCreator } from "@/components/feed/StoryCreator";
 export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   const [postType, setPostType] = useState<"text" | "photo" | "audio" | "video" | "story">("text");
   
   const toggleOpen = () => {
@@ -62,8 +63,6 @@ export function FloatingActionButton() {
         return <VoiceRecorder onClose={closeModal} />;
       case "video":
         return <VideoRecorder onClose={closeModal} />;
-      case "story":
-        return <StoryCreator isOpen={isModalOpen} onClose={closeModal} />;
       default:
         return null;
     }
@@ -95,6 +94,31 @@ export function FloatingActionButton() {
           "flex flex-col-reverse items-center mb-3 transition-all duration-300 ease-in-out space-y-reverse space-y-3",
           isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         )}>
+          {/* Story */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() => {
+                    // Close the FAB menu
+                    setIsOpen(false);
+                    // Set the story type
+                    setPostType("story");
+                    // Open the story creator directly
+                    setStoryCreatorOpen(true);
+                  }}
+                  variant="secondary"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Clock className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>{getTooltipText('story')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
           {/* Text Post */}
           <TooltipProvider>
             <Tooltip>
@@ -200,6 +224,14 @@ export function FloatingActionButton() {
           {renderModalContent()}
         </DialogContent>
       </Dialog>
+      
+      {/* Story creator dialog - rendered separately as it has its own dialog */}
+      {storyCreatorOpen && (
+        <StoryCreator 
+          isOpen={storyCreatorOpen} 
+          onClose={() => setStoryCreatorOpen(false)} 
+        />
+      )}
     </>
   );
 }
