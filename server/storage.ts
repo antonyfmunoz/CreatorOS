@@ -2000,6 +2000,32 @@ export class DatabaseStorage implements IStorage {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new Error(`Post with id ${id} not found`);
     
+    // Find any stories that were created from this post
+    // Look for stories that match the post's media URL or have the same user ID
+    try {
+      // Determine which media URL to look for based on post type
+      const mediaUrl = post.mediaType === 'photo' ? post.imageUrl : 
+                      post.mediaType === 'video' ? post.videoUrl :
+                      post.mediaType === 'audio' ? post.audioUrl : null;
+      
+      if (mediaUrl) {
+        console.log(`Checking for stories with mediaUrl: ${mediaUrl}`);
+        // Find and delete any stories that have the same media URL
+        const relatedStories = await db.select().from(stories).where(eq(stories.mediaUrl, mediaUrl));
+        
+        if (relatedStories.length > 0) {
+          console.log(`Found ${relatedStories.length} related stories to delete`);
+          for (const story of relatedStories) {
+            await db.delete(stories).where(eq(stories.id, story.id));
+            console.log(`Deleted story with ID ${story.id}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error finding/deleting related stories:", error);
+      // Continue with post deletion even if story deletion fails
+    }
+    
     // Delete the post (cascade will handle comments deletion due to foreign key constraint)
     await db.delete(posts).where(eq(posts.id, id));
   }
