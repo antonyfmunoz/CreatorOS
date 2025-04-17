@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Edit, Mic, Video, Camera } from "lucide-react";
+import { Plus, Edit, Mic, Video, Camera, FilmIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -8,17 +8,18 @@ import { TextComposer } from "@/components/feed/TextComposer";
 import { VoiceRecorder } from "@/components/feed/VoiceRecorder";
 import { VideoRecorder } from "@/components/feed/VideoRecorder";
 import { PhotoUploader } from "@/components/feed/PhotoUploader";
+import { StoryCreator } from "@/components/feed/StoryCreator";
 
 export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [postType, setPostType] = useState<"text" | "photo" | "audio" | "video">("text");
+  const [postType, setPostType] = useState<"text" | "photo" | "audio" | "video" | "story">("text");
   
   const toggleOpen = () => {
     setIsOpen(!isOpen);
   };
   
-  const openPostModal = (type: "text" | "photo" | "audio" | "video") => {
+  const openPostModal = (type: "text" | "photo" | "audio" | "video" | "story") => {
     // Close the FAB menu
     setIsOpen(false);
     
@@ -43,6 +44,8 @@ export function FloatingActionButton() {
         return 'Voice Post (like Telegram)';
       case 'video':
         return 'Video Post (TikTok <10s, YouTube >10s)';
+      case 'story':
+        return 'Story (disappears after 24h)';
       default:
         return '';
     }
@@ -59,6 +62,8 @@ export function FloatingActionButton() {
         return <VoiceRecorder onClose={closeModal} />;
       case "video":
         return <VideoRecorder onClose={closeModal} />;
+      case "story":
+        return <StoryCreator isOpen={isModalOpen} onClose={closeModal} />;
       default:
         return null;
     }
@@ -75,6 +80,8 @@ export function FloatingActionButton() {
         return "Create Audio Post";
       case "video":
         return "Create Video Post";
+      case "story":
+        return "Create Story";
       default:
         return "Create Post";
     }
