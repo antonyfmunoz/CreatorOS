@@ -47,14 +47,21 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
     }
     
     const file = e.target.files[0];
+    
+    // Set the file first before creating the preview
     setSelectedFile(file);
     
     // Create preview
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
     
+    // Make sure cameraMode is off
+    setCameraMode(false);
+    
     // Reset input value to allow selecting the same file again
     e.target.value = '';
+    
+    console.log('File selected:', file.name, 'type:', file.type, 'size:', file.size);
   };
   
   // Upload mutation
@@ -269,6 +276,9 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose} modal={true}>
       <DialogContent className="max-w-full h-[100vh] p-0 overflow-hidden bg-white border-0 sm:rounded-none">
+        <DialogTitle className="sr-only">
+          {preview ? 'Create Story' : 'Add to Your Story'}
+        </DialogTitle>
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
           <Button 
             variant="ghost" 
@@ -377,19 +387,19 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
           ) : (
             <div className="fixed inset-0 z-10 mt-12 bg-black">
               <div className="relative h-full flex flex-col">
-                <div className="flex-grow flex items-center justify-center bg-black">
+                <div className="flex-grow flex items-center justify-center bg-black overflow-hidden">
                   {preview && selectedFile?.type.startsWith('image/') && (
                     <img 
                       src={preview} 
                       alt="Story preview" 
-                      className="h-full w-full object-contain"
+                      className="h-[calc(100vh-180px)] w-full object-contain"
                     />
                   )}
                   {preview && selectedFile && !selectedFile.type.startsWith('image/') && (
                     <video 
                       src={preview} 
                       controls 
-                      className="h-full w-full object-contain"
+                      className="h-[calc(100vh-180px)] w-full object-contain"
                     />
                   )}
                 </div>
@@ -398,7 +408,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50"
+                  className="absolute top-4 left-4 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50"
                   onClick={() => {
                     if (preview) {
                       URL.revokeObjectURL(preview);
@@ -411,9 +421,9 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 </Button>
                 
                 {/* Caption input */}
-                <div className="p-4 bg-white dark:bg-gray-900">
+                <div className="p-4 bg-white border-t">
                   <textarea
-                    className="w-full p-3 border rounded-md resize-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    className="w-full p-3 border rounded-md resize-none"
                     placeholder="Write a caption..."
                     rows={2}
                     value={caption}
@@ -421,7 +431,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   />
                   
                   <Button
-                    className="w-full mt-4"
+                    className="w-full mt-4 bg-blue-500 hover:bg-blue-600"
                     onClick={handleUpload}
                     disabled={uploadMutation.isPending}
                   >
