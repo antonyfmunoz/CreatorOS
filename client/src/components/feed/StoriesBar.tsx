@@ -42,10 +42,19 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     queryKey: ['/api/users'],
   });
   
-  // Fetch all stories
-  const { data: stories, isLoading: storiesLoading } = useQuery<Story[]>({
+  // Fetch all stories with reduced staleTime for more frequent updates
+  const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
+    staleTime: 0, // Set to 0 to always fetch fresh data
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
   });
+  
+  // Always refetch stories data when component mounts
+  useEffect(() => {
+    refetchStories();
+    console.log('Refreshing stories data on StoriesBar mount');
+  }, [refetchStories]);
   
   const isLoading = usersLoading || storiesLoading;
   
