@@ -280,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
-      const { content, userId, mediaType, isCarousel } = req.body;
+      const { content, userId, mediaType, isCarousel, addToStory } = req.body;
       
       if (!content || !userId) {
         return res.status(400).json({ message: "Content and userId are required" });
@@ -301,6 +301,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if this is a carousel post (multiple images)
       const isCarouselPost = isCarousel === 'true';
       
+      // Process the media file path(s) based on media type
+      let primaryMediaPath = '';
+      
       if (mediaType === 'photo' || !mediaType) {
         if (isCarouselPost && files.length > 1) {
           // Handle carousel post (multiple images)
@@ -308,6 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Store primary image in imageUrl
           postData.imageUrl = imagePaths[0];
+          primaryMediaPath = imagePaths[0];
           
           // Store all images as JSON in a new carouselImages field
           postData.carouselImages = JSON.stringify(imagePaths);
@@ -315,6 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle single image post
           const imagePath = `/uploads/${files[0].filename}`;
           postData.imageUrl = imagePath;
+          primaryMediaPath = imagePath;
           // Ensure carouselImages is null for single image posts
           postData.carouselImages = null;
         }
@@ -323,11 +328,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Handle audio post
         const audioPath = `/uploads/${files[0].filename}`;
         postData.audioUrl = audioPath;
+        primaryMediaPath = audioPath;
         postData.mediaType = 'audio';
       } else if (mediaType === 'video') {
         // Handle video post
         const videoPath = `/uploads/${files[0].filename}`;
         postData.videoUrl = videoPath;
+        primaryMediaPath = videoPath;
         postData.mediaType = 'video';
       } else {
         return res.status(400).json({ message: "Invalid media type provided" });
@@ -335,6 +342,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create the post first
       const post = await storage.createPost(postData);
+      
+      // Check if we should add this to the user's story
+      if (addToStory === 'true') {
+        console.log("Adding to story:", { userId, mediaPath: primaryMediaPath });
+        try {
+          // Create a story with the same media
+          await storage.createStory({
+            userId: parseInt(userId),
+            mediaUrl: primaryMediaPath,
+            mediaType: postData.mediaType,
+            caption: content || null,
+          });
+          console.log("Successfully added to story");
+        } catch (storyError) {
+          console.error("Error adding to story:", storyError);
+          // Continue even if story creation fails, the post is already created
+        }
+      }
       
       // Process tagged users if present
       if (req.body.taggedUsers) {
