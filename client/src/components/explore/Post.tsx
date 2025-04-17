@@ -750,9 +750,9 @@ const Post = ({ post }: PostProps) => {
               }}
             />
             
-            {/* Tagged users overlay */}
+            {/* Tagged users overlay - only show username fab when clicked */}
             {showTags && taggedUsers.length > 0 && (
-              <div className="absolute inset-0 z-10 bg-black bg-opacity-20">
+              <div className="absolute inset-0 z-10">
                 {taggedUsers.map((taggedUser: TaggedUser, index: number) => (
                   <div 
                     key={index}
@@ -762,12 +762,14 @@ const Post = ({ post }: PostProps) => {
                       top: `${taggedUser.positionY * 100}%`,
                     }}
                   >
-                    <div className="flex items-center bg-primary text-white rounded-full py-1 px-3 text-xs transform -translate-x-1/2 -translate-y-1/2 shadow-lg animate-pulse-slow">
-                      <Avatar className="h-7 w-7 mr-2 border-2 border-white">
-                        <AvatarImage src={taggedUser.profileImageUrl || undefined} />
-                        <AvatarFallback>{taggedUser.displayName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{taggedUser.displayName}</span>
+                    <div 
+                      className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center text-xs transform -translate-x-1/2 -translate-y-1/2 shadow-lg cursor-pointer hover:bg-primary-dark"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent toggling tags
+                        setLocation(`/profile/${taggedUser.id}`);
+                      }}
+                    >
+                      <span className="font-medium">{taggedUser.username.charAt(0)}</span>
                     </div>
                   </div>
                 ))}
