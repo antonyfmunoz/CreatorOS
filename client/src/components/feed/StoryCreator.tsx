@@ -30,6 +30,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
   const [caption, setCaption] = useState('');
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   
   // Cleanup camera on unmount
   useEffect(() => {
@@ -125,9 +126,9 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
       setCameraMode(true);
       setCameraError(null);
       
-      // Request camera access
+      // Request camera access with current facing mode
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' }, 
+        video: { facingMode }, 
         audio: false 
       });
       
@@ -148,6 +149,43 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
         description: 'Could not access camera. Please check permissions.',
         variant: 'destructive'
       });
+    }
+  };
+  
+  // Switch between front and back cameras
+  const switchCamera = async () => {
+    // Toggle facing mode
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+    
+    try {
+      // Stop current stream
+      stopCamera();
+      
+      // Set camera mode
+      setCameraMode(true);
+      setCameraError(null);
+      
+      // Request camera access with new facing mode
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: newFacingMode }, 
+        audio: false 
+      });
+      
+      // Save stream reference
+      streamRef.current = stream;
+      
+      // Connect stream to video element if it exists
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error switching camera:', error);
+      setCameraError('Could not switch camera. Device may only have one camera.');
+      
+      // Try to restart with previous mode
+      setFacingMode(facingMode);
+      startCamera();
     }
   };
   
@@ -182,10 +220,18 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Flip horizontally for selfie view
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (facingMode === 'user') {
+      // Flip horizontally for selfie view
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    } else {
+      // No flip for back camera
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
     
     // Convert canvas to a Blob (file)
     canvas.toBlob((blob) => {
@@ -280,7 +326,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   playsInline
                   muted
                   className="w-full h-auto max-h-[70vh] bg-black"
-                  style={{ transform: 'scaleX(-1)' }} // Mirror for selfie view
+                  style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)' }} // Mirror for selfie view only
                 />
                 
                 {/* Hidden canvas for capturing images */}
@@ -310,7 +356,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                     variant="outline"
                     size="icon"
                     className="rounded-full h-14 w-14 flex items-center justify-center"
-                    onClick={startCamera} // Restart camera to switch cameras (future enhancement)
+                    onClick={switchCamera}
                   >
                     <RefreshCw className="h-6 w-6" />
                   </Button>
@@ -320,13 +366,14 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
           ) : (
             <div className="w-full">
               <div className="relative">
-                {selectedFile?.type.startsWith('image/') ? (
+                {preview && selectedFile?.type.startsWith('image/') && (
                   <img 
                     src={preview} 
                     alt="Story preview" 
                     className="max-h-[70vh] w-full object-contain"
                   />
-                ) : (
+                )}
+                {preview && selectedFile && !selectedFile.type.startsWith('image/') && (
                   <video 
                     src={preview} 
                     controls 
