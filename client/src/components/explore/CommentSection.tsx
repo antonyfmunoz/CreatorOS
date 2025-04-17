@@ -7,7 +7,8 @@ import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, Mo
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Comment, Post, User, Post as PostType } from '@/types';
+import { Post as PostType, User } from '@/types';
+import type { Comment } from '@/types';
 import { useLocation } from 'wouter';
 import { parseUserTags } from '@/lib/textParser';
 import {
@@ -28,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface CommentSectionProps {
-  post: Post & { comments: number };
+  post: PostType & { comments: number };
   currentUser?: User;
 }
 

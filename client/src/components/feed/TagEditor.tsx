@@ -51,7 +51,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
 
   const filteredUsers = searchQuery 
     ? users.filter(
-        user => 
+        (user: any) => 
           user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
           user.displayName.toLowerCase().includes(searchQuery.toLowerCase())
       )
@@ -190,7 +190,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
               </div>
             ) : (
               <div className="divide-y">
-                {filteredUsers.map((user) => (
+                {filteredUsers.map((user: any) => (
                   <div 
                     key={user.id}
                     className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted"
