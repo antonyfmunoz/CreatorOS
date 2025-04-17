@@ -141,10 +141,7 @@ const Profile = () => {
   const followMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser || !user) return;
-      return apiRequest('POST', '/api/users/follow', {
-        followerId: currentUser.id,
-        followedId: user.id
-      });
+      return apiRequest('POST', `/api/users/${user.id}/follow`, {});
     },
     onSuccess: () => {
       // Invalidate follower count and follow status
@@ -169,10 +166,7 @@ const Profile = () => {
   const unfollowMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser || !user) return;
-      return apiRequest('POST', '/api/users/unfollow', {
-        followerId: currentUser.id,
-        followedId: user.id
-      });
+      return apiRequest('POST', `/api/users/${user.id}/unfollow`, {});
     },
     onSuccess: () => {
       // Invalidate follower count and follow status
