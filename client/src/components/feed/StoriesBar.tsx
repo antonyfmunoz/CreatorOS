@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { StoryCreator } from './StoryCreator';
 
 // Define the User type inline to avoid import issues
 interface User {
@@ -35,7 +36,7 @@ interface StoriesBarProps {
 export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
-  const [storyUploadOpen, setStoryUploadOpen] = useState(false);
+  const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   
   // Fetch all users
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
@@ -61,11 +62,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   
   // Functions for story creation
   const handleAddStory = () => {
-    toast({
-      title: 'Create Story',
-      description: 'Story creation coming soon!',
-    });
-    // TODO: Implement story creation functionality
+    setStoryCreatorOpen(true);
   };
   
   if (isLoading) {
@@ -104,77 +101,95 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   const hasCurrentUserStory = currentUser && storiesByUser[currentUser.id]?.length > 0;
 
   return (
-    <div className="py-3 mb-4">
-      <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex space-x-4 px-4">
-          {/* Current user's story or create story button */}
-          {currentUser && (
-            <div 
-              className="flex flex-col items-center cursor-pointer"
-              onClick={hasCurrentUserStory 
-                ? () => onStoryClick && onStoryClick(currentUser.id) 
-                : handleAddStory
-              }
-            >
-              <div className={`w-16 h-16 rounded-full ${
-                hasCurrentUserStory 
-                  ? 'bg-gradient-to-r from-primary to-secondary p-0.5' 
-                  : ''
-              }`}>
-                <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-white' : 'w-16 h-16'}`}>
-                  <AvatarImage
-                    src={currentUser.profileImageUrl || undefined}
-                    alt={currentUser.displayName}
-                    className="object-cover"
-                  />
-                  <AvatarFallback>{currentUser.displayName.charAt(0)}</AvatarFallback>
-                </Avatar>
-                
-                {/* Add story plus icon */}
-                {!hasCurrentUserStory && (
-                  <div className="absolute bottom-0 right-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center border-2 border-white">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
-              <span className="text-xs mt-1 truncate w-16 text-center">
-                Your story
-              </span>
-            </div>
-          )}
-          
-          {/* Other users' stories */}
-          {otherUsers.map((user) => {
-            const hasStory = storiesByUser[user.id]?.length > 0;
-            
-            return (
+    <>
+      <div className="py-3 mb-4">
+        <ScrollArea className="w-full whitespace-nowrap">
+          <div className="flex space-x-4 px-4">
+            {/* Current user's story or create story button */}
+            {currentUser && (
               <div 
-                key={user.id}
                 className="flex flex-col items-center cursor-pointer"
-                onClick={() => onStoryClick && onStoryClick(user.id)}
-                data-user-id={user.id}
+                onClick={hasCurrentUserStory 
+                  ? () => onStoryClick && onStoryClick(currentUser.id) 
+                  : handleAddStory
+                }
               >
                 <div className={`w-16 h-16 rounded-full ${
-                  hasStory ? 'bg-gradient-to-r from-primary to-secondary p-0.5' : 'bg-gray-200 dark:bg-gray-700 p-0.5 opacity-70'
+                  hasCurrentUserStory 
+                    ? 'bg-gradient-to-r from-primary to-secondary p-0.5' 
+                    : ''
                 }`}>
-                  <Avatar className="w-full h-full border-2 border-white">
+                  <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-white' : 'w-16 h-16'}`}>
                     <AvatarImage
-                      src={user.profileImageUrl || undefined}
-                      alt={user.displayName}
+                      src={currentUser.profileImageUrl || undefined}
+                      alt={currentUser.displayName}
                       className="object-cover"
                     />
-                    <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                    <AvatarFallback>{currentUser.displayName.charAt(0)}</AvatarFallback>
                   </Avatar>
+                  
+                  {/* Add story plus icon */}
+                  {!hasCurrentUserStory && (
+                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center border-2 border-white">
+                      <Plus className="w-4 h-4" />
+                    </div>
+                  )}
                 </div>
                 <span className="text-xs mt-1 truncate w-16 text-center">
-                  {user.displayName.split(' ')[0]}
+                  Your story
                 </span>
               </div>
-            );
-          })}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
-    </div>
+            )}
+            
+            {/* Other users' stories */}
+            {otherUsers.map((user) => {
+              const hasStory = storiesByUser[user.id]?.length > 0;
+              
+              return (
+                <div 
+                  key={user.id}
+                  className="flex flex-col items-center cursor-pointer"
+                  onClick={hasStory 
+                    ? () => onStoryClick && onStoryClick(user.id)
+                    : () => {
+                      toast({
+                        title: user.displayName,
+                        description: "This user has no active stories"
+                      });
+                    }
+                  }
+                  data-user-id={user.id}
+                >
+                  <div className={`w-16 h-16 rounded-full ${
+                    hasStory ? 'bg-gradient-to-r from-primary to-secondary p-0.5' : 'bg-gray-200 dark:bg-gray-700 p-0.5 opacity-70'
+                  }`}>
+                    <Avatar className="w-full h-full border-2 border-white">
+                      <AvatarImage
+                        src={user.profileImageUrl || undefined}
+                        alt={user.displayName}
+                        className="object-cover"
+                      />
+                      <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <span className="text-xs mt-1 truncate w-16 text-center">
+                    {user.displayName.split(' ')[0]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      </div>
+      
+      {/* Story Creator Dialog */}
+      {storyCreatorOpen && (
+        <StoryCreator 
+          isOpen={storyCreatorOpen}
+          onClose={() => setStoryCreatorOpen(false)}
+        />
+      )}
+    </>
   );
 };
