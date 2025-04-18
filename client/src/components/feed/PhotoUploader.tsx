@@ -16,7 +16,8 @@ import {
   BarChart2,
   Instagram,
   Facebook,
-  ShoppingBag
+  ShoppingBag,
+  Camera
 } from "lucide-react";
 import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
@@ -865,36 +866,60 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     );
   }
   
-  // Photo selection mode with Instagram-inspired UI
+  // Photo selection mode with Instagram-inspired UI, similar to story creator
   return (
-    <div className="relative w-full h-screen bg-background text-foreground">
+    <div className="relative w-full h-[100vh] bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
-      {/* Top bar */}
-      <div className="flex justify-between items-center p-4 border-b h-[58px]">
-        <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
-        <h2 className="text-lg font-medium">New post</h2>
-        <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
+      {/* Top bar - similar to story creator */}
+      <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="rounded-full h-8 w-8" 
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+        </Button>
+        <span className="font-semibold text-lg">
+          New post
+        </span>
+        <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center Upload Button */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="bg-white rounded-lg p-10 flex flex-col items-center max-w-xs mx-auto">
-          <div 
-            onClick={triggerFileSelect}
-            className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mb-4 cursor-pointer"
-          >
-            <Upload className="h-8 w-8 text-primary-foreground" />
-          </div>
-          <p className="text-lg mb-2">Upload photos</p>
-          <p className="text-sm text-muted-foreground text-center mb-4">
-            Share one or multiple photos with your followers
+      {/* Center content - similar to story creator */}
+      <div className="flex flex-col items-center justify-center mt-16 pt-4">
+        <div className="p-8 flex flex-col items-center">
+          <p className="text-center mb-6">
+            Share photos or videos with your followers.
           </p>
-          <Button 
-            onClick={triggerFileSelect}
-          >
-            Select from device
-          </Button>
+          
+          <div className="w-full flex gap-2 px-2 mb-6">
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
+              onClick={triggerFileSelect}
+            >
+              <Upload className="h-6 w-6 mb-2" />
+              <span>Upload</span>
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
+              onClick={() => {
+                toast({
+                  title: "Camera Feature",
+                  description: "The camera feature will be available soon.",
+                });
+              }}
+            >
+              <Camera className="h-6 w-6 mb-2" />
+              <span>Camera</span>
+            </Button>
+          </div>
         </div>
       </div>
       
