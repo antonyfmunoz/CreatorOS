@@ -30,19 +30,47 @@ const storage = multer.diskStorage({
       prefix = 'audio';
     } else if (file.fieldname === 'video') {
       prefix = 'video';
+    } else if (file.fieldname === 'media') {
+      // For story uploads
+      prefix = file.mimetype.startsWith('video/') ? 'story-video' : 'story-image';
     }
     
+    console.log(`Creating file with prefix: ${prefix}`);
     cb(null, `${prefix}-${uniqueSuffix}${ext}`);
   }
 });
 
 // File filter function that adapts based on the field name
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  console.log('Processing file upload:', file.fieldname, file.originalname, file.mimetype);
+  
   // Determine allowed types based on the file type that comes from MediaType parameter
   // or fall back to the field name if not specified
   const mediaType = req.body.mediaType || file.fieldname;
   
-  if (mediaType === 'photo' || file.fieldname === 'profile' || file.fieldname === 'image' || file.fieldname.startsWith('image')) {
+  // Add support for 'media' field used for story uploads
+  if (file.fieldname === 'media') {
+    // For story media uploads - allow both images and videos
+    const imageTypes = /jpeg|jpg|png|gif|webp/;
+    const videoTypes = /mp4|webm|mov|avi/;
+    
+    // Check extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const isImageExt = imageTypes.test(ext);
+    const isVideoExt = videoTypes.test(ext);
+    
+    // Check mime type
+    const isImageMime = file.mimetype.startsWith('image/');
+    const isVideoMime = file.mimetype.startsWith('video/');
+    
+    if ((isImageExt && isImageMime) || (isVideoExt && isVideoMime)) {
+      console.log('Story media file accepted');
+      return cb(null, true);
+    } else {
+      console.log('Story media file rejected - invalid type');
+      cb(new Error('Only image or video files are allowed for stories!'));
+    }
+  } else if (mediaType === 'photo' || file.fieldname === 'profile' || file.fieldname === 'image' || file.fieldname.startsWith('image')) {
     // For profile pictures and post images
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     // Check extension
@@ -84,6 +112,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     }
   } else {
     // Default for other file types
+    console.log('Unexpected file field:', file.fieldname);
     cb(new Error('Unexpected file field'));
   }
 };

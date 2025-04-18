@@ -1407,19 +1407,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new story
   app.post("/api/stories", upload.single('media'), async (req, res) => {
     try {
+      console.log('Story upload request received:', {
+        body: req.body,
+        file: req.file ? {
+          fieldname: req.file.fieldname,
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          filename: req.file.filename
+        } : 'No file uploaded',
+        isAuthenticated: req.isAuthenticated()
+      });
+      
       if (!req.file) {
+        console.log('No media file provided in the request');
         return res.status(400).json({ message: "No media file provided" });
       }
       
       // Verify user is authenticated
       if (!req.isAuthenticated()) {
+        console.log('User not authenticated');
         return res.status(401).json({ message: "Not authenticated" });
       }
+      
+      console.log('User from request:', req.user);
       
       // Extract data from form
       const userId = req.body.userId ? parseInt(req.body.userId) : req.user!.id;
       const mediaType = req.body.mediaType || 'image';
       const caption = req.body.caption || null;
+      
+      console.log('Extracted data:', { userId, mediaType, caption });
       
       // Create media URL
       const mediaUrl = `/uploads/${req.file.filename}`;
@@ -1432,13 +1450,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         caption
       };
       
+      console.log('Story data to be created:', storyData);
+      
       // Validate and create story
       const validatedData = insertStorySchema.parse(storyData);
       const story = await storage.createStory(validatedData);
       
+      console.log('Story created successfully:', story);
+      
       res.status(201).json(story);
     } catch (error) {
       console.error("Error creating story:", error);
+      
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+        if (error.stack) {
+          console.error("Error stack:", error.stack);
+        }
+      }
+      
       res.status(400).json({ 
         message: "Failed to create story", 
         error: error instanceof Error ? error.message : "Unknown error" 
