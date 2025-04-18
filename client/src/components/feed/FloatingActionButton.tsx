@@ -209,7 +209,8 @@ export function FloatingActionButton() {
         <DialogContent className={cn(
           "sm:max-w-[550px]", 
           // For fullscreen modals on audio/video/photo
-          (postType === "audio" || postType === "video" || postType === "photo") && "sm:max-w-[100vw] w-screen h-screen max-h-screen p-0"
+          (postType === "audio" || postType === "video" || postType === "photo") && 
+            "sm:max-w-[100vw] w-screen h-screen max-h-screen p-0 overflow-hidden bg-white border-0 sm:rounded-none"
         )}
         aria-describedby="post-creation-description"
         // Ensure fixed height for the top bar area for consistent alignment of X button with headers
