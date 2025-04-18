@@ -1405,10 +1405,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a new story
-  app.post("/api/stories", async (req, res) => {
+  app.post("/api/stories", upload.single('media'), async (req, res) => {
     try {
-      const validatedData = insertStorySchema.parse(req.body);
+      if (!req.file) {
+        return res.status(400).json({ message: "No media file provided" });
+      }
+      
+      // Verify user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Extract data from form
+      const userId = req.body.userId ? parseInt(req.body.userId) : req.user!.id;
+      const mediaType = req.body.mediaType || 'image';
+      const caption = req.body.caption || null;
+      
+      // Create media URL
+      const mediaUrl = `/uploads/${req.file.filename}`;
+      
+      // Create story object
+      const storyData = {
+        userId,
+        mediaUrl,
+        mediaType,
+        caption
+      };
+      
+      // Validate and create story
+      const validatedData = insertStorySchema.parse(storyData);
       const story = await storage.createStory(validatedData);
+      
       res.status(201).json(story);
     } catch (error) {
       console.error("Error creating story:", error);
