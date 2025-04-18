@@ -879,7 +879,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
 
       {/* Center Upload Button */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="bg-muted/50 rounded-lg p-10 flex flex-col items-center max-w-xs mx-auto">
+        <div className="bg-white rounded-lg p-10 flex flex-col items-center max-w-xs mx-auto">
           <div 
             onClick={triggerFileSelect}
             className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mb-4 cursor-pointer"
