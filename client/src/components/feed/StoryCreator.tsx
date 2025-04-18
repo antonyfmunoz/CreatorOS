@@ -87,11 +87,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
       // Force an immediate refetch
       queryClient.refetchQueries({ queryKey: ['/api/stories'] });
       
-      toast({
-        title: 'Story uploaded',
-        description: 'Your story has been successfully uploaded.',
-      });
-      
+      // Close the dialog (toast notification removed)
       handleClose();
     },
     onError: (error) => {
