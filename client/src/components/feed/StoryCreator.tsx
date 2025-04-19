@@ -400,21 +400,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   )}
                 </div>
                 
-                {/* Back button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-4 left-4 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50"
-                  onClick={() => {
-                    if (preview) {
-                      URL.revokeObjectURL(preview);
-                    }
-                    setSelectedFile(null);
-                    setPreview(null);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                {/* Removed back button as requested */}
                 
                 {/* Caption input */}
                 <div className="p-4 bg-white border-t">
