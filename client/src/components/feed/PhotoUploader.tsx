@@ -17,7 +17,8 @@ import {
   Instagram,
   Facebook,
   ShoppingBag,
-  Camera
+  Camera,
+  RefreshCw
 } from "lucide-react";
 import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
@@ -44,9 +45,14 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
   const [showTagLabels, setShowTagLabels] = useState(false);
   const [addToStory, setAddToStory] = useState(false);
+  const [cameraMode, setCameraMode] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [cameraError, setCameraError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const { toast } = useToast();
   const { user } = useAuth();
@@ -90,8 +96,123 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     }
   };
   
+  // Start camera with the current facing mode
+  const startCamera = async () => {
+    try {
+      // Stop any existing camera streams first
+      stopCamera();
+      
+      setCameraError(null);
+      setCameraMode(true);
+      
+      const constraints = {
+        audio: false,
+        video: { facingMode }, 
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setCameraError('Could not access camera. Please check permissions.');
+      setCameraMode(false);
+    }
+  };
+  
+  // Switch between front and back cameras
+  const switchCamera = async () => {
+    try {
+      const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+      setFacingMode(newFacingMode);
+      
+      // Stop current stream
+      stopCamera();
+      
+      // Request new stream with different camera
+      const constraints = {
+        audio: false,
+        video: { facingMode: newFacingMode }, 
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error switching camera:', error);
+      // Reset back to previous mode if switching failed
+      setFacingMode(facingMode);
+      startCamera();
+    }
+  };
+  
+  // Stop and release camera
+  const stopCamera = () => {
+    setCameraMode(false);
+    
+    // Get all tracks from the stream and stop them
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+  
+  // Take a photo from the camera stream
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    // Set canvas dimensions to match the video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw the current video frame to the canvas
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Apply horizontal flip for selfie camera
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+    
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to blob
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      
+      // Create a file from the blob
+      const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      // Create a preview URL
+      const previewUrl = URL.createObjectURL(blob);
+      
+      // Update state with the new file and preview
+      setImageFiles([...imageFiles, file]);
+      setImagePreviews([...imagePreviews, previewUrl]);
+      setCurrentImageIndex(imagePreviews.length); // Set to the new image
+      
+      // Exit camera mode
+      stopCamera();
+    }, 'image/jpeg', 0.95);
+  };
+  
   // Modified to handle custom close behavior for both screens
   const handleClose = useCallback(() => {
+    // Stop camera if it's active
+    stopCamera();
+    
     // On the post creation screen with uploaded images, go back to file selection
     if (imageFiles.length > 0) {
       // Revoke all object URLs to avoid memory leaks
@@ -889,47 +1010,97 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
 
       {/* Center content - perfectly centered on both X and Y axes */}
       <div className="absolute inset-0 flex items-center justify-center">
-        <div className="flex flex-col items-center w-full max-w-md px-4">
-          <DialogDescription className="text-center text-gray-500 mb-8">
-            Add photos or videos to your post to share with your followers.
-          </DialogDescription>
-          
-          <div className="w-full grid grid-cols-2 gap-4">
-            <Button
-              variant="outline"
-              size="lg"
-              className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
-              onClick={triggerFileSelect}
-            >
-              <Upload className="h-7 w-7 mb-2" />
-              <span>Upload</span>
-            </Button>
+        {!cameraMode ? (
+          <div className="flex flex-col items-center w-full max-w-md px-4">
+            <DialogDescription className="text-center text-gray-500 mb-8">
+              Add photos or videos to your post to share with your followers.
+            </DialogDescription>
             
-            <Button
-              variant="outline"
-              size="lg"
-              className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
-              onClick={() => {
-                toast({
-                  title: "Camera Feature",
-                  description: "The camera feature will be available soon.",
-                });
-              }}
-            >
-              <Camera className="h-7 w-7 mb-2" />
-              <span>Camera</span>
-            </Button>
+            <div className="w-full grid grid-cols-2 gap-4">
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                onClick={triggerFileSelect}
+              >
+                <Upload className="h-7 w-7 mb-2" />
+                <span>Upload</span>
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                onClick={startCamera}
+              >
+                <Camera className="h-7 w-7 mb-2" />
+                <span>Camera</span>
+              </Button>
+              
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+                multiple
+              />
+            </div>
             
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleFileChange}
-              multiple
-            />
+            {cameraError && (
+              <div className="text-red-500 text-center mt-2">
+                {cameraError}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="fixed inset-0 z-10 mt-12 bg-black">
+            {/* Camera view */}
+            <div className="flex flex-col items-center h-full">
+              <video 
+                ref={videoRef}
+                autoPlay 
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+                style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)' }} // Mirror for selfie view only
+              />
+              
+              {/* Hidden canvas for capturing images */}
+              <canvas ref={canvasRef} className="hidden" />
+              
+              {/* Camera controls */}
+              <div className="fixed bottom-10 inset-x-0 flex justify-center w-full gap-6">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
+                  onClick={stopCamera}
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+                
+                <Button
+                  variant="default"
+                  size="icon"
+                  className="rounded-full h-16 w-16 flex items-center justify-center"
+                  onClick={capturePhoto}
+                >
+                  <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
+                  onClick={switchCamera}
+                >
+                  <RefreshCw className="h-6 w-6" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
