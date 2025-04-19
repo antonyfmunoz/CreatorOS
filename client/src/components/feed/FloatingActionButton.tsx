@@ -134,10 +134,15 @@ export function FloatingActionButton() {
     <>
       <div className="fixed bottom-[80px] right-5 z-50">
         {/* Action menu */}
-        <div className={cn(
-          "flex flex-col-reverse items-center mb-3 transition-all duration-300 ease-in-out space-y-reverse space-y-3",
-          isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-        )}>
+        <div 
+          id="create-menu"
+          role="menu" 
+          aria-orientation="vertical"
+          aria-labelledby="create-menu-button"
+          className={cn(
+            "flex flex-col-reverse items-center mb-3 transition-all duration-300 ease-in-out space-y-reverse space-y-3",
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+          )}>
           {/* Story */}
           <TooltipProvider>
             <Tooltip>
@@ -157,6 +162,7 @@ export function FloatingActionButton() {
                     "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
                     state.enabled && "min-h-[48px] min-w-[48px]"
                   )}
+                  role="menuitem"
                   aria-label="Create Story"
                 >
                   <Clock className="h-5 w-5" aria-hidden="true" />
@@ -180,6 +186,7 @@ export function FloatingActionButton() {
                     "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
                     state.enabled && "min-h-[48px] min-w-[48px]"
                   )}
+                  role="menuitem"
                   aria-label="Create Text Post"
                 >
                   <Edit className="h-5 w-5" aria-hidden="true" />
@@ -203,6 +210,7 @@ export function FloatingActionButton() {
                     "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
                     state.enabled && "min-h-[48px] min-w-[48px]"
                   )}
+                  role="menuitem"
                   aria-label="Create Audio Post"
                 >
                   <Mic className="h-5 w-5" aria-hidden="true" />
@@ -226,6 +234,7 @@ export function FloatingActionButton() {
                     "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
                     state.enabled && "min-h-[48px] min-w-[48px]"
                   )}
+                  role="menuitem"
                   aria-label="Create Video Post"
                 >
                   <Video className="h-5 w-5" aria-hidden="true" />
@@ -249,6 +258,7 @@ export function FloatingActionButton() {
                     "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
                     state.enabled && "min-h-[48px] min-w-[48px]"
                   )}
+                  role="menuitem"
                   aria-label="Create Photo Post"
                 >
                   <Camera className="h-5 w-5" aria-hidden="true" />
@@ -263,6 +273,7 @@ export function FloatingActionButton() {
         
         {/* Main button */}
         <Button
+          id="create-menu-button"
           ref={mainButtonRef}
           onClick={toggleOpen}
           className={cn(
@@ -273,6 +284,7 @@ export function FloatingActionButton() {
           aria-expanded={isOpen}
           aria-label={isOpen ? "Close menu" : "Open create menu"}
           aria-controls="create-menu"
+          aria-haspopup="menu"
         >
           <Plus className="h-6 w-6" aria-hidden="true" />
           <span className="sr-only">{isOpen ? "Close menu" : "Create new content"}</span>
