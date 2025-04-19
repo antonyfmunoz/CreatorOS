@@ -948,7 +948,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             {/* Share Button */}
             <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
               <Button 
-                className="w-full rounded-md py-2 flex items-center justify-center"
+                className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
                 onClick={handlePost}
               >
                 Share
@@ -1169,7 +1169,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       {/* Fixed Share button at the bottom */}
       <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t">
         <Button 
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+          className="w-full bg-black hover:bg-gray-900 text-white"
           onClick={handlePost}
           disabled={createPostMutation.isPending || imageFiles.length === 0}
         >

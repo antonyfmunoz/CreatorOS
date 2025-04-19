@@ -252,7 +252,7 @@ export const PostOptionsPanel = ({ content, onContentChange, onShare }: PostOpti
       {/* Sticky Share Button at bottom of screen */}
       <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
         <Button 
-          className="w-full rounded-md py-2 flex items-center justify-center"
+          className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
           onClick={handleShareClick}
         >
           Share
