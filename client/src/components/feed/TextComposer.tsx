@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, Loader2 } from "lucide-react";
+import { X } from "lucide-react";
 import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "./PostOptionsPanel";
@@ -14,15 +14,13 @@ interface TextComposerProps {
 
 export const TextComposer = ({ onClose }: TextComposerProps) => {
   const [content, setContent] = useState("");
-  const [addToStory, setAddToStory] = useState(false);
   
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   
-  // Reference for the scrollable container
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
+  const [addToStory, setAddToStory] = useState(false);
+
   const createPostMutation = useMutation({
     mutationFn: async (postData: any) => {
       const res = await apiRequest('POST', '/api/posts', postData);
@@ -32,7 +30,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       // No toast notification, just update the cache
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
-      // If adding to story, also invalidate stories query to refresh immediately
+      // If post was added to story, refresh stories data
       if (addToStory) {
         console.log('Post added to story, refreshing stories data');
         queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
@@ -70,7 +68,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       return;
     }
     
-    const postData: any = {
+    const postData = {
       userId: user.id,
       content,
       mediaType: 'text',
@@ -80,15 +78,12 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     createPostMutation.mutate(postData);
   };
 
-  // Use a taller textarea to force scrolling like in the photo uploader
-  const textareaHeight = "180px";
-
   return (
-    <div className="flex flex-col h-full bg-background text-foreground">
+    <div className="flex flex-col w-full h-[100vh] bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Text Post</DialogTitle>
       
-      {/* Top Bar - Instagram-like header */}
-      <div className="flex justify-between items-center p-4 border-b h-[58px]">
+      {/* Top bar - exactly like photo uploader */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-white z-50">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -97,34 +92,38 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         >
           <X className="h-5 w-5" />
         </Button>
-        <h2 className="text-lg font-medium">New post</h2>
+        <span className="font-semibold text-lg">
+          New post
+        </span>
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
-      
-      {/* Scrollable Content - with ref for scrolling */}
-      <div 
-        ref={scrollContainerRef}
-        className="flex-grow overflow-y-auto relative"
-      >
-        {/* Caption input */}
-        <div className="p-4 border-b">
-          <textarea
-            className="w-full p-3 bg-background border border-border rounded resize-none"
-            placeholder="Write a caption..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            disabled={createPostMutation.isPending}
-            style={{ minHeight: textareaHeight }}
-          />
-        </div>
-        
-        {/* Options panel */}
-        <div className="pb-32"> {/* Add extra padding to ensure content is scrollable */}
-          <PostOptionsPanel 
-            content={content}
-            onContentChange={setContent}
-            onShare={handleSubmit}
-          />
+
+      {/* Main content area - will grow to fill available space */}
+      <div className="flex-grow overflow-auto">
+        <div className="flex flex-col w-full p-4">
+          <DialogDescription className="text-center text-gray-500 mb-4">
+            Create a text post to share with your followers.
+          </DialogDescription>
+          
+          {/* Text input area */}
+          <div className="mb-6 w-full">
+            <textarea
+              className="w-full p-4 min-h-[200px] bg-background border border-gray-200 rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="What's on your mind?"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              disabled={createPostMutation.isPending}
+            />
+          </div>
+          
+          {/* Options panel */}
+          <div className="pb-24"> {/* Add padding at bottom for scrolling */}
+            <PostOptionsPanel 
+              content={content}
+              onContentChange={setContent}
+              onShare={handleSubmit}
+            />
+          </div>
         </div>
       </div>
     </div>
