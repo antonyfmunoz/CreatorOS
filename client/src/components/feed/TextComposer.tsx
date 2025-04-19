@@ -90,21 +90,21 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-auto bg-white text-foreground">
+    <div className="flex flex-col h-full w-full max-w-full overflow-y-auto bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Post</DialogTitle>
       
       {/* Product Tagging Notice Box */}
-      <div className="m-4 p-4 rounded-lg bg-white border border-gray-200 shadow-sm">
+      <div className="mx-4 mt-4 mb-2 p-3 rounded-lg bg-white border border-gray-200 shadow-sm">
         <h3 className="font-semibold text-base">Product tagging</h3>
         <p className="text-gray-600 text-sm">Product tagging feature coming soon!</p>
       </div>
       
       {/* Poll Button */}
-      <div className="mx-4 mb-4">
+      <div className="mx-4 mb-2">
         <Button 
           variant="outline" 
           size="default" 
-          className="rounded-full w-full justify-start border border-gray-200 font-normal h-12"
+          className="rounded-full w-full justify-start border border-gray-200 font-normal h-10"
         >
           <BarChart2 className="h-5 w-5 mr-2 text-gray-500" />
           <span>Poll</span>
@@ -112,36 +112,36 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       </div>
       
       {/* Tag People */}
-      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+      <div className="flex justify-between items-center px-4 py-2.5 border-t border-gray-100">
         <div className="flex items-center">
-          <Users className="h-6 w-6 mr-3 text-gray-800" />
+          <Users className="h-5 w-5 mr-3 text-gray-800" />
           <span className="text-base">Tag people</span>
         </div>
         <ChevronRight className="h-5 w-5 text-gray-400" />
       </div>
       
       {/* Tag Product */}
-      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+      <div className="flex justify-between items-center px-4 py-2.5 border-t border-gray-100">
         <div className="flex items-center">
-          <ShoppingBag className="h-6 w-6 mr-3 text-gray-800" />
+          <ShoppingBag className="h-5 w-5 mr-3 text-gray-800" />
           <span className="text-base">Tag product</span>
         </div>
         <ChevronRight className="h-5 w-5 text-gray-400" />
       </div>
       
       {/* Add Location */}
-      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+      <div className="flex justify-between items-center px-4 py-2.5 border-t border-gray-100">
         <div className="flex items-center">
-          <MapPin className="h-6 w-6 mr-3 text-gray-800" />
+          <MapPin className="h-5 w-5 mr-3 text-gray-800" />
           <span className="text-base">Add location</span>
         </div>
         <ChevronRight className="h-5 w-5 text-gray-400" />
       </div>
       
       {/* Audience */}
-      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+      <div className="flex justify-between items-center px-4 py-2.5 border-t border-gray-100">
         <div className="flex items-center">
-          <Eye className="h-6 w-6 mr-3 text-gray-800" />
+          <Eye className="h-5 w-5 mr-3 text-gray-800" />
           <span className="text-base">Audience</span>
         </div>
         <div className="flex items-center">
@@ -151,7 +151,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       </div>
       
       {/* Post to section */}
-      <div className="px-4 py-3 border-t border-gray-100">
+      <div className="px-4 py-2 border-t border-gray-100">
         <div 
           className="flex justify-between items-center mb-2" 
           onClick={() => setIsPostToExpanded(!isPostToExpanded)}
@@ -165,7 +165,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         </div>
 
         {isPostToExpanded && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {/* X/Twitter */}
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-3">
@@ -173,14 +173,14 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                   <span className="text-white font-bold text-lg">𝕏</span>
                 </div>
                 <div>
-                  <p className="text-base font-normal">Connect X (Twitter)</p>
+                  <p className="text-sm font-normal">Connect X (Twitter)</p>
                   <p className="text-xs text-gray-500">Connect to share posts</p>
                 </div>
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="rounded-full px-4"
+                className="rounded-full px-3 py-1 h-7 text-sm"
                 onClick={() => handleConnectPlatform('twitter')}
               >
                 Connect
@@ -194,14 +194,14 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                   <span className="text-white font-bold text-lg">f</span>
                 </div>
                 <div>
-                  <p className="text-base font-normal">Connect Facebook</p>
+                  <p className="text-sm font-normal">Connect Facebook</p>
                   <p className="text-xs text-gray-500">Connect to share posts</p>
                 </div>
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="rounded-full px-4"
+                className="rounded-full px-3 py-1 h-7 text-sm"
                 onClick={() => handleConnectPlatform('facebook')}
               >
                 Connect
@@ -212,17 +212,17 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-gradient-to-tr from-purple-600 via-pink-500 to-yellow-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">📷</span>
+                  <span className="text-white text-base">📷</span>
                 </div>
                 <div>
-                  <p className="text-base font-normal">Connect Instagram</p>
+                  <p className="text-sm font-normal">Connect Instagram</p>
                   <p className="text-xs text-gray-500">Connect to share posts</p>
                 </div>
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="rounded-full px-4"
+                className="rounded-full px-3 py-1 h-7 text-sm"
                 onClick={() => handleConnectPlatform('instagram')}
               >
                 Connect
@@ -233,17 +233,17 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">♫</span>
+                  <span className="text-white text-base">♫</span>
                 </div>
                 <div>
-                  <p className="text-base font-normal">Connect TikTok</p>
+                  <p className="text-sm font-normal">Connect TikTok</p>
                   <p className="text-xs text-gray-500">Connect to share posts</p>
                 </div>
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="rounded-full px-4"
+                className="rounded-full px-3 py-1 h-7 text-sm"
                 onClick={() => handleConnectPlatform('tiktok')}
               >
                 Connect
@@ -253,10 +253,10 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         )}
       </div>
       
-      {/* Share Button - Fixed to bottom */}
-      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 mt-auto">
+      {/* Share Button - Fixed to bottom, gray and rounded like in the image */}
+      <div className="sticky bottom-0 left-0 right-0 px-4 py-2 bg-white border-t border-gray-200 mt-auto">
         <Button 
-          className="w-full rounded-md py-6 flex items-center justify-center bg-black text-white hover:bg-gray-900 h-12"
+          className="w-full rounded-lg h-10 flex items-center justify-center bg-gray-400 text-white hover:bg-gray-500"
           onClick={handleSubmit}
           disabled={createPostMutation.isPending || !content.trim()}
         >
