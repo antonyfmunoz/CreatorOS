@@ -1165,22 +1165,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           )}
         </div>
       </div>
-      
-      {/* Fixed Share button at the bottom */}
-      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t">
-        <Button 
-          className="w-full bg-black hover:bg-gray-900 text-white"
-          onClick={handlePost}
-          disabled={createPostMutation.isPending || imageFiles.length === 0}
-        >
-          {createPostMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sharing...
-            </>
-          ) : "Share"}
-        </Button>
-      </div>
     </div>
   );
 };
