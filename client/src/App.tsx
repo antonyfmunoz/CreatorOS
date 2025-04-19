@@ -26,6 +26,9 @@ import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { AccessibilityProvider } from "./hooks/use-accessibility";
+import { AccessibilityToggle } from "@/components/accessibility/AccessibilityPanel";
+import { SkipLinks, MainContentRegion } from "@/components/accessibility/SkipLinks";
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -90,16 +93,20 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <div className="app-container">
-          <main className="tab-content">
-            <Router />
-          </main>
-          {/* Notification components moved to the Explore page header */}
-          <BottomNavigation />
-          {isOpen && <ChatInterface />}
-        </div>
-        <Toaster />
-        <ToastContainer />
+        <AccessibilityProvider>
+          <SkipLinks />
+          <div className="app-container">
+            <MainContentRegion className="tab-content">
+              <Router />
+            </MainContentRegion>
+            {/* Notification components moved to the Explore page header */}
+            <BottomNavigation />
+            {isOpen && <ChatInterface />}
+            <AccessibilityToggle />
+          </div>
+          <Toaster />
+          <ToastContainer />
+        </AccessibilityProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

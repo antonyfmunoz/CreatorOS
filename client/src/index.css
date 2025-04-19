@@ -1,9 +1,9 @@
+/* Import accessibility styles */
+@import './styles/accessibility.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import accessibility styles */
-@import './styles/accessibility.css';
 
 @keyframes pulse-slow {
   0%, 100% {
