@@ -887,7 +887,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center content - exactly like story creator */}
+      {/* Center content - copied exactly from StoryCreator */}
       <div className="flex flex-col items-center justify-center mt-16">
         <div className="p-8 flex flex-col items-center">
           <DialogDescription className="text-center mb-6">
@@ -919,19 +919,18 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <Camera className="h-6 w-6 mb-2" />
               <span>Camera</span>
             </Button>
+            
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleFileChange}
+              multiple
+            />
           </div>
         </div>
       </div>
-      
-      {/* Hidden file input - now allows multiple selection */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        onChange={handleFileChange} 
-        accept="image/*"
-        multiple
-      />
     </div>
   );
 };
