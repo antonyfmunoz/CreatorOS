@@ -945,13 +945,13 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               </div>
             </div>
             
-            {/* Next Button */}
+            {/* Share Button */}
             <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
               <Button 
                 className="w-full rounded-md py-2 flex items-center justify-center"
-                onClick={() => setShowOptionsPanel(true)}
+                onClick={handlePost}
               >
-                Next
+                Share
               </Button>
             </div>
           </div>
