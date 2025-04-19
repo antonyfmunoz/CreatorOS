@@ -6,9 +6,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { 
   X, Hash, BarChart2, Users, MapPin, Eye, ChevronRight, Loader2
 } from "lucide-react";
-import { DialogTitle } from "@/components/ui/dialog";
+import { 
+  Dialog, DialogContent, DialogTitle
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 interface TextComposerProps {
   onClose: () => void;
@@ -86,26 +87,26 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     createPostMutation.mutate(postData);
   };
 
-  return (
-    <div className="flex flex-col w-full h-full bg-white">
-      <DialogTitle className="sr-only">Create New Text Post</DialogTitle>
+  // This is what gets rendered
+  const dialogContent = (
+    <>
+      <DialogTitle className="sr-only">New Text Post</DialogTitle>
       
-      {/* Top bar with X and title */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      {/* Top navigation bar */}
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 border-b bg-white z-10">
         <Button 
           variant="ghost" 
           size="icon" 
-          className="p-1" 
+          className="p-0.5 h-8 w-8 rounded-full" 
           onClick={onClose}
         >
           <X className="h-5 w-5" />
         </Button>
-        <h2 className="font-semibold text-base">New post</h2>
-        <div className="w-6"></div> {/* Empty spacer for balance */}
+        <span className="font-semibold text-base">New post</span>
+        <div className="w-8"></div> {/* Empty spacer for alignment */}
       </div>
 
-      {/* Main content area with scrolling */}
-      <div className="flex-grow overflow-y-auto">
+      <div className="pt-14 pb-16 overflow-y-auto h-[calc(100vh-100px)]">
         {/* Description */}
         <p className="text-center text-gray-500 text-sm py-4">
           Create a text post to share with your followers.
@@ -114,7 +115,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         {/* Text input area */}
         <div className="px-4 mb-5">
           <textarea
-            className="w-full p-3 bg-white border border-gray-200 rounded resize-none focus:outline-none focus:ring-0 text-base"
+            className="w-full p-3 bg-white border border-gray-200 rounded-md resize-none focus:outline-none focus:ring-0 text-base"
             placeholder="What's on your mind?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -124,20 +125,20 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         </div>
         
         {/* Quick actions */}
-        <div className="flex px-4 gap-3 mb-4">
+        <div className="flex px-4 gap-3 mb-3">
           <Button 
             variant="outline" 
-            className="rounded-full border border-gray-200 px-4 py-2 h-9"
+            className="rounded-full border border-gray-200 px-4 py-1 h-8"
           >
-            <Hash className="h-4 w-4 mr-2" />
+            <Hash className="h-4 w-4 mr-1.5" />
             <span className="text-sm">Hashtags</span>
           </Button>
           
           <Button 
             variant="outline" 
-            className="rounded-full border border-gray-200 px-4 py-2 h-9"
+            className="rounded-full border border-gray-200 px-4 py-1 h-8"
           >
-            <BarChart2 className="h-4 w-4 mr-2" />
+            <BarChart2 className="h-4 w-4 mr-1.5" />
             <span className="text-sm">Poll</span>
           </Button>
         </div>
@@ -146,7 +147,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
           <div className="flex items-center">
             <Users className="h-5 w-5 mr-3 text-black" />
-            <span className="text-base">Tag people</span>
+            <span>Tag people</span>
           </div>
           <ChevronRight className="h-5 w-5 text-gray-400" />
         </div>
@@ -155,13 +156,13 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
           <div className="flex items-center">
             <MapPin className="h-5 w-5 mr-3 text-black" />
-            <span className="text-base">Add location</span>
+            <span>Add location</span>
           </div>
           <ChevronRight className="h-5 w-5 text-gray-400" />
         </div>
         
         {/* Location suggestions */}
-        <div className="px-4 pb-3 flex gap-2 overflow-x-auto">
+        <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
           {suggestedLocations.map(location => (
             <div 
               key={location} 
@@ -176,19 +177,19 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
           <div className="flex items-center">
             <Eye className="h-5 w-5 mr-3 text-black" />
-            <span className="text-base">Audience</span>
+            <span>Audience</span>
           </div>
           <div className="flex items-center">
-            <span className="text-gray-500 mr-2">Everyone</span>
+            <span className="text-gray-500 mr-2 text-sm">Everyone</span>
             <ChevronRight className="h-5 w-5 text-gray-400" />
           </div>
         </div>
       </div>
       
       {/* Share Button - Fixed to bottom */}
-      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t mt-auto">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t">
         <Button 
-          className="w-full rounded-md py-2.5 flex items-center justify-center bg-black text-white hover:bg-gray-900"
+          className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
           onClick={handleSubmit}
           disabled={createPostMutation.isPending || !content.trim()}
         >
@@ -200,6 +201,8 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           ) : "Share"}
         </Button>
       </div>
-    </div>
+    </>
   );
+
+  return dialogContent;
 };
