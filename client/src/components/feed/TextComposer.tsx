@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { X, Loader2 } from "lucide-react";
-import { DialogTitle } from "@/components/ui/dialog";
+import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "./PostOptionsPanel";
 
@@ -20,8 +20,8 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   
-  // Keep track of whether we should show the options panel
-  const [showOptionsPanel, setShowOptionsPanel] = useState(true);
+  // Reference for the scrollable container
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const createPostMutation = useMutation({
     mutationFn: async (postData: any) => {
@@ -80,8 +80,11 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     createPostMutation.mutate(postData);
   };
 
+  // Use a taller textarea to force scrolling like in the photo uploader
+  const textareaHeight = "180px";
+
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
+    <div className="flex flex-col h-full bg-background text-foreground">
       <DialogTitle className="sr-only">Create New Text Post</DialogTitle>
       
       {/* Top Bar - Instagram-like header */}
@@ -98,8 +101,11 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
       
-      {/* Scrollable Content */}
-      <div className="flex-grow overflow-y-auto">
+      {/* Scrollable Content - with ref for scrolling */}
+      <div 
+        ref={scrollContainerRef}
+        className="flex-grow overflow-y-auto relative"
+      >
         {/* Caption input */}
         <div className="p-4 border-b">
           <textarea
@@ -108,15 +114,18 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             disabled={createPostMutation.isPending}
+            style={{ minHeight: textareaHeight }}
           />
         </div>
         
         {/* Options panel */}
-        <PostOptionsPanel 
-          content={content}
-          onContentChange={setContent}
-          onShare={handleSubmit}
-        />
+        <div className="pb-32"> {/* Add extra padding to ensure content is scrollable */}
+          <PostOptionsPanel 
+            content={content}
+            onContentChange={setContent}
+            onShare={handleSubmit}
+          />
+        </div>
       </div>
     </div>
   );
