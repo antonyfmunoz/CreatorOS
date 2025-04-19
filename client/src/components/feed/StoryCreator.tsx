@@ -416,7 +416,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                         Uploading...
                       </>
                     ) : (
-                      'Share to Story'
+                      'Share'
                     )}
                   </Button>
                 </div>
