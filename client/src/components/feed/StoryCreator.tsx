@@ -406,7 +406,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   />
                   
                   <Button
-                    className="w-full mt-4 bg-blue-500 hover:bg-blue-600"
+                    className="w-full mt-4 bg-black hover:bg-gray-900 text-white"
                     onClick={handleUpload}
                     disabled={uploadMutation.isPending}
                   >
