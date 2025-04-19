@@ -455,20 +455,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="flex justify-between items-center p-4 border-b h-[58px]">
           <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
           <h2 className="text-lg font-medium">New post</h2>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={handlePost}
-            disabled={createPostMutation.isPending || imageFiles.length === 0}
-            className="text-primary font-medium"
-          >
-            {createPostMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sharing...
-              </>
-            ) : "Share"}
-          </Button>
+          <div className="w-10 h-6"></div> {/* Empty space to balance the header */}
         </div>
         
         {/* Scrollable Content */}
@@ -1142,6 +1129,22 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             </div>
           </div>
         )}
+        
+        {/* Fixed Share button at the bottom */}
+        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t mt-auto">
+          <Button 
+            className="w-full bg-blue-500 hover:bg-blue-600"
+            onClick={handlePost}
+            disabled={createPostMutation.isPending || imageFiles.length === 0}
+          >
+            {createPostMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sharing...
+              </>
+            ) : "Share"}
+          </Button>
+        </div>
       </div>
     </div>
   );
