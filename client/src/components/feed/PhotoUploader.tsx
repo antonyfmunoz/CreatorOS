@@ -102,18 +102,35 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       // Stop any existing camera streams first
       stopCamera();
       
+      console.log('Starting camera with facing mode:', facingMode);
       setCameraError(null);
       setCameraMode(true);
       
+      // Short delay to ensure UI state is updated before attempting camera access
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const constraints = {
         audio: false,
-        video: { facingMode }, 
+        video: { 
+          facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }, 
       };
       
+      console.log('Requesting camera access with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('Camera access granted, setting up video stream');
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        
+        // Ensure the video element is properly initialized
+        videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded, video dimensions:', 
+            videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          if (videoRef.current) videoRef.current.play();
+        };
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
@@ -125,18 +142,32 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   // Switch between front and back cameras
   const switchCamera = async () => {
     try {
+      // Get the new facing mode (opposite of current)
       const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+      
+      // First set the facing mode
       setFacingMode(newFacingMode);
       
-      // Stop current stream
-      stopCamera();
+      // Get all tracks from the stream and stop them
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
+      // Set camera mode to maintain state
+      setCameraMode(true);
       
       // Request new stream with different camera
       const constraints = {
         audio: false,
-        video: { facingMode: newFacingMode }, 
+        video: { 
+          facingMode: newFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }, 
       };
       
+      console.log('Switching camera to:', newFacingMode);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       if (videoRef.current) {
@@ -144,9 +175,26 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       }
     } catch (error) {
       console.error('Error switching camera:', error);
-      // Reset back to previous mode if switching failed
-      setFacingMode(facingMode);
-      startCamera();
+      // If switching fails, attempt to revert to previous camera
+      const previousMode = facingMode; // Save current before changing
+      setFacingMode(previousMode);
+      
+      try {
+        const constraints = {
+          audio: false,
+          video: { facingMode: previousMode }
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (fallbackError) {
+        console.error('Failed to fallback to previous camera:', fallbackError);
+        setCameraError('Camera switching failed. Please try again.');
+        stopCamera();
+      }
     }
   };
   
