@@ -887,28 +887,28 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center content - copied exactly from StoryCreator */}
-      <div className="flex flex-col items-center justify-center mt-16">
-        <div className="p-8 flex flex-col items-center">
-          <DialogDescription className="text-center mb-6">
+      {/* Center content - styled to match the screenshots exactly */}
+      <div className="flex flex-col items-center justify-center h-[80vh]">
+        <div className="flex flex-col items-center max-w-md mx-auto px-4">
+          <DialogDescription className="text-center text-gray-500 mb-8">
             Add photos or videos to your post to share with your followers.
           </DialogDescription>
           
-          <div className="w-full flex gap-2 px-2">
+          <div className="w-full grid grid-cols-2 gap-4">
             <Button
               variant="outline"
               size="lg"
-              className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
+              className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
               onClick={triggerFileSelect}
             >
-              <Upload className="h-6 w-6 mb-2" />
+              <Upload className="h-7 w-7 mb-2" />
               <span>Upload</span>
             </Button>
             
             <Button
               variant="outline"
               size="lg"
-              className="flex flex-col items-center justify-center h-28 w-full rounded-lg border"
+              className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
               onClick={() => {
                 toast({
                   title: "Camera Feature",
@@ -916,7 +916,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 });
               }}
             >
-              <Camera className="h-6 w-6 mb-2" />
+              <Camera className="h-7 w-7 mb-2" />
               <span>Camera</span>
             </Button>
             
