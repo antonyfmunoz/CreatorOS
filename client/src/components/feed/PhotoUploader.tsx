@@ -48,6 +48,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   const [cameraMode, setCameraMode] = useState(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -943,15 +944,47 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out ${addToStory ? 'translate-x-5 left-2' : 'translate-x-0 left-1'}`}></div>
               </div>
             </div>
+            
+            {/* Next Button */}
+            <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
+              <Button 
+                className="w-full rounded-md py-2 flex items-center justify-center"
+                onClick={() => setShowOptionsPanel(true)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
           
-          {/* Original Options Panel (keeping for reference) */}
-          <div className="hidden">
-            <PostOptionsPanel 
-              content={content}
-              onContentChange={setContent}
-            />
-          </div>
+          {/* Options Panel shown when showOptionsPanel is true */}
+          {showOptionsPanel && (
+            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto flex flex-col">
+              {/* Top Bar */}
+              <div className="flex items-center justify-between px-4 py-3 border-b bg-white z-50">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="rounded-full h-8 w-8" 
+                  onClick={() => setShowOptionsPanel(false)}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <span className="font-semibold text-lg">
+                  New post
+                </span>
+                <div className="w-8"></div> {/* Spacer for centering title */}
+              </div>
+              
+              {/* Updated Options Panel with onShare handler */}
+              <div className="flex-grow overflow-auto">
+                <PostOptionsPanel 
+                  content={content}
+                  onContentChange={setContent}
+                  onShare={handlePost}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Poll Modal */}
           {isPollModalOpen && (
