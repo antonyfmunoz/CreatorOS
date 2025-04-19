@@ -3,8 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { Loader2, Type, Image, Rocket, Video, MapPin, ChevronLeft } from "lucide-react";
+import { Loader2, Users, BarChart2, ChevronRight, MapPin, Eye, ShoppingBag } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -14,13 +13,19 @@ interface TextComposerProps {
 
 export const TextComposer = ({ onClose }: TextComposerProps) => {
   const [content, setContent] = useState("");
-  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
   const [addToStory, setAddToStory] = useState(false);
+  const [isPostToExpanded, setIsPostToExpanded] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Sample location suggestions - in a real app these would be dynamic based on user location
+  const suggestedLocations = [
+    "Villa del Palmar Cancun Beach Resort",
+    "Davino Restaurante"
+  ];
   
   const createPostMutation = useMutation({
     mutationFn: async (postData: any) => {
@@ -34,10 +39,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       // If adding to story, also invalidate stories query to refresh immediately
       if (addToStory) {
         console.log('Post added to story, refreshing stories data');
-        // Invalidate the cache first
         queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
-        
-        // Force an immediate refetch to update the UI
         queryClient.refetchQueries({ queryKey: ['/api/stories'] });
       }
       
@@ -81,141 +83,190 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     
     createPostMutation.mutate(postData);
   };
+  
+  // These handlers would initiate OAuth flows with each platform
+  const handleConnectPlatform = (platform: string) => {
+    console.log(`Connecting to ${platform}...`);
+  };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-white text-foreground">
+    <div className="flex flex-col h-full overflow-auto bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Post</DialogTitle>
       
-      {/* Top Bar - Instagram-like header */}
-      <div className="flex justify-between items-center p-4 border-b h-[58px]">
-        <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
-        <h2 className="text-lg font-medium">New post</h2>
-        <div className="w-10 h-6"></div> {/* Empty space to balance the header */}
+      {/* Product Tagging Notice Box */}
+      <div className="m-4 p-4 rounded-lg bg-white border border-gray-200 shadow-sm">
+        <h3 className="font-semibold text-base">Product tagging</h3>
+        <p className="text-gray-600 text-sm">Product tagging feature coming soon!</p>
       </div>
       
-      {/* Main content */}
-      <div className="flex-grow overflow-hidden flex flex-col">
-        {!showOptionsPanel && (
-          <div className="flex-grow flex flex-col overflow-y-auto">
-            {/* Compose Area */}
-            <div className="p-4 flex-grow">
-              <textarea
-                className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full h-full min-h-[200px]"
-                placeholder="What's happening?"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                disabled={createPostMutation.isPending}
-                autoFocus
-              ></textarea>
-            </div>
-            
-            {/* Media Toolbar */}
-            <div className="border-t border-b p-2 flex justify-center space-x-8">
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Type className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Image className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Rocket className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Video className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <span className="text-sm font-bold">GIF</span>
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <MapPin className="h-5 w-5" />
-              </Button>
-            </div>
-            
-            {/* Options Menu Buttons */}
-            <div className="space-y-2 p-4">
+      {/* Poll Button */}
+      <div className="mx-4 mb-4">
+        <Button 
+          variant="outline" 
+          size="default" 
+          className="rounded-full w-full justify-start border border-gray-200 font-normal h-12"
+        >
+          <BarChart2 className="h-5 w-5 mr-2 text-gray-500" />
+          <span>Poll</span>
+        </Button>
+      </div>
+      
+      {/* Tag People */}
+      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+        <div className="flex items-center">
+          <Users className="h-6 w-6 mr-3 text-gray-800" />
+          <span className="text-base">Tag people</span>
+        </div>
+        <ChevronRight className="h-5 w-5 text-gray-400" />
+      </div>
+      
+      {/* Tag Product */}
+      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+        <div className="flex items-center">
+          <ShoppingBag className="h-6 w-6 mr-3 text-gray-800" />
+          <span className="text-base">Tag product</span>
+        </div>
+        <ChevronRight className="h-5 w-5 text-gray-400" />
+      </div>
+      
+      {/* Add Location */}
+      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+        <div className="flex items-center">
+          <MapPin className="h-6 w-6 mr-3 text-gray-800" />
+          <span className="text-base">Add location</span>
+        </div>
+        <ChevronRight className="h-5 w-5 text-gray-400" />
+      </div>
+      
+      {/* Audience */}
+      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-100">
+        <div className="flex items-center">
+          <Eye className="h-6 w-6 mr-3 text-gray-800" />
+          <span className="text-base">Audience</span>
+        </div>
+        <div className="flex items-center">
+          <span className="text-gray-500 mr-2">Everyone</span>
+          <ChevronRight className="h-5 w-5 text-gray-400" />
+        </div>
+      </div>
+      
+      {/* Post to section */}
+      <div className="px-4 py-3 border-t border-gray-100">
+        <div 
+          className="flex justify-between items-center mb-2" 
+          onClick={() => setIsPostToExpanded(!isPostToExpanded)}
+          role="button"
+          aria-expanded={isPostToExpanded}
+        >
+          <span className="font-medium">Post to</span>
+          <ChevronRight 
+            className={`h-5 w-5 text-gray-400 transform transition-transform ${isPostToExpanded ? 'rotate-90' : ''}`} 
+          />
+        </div>
+
+        {isPostToExpanded && (
+          <div className="space-y-4">
+            {/* X/Twitter */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">𝕏</span>
+                </div>
+                <div>
+                  <p className="text-base font-normal">Connect X (Twitter)</p>
+                  <p className="text-xs text-gray-500">Connect to share posts</p>
+                </div>
+              </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full justify-between rounded-full text-sm h-9 py-2 px-4 bg-transparent"
-                onClick={() => setShowOptionsPanel(true)}
+                className="rounded-full px-4"
+                onClick={() => handleConnectPlatform('twitter')}
               >
-                <div className="flex items-center">
-                  <span className="mr-2 text-muted-foreground">#</span>
-                  <span>Hashtags</span>
-                </div>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full justify-between rounded-full text-sm h-9 py-2 px-4 bg-transparent"
-                onClick={() => setShowOptionsPanel(true)}
-              >
-                <div className="flex items-center">
-                  <span className="mr-2 text-muted-foreground">👤</span>
-                  <span>Tag people</span>
-                </div>
-                <ChevronLeft className="h-4 w-4 rotate-180" />
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full justify-between rounded-full text-sm h-9 py-2 px-4 bg-transparent"
-                onClick={() => setShowOptionsPanel(true)}
-              >
-                <div className="flex items-center">
-                  <span className="mr-2 text-muted-foreground">📍</span>
-                  <span>Add location</span>
-                </div>
-                <ChevronLeft className="h-4 w-4 rotate-180" />
+                Connect
               </Button>
             </div>
             
-            {/* Share Button */}
-            <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
+            {/* Facebook */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">f</span>
+                </div>
+                <div>
+                  <p className="text-base font-normal">Connect Facebook</p>
+                  <p className="text-xs text-gray-500">Connect to share posts</p>
+                </div>
+              </div>
               <Button 
-                className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
-                onClick={handleSubmit}
-                disabled={createPostMutation.isPending || !content.trim()}
+                variant="outline" 
+                size="sm" 
+                className="rounded-full px-4"
+                onClick={() => handleConnectPlatform('facebook')}
               >
-                {createPostMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sharing...
-                  </>
-                ) : "Share"}
+                Connect
+              </Button>
+            </div>
+            
+            {/* Instagram */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-tr from-purple-600 via-pink-500 to-yellow-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">📷</span>
+                </div>
+                <div>
+                  <p className="text-base font-normal">Connect Instagram</p>
+                  <p className="text-xs text-gray-500">Connect to share posts</p>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="rounded-full px-4"
+                onClick={() => handleConnectPlatform('instagram')}
+              >
+                Connect
+              </Button>
+            </div>
+            
+            {/* TikTok */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">♫</span>
+                </div>
+                <div>
+                  <p className="text-base font-normal">Connect TikTok</p>
+                  <p className="text-xs text-gray-500">Connect to share posts</p>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="rounded-full px-4"
+                onClick={() => handleConnectPlatform('tiktok')}
+              >
+                Connect
               </Button>
             </div>
           </div>
         )}
-        
-        {/* Options Panel shown when showOptionsPanel is true */}
-        {showOptionsPanel && (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center p-3 border-b">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="p-1 mr-3"
-                onClick={() => setShowOptionsPanel(false)}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <h3 className="text-lg font-medium flex-grow text-center">Post options</h3>
-              <div className="w-8"></div> {/* Spacer for centering title */}
-            </div>
-            
-            {/* Updated Options Panel with onShare handler */}
-            <div className="flex-grow overflow-auto">
-              <PostOptionsPanel 
-                content={content}
-                onContentChange={setContent}
-                onShare={handleSubmit}
-              />
-            </div>
-          </div>
-        )}
+      </div>
+      
+      {/* Share Button - Fixed to bottom */}
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 mt-auto">
+        <Button 
+          className="w-full rounded-md py-6 flex items-center justify-center bg-black text-white hover:bg-gray-900 h-12"
+          onClick={handleSubmit}
+          disabled={createPostMutation.isPending || !content.trim()}
+        >
+          {createPostMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sharing...
+            </>
+          ) : "Share"}
+        </Button>
       </div>
     </div>
   );
