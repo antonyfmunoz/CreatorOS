@@ -1024,11 +1024,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   
   // Photo selection mode with Instagram-inspired UI, similar to story creator
   return (
-    <div className="relative w-full h-[100vh] bg-white text-foreground">
+    <div className="flex flex-col w-full h-[100vh] bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
       {/* Top bar - exactly like story creator */}
-      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-white z-50">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -1043,108 +1043,110 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center content - perfectly centered on both X and Y axes */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        {!cameraMode ? (
-          <div className="flex flex-col items-center w-full max-w-md px-4">
-            <DialogDescription className="text-center text-gray-500 mb-8">
-              Add photos or videos to your post to share with your followers.
-            </DialogDescription>
-            
-            <div className="w-full grid grid-cols-2 gap-4">
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
-                onClick={triggerFileSelect}
-              >
-                <Upload className="h-7 w-7 mb-2" />
-                <span>Upload</span>
-              </Button>
+      {/* Main content area - will grow to fill available space */}
+      <div className="flex-grow overflow-auto">
+        <div className="flex items-center justify-center min-h-full">
+          {!cameraMode ? (
+            <div className="flex flex-col items-center w-full max-w-md px-4">
+              <DialogDescription className="text-center text-gray-500 mb-8">
+                Add photos or videos to your post to share with your followers.
+              </DialogDescription>
               
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
-                onClick={startCamera}
-              >
-                <Camera className="h-7 w-7 mb-2" />
-                <span>Camera</span>
-              </Button>
-              
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleFileChange}
-                multiple
-              />
-            </div>
-            
-            {cameraError && (
-              <div className="text-red-500 text-center mt-2">
-                {cameraError}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="fixed inset-0 z-10 mt-12 bg-black">
-            {/* Camera view */}
-            <div className="flex flex-col items-center h-full">
-              <video 
-                ref={videoRef}
-                autoPlay 
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)' }} // Mirror for selfie view only
-              />
-              
-              {/* Hidden canvas for capturing images */}
-              <canvas ref={canvasRef} className="hidden" />
-              
-              {/* Camera controls */}
-              <div className="fixed bottom-10 inset-x-0 flex justify-center w-full gap-6">
-                {/* Removed the X button as requested, but keeping camera exit functionality via the capture photo button */}
-                
+              <div className="w-full grid grid-cols-2 gap-4">
                 <Button
-                  variant="default"
-                  size="icon"
-                  className="rounded-full h-16 w-16 flex items-center justify-center"
-                  onClick={capturePhoto}
+                  variant="outline"
+                  size="lg"
+                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  onClick={triggerFileSelect}
                 >
-                  <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
+                  <Upload className="h-7 w-7 mb-2" />
+                  <span>Upload</span>
                 </Button>
                 
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
-                  onClick={switchCamera}
+                  size="lg"
+                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  onClick={startCamera}
                 >
-                  <RefreshCw className="h-6 w-6" />
+                  <Camera className="h-7 w-7 mb-2" />
+                  <span>Camera</span>
                 </Button>
+                
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  multiple
+                />
+              </div>
+              
+              {cameraError && (
+                <div className="text-red-500 text-center mt-2">
+                  {cameraError}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-full h-full bg-black">
+              {/* Camera view */}
+              <div className="flex flex-col items-center h-full">
+                <video 
+                  ref={videoRef}
+                  autoPlay 
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)' }} // Mirror for selfie view only
+                />
+                
+                {/* Hidden canvas for capturing images */}
+                <canvas ref={canvasRef} className="hidden" />
+                
+                {/* Camera controls */}
+                <div className="fixed bottom-24 inset-x-0 flex justify-center w-full gap-6">
+                  {/* Removed the X button as requested, but keeping camera exit functionality via the capture photo button */}
+                  
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="rounded-full h-16 w-16 flex items-center justify-center"
+                    onClick={capturePhoto}
+                  >
+                    <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
+                    onClick={switchCamera}
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        
-        {/* Fixed Share button at the bottom */}
-        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t mt-auto">
-          <Button 
-            className="w-full bg-blue-500 hover:bg-blue-600"
-            onClick={handlePost}
-            disabled={createPostMutation.isPending || imageFiles.length === 0}
-          >
-            {createPostMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sharing...
-              </>
-            ) : "Share"}
-          </Button>
+          )}
         </div>
+      </div>
+      
+      {/* Fixed Share button at the bottom */}
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t">
+        <Button 
+          className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+          onClick={handlePost}
+          disabled={createPostMutation.isPending || imageFiles.length === 0}
+        >
+          {createPostMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sharing...
+            </>
+          ) : "Share"}
+        </Button>
       </div>
     </div>
   );
