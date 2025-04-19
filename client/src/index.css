@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import accessibility styles */
+@import './styles/accessibility.css';
+
 @keyframes pulse-slow {
   0%, 100% {
     transform: scale(1) translate(-50%, -50%);
