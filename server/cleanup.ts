@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { posts, stories } from "../shared/schema";
-import { eq, or } from "drizzle-orm";
+import { eq, or, like } from "drizzle-orm";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -22,8 +22,11 @@ export async function cleanupOrphanedStories(): Promise<number> {
       // Skip stories without mediaUrl
       if (!story.mediaUrl) continue;
       
-      // Try to find any post with this media URL
-      const postsWithMedia = await db
+      // Extract the base filename for more flexible matching
+      const storyFilename = story.mediaUrl.split('/').pop();
+      
+      // Try to find any post with matching media URL
+      let postsWithMedia = await db
         .select()
         .from(posts)
         .where(
@@ -34,7 +37,27 @@ export async function cleanupOrphanedStories(): Promise<number> {
           )
         );
       
-      // If no posts found with this media URL, delete the story
+      // If no exact match was found, try to match by filename
+      if (postsWithMedia.length === 0 && storyFilename) {
+        postsWithMedia = await db
+          .select()
+          .from(posts)
+          .where(
+            or(
+              like(posts.imageUrl, `%${storyFilename}`),
+              like(posts.videoUrl, `%${storyFilename}`),
+              like(posts.audioUrl, `%${storyFilename}`)
+            )
+          ).where(
+            or(
+              eq(posts.imageUrl, null).not(),
+              eq(posts.videoUrl, null).not(),
+              eq(posts.audioUrl, null).not()
+            )
+          );
+      }
+      
+      // If still no posts found with this media URL, delete the story
       if (postsWithMedia.length === 0) {
         console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
         await db.delete(stories).where(eq(stories.id, story.id));
@@ -60,15 +83,15 @@ export function scheduleCleanupTasks() {
     console.log(`Initial cleanup completed: removed ${count} orphaned stories`);
   });
   
-  // Schedule the cleanup to run every hour
-  const ONE_HOUR_MS = 60 * 60 * 1000;
+  // Schedule the cleanup to run every 5 minutes
+  const FIVE_MINUTES_MS = 5 * 60 * 1000;
   setInterval(() => {
     cleanupOrphanedStories().then(count => {
       if (count > 0) {
         console.log(`Scheduled cleanup completed: removed ${count} orphaned stories`);
       }
     });
-  }, ONE_HOUR_MS);
+  }, FIVE_MINUTES_MS);
   
-  console.log("Automated story cleanup scheduled to run every hour");
+  console.log("Automated story cleanup scheduled to run every 5 minutes");
 }

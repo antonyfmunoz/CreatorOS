@@ -2037,6 +2037,17 @@ export class DatabaseStorage implements IStorage {
             console.log(`Exact match found! Deleting story with ID ${story.id}`);
             await db.delete(stories).where(eq(stories.id, story.id));
           }
+          
+          // Additional check: Compare filenames regardless of path
+          if (mediaUrl && story.mediaUrl) {
+            const mediaFilename = mediaUrl.split('/').pop();
+            const storyFilename = story.mediaUrl.split('/').pop();
+            
+            if (mediaFilename && storyFilename && mediaFilename === storyFilename) {
+              console.log(`Filename match found! Deleting story with ID ${story.id}`);
+              await db.delete(stories).where(eq(stories.id, story.id));
+            }
+          }
         }
         
         // Additional checks for the media URL
