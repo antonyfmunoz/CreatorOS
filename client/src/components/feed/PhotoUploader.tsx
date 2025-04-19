@@ -872,7 +872,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
       {/* Top bar - exactly like story creator */}
-      <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
+      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -887,9 +887,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center content - styled to match the screenshots exactly */}
-      <div className="flex flex-col items-center justify-center h-[80vh]">
-        <div className="flex flex-col items-center max-w-md mx-auto px-4">
+      {/* Center content - perfectly centered on both X and Y axes */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="flex flex-col items-center w-full max-w-md px-4">
           <DialogDescription className="text-center text-gray-500 mb-8">
             Add photos or videos to your post to share with your followers.
           </DialogDescription>

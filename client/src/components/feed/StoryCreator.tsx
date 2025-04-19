@@ -290,9 +290,9 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
           <div className="w-8"></div> {/* Spacer for centering title */}
         </div>
         
-        <div className="flex flex-col items-center justify-center h-[80vh]">
+        <div className="absolute inset-0 flex items-center justify-center">
           {!preview && !cameraMode ? (
-            <div className="flex flex-col items-center max-w-md mx-auto px-4">
+            <div className="flex flex-col items-center w-full max-w-md px-4">
               <DialogDescription className="text-center text-gray-500 mb-8">
                 Add photos or videos to your story. They'll disappear after 24 hours.
               </DialogDescription>
