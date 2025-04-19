@@ -45,7 +45,7 @@ const BottomNavigation = () => {
                   <span className={cn(
                     "text-xs mt-1",
                     state.textSize === 'large' && "text-sm",
-                    state.textSize === 'larger' && "text-base"
+                    state.textSize === 'extra-large' && "text-base"
                   )}>
                     {tab.label}
                   </span>
