@@ -6,9 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { 
   X, Hash, BarChart2, Users, MapPin, Eye, ChevronRight, Loader2
 } from "lucide-react";
-import { 
-  Dialog, DialogContent, DialogTitle
-} from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
 interface TextComposerProps {
@@ -87,26 +85,26 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     createPostMutation.mutate(postData);
   };
 
-  // This is what gets rendered
-  const dialogContent = (
-    <>
+  return (
+    <div className="flex flex-col w-full h-full bg-white">
       <DialogTitle className="sr-only">New Text Post</DialogTitle>
       
-      {/* Top navigation bar */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 border-b bg-white z-10">
+      {/* Top bar with X and title */}
+      <div className="flex items-center justify-between px-4 py-3 border-b">
         <Button 
           variant="ghost" 
           size="icon" 
-          className="p-0.5 h-8 w-8 rounded-full" 
+          className="p-1 h-9 w-9" 
           onClick={onClose}
         >
           <X className="h-5 w-5" />
         </Button>
-        <span className="font-semibold text-base">New post</span>
-        <div className="w-8"></div> {/* Empty spacer for alignment */}
+        <h2 className="font-semibold text-base">New post</h2>
+        <div className="w-9"></div> {/* Empty spacer for alignment */}
       </div>
 
-      <div className="pt-14 pb-16 overflow-y-auto h-[calc(100vh-100px)]">
+      {/* Main content area with scrolling */}
+      <div className="flex-grow overflow-y-auto">
         {/* Description */}
         <p className="text-center text-gray-500 text-sm py-4">
           Create a text post to share with your followers.
@@ -187,7 +185,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       </div>
       
       {/* Share Button - Fixed to bottom */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t">
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t mt-auto">
         <Button 
           className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
           onClick={handleSubmit}
@@ -201,8 +199,6 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           ) : "Share"}
         </Button>
       </div>
-    </>
+    </div>
   );
-
-  return dialogContent;
 };
