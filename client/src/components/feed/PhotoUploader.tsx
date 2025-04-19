@@ -24,7 +24,7 @@ import { LocationPicker, type LocationData } from "@/components/feed/LocationPic
 import { TagEditor, type TaggedUser } from "@/components/feed/TagEditor";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { DialogTitle } from "@/components/ui/dialog";
+import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 interface PhotoUploaderProps {
@@ -871,7 +871,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     <div className="relative w-full h-[100vh] bg-white text-foreground">
       <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
       
-      {/* Top bar - similar to story creator */}
+      {/* Top bar - exactly like story creator */}
       <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
         <Button 
           variant="ghost" 
@@ -887,14 +887,14 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="w-8"></div> {/* Spacer for centering title */}
       </div>
 
-      {/* Center content - similar to story creator */}
-      <div className="flex flex-col items-center justify-center mt-16 pt-4">
+      {/* Center content - exactly like story creator */}
+      <div className="flex flex-col items-center justify-center mt-16">
         <div className="p-8 flex flex-col items-center">
-          <p className="text-center mb-6">
-            Share photos or videos with your followers.
-          </p>
+          <DialogDescription className="text-center mb-6">
+            Add photos or videos to your post to share with your followers.
+          </DialogDescription>
           
-          <div className="w-full flex gap-2 px-2 mb-6">
+          <div className="w-full flex gap-2 px-2">
             <Button
               variant="outline"
               size="lg"
