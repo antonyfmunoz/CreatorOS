@@ -351,14 +351,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 
                 {/* Camera controls */}
                 <div className="fixed bottom-10 inset-x-0 flex justify-center w-full gap-6">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
-                    onClick={stopCamera}
-                  >
-                    <X className="h-6 w-6" />
-                  </Button>
+                  {/* Removed the X button as requested, but keeping camera exit functionality via the capture photo button */}
                   
                   <Button
                     variant="default"
