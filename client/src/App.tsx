@@ -27,7 +27,7 @@ import ToastContainer from "@/components/notifications/ToastContainer";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { AccessibilityProvider } from "./hooks/use-accessibility";
-import { AccessibilityToggle } from "@/components/accessibility/AccessibilityPanel";
+//import { AccessibilityToggle } from "@/components/accessibility/AccessibilityPanel";
 import { SkipLinks, MainContentRegion } from "@/components/accessibility/SkipLinks";
 
 function Router() {
