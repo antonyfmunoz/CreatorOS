@@ -102,7 +102,6 @@ function App() {
             {/* Notification components moved to the Explore page header */}
             <BottomNavigation />
             {isOpen && <ChatInterface />}
-            <AccessibilityToggle />
           </div>
           <Toaster />
           <ToastContainer />
