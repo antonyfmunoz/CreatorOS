@@ -133,209 +133,197 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
         >
           <X className="h-5 w-5" />
         </Button>
-        <h2 className="font-semibold text-base">New post</h2>
+        <h2 className="font-semibold text-base">New Post</h2>
         <div className="w-9"></div> {/* Empty spacer for alignment */}
       </div>
 
       {/* Main content area with scrolling */}
       <div className="flex-grow overflow-y-auto">
-        {/* Description */}
-        <p className="text-center text-gray-500 text-sm py-4">
-          Create a text post to share with your followers.
-        </p>
+        {/* Container with max-width for better mobile alignment */}
+        <div className="container max-w-lg mx-auto">
         
-        {/* Text input area */}
-        <div className="px-4 mb-5">
-          <textarea
-            className="w-full p-3 bg-white border border-gray-200 rounded-md resize-none focus:outline-none focus:ring-0 text-base"
-            placeholder="What's on your mind?"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            disabled={createPostMutation.isPending}
-            rows={6}
-          />
-        </div>
-        
-        {/* Quick actions */}
-        <div className="flex px-4 gap-3 mb-3">
-          <Button 
-            variant="outline" 
-            className="rounded-full border border-gray-200 px-4 py-1 h-8"
-          >
-            <Hash className="h-4 w-4 mr-1.5" />
-            <span className="text-sm">Hashtags</span>
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            className="rounded-full border border-gray-200 px-4 py-1 h-8"
-          >
-            <BarChart2 className="h-4 w-4 mr-1.5" />
-            <span className="text-sm">Poll</span>
-          </Button>
-        </div>
-        
-        {/* Tag People */}
-        <div className="flex flex-col px-4 py-3 border-t border-gray-100">
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center">
-              <Users className="h-5 w-5 mr-3 text-black" />
-              <span>Tag people</span>
-            </div>
-            <ChevronRight className="h-5 w-5 text-gray-400" />
-          </div>
-          <input 
-            type="text" 
-            placeholder="Tag people..." 
-            className="w-full p-2 border border-gray-200 rounded-md"
-            value={tagText}
-            onChange={(e) => setTagText(e.target.value)}
-          />
-        </div>
-        
-        {/* Add Location */}
-        <div className="flex flex-col px-4 py-3 border-t border-gray-100">
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center">
-              <MapPin className="h-5 w-5 mr-3 text-black" />
-              <span>Add location</span>
-            </div>
-            <ChevronRight className="h-5 w-5 text-gray-400" />
-          </div>
-          <input 
-            type="text" 
-            placeholder="Search for location..." 
-            className="w-full p-2 border border-gray-200 rounded-md"
-            value={locationText}
-            onChange={(e) => setLocationText(e.target.value)}
-          />
-          
-          {/* Location suggestions */}
-          <div className="mt-2 flex gap-2 overflow-x-auto">
-            {suggestedLocations.map(location => (
-              <div 
-                key={location} 
-                className="bg-gray-100 text-black px-3 py-1 rounded-full whitespace-nowrap text-sm cursor-pointer"
-                onClick={() => setLocationText(location)}
-              >
-                {location}
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* Audience */}
-        <div className="flex flex-col px-4 py-3 border-t border-gray-100">
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center">
-              <Eye className="h-5 w-5 mr-3 text-black" />
-              <span>Audience</span>
-            </div>
-          </div>
-          <Select value={audience} onValueChange={setAudience}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select audience" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="everyone">Everyone</SelectItem>
-              <SelectItem value="friends">Friends only</SelectItem>
-              <SelectItem value="private">Private</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        {/* Social Media Connections */}
-        <div className="px-4 py-3 border-t border-gray-100">
-          <h3 className="font-semibold mb-3">Post to</h3>
-          
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center">
-              <Checkbox 
-                id="twitter" 
-                checked={connectTwitter} 
-                onCheckedChange={(checked) => setConnectTwitter(checked === true)}
-                className="mr-3"
-              />
-              <Label htmlFor="twitter" className="flex items-center">
-                <Twitter className="h-4 w-4 mr-2 text-blue-400" />
-                Connect X (Twitter)
-              </Label>
-            </div>
-            
-            <div className="flex items-center">
-              <Checkbox 
-                id="facebook" 
-                checked={connectFacebook} 
-                onCheckedChange={(checked) => setConnectFacebook(checked === true)}
-                className="mr-3"
-              />
-              <Label htmlFor="facebook" className="flex items-center">
-                <Facebook className="h-4 w-4 mr-2 text-blue-600" />
-                Connect Facebook
-              </Label>
-            </div>
-            
-            <div className="flex items-center">
-              <Checkbox 
-                id="instagram" 
-                checked={connectInstagram} 
-                onCheckedChange={(checked) => setConnectInstagram(checked === true)}
-                className="mr-3"
-              />
-              <Label htmlFor="instagram" className="flex items-center">
-                <Instagram className="h-4 w-4 mr-2 text-pink-500" />
-                Connect Instagram
-              </Label>
-            </div>
-            
-            <div className="flex items-center">
-              <Checkbox 
-                id="tiktok" 
-                checked={connectTikTok} 
-                onCheckedChange={(checked) => setConnectTikTok(checked === true)}
-                className="mr-3"
-              />
-              <Label htmlFor="tiktok" className="flex items-center">
-                <Video className="h-4 w-4 mr-2 text-black" />
-                Connect TikTok
-              </Label>
-            </div>
-            
-            <div className="flex items-center">
-              <Checkbox 
-                id="youtube" 
-                checked={connectYouTube} 
-                onCheckedChange={(checked) => setConnectYouTube(checked === true)}
-                className="mr-3"
-              />
-              <Label htmlFor="youtube" className="flex items-center">
-                <Youtube className="h-4 w-4 mr-2 text-red-600" />
-                Connect YouTube
-              </Label>
-            </div>
-          </div>
-        </div>
-        
-        {/* Add to Story Option */}
-        <div className="px-4 py-3 border-t border-gray-100">
-          <div className="flex items-center">
-            <Checkbox 
-              id="add-story" 
-              checked={addToStory} 
-              onCheckedChange={(checked) => setAddToStory(checked === true)}
-              className="mr-3"
+          {/* Text input area */}
+          <div className="px-4 mb-5">
+            <textarea
+              className="w-full p-3 bg-gray-100 border-none rounded-xl resize-none focus:outline-none focus:ring-0 text-base"
+              placeholder="What's on your mind?"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              disabled={createPostMutation.isPending}
+              rows={5}
             />
-            <Label htmlFor="add-story">
-              Add to Your Story
-            </Label>
+          </div>
+          
+          {/* Quick actions */}
+          <div className="flex px-4 gap-3 mb-3">
+            <Button 
+              variant="outline" 
+              className="flex-1 rounded-full border border-gray-200 px-4 py-1 h-9 bg-white"
+            >
+              <Hash className="h-4 w-4 mr-1.5" />
+              <span className="text-sm"># Hashtags</span>
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              className="flex-1 rounded-full border border-gray-200 px-4 py-1 h-9 bg-white"
+            >
+              <BarChart2 className="h-4 w-4 mr-1.5" />
+              <span className="text-sm">Poll</span>
+            </Button>
+          </div>
+          
+          {/* Tag People */}
+          <div className="field px-4 py-3 border-t border-gray-100">
+            <label className="font-medium text-sm mb-2 block">Tag people</label>
+            <input 
+              type="text" 
+              placeholder="Tag people..." 
+              className="w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50"
+              value={tagText}
+              onChange={(e) => setTagText(e.target.value)}
+            />
+          </div>
+          
+          {/* Add Location */}
+          <div className="field px-4 py-3 border-t border-gray-100">
+            <label className="font-medium text-sm mb-2 block">Add location</label>
+            <input 
+              type="text" 
+              placeholder="Search for location..." 
+              className="w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50"
+              value={locationText}
+              onChange={(e) => setLocationText(e.target.value)}
+            />
+            
+            {/* Location suggestions */}
+            <div className="location-tags mt-2.5 flex flex-wrap gap-1.5 overflow-x-auto">
+              {suggestedLocations.map(location => (
+                <div 
+                  key={location} 
+                  className="tag-pill bg-gray-200 text-black px-3 py-1.5 rounded-full whitespace-nowrap text-xs cursor-pointer"
+                  onClick={() => setLocationText(location)}
+                >
+                  {location}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Audience */}
+          <div className="field px-4 py-3 border-t border-gray-100">
+            <label className="font-medium text-sm mb-2 block">Audience</label>
+            <Select value={audience} onValueChange={setAudience}>
+              <SelectTrigger className="w-full bg-gray-50 border-gray-200 rounded-lg">
+                <SelectValue placeholder="Select audience" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="everyone">Everyone</SelectItem>
+                <SelectItem value="friends">Close Friends</SelectItem>
+                <SelectItem value="private">Only Me</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Social Media Connections */}
+          <div className="post-to px-4 py-3 border-t border-gray-100 mt-4">
+            <h3 className="font-semibold mb-3 text-base">Post to</h3>
+            
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <input 
+                  type="checkbox"
+                  id="twitter" 
+                  checked={connectTwitter} 
+                  onChange={(e) => setConnectTwitter(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <label htmlFor="twitter" className="flex items-center text-sm gap-2.5">
+                  <Twitter className="h-4 w-4 text-blue-400" />
+                  <span>Connect X (Twitter)</span>
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2.5">
+                <input 
+                  type="checkbox"
+                  id="facebook" 
+                  checked={connectFacebook} 
+                  onChange={(e) => setConnectFacebook(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <label htmlFor="facebook" className="flex items-center text-sm gap-2.5">
+                  <Facebook className="h-4 w-4 text-blue-600" />
+                  <span>Connect Facebook</span>
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2.5">
+                <input 
+                  type="checkbox"
+                  id="instagram" 
+                  checked={connectInstagram} 
+                  onChange={(e) => setConnectInstagram(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <label htmlFor="instagram" className="flex items-center text-sm gap-2.5">
+                  <Instagram className="h-4 w-4 text-pink-500" />
+                  <span>Connect Instagram</span>
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2.5">
+                <input 
+                  type="checkbox"
+                  id="tiktok" 
+                  checked={connectTikTok} 
+                  onChange={(e) => setConnectTikTok(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <label htmlFor="tiktok" className="flex items-center text-sm gap-2.5">
+                  <Video className="h-4 w-4 text-black" />
+                  <span>Connect TikTok</span>
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2.5">
+                <input 
+                  type="checkbox"
+                  id="youtube" 
+                  checked={connectYouTube} 
+                  onChange={(e) => setConnectYouTube(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <label htmlFor="youtube" className="flex items-center text-sm gap-2.5">
+                  <Youtube className="h-4 w-4 text-red-600" />
+                  <span>Connect YouTube</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          {/* Add to Story Option */}
+          <div className="story-toggle px-4 py-3 border-t border-gray-100 mt-2">
+            <div className="flex items-center gap-2.5">
+              <input 
+                type="checkbox"
+                id="add-story" 
+                checked={addToStory} 
+                onChange={(e) => setAddToStory(e.target.checked)}
+                className="h-5 w-5 rounded border-gray-300"
+              />
+              <label htmlFor="add-story" className="text-sm">
+                Add to Your Story
+              </label>
+            </div>
           </div>
         </div>
       </div>
       
       {/* Share Button - Fixed to bottom */}
       <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t mt-auto">
-        <Button 
-          className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
+        <button 
+          className="share-button w-full py-3.5 rounded-xl font-semibold text-base bg-black text-white flex items-center justify-center"
           onClick={handleSubmit}
           disabled={createPostMutation.isPending || !content.trim()}
         >
@@ -345,7 +333,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
               Sharing...
             </>
           ) : "Share"}
-        </Button>
+        </button>
       </div>
     </div>
   );
