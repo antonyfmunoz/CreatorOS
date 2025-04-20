@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Plus, Edit, Mic, Video, Camera, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,24 +9,15 @@ import { VoiceRecorder } from "@/components/feed/VoiceRecorder";
 import { VideoRecorder } from "@/components/feed/VideoRecorder";
 import { PhotoUploader } from "@/components/feed/PhotoUploader";
 import { StoryCreator } from "@/components/feed/StoryCreator";
-import { useAccessibility } from "@/hooks/use-accessibility";
 
 export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   const [postType, setPostType] = useState<"text" | "photo" | "audio" | "video" | "story">("text");
-  const [focusedIndex, setFocusedIndex] = useState(-1);
-  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([null, null, null, null, null]);
-  const mainButtonRef = useRef<HTMLButtonElement | null>(null);
-  const { state } = useAccessibility();
   
   const toggleOpen = () => {
     setIsOpen(!isOpen);
-    // Reset focus when opening
-    if (!isOpen) {
-      setFocusedIndex(-1);
-    }
   };
   
   const openPostModal = (type: "text" | "photo" | "audio" | "video" | "story") => {
@@ -43,41 +34,6 @@ export function FloatingActionButton() {
   const closeModal = () => {
     setIsModalOpen(false);
   };
-  
-  // Handle keyboard navigation for FAB menu
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      
-      switch (e.key) {
-        case "ArrowUp":
-          e.preventDefault();
-          setFocusedIndex(prev => Math.max(0, prev - 1));
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          setFocusedIndex(prev => Math.min(4, prev + 1));
-          break;
-        case "Escape":
-          e.preventDefault();
-          setIsOpen(false);
-          mainButtonRef.current?.focus();
-          break;
-      }
-    };
-    
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
-  
-  // Focus the button when focusedIndex changes
-  useEffect(() => {
-    if (focusedIndex >= 0 && focusedIndex < buttonRefs.current.length) {
-      buttonRefs.current[focusedIndex]?.focus();
-    }
-  }, [focusedIndex]);
   
   const getTooltipText = (type: string): string => {
     switch (type) {
@@ -134,21 +90,15 @@ export function FloatingActionButton() {
     <>
       <div className="fixed bottom-[80px] right-5 z-50">
         {/* Action menu */}
-        <div 
-          id="create-menu"
-          role="menu" 
-          aria-orientation="vertical"
-          aria-labelledby="create-menu-button"
-          className={cn(
-            "flex flex-col-reverse items-center mb-3 transition-all duration-300 ease-in-out space-y-reverse space-y-3",
-            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-          )}>
+        <div className={cn(
+          "flex flex-col-reverse items-center mb-3 transition-all duration-300 ease-in-out space-y-reverse space-y-3",
+          isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+        )}>
           {/* Story */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  ref={el => buttonRefs.current[0] = el}
                   onClick={() => {
                     // Close the FAB menu
                     setIsOpen(false);
@@ -158,14 +108,9 @@ export function FloatingActionButton() {
                     setStoryCreatorOpen(true);
                   }}
                   variant="secondary"
-                  className={cn(
-                    "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
-                    state.enabled && "min-h-[48px] min-w-[48px]"
-                  )}
-                  role="menuitem"
-                  aria-label="Create Story"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Clock className="h-5 w-5" aria-hidden="true" />
+                  <Clock className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -179,17 +124,11 @@ export function FloatingActionButton() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  ref={el => buttonRefs.current[1] = el}
                   onClick={() => openPostModal("text")}
                   variant="secondary"
-                  className={cn(
-                    "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
-                    state.enabled && "min-h-[48px] min-w-[48px]"
-                  )}
-                  role="menuitem"
-                  aria-label="Create Text Post"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Edit className="h-5 w-5" aria-hidden="true" />
+                  <Edit className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -203,17 +142,11 @@ export function FloatingActionButton() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  ref={el => buttonRefs.current[2] = el}
                   onClick={() => openPostModal("audio")}
                   variant="secondary"
-                  className={cn(
-                    "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
-                    state.enabled && "min-h-[48px] min-w-[48px]"
-                  )}
-                  role="menuitem"
-                  aria-label="Create Audio Post"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Mic className="h-5 w-5" aria-hidden="true" />
+                  <Mic className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -227,17 +160,11 @@ export function FloatingActionButton() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  ref={el => buttonRefs.current[3] = el}
                   onClick={() => openPostModal("video")}
                   variant="secondary"
-                  className={cn(
-                    "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
-                    state.enabled && "min-h-[48px] min-w-[48px]"
-                  )}
-                  role="menuitem"
-                  aria-label="Create Video Post"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Video className="h-5 w-5" aria-hidden="true" />
+                  <Video className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -251,17 +178,11 @@ export function FloatingActionButton() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  ref={el => buttonRefs.current[4] = el}
                   onClick={() => openPostModal("photo")}
                   variant="secondary"
-                  className={cn(
-                    "rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700",
-                    state.enabled && "min-h-[48px] min-w-[48px]"
-                  )}
-                  role="menuitem"
-                  aria-label="Create Photo Post"
+                  className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Camera className="h-5 w-5" aria-hidden="true" />
+                  <Camera className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left">
@@ -273,21 +194,13 @@ export function FloatingActionButton() {
         
         {/* Main button */}
         <Button
-          id="create-menu-button"
-          ref={mainButtonRef}
           onClick={toggleOpen}
           className={cn(
             "rounded-full h-14 w-14 shadow-xl flex items-center justify-center transition-transform",
-            isOpen && "rotate-45",
-            state.enabled && "min-h-[56px] min-w-[56px]"
+            isOpen && "rotate-45"
           )}
-          aria-expanded={isOpen}
-          aria-label={isOpen ? "Close menu" : "Open create menu"}
-          aria-controls="create-menu"
-          aria-haspopup="menu"
         >
-          <Plus className="h-6 w-6" aria-hidden="true" />
-          <span className="sr-only">{isOpen ? "Close menu" : "Create new content"}</span>
+          <Plus className="h-6 w-6" />
         </Button>
       </div>
       
