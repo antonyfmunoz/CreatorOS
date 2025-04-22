@@ -56,8 +56,6 @@ export function FloatingActionButton() {
   // Determine modal content based on post type
   const renderModalContent = () => {
     switch (postType) {
-      case "text":
-        return <TextComposer onClose={closeModal} />;
       case "photo":
         return <PhotoUploader onClose={closeModal} />;
       case "audio":
@@ -125,7 +123,12 @@ export function FloatingActionButton() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  onClick={() => openPostModal("text")}
+                  onClick={() => {
+                    // Close the FAB menu
+                    setIsOpen(false);
+                    // Navigate to the new text post page
+                    setLocation('/new-text-post');
+                  }}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
