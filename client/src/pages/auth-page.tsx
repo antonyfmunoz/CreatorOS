@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -43,14 +42,8 @@ const AuthPage = () => {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, loginMutation, registerMutation } = useAuth();
-
-  // Redirect to home if already logged in
-  if (user) {
-    setLocation("/");
-    return null;
-  }
-
-  // Login form
+  
+  // Initialize forms - must be called before conditional return
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -59,7 +52,6 @@ const AuthPage = () => {
     },
   });
 
-  // Register form
   const registerForm = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -69,14 +61,15 @@ const AuthPage = () => {
       confirmPassword: "",
     },
   });
-
+  
+  // Handle login form submission
   const onLoginSubmit = (values: LoginFormValues) => {
     loginMutation.mutate(values, {
       onError: (error: Error) => {
-        // For login errors, we'll set a general form error
+        // For login errors, set field-specific errors
         if (error.message.includes('Authentication failed') || error.message.includes('Incorrect username or password')) {
           loginForm.setError("username", {
-            type: "manual",
+            type: "manual", 
             message: "Invalid username or password"
           });
           loginForm.setError("password", {
@@ -88,6 +81,7 @@ const AuthPage = () => {
     });
   };
 
+  // Handle registration form submission
   const onRegisterSubmit = (values: RegisterFormValues) => {
     const { confirmPassword, ...registerData } = values;
     registerMutation.mutate(registerData, {
@@ -102,6 +96,12 @@ const AuthPage = () => {
       }
     });
   };
+
+  // Redirect to home if already logged in (after all hooks)
+  if (user) {
+    setLocation("/");
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
