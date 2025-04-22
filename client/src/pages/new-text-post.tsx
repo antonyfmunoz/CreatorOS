@@ -106,7 +106,7 @@ export default function NewTextPost() {
         </div>
         
         {/* Poll Button - Exactly matching the PhotoUploader.tsx line 628 */}
-        <div className="p-4 border-b">
+        <div className="p-4 space-y-4 border-b">
           {pollData ? (
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="flex justify-between items-center mb-2">
@@ -127,13 +127,14 @@ export default function NewTextPost() {
           ) : (
             <button 
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
+              className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent hover:bg-gray-50 transition-colors"
               onClick={() => {
                 console.log("Opening poll modal");
                 setIsPollModalOpen(true);
               }}
             >
-              <BarChart2 className="w-4 h-4" /> Poll
+              <BarChart2 className="w-4 h-4 text-black" /> 
+              <span className="text-sm font-normal">Poll</span>
             </button>
           )}
         </div>
