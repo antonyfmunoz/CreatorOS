@@ -452,257 +452,257 @@ Duration: ${pollDuration}
           Share
         </button>
       </div>
-    </div>
-
-    {/* Poll Dialog */}
-    <Dialog open={showPollDialog} onOpenChange={setShowPollDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create a Poll</DialogTitle>
-          <DialogDescription>
-            Ask a question and provide options for your followers to vote on.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4 pt-4">
-          <div>
-            <label className="text-sm font-medium">Question</label>
-            <Input
-              placeholder="Ask a question..."
-              value={pollQuestion}
-              onChange={(e) => setPollQuestion(e.target.value)}
-              className="mt-1"
-            />
-          </div>
+      
+      {/* Poll Dialog */}
+      <Dialog open={showPollDialog} onOpenChange={setShowPollDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create a Poll</DialogTitle>
+            <DialogDescription>
+              Ask a question and provide options for your followers to vote on.
+            </DialogDescription>
+          </DialogHeader>
           
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Options</label>
-            {pollOptions.map((option, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  placeholder={`Option ${index + 1}`}
-                  value={option}
-                  onChange={(e) => updatePollOption(index, e.target.value)}
-                  className="flex-1"
-                />
-                {pollOptions.length > 2 && (
+          <div className="space-y-4 pt-4">
+            <div>
+              <label className="text-sm font-medium">Question</label>
+              <Input
+                placeholder="Ask a question..."
+                value={pollQuestion}
+                onChange={(e) => setPollQuestion(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Options</label>
+              {pollOptions.map((option, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    placeholder={`Option ${index + 1}`}
+                    value={option}
+                    onChange={(e) => updatePollOption(index, e.target.value)}
+                    className="flex-1"
+                  />
+                  {pollOptions.length > 2 && (
+                    <Button 
+                      size="icon" 
+                      variant="outline" 
+                      onClick={() => removePollOption(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              
+              {pollOptions.length < 4 && (
+                <Button 
+                  variant="outline" 
+                  className="w-full mt-2" 
+                  onClick={addPollOption}
+                >
+                  Add Option
+                </Button>
+              )}
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">Duration</label>
+              <select
+                value={pollDuration}
+                onChange={(e) => setPollDuration(e.target.value)}
+                className="w-full p-2 mt-1 border rounded"
+              >
+                <option value="1 day">1 day</option>
+                <option value="3 days">3 days</option>
+                <option value="1 week">1 week</option>
+                <option value="2 weeks">2 weeks</option>
+              </select>
+            </div>
+            
+            <Button 
+              className="w-full bg-black hover:bg-gray-800 text-white"
+              onClick={handleAddPoll}
+            >
+              Add Poll
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Tag People Dialog */}
+      <Dialog open={showTagPeopleDialog} onOpenChange={setShowTagPeopleDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tag People</DialogTitle>
+            <DialogDescription>
+              Tag people in your post.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="pt-4">
+            <Input
+              placeholder="Search for people..."
+              className="mb-4"
+            />
+            
+            <div className="max-h-60 overflow-y-auto space-y-2 p-1">
+              {['John Smith', 'Jane Doe', 'Mark Wilson', 'Emma Johnson'].map((person) => (
+                <div 
+                  key={person}
+                  className="flex items-center justify-between p-2 hover:bg-gray-100 rounded"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                      {person.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <span>{person}</span>
+                  </div>
                   <Button 
-                    size="icon" 
-                    variant="outline" 
-                    onClick={() => removePollOption(index)}
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      if (taggedPeople.includes(person)) {
+                        setTaggedPeople(taggedPeople.filter(p => p !== person));
+                      } else {
+                        setTaggedPeople([...taggedPeople, person]);
+                      }
+                    }}
                   >
-                    <X className="h-4 w-4" />
+                    {taggedPeople.includes(person) ? 'Tagged' : 'Tag'}
                   </Button>
+                </div>
+              ))}
+            </div>
+            
+            <Button 
+              className="w-full mt-4 bg-black hover:bg-gray-800 text-white"
+              onClick={() => setShowTagPeopleDialog(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Tag Product Dialog */}
+      <Dialog open={showTagProductDialog} onOpenChange={setShowTagProductDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tag Products</DialogTitle>
+            <DialogDescription>
+              Tag products in your post.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="pt-4">
+            <Input
+              placeholder="Search for products..."
+              className="mb-4"
+            />
+            
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {['Product 1', 'Product 2', 'Product 3'].map((product) => (
+                <div 
+                  key={product}
+                  className="flex items-center justify-between p-2 hover:bg-gray-100 rounded"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-12 h-12 bg-gray-200"></div>
+                    <div>
+                      <div>{product}</div>
+                      <div className="text-sm text-gray-500">$29.99</div>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm">Tag</Button>
+                </div>
+              ))}
+            </div>
+            
+            <Button 
+              className="w-full mt-4 bg-black hover:bg-gray-800 text-white"
+              onClick={() => setShowTagProductDialog(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Location Dialog */}
+      <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Location</DialogTitle>
+            <DialogDescription>
+              Add a location to your post.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="pt-4">
+            <Input
+              placeholder="Search for location..."
+              value={location}
+              onChange={(e) => setPostLocation(e.target.value)}
+              className="mb-4"
+            />
+            
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Miami, FL'].map((loc) => (
+                <div 
+                  key={loc}
+                  className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer"
+                  onClick={() => {
+                    setPostLocation(loc);
+                    setShowLocationDialog(false);
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 21.25C12 21.25 19.5 15.75 19.5 9.75C19.5 7.76088 18.7098 5.85322 17.3033 4.4467C15.8968 3.04018 13.9891 2.25 12 2.25C10.0109 2.25 8.10322 3.04018 6.6967 4.4467C5.29018 5.85322 4.5 7.76088 4.5 9.75C4.5 15.75 12 21.25 12 21.25Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12 12.75C13.6569 12.75 15 11.4069 15 9.75C15 8.09315 13.6569 6.75 12 6.75C10.3431 6.75 9 8.09315 9 9.75C9 11.4069 10.3431 12.75 12 12.75Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>{loc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Audience Dialog */}
+      <Dialog open={showAudienceDialog} onOpenChange={setShowAudienceDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Choose Audience</DialogTitle>
+            <DialogDescription>
+              Who can see your post?
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="pt-4 space-y-3">
+            {['Everyone', 'Followers', 'Close Friends'].map((option) => (
+              <div 
+                key={option}
+                className={`flex items-center justify-between p-3 rounded cursor-pointer ${audience === option ? 'bg-gray-100' : ''}`}
+                onClick={() => {
+                  setAudience(option);
+                  setShowAudienceDialog(false);
+                }}
+              >
+                <span className="font-medium">{option}</span>
+                {audience === option && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 6L9 17L4 12" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 )}
               </div>
             ))}
-            
-            {pollOptions.length < 4 && (
-              <Button 
-                variant="outline" 
-                className="w-full mt-2" 
-                onClick={addPollOption}
-              >
-                Add Option
-              </Button>
-            )}
           </div>
-          
-          <div>
-            <label className="text-sm font-medium">Duration</label>
-            <select
-              value={pollDuration}
-              onChange={(e) => setPollDuration(e.target.value)}
-              className="w-full p-2 mt-1 border rounded"
-            >
-              <option value="1 day">1 day</option>
-              <option value="3 days">3 days</option>
-              <option value="1 week">1 week</option>
-              <option value="2 weeks">2 weeks</option>
-            </select>
-          </div>
-          
-          <Button 
-            className="w-full bg-black hover:bg-gray-800 text-white"
-            onClick={handleAddPoll}
-          >
-            Add Poll
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-    
-    {/* Tag People Dialog */}
-    <Dialog open={showTagPeopleDialog} onOpenChange={setShowTagPeopleDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Tag People</DialogTitle>
-          <DialogDescription>
-            Tag people in your post.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="pt-4">
-          <Input
-            placeholder="Search for people..."
-            className="mb-4"
-          />
-          
-          <div className="max-h-60 overflow-y-auto space-y-2 p-1">
-            {['John Smith', 'Jane Doe', 'Mark Wilson', 'Emma Johnson'].map((person) => (
-              <div 
-                key={person}
-                className="flex items-center justify-between p-2 hover:bg-gray-100 rounded"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                    {person.split(' ').map(n => n[0]).join('')}
-                  </div>
-                  <span>{person}</span>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    if (taggedPeople.includes(person)) {
-                      setTaggedPeople(taggedPeople.filter(p => p !== person));
-                    } else {
-                      setTaggedPeople([...taggedPeople, person]);
-                    }
-                  }}
-                >
-                  {taggedPeople.includes(person) ? 'Tagged' : 'Tag'}
-                </Button>
-              </div>
-            ))}
-          </div>
-          
-          <Button 
-            className="w-full mt-4 bg-black hover:bg-gray-800 text-white"
-            onClick={() => setShowTagPeopleDialog(false)}
-          >
-            Done
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-    
-    {/* Tag Product Dialog */}
-    <Dialog open={showTagProductDialog} onOpenChange={setShowTagProductDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Tag Products</DialogTitle>
-          <DialogDescription>
-            Tag products in your post.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="pt-4">
-          <Input
-            placeholder="Search for products..."
-            className="mb-4"
-          />
-          
-          <div className="max-h-60 overflow-y-auto space-y-2">
-            {['Product 1', 'Product 2', 'Product 3'].map((product) => (
-              <div 
-                key={product}
-                className="flex items-center justify-between p-2 hover:bg-gray-100 rounded"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-12 h-12 bg-gray-200"></div>
-                  <div>
-                    <div>{product}</div>
-                    <div className="text-sm text-gray-500">$29.99</div>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm">Tag</Button>
-              </div>
-            ))}
-          </div>
-          
-          <Button 
-            className="w-full mt-4 bg-black hover:bg-gray-800 text-white"
-            onClick={() => setShowTagProductDialog(false)}
-          >
-            Done
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-    
-    {/* Location Dialog */}
-    <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Location</DialogTitle>
-          <DialogDescription>
-            Add a location to your post.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="pt-4">
-          <Input
-            placeholder="Search for location..."
-            value={location}
-            onChange={(e) => setPostLocation(e.target.value)}
-            className="mb-4"
-          />
-          
-          <div className="max-h-60 overflow-y-auto space-y-2">
-            {['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Miami, FL'].map((loc) => (
-              <div 
-                key={loc}
-                className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer"
-                onClick={() => {
-                  setPostLocation(loc);
-                  setShowLocationDialog(false);
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 21.25C12 21.25 19.5 15.75 19.5 9.75C19.5 7.76088 18.7098 5.85322 17.3033 4.4467C15.8968 3.04018 13.9891 2.25 12 2.25C10.0109 2.25 8.10322 3.04018 6.6967 4.4467C5.29018 5.85322 4.5 7.76088 4.5 9.75C4.5 15.75 12 21.25 12 21.25Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M12 12.75C13.6569 12.75 15 11.4069 15 9.75C15 8.09315 13.6569 6.75 12 6.75C10.3431 6.75 9 8.09315 9 9.75C9 11.4069 10.3431 12.75 12 12.75Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span>{loc}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-    
-    {/* Audience Dialog */}
-    <Dialog open={showAudienceDialog} onOpenChange={setShowAudienceDialog}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Choose Audience</DialogTitle>
-          <DialogDescription>
-            Who can see your post?
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="pt-4 space-y-3">
-          {['Everyone', 'Followers', 'Close Friends'].map((option) => (
-            <div 
-              key={option}
-              className={`flex items-center justify-between p-3 rounded cursor-pointer ${audience === option ? 'bg-gray-100' : ''}`}
-              onClick={() => {
-                setAudience(option);
-                setShowAudienceDialog(false);
-              }}
-            >
-              <span className="font-medium">{option}</span>
-              {audience === option && (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 6L9 17L4 12" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </div>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
