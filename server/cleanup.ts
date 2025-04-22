@@ -1,6 +1,6 @@
-import { db } from "./fixed-db";
+import { db } from "./db";
 import { posts, stories } from "../shared/schema";
-import { eq, or, like, ne, isNotNull } from "drizzle-orm";
+import { eq, or, like } from "drizzle-orm";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -50,19 +50,18 @@ export async function cleanupOrphanedStories(): Promise<number> {
             )
           ).where(
             or(
-              ne(posts.imageUrl, null),
-              ne(posts.videoUrl, null),
-              ne(posts.audioUrl, null)
+              eq(posts.imageUrl, null).not(),
+              eq(posts.videoUrl, null).not(),
+              eq(posts.audioUrl, null).not()
             )
           );
       }
       
-      // Temporarily disabled story deletion for this fix
+      // If still no posts found with this media URL, delete the story
       if (postsWithMedia.length === 0) {
         console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
-        // NOTE: Disabled deletion to preserve stories
-        // await db.delete(stories).where(eq(stories.id, story.id));
-        // cleanupCount++;
+        await db.delete(stories).where(eq(stories.id, story.id));
+        cleanupCount++;
       }
     }
     

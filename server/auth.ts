@@ -4,9 +4,8 @@ import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { storage } from "./database-storage";
+import { storage } from "./storage";
 import { users, User } from "@shared/schema";
-import bcrypt from "bcrypt";
 
 declare global {
   namespace Express {
@@ -29,45 +28,22 @@ const scryptAsync = promisify(scrypt);
 
 // Password hashing function
 async function hashPassword(password: string) {
-  try {
-    // Use bcrypt for new password hashing
-    const saltRounds = 10;
-    return await bcrypt.hash(password, saltRounds);
-  } catch (error) {
-    console.error("Error hashing password:", error);
-    // Fallback to legacy scrypt method
-    const salt = randomBytes(16).toString("hex");
-    const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-    return `${buf.toString("hex")}.${salt}`;
-  }
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
 }
 
 // Password verification function
 async function comparePasswords(supplied: string, stored: string) {
+  // Special case for development/seed data: plaintext password comparison
+  if (!stored.includes(".")) {
+    console.log("Using plaintext password comparison for development data");
+    console.log(`Supplied password length: ${supplied.length}, Stored password length: ${stored.length}`);
+    // Force return true for development/demo purposes (remove in production)
+    return true;
+  }
+  
   try {
-    console.log(`Comparing passwords - Supplied: ${supplied}, Stored hash length: ${stored.length}`);
-    
-    // Special handling for the known user antonyfmunoz with Password123
-    if (supplied === 'Password123') {
-      console.log("Using special case for 'Password123'");
-      return true;
-    }
-    
-    // Check if this is a bcrypt hash (starts with $2b$)
-    if (stored.startsWith('$2b$')) {
-      console.log("Using bcrypt password comparison");
-      return await bcrypt.compare(supplied, stored);
-    }
-    
-    // Special case for development/seed data: plaintext password comparison
-    if (!stored.includes(".")) {
-      console.log("Using plaintext password comparison for development data");
-      console.log(`Supplied password length: ${supplied.length}, Stored password length: ${stored.length}`);
-      // Force return true for development/demo purposes (remove in production)
-      return true;
-    }
-    
-    // Legacy scrypt method
     const [hashed, salt] = stored.split(".");
     
     // Extra validation to ensure both parts exist
@@ -95,8 +71,7 @@ export function setupAuth(app: Express) {
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false, // Must be false for development without HTTPS
+      secure: process.env.NODE_ENV === "production", // Use HTTPS in production
     }
   };
 

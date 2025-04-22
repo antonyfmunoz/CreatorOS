@@ -1,6 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-// import { registerRoutes } from "./routes"; // Using our fixed routes
-import { registerRoutes } from "./simple-routes";
+import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import path from "path";
 import { scheduleCleanupTasks } from "./cleanup";

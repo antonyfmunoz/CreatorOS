@@ -246,9 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Post routes
   app.get("/api/posts", async (req, res) => {
     try {
-      // Use our fixed storage implementation
-      const { fixedStorage } = require('./fixed-db-storage');
-      const posts = await fixedStorage.getPosts();
+      const posts = await storage.getPosts();
       res.json(posts);
     } catch (error) {
       console.error("Error fetching posts:", error);

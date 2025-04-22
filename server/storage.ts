@@ -23,7 +23,7 @@ import {
 import { db } from "./db";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
 import crypto from "crypto";
 
 // Storage interface for the application
@@ -571,67 +571,13 @@ export class MemStorage implements IStorage {
 
   // User operations
   async getUser(id: number): Promise<User | undefined> {
-    // First check memory cache
-    const memUser = this.users.get(id);
-    
-    if (memUser) {
-      console.log(`Found user with ID ${id} in memory cache`);
-      return memUser;
-    }
-    
-    try {
-      // If not in memory, check the database directly
-      console.log(`Looking up user with ID ${id} in database`);
-      const result = await db.select().from(users).where(eq(users.id, id));
-      console.log(`Database lookup result for user ID ${id}:`, result);
-      
-      if (result && result.length > 0) {
-        // Cache the user in memory for next time
-        const user = result[0];
-        this.users.set(user.id, user);
-        console.log(`Found user with ID ${id} in database and cached`);
-        return user;
-      }
-      
-      console.log(`User with ID ${id} not found in memory or database`);
-      return undefined;
-    } catch (error) {
-      console.error(`Error looking up user with ID ${id} in database:`, error);
-      return undefined;
-    }
+    return this.users.get(id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    // First check memory cache
-    const memUser = Array.from(this.users.values()).find(
+    return Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
-    
-    if (memUser) {
-      console.log(`Found user ${username} in memory cache`);
-      return memUser;
-    }
-    
-    try {
-      // If not in memory, check the database directly
-      console.log(`Looking up user ${username} in database`);
-      const result = await db.select().from(users).where(eq(users.username, username));
-      console.log(`Database lookup result for ${username}:`, result);
-      
-      if (result && result.length > 0) {
-        // Cache the user in memory for next time
-        const user = result[0];
-        this.users.set(user.id, user);
-        console.log(`Found user ${username} in database and cached`);
-        return user;
-      }
-      
-      console.log(`User ${username} not found in memory or database`);
-      return undefined;
-    } catch (error) {
-      console.error(`Error looking up user ${username} in database:`, error);
-      return undefined;
-    }
   }
 
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
@@ -1670,7 +1616,7 @@ export class DatabaseStorage implements IStorage {
   
   constructor() {
     // Using dynamic import for ES modules compatibility
-    import('connect-pg-simple').then(async connectPgModule => {
+    import('connect-pg-simple').then(connectPgModule => {
       const connectPg = connectPgModule.default;
       const PostgresStore = connectPg(session);
       
@@ -1680,21 +1626,6 @@ export class DatabaseStorage implements IStorage {
         createTableIfMissing: true,
         tableName: 'session'
       });
-      
-      // Force create the session table if it doesn't exist
-      try {
-        await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS "session" (
-            "sid" varchar NOT NULL COLLATE "default",
-            "sess" json NOT NULL,
-            "expire" timestamp(6) NOT NULL,
-            CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-          )
-        `);
-        console.log("Session table created or verified");
-      } catch (error) {
-        console.error("Error creating session table:", error);
-      }
     }).catch(err => {
       console.error('Failed to initialize PostgreSQL session store:', err);
       // Fallback to memory store if PostgreSQL connection fails
@@ -1873,26 +1804,52 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User })[]> {
-    try {
-      console.log("Getting posts from database...");
-      const result = await db.select({
-        post: posts,
+  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
+    const result = await db.select({
+      post: posts,
+      user: users,
+    }).from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
+    
+    // Fetch all tagged users for all posts in a batch
+    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    
+    // Get all post IDs
+    const postIds = postsWithUsers.map(post => post.id);
+    
+    if (postIds.length > 0) {
+      // Fetch tagged users for all posts
+      const taggedUsersResult = await db.select({
+        taggedUser: taggedUsers,
         user: users,
-      }).from(posts)
-        .innerJoin(users, eq(posts.userId, users.id))
-        .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
+        postId: taggedUsers.postId,
+      }).from(taggedUsers)
+        .innerJoin(users, eq(taggedUsers.userId, users.id))
+        .where(inArray(taggedUsers.postId, postIds));
       
-      // Map the results to combine post and user data
-      const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+      // Group tagged users by post ID
+      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
+        if (!acc[postId]) {
+          acc[postId] = [];
+        }
+        
+        acc[postId].push({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          profileImageUrl: user.profileImageUrl,
+          positionX: taggedUser.positionX,
+          positionY: taggedUser.positionY,
+        });
+        
+        return acc;
+      }, {} as Record<number, TaggedUser[]>);
       
-      console.log(`Found ${postsWithUsers.length} posts in database`);
-      return postsWithUsers;
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-      // Return empty array instead of throwing to prevent app from crashing
-      return [];
-    }
+      // Add tagged users to their respective posts
+      postsWithUsers.forEach(post => {
+        post.taggedUsers = taggedUsersByPostId[post.id] || [];
+      });
     }
     
     return postsWithUsers;
@@ -3101,5 +3058,5 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Use DatabaseStorage for production
+// Replace MemStorage with DatabaseStorage
 export const storage = new DatabaseStorage();
