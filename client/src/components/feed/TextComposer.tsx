@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { 
   Loader2, 
   Type, 
@@ -16,14 +15,30 @@ import {
   ChevronRight, 
   Plus,
   Camera,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  ShoppingBag,
+  ChevronDown,
+  ChevronUp,
+  BarChart2,
+  Share2,
+  Facebook,
+  Instagram,
+  Award
 } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 interface TextComposerProps {
   onClose: () => void;
+}
+
+interface SocialPlatform {
+  name: string;
+  icon: React.ReactNode;
+  color: string;
 }
 
 export const TextComposer = ({ onClose }: TextComposerProps) => {
@@ -31,10 +46,10 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
   const [addToStory, setAddToStory] = useState(false);
   const [taggedUsers, setTaggedUsers] = useState<any[]>([]);
   const [showTagLabels, setShowTagLabels] = useState(false);
+  const [isOptionsExpanded, setIsOptionsExpanded] = useState(true);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,9 +85,6 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    
-    // Show options panel when images are added
-    setShowOptionsPanel(true);
   };
   
   // Trigger file select dialog
@@ -113,12 +125,54 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
     if (index <= currentImageIndex && currentImageIndex > 0) {
       setCurrentImageIndex(currentImageIndex - 1);
     }
-    
-    // If all images are removed, hide options panel
-    if (newImageFiles.length === 0) {
-      setShowOptionsPanel(false);
-    }
   };
+  
+  // These handlers would initiate OAuth flows with each platform
+  const handleConnectPlatform = (platform: string) => {
+    // In a real implementation, this would redirect to the platform's OAuth page
+    console.log(`Connecting to ${platform}...`);
+  };
+  
+  // Social media platforms
+  const socialPlatforms: SocialPlatform[] = [
+    { 
+      name: "X (Twitter)", 
+      icon: <div className="bg-neutral-200 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden">
+              <span className="text-neutral-700 font-bold">𝕏</span>
+            </div>, 
+      color: "bg-neutral-200" 
+    },
+    { 
+      name: "Facebook", 
+      icon: <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden">
+              <span className="text-blue-600 text-xl font-bold">f</span>
+            </div>, 
+      color: "bg-blue-100" 
+    },
+    { 
+      name: "Instagram", 
+      icon: <div className="bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400 w-8 h-8 rounded-full flex items-center justify-center">
+              <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full border-2 border-current"></div>
+              </div>
+            </div>, 
+      color: "bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400" 
+    },
+    { 
+      name: "TikTok", 
+      icon: <div className="bg-black w-8 h-8 rounded-full flex items-center justify-center overflow-hidden">
+              <span className="text-white text-lg">♪</span>
+            </div>, 
+      color: "bg-black" 
+    },
+    { 
+      name: "YouTube", 
+      icon: <div className="bg-red-100 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden">
+              <span className="text-red-600 text-lg">▶</span>
+            </div>, 
+      color: "bg-red-100" 
+    },
+  ];
   
   const createPostMutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -214,7 +268,8 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       const postData = {
         userId: user.id,
         content,
-        mediaType: 'text'
+        mediaType: 'text',
+        addToStory
       };
       
       // Create a simple text post
@@ -224,8 +279,28 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           return res.json();
         },
         onSuccess: () => {
+          toast({
+            title: 'Post created!',
+            description: 'Your post has been successfully shared.'
+          });
+          
           queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+          
+          // If adding to story, also invalidate stories query
+          if (addToStory) {
+            queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+            queryClient.refetchQueries({ queryKey: ['/api/stories'] });
+          }
+          
           onClose();
+        },
+        onError: (error) => {
+          console.error('Error creating post:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to create post. Please try again.',
+            variant: 'destructive'
+          });
         }
       });
       
@@ -394,12 +469,123 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           )}
         </div>
         
-        {/* Options Panel */}
-        <PostOptionsPanel 
-          content={content}
-          onContentChange={setContent}
-          onShare={handleSubmit}
-        />
+        {/* Instagram-style options menu */}
+        <div className="flex flex-col">
+          {/* Poll Option */}
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="flex items-center">
+              <BarChart2 className="h-5 w-5 mr-3" />
+              <span>Poll</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
+          
+          {/* Tag People Option */}
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="flex items-center">
+              <Users className="h-5 w-5 mr-3" />
+              <span>Tag people</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
+          
+          {/* Tag Product Option */}
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="flex items-center">
+              <ShoppingBag className="h-5 w-5 mr-3" />
+              <span>Tag product</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
+          
+          {/* Add Location Option */}
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="flex items-center">
+              <MapPin className="h-5 w-5 mr-3" />
+              <span>Add location</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
+          
+          {/* Audience Option */}
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="flex items-center">
+              <Eye className="h-5 w-5 mr-3" />
+              <span>Audience</span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-muted-foreground mr-2">Everyone</span>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </div>
+          
+          {/* Post to header (collapsible) */}
+          <div 
+            className="flex items-center justify-between px-5 py-4 border-b cursor-pointer"
+            onClick={() => setIsOptionsExpanded(!isOptionsExpanded)}
+          >
+            <span className="font-medium">Post to</span>
+            {isOptionsExpanded ? 
+              <ChevronUp className="h-5 w-5 text-muted-foreground" /> : 
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            }
+          </div>
+          
+          {/* Social Media Connection Options */}
+          {isOptionsExpanded && (
+            <div className="px-5 pb-4 pt-2 space-y-4 border-b">
+              {/* Social Platforms */}
+              {socialPlatforms.map((platform, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {platform.icon}
+                    <div className="flex flex-col">
+                      <span className="text-foreground">Connect {platform.name}</span>
+                      <span className="text-xs text-muted-foreground">Connect to share posts</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full px-3 py-1 h-auto text-xs"
+                    onClick={() => handleConnectPlatform(platform.name)}
+                  >
+                    Connect
+                  </Button>
+                </div>
+              ))}
+              
+              {/* Your Story Option */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center space-x-3">
+                  <Share2 className="h-5 w-5" />
+                  <span>Your story</span>
+                </div>
+                <Switch
+                  checked={addToStory}
+                  onCheckedChange={setAddToStory}
+                  aria-label="Add to your story"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Share Button */}
+        <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-background border-t mt-auto">
+          <Button 
+            className="w-full rounded-md py-6 flex items-center justify-center bg-black text-white hover:bg-gray-900"
+            onClick={handleSubmit}
+            disabled={createPostMutation.isPending || (!content.trim() && imageFiles.length === 0)}
+          >
+            {createPostMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Sharing...
+              </>
+            ) : "Share"}
+          </Button>
+        </div>
       </div>
     </div>
   );
