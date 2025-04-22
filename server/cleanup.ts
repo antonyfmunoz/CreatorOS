@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { posts, stories } from "../shared/schema";
-import { eq, or, like } from "drizzle-orm";
+import { eq, or, like, and, isNull, not } from "drizzle-orm";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -39,20 +39,16 @@ export async function cleanupOrphanedStories(): Promise<number> {
       
       // If no exact match was found, try to match by filename
       if (postsWithMedia.length === 0 && storyFilename) {
+        // Create a query with proper Drizzle syntax
         postsWithMedia = await db
           .select()
           .from(posts)
           .where(
             or(
-              like(posts.imageUrl, `%${storyFilename}`),
-              like(posts.videoUrl, `%${storyFilename}`),
-              like(posts.audioUrl, `%${storyFilename}`)
-            )
-          ).where(
-            or(
-              eq(posts.imageUrl, null).not(),
-              eq(posts.videoUrl, null).not(),
-              eq(posts.audioUrl, null).not()
+              // Check for both filename match and non-null values
+              and(like(posts.imageUrl, `%${storyFilename}`), not(isNull(posts.imageUrl))),
+              and(like(posts.videoUrl, `%${storyFilename}`), not(isNull(posts.videoUrl))),
+              and(like(posts.audioUrl, `%${storyFilename}`), not(isNull(posts.audioUrl)))
             )
           );
       }
