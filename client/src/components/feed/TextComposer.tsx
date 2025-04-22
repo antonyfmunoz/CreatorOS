@@ -13,7 +13,6 @@ import {
   Users
 } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
 interface TextComposerProps {
@@ -29,41 +28,6 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  
-  const handleConnectPlatform = () => {
-    toast({
-      title: "Connect Platform",
-      description: "Platform connection would be handled here"
-    });
-  };
-  
-  const createPostMutation = useMutation({
-    mutationFn: async (postData: any) => {
-      const res = await apiRequest('POST', '/api/posts', postData);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Post created!',
-        description: 'Your post has been successfully shared.'
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-      
-      if (addToStory) {
-        queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
-      }
-      
-      onClose();
-    },
-    onError: (error) => {
-      console.error('Error creating post:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to create post. Please try again.',
-        variant: 'destructive'
-      });
-    }
-  });
   
   const handleSubmit = () => {
     if (!content.trim()) {
@@ -84,6 +48,34 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       return;
     }
     
+    const createPostMutation = useMutation({
+      mutationFn: async (postData: any) => {
+        const res = await apiRequest('POST', '/api/posts', postData);
+        return res.json();
+      },
+      onSuccess: () => {
+        toast({
+          title: 'Post created!',
+          description: 'Your post has been successfully shared.'
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+        
+        if (addToStory) {
+          queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+        }
+        
+        onClose();
+      },
+      onError: (error) => {
+        console.error('Error creating post:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to create post. Please try again.',
+          variant: 'destructive'
+        });
+      }
+    });
+    
     createPostMutation.mutate({
       userId: user.id,
       content,
@@ -93,73 +85,64 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-white text-foreground">
+    <div className="flex flex-col h-full overflow-hidden bg-white">
       <DialogTitle className="sr-only">Create New Post</DialogTitle>
       
-      {/* Top Bar */}
+      {/* Top Bar - Exactly like Instagram */}
       <div className="flex justify-between items-center px-4 py-4 border-b">
         <button 
-          className="text-foreground" 
+          className="text-[15px]" 
           onClick={onClose}
         >
           Cancel
         </button>
-        <h2 className="text-lg font-medium">New post</h2>
-        <Button 
-          variant="ghost" 
-          size="sm"
+        <h2 className="text-lg font-semibold">New post</h2>
+        <button 
+          className="text-blue-500 text-[15px] font-semibold"
           onClick={handleSubmit}
-          disabled={createPostMutation.isPending || !content.trim()}
-          className="text-primary font-medium"
+          disabled={!content.trim()}
         >
-          {createPostMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sharing...
-            </>
-          ) : "Share"}
-        </Button>
+          Share
+        </button>
       </div>
       
       {/* Scrollable Container */}
       <div 
         ref={scrollContainerRef}
-        className="flex-grow overflow-y-auto flex flex-col"
+        className="flex flex-col flex-grow overflow-y-auto"
       >
         {/* Caption Input */}
         <div className="p-4 border-b">
           <textarea
-            className="bg-transparent text-lg placeholder-muted-foreground resize-none outline-none w-full min-h-[120px]"
+            className="bg-transparent text-lg placeholder:text-gray-400 resize-none outline-none w-full min-h-[120px]"
             placeholder="What's happening?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            disabled={createPostMutation.isPending}
           ></textarea>
         </div>
         
-        {/* Poll Button */}
-        <div className="mx-4 my-3 w-[calc(100%-2rem)]">
-          <div className="flex items-center justify-start rounded-full bg-gray-100 py-2.5 px-4">
+        {/* Poll Button - Exactly like in the screenshot */}
+        <div className="mx-4 my-3">
+          <button className="w-full flex items-center justify-start rounded-full bg-[#F2F2F2] py-3 px-4">
             <BarChart2 className="h-5 w-5 mr-2.5" />
-            <span className="text-[15px]">Poll</span>
-          </div>
+            <span>Poll</span>
+          </button>
         </div>
         
-        {/* Options exactly matching screenshot */}
-        <div className="flex-grow flex flex-col">
+        {/* Options - Exactly matching screenshot */}
+        <div>
           {/* Tag people */}
-          <div className="flex items-center justify-between px-5 py-4 border-t">
+          <div className="flex items-center justify-between px-5 py-[14px] border-t">
             <div className="flex items-center">
               <Users className="h-[22px] w-[22px] mr-3" />
               <span>Tag people</span>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </div>
           
           {/* Tag product */}
-          <div className="flex items-center justify-between px-5 py-4 border-t">
+          <div className="flex items-center justify-between px-5 py-[14px] border-t">
             <div className="flex items-center">
-              {/* Product tag icon */}
               <div className="h-[22px] w-[22px] mr-3">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
@@ -169,35 +152,35 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
               </div>
               <span>Tag product</span>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </div>
           
           {/* Add location */}
-          <div className="flex items-center justify-between px-5 py-4 border-t">
+          <div className="flex items-center justify-between px-5 py-[14px] border-t">
             <div className="flex items-center">
               <MapPin className="h-[22px] w-[22px] mr-3" />
               <span>Add location</span>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </div>
           
           {/* Audience */}
-          <div className="flex items-center justify-between px-5 py-4 border-t">
+          <div className="flex items-center justify-between px-5 py-[14px] border-t">
             <div className="flex items-center">
               <Eye className="h-[22px] w-[22px] mr-3" />
               <span>Audience</span>
             </div>
             <div className="flex items-center">
-              <span className="text-muted-foreground mr-2">Everyone</span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              <span className="text-gray-400 mr-2">Everyone</span>
+              <ChevronRight className="h-5 w-5 text-gray-400" />
             </div>
           </div>
           
           {/* Post to header with border */}
           <div className="border-t">
-            <div className="flex items-center justify-between px-5 py-4 cursor-pointer" onClick={() => setIsPostToExpanded(!isPostToExpanded)}>
+            <div className="flex items-center justify-between px-5 py-[14px] cursor-pointer" onClick={() => setIsPostToExpanded(!isPostToExpanded)}>
               <span className="font-medium">Post to</span>
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              <ChevronDown className="h-5 w-5 text-gray-400" />
             </div>
             
             {isPostToExpanded && (
@@ -205,22 +188,19 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                 {/* X (Twitter) */}
                 <div className="flex justify-between items-center px-5">
                   <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center text-white">
-                      <span className="text-md font-bold">𝕏</span>
+                    <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white">
+                      <span className="font-bold">𝕏</span>
                     </div>
                     <div>
-                      <div className="text-sm">Connect X (Twitter)</div>
-                      <div className="text-xs text-muted-foreground">Connect to share posts</div>
+                      <div className="text-[15px]">Connect X (Twitter)</div>
+                      <div className="text-xs text-gray-500">Connect to share posts</div>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-3 py-1 h-7"
-                    onClick={handleConnectPlatform}
+                  <button 
+                    className="rounded-full px-4 py-1.5 text-sm border border-gray-300"
                   >
                     Connect
-                  </Button>
+                  </button>
                 </div>
                 
                 {/* Facebook */}
@@ -230,18 +210,15 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                       <span className="text-xl font-bold">f</span>
                     </div>
                     <div>
-                      <div className="text-sm">Connect Facebook</div>
-                      <div className="text-xs text-muted-foreground">Connect to share posts</div>
+                      <div className="text-[15px]">Connect Facebook</div>
+                      <div className="text-xs text-gray-500">Connect to share posts</div>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-3 py-1 h-7"
-                    onClick={handleConnectPlatform}
+                  <button 
+                    className="rounded-full px-4 py-1.5 text-sm border border-gray-300"
                   >
                     Connect
-                  </Button>
+                  </button>
                 </div>
                 
                 {/* Instagram */}
@@ -253,18 +230,15 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm">Connect Instagram</div>
-                      <div className="text-xs text-muted-foreground">Connect to share posts</div>
+                      <div className="text-[15px]">Connect Instagram</div>
+                      <div className="text-xs text-gray-500">Connect to share posts</div>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-3 py-1 h-7"
-                    onClick={handleConnectPlatform}
+                  <button 
+                    className="rounded-full px-4 py-1.5 text-sm border border-gray-300"
                   >
                     Connect
-                  </Button>
+                  </button>
                 </div>
                 
                 {/* TikTok */}
@@ -274,18 +248,15 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                       <span className="text-lg">♪</span>
                     </div>
                     <div>
-                      <div className="text-sm">Connect TikTok</div>
-                      <div className="text-xs text-muted-foreground">Connect to share posts</div>
+                      <div className="text-[15px]">Connect TikTok</div>
+                      <div className="text-xs text-gray-500">Connect to share posts</div>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-3 py-1 h-7"
-                    onClick={handleConnectPlatform}
+                  <button 
+                    className="rounded-full px-4 py-1.5 text-sm border border-gray-300"
                   >
                     Connect
-                  </Button>
+                  </button>
                 </div>
                 
                 {/* YouTube */}
@@ -295,27 +266,24 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                       <span className="text-sm">▶</span>
                     </div>
                     <div>
-                      <div className="text-sm">Connect YouTube</div>
-                      <div className="text-xs text-muted-foreground">Connect to share posts</div>
+                      <div className="text-[15px]">Connect YouTube</div>
+                      <div className="text-xs text-gray-500">Connect to share posts</div>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-3 py-1 h-7"
-                    onClick={handleConnectPlatform}
+                  <button 
+                    className="rounded-full px-4 py-1.5 text-sm border border-gray-300"
                   >
                     Connect
-                  </Button>
+                  </button>
                 </div>
                 
-                {/* Your story */}
+                {/* Your story - exactly like in screenshot */}
                 <div className="flex justify-between items-center px-5 pt-2">
                   <div className="flex items-center space-x-3">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    {/* Instagram share icon */}
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M11 5.5V15.5M11 5.5L7.33333 9.16667M11 5.5L14.6667 9.16667" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M3.66667 12.8333L3.66667 15.5C3.66667 16.4205 4.41286 17.1667 5.33333 17.1667L16.6667 17.1667C17.5871 17.1667 18.3333 16.4205 18.3333 15.5L18.3333 12.8333" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     <span>Your story</span>
                   </div>
@@ -327,21 +295,18 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
               </div>
             )}
           </div>
-          
-          {/* Spacer to push the share button to the bottom */}
-          <div className="flex-grow"></div>
-          
-          {/* Share Button */}
-          <div className="sticky bottom-0 w-full py-4 px-4 bg-white border-t">
-            <button
-              className="w-full bg-black text-white h-11 rounded py-2.5 font-medium"
-              onClick={handleSubmit}
-              disabled={createPostMutation.isPending || !content.trim()}
-            >
-              {createPostMutation.isPending ? "Sharing..." : "Share"}
-            </button>
-          </div>
         </div>
+      </div>
+      
+      {/* Share Button - exactly like in the screenshot */}
+      <div className="w-full py-3 px-4 bg-white border-t">
+        <button
+          className="w-full bg-black text-white h-12 rounded font-medium"
+          onClick={handleSubmit}
+          disabled={!content.trim()}
+        >
+          Share
+        </button>
       </div>
     </div>
   );
