@@ -83,13 +83,7 @@ export default function NewTextPost() {
           Cancel
         </button>
         <h2 className="text-lg font-semibold">New post</h2>
-        <button 
-          className="text-blue-500 text-[15px] font-semibold"
-          onClick={handleSubmit}
-          disabled={!content.trim()}
-        >
-          Share
-        </button>
+        <div className="w-[51px]"></div>
       </div>
       
       {/* Scrollable Container */}
