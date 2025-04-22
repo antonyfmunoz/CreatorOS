@@ -1,265 +1,182 @@
-import { db } from "../server/db";
-import { users, posts, products, aiAgents, communities, channels, channelMessages, contacts, documents } from "../shared/schema";
+import { db } from "../server/fixed-db";
+import * as schema from "../shared/schema";
+import bcrypt from "bcrypt";
 
 async function seedDatabase() {
-  console.log("Seeding database...");
-
   try {
-    // Clear existing data
-    // Note: Due to foreign key constraints, we need to delete in reverse order
-    await db.delete(documents);
-    await db.delete(contacts);
-    await db.delete(channelMessages);
-    await db.delete(channels);
-    await db.delete(communities);
-    await db.delete(aiAgents);
-    await db.delete(products);
-    await db.delete(posts);
-    await db.delete(users);
+    console.log("Starting database seeding...");
 
-    console.log("Database cleared. Adding sample data...");
+    // Check if we already have users
+    const existingUsers = await db.select().from(schema.users).limit(1);
+    if (existingUsers.length > 0) {
+      console.log("Database already has users, skipping seeding.");
+      return;
+    }
 
-    // Create users
-    const [user1] = await db.insert(users).values({
-      username: 'johndoe',
-      password: 'password123',
-      displayName: 'John Doe',
-      bio: 'Digital Creator & Entrepreneur',
-      profileImageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-      role: 'creator',
-      xpPoints: 0,
-      level: 1,
+    // Create test users
+    console.log("Creating test users...");
+    const hashedPassword = await bcrypt.hash("Password123", 10);
+    
+    // Create main user: antonyfmunoz
+    const [antonyfmunoz] = await db.insert(schema.users).values({
+      username: "antonyfmunoz",
+      password: hashedPassword,
+      displayName: "Antony Munoz",
+      bio: "Creator | Developer | Designer",
+      profileImageUrl: "/uploads/profile-antonyfmunoz.jpg",
+      role: "creator",
+      xpPoints: 500,
+      level: 5,
+      createdAt: new Date()
+    }).returning();
+    
+    // Create second user
+    const [testUser] = await db.insert(schema.users).values({
+      username: "testuser",
+      password: hashedPassword,
+      displayName: "Test User",
+      bio: "Just a test account",
+      profileImageUrl: "/uploads/profile-testuser.jpg",
+      role: "user",
+      xpPoints: 100,
+      level: 2,
+      createdAt: new Date()
     }).returning();
 
-    const [user2] = await db.insert(users).values({
-      username: 'sarahmitchell',
-      password: 'password123',
-      displayName: 'Sarah Mitchell',
-      bio: 'Marketing Expert',
-      profileImageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-      role: 'creator',
-      xpPoints: 0,
-      level: 1,
-    }).returning();
-
-    const [user3] = await db.insert(users).values({
-      username: 'davidkim',
-      password: 'password123',
-      displayName: 'David Kim',
-      bio: 'Web Developer',
-      profileImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-      role: 'creator',
-      xpPoints: 0,
-      level: 1,
-    }).returning();
-
-    const [user4] = await db.insert(users).values({
-      username: 'emmathompson',
-      password: 'password123',
-      displayName: 'Emma Thompson',
-      bio: 'UX Designer',
-      profileImageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2',
-      role: 'creator',
-      xpPoints: 0,
-      level: 1,
-    }).returning();
-
-    const [user5] = await db.insert(users).values({
-      username: 'michaeljones',
-      password: 'password123',
-      displayName: 'Michael Jones',
-      bio: 'Social Media Marketing',
-      profileImageUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',
-      role: 'creator',
-      xpPoints: 0,
-      level: 1,
-    }).returning();
-
-    console.log("Users created");
-
-    // Create posts
-    await db.insert(posts).values([
+    // Create some posts
+    console.log("Creating posts...");
+    const posts = [
       {
-        userId: user2.id,
-        content: 'Just launched my new course on content marketing strategy! Check it out in the marketplace 🚀',
-        imageUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978',
-        likes: 0,
-        comments: 0,
+        userId: antonyfmunoz.id,
+        content: "Just launched my new project! Check it out 🚀",
+        imageUrl: "/uploads/post1.jpg",
+        mediaType: "photo",
+        likes: 42,
+        comments: 7,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 24 * 2) // 2 days ago
       },
       {
-        userId: user3.id,
-        content: 'Hosting a free webinar tomorrow on "Building Scalable React Applications" - Join our community to participate!',
-        imageUrl: null,
-        likes: 0,
-        comments: 0,
+        userId: antonyfmunoz.id,
+        content: "Working on some new features for the platform",
+        imageUrl: "/uploads/post2.jpg",
+        mediaType: "photo",
+        likes: 27,
+        comments: 3,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 24) // 1 day ago
       },
       {
-        userId: user4.id,
-        content: 'I just wrapped up my latest UI design system. Excited to share what I\'ve learned!',
-        imageUrl: 'https://images.unsplash.com/photo-1561070791-2526d30994b5',
-        likes: 0,
-        comments: 0,
-      },
-    ]);
-
-    console.log("Posts created");
-
-    // Create products
-    await db.insert(products).values([
-      {
-        userId: user2.id,
-        title: 'Content Marketing Mastery',
-        description: 'A comprehensive guide to content marketing strategy',
-        price: 49.99,
-        category: 'Course',
-        imageUrl: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40',
-        rating: 0,
-        reviewCount: 0,
+        userId: testUser.id,
+        content: "Testing out this new platform. Looks promising!",
+        mediaType: "text",
+        likes: 15,
+        comments: 2,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 12) // 12 hours ago
       },
       {
-        userId: user5.id,
-        title: 'Productivity Planner',
-        description: 'Boost your productivity with this custom planner',
-        price: 19.99,
-        category: 'Template',
-        imageUrl: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643',
-        rating: 0,
-        reviewCount: 0,
+        userId: antonyfmunoz.id,
+        content: "Just shared a new tutorial on my profile. Let me know what you think!",
+        videoUrl: "/uploads/tutorial.mp4",
+        mediaType: "video",
+        likes: 56,
+        comments: 12,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 6) // 6 hours ago
       },
       {
-        userId: user3.id,
-        title: 'Web Development Bootcamp',
-        description: 'Learn modern web development from scratch',
-        price: 89.99,
-        category: 'Course',
-        imageUrl: 'https://images.unsplash.com/photo-1488590528505-98d2b5aba04b',
-        rating: 0,
-        reviewCount: 0,
-      },
-    ]);
+        userId: testUser.id,
+        content: "This is my latest project. Feedback welcome!",
+        imageUrl: "/uploads/project.jpg",
+        mediaType: "photo",
+        likes: 38,
+        comments: 5,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 3) // 3 hours ago
+      }
+    ];
 
-    console.log("Products created");
+    for (const post of posts) {
+      await db.insert(schema.posts).values(post);
+    }
 
-    // Create AI agents
-    await db.insert(aiAgents).values([
+    // Create comments
+    console.log("Creating comments...");
+    const comments = [
       {
-        userId: user1.id,
-        name: 'Content Assistant',
-        description: 'Writes blog posts, social media captions, and email copy',
-        icon: 'Pencil',
-        iconColor: 'text-primary',
-        backgroundColor: 'bg-blue-100',
-        systemPrompt: 'You are a content assistant specializing in writing engaging copy for various formats.',
-        isCustom: false,
-        chatCount: 0,
-        status: 'active',
+        postId: 1,
+        userId: testUser.id,
+        content: "Amazing work! 👏",
+        likes: 3,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 23) // 23 hours ago
       },
       {
-        userId: user1.id,
-        name: 'Code Helper',
-        description: 'Assists with programming tasks and debugging',
-        icon: 'Code',
-        iconColor: 'text-secondary',
-        backgroundColor: 'bg-purple-100',
-        systemPrompt: 'You are a programming assistant that helps with code, debugging, and technical questions.',
-        isCustom: false,
-        chatCount: 0,
-        status: 'active',
-      },
-    ]);
-
-    console.log("AI agents created");
-
-    // Create communities
-    const [community1] = await db.insert(communities).values({
-      name: 'Web Developers',
-      description: 'A community for web developers to share knowledge and resources',
-      iconColor: 'bg-green-500',
-    }).returning();
-
-    const [community2] = await db.insert(communities).values({
-      name: 'Content Creators',
-      description: 'For content creators across all platforms',
-      iconColor: 'bg-yellow-500',
-    }).returning();
-
-    console.log("Communities created");
-
-    // Create channels
-    const [channel1] = await db.insert(channels).values({
-      communityId: community1.id,
-      name: 'general',
-    }).returning();
-
-    await db.insert(channels).values([
-      {
-        communityId: community1.id,
-        name: 'frontend',
+        postId: 1,
+        userId: antonyfmunoz.id,
+        content: "Thanks for the support!",
+        likes: 1,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 22) // 22 hours ago
       },
       {
-        communityId: community1.id,
-        name: 'backend',
-      },
-    ]);
-
-    console.log("Channels created");
-
-    // Create channel messages
-    await db.insert(channelMessages).values([
-      {
-        channelId: channel1.id,
-        userId: user3.id,
-        content: 'Hey everyone! I just published a new tutorial on building React components with TypeScript. Check it out!',
-        isPinned: false,
-        likes: 0,
+        postId: 3,
+        userId: antonyfmunoz.id,
+        content: "Welcome to the platform! Let me know if you need help.",
+        likes: 2,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 10) // 10 hours ago
       },
       {
-        channelId: channel1.id,
-        userId: user4.id,
-        content: 'Thanks for sharing, David! I\'ve been looking for good TypeScript resources.',
-        isPinned: false,
-        likes: 0,
-      },
-    ]);
+        postId: 4,
+        userId: testUser.id,
+        content: "This tutorial was super helpful. Thanks for sharing!",
+        likes: 5,
+        createdAt: new Date(Date.now() - 3600 * 1000 * 5) // 5 hours ago
+      }
+    ];
 
-    console.log("Channel messages created");
+    for (const comment of comments) {
+      await db.insert(schema.comments).values(comment);
+    }
 
-    // Create contacts
-    await db.insert(contacts).values([
-      {
-        userId: user1.id,
-        contactName: 'Sarah Mitchell',
-        contactImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-        purchaseInfo: 'Purchased: Content Marketing Course',
-      },
-      {
-        userId: user1.id,
-        contactName: 'David Kim',
-        contactImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-        purchaseInfo: 'Purchased: Web Development Bootcamp',
-      },
-    ]);
-
-    console.log("Contacts created");
-
-    // Create document
-    await db.insert(documents).values({
-      userId: user1.id,
-      title: 'Content Strategy 2023',
-      content: `<h1 class="text-xl font-bold mb-2">Content Strategy 2023</h1>
-      <p class="mb-4">This document outlines our content strategy for the upcoming quarter.</p>
-      <h2 class="text-lg font-semibold mb-2">Key Goals:</h2>
-      <ul class="list-disc pl-5 mb-4">
-        <li>Increase blog traffic by 25%</li>
-        <li>Launch 2 new video series</li>
-        <li>Expand newsletter to 10k subscribers</li>
-      </ul>
-      <p>Click to edit this document and add your own content...</p>`,
+    // Create follow relationship
+    console.log("Creating follow relationship...");
+    await db.insert(schema.followers).values({
+      followerId: testUser.id,
+      followedId: antonyfmunoz.id,
+      createdAt: new Date(Date.now() - 3600 * 1000 * 48) // 48 hours ago
     });
 
-    console.log("Documents created");
+    // Create notifications
+    console.log("Creating notifications...");
+    await db.insert(schema.notifications).values([
+      {
+        userId: antonyfmunoz.id,
+        type: "like",
+        message: "Test User liked your post",
+        read: false,
+        linkTo: "/posts/1",
+        relatedUserId: testUser.id,
+        relatedUserImage: "/uploads/profile-testuser.jpg",
+        createdAt: new Date(Date.now() - 3600 * 1000 * 4) // 4 hours ago
+      },
+      {
+        userId: antonyfmunoz.id,
+        type: "comment",
+        message: "Test User commented on your post",
+        read: false,
+        linkTo: "/posts/4",
+        relatedUserId: testUser.id,
+        relatedUserImage: "/uploads/profile-testuser.jpg",
+        createdAt: new Date(Date.now() - 3600 * 1000 * 2) // 2 hours ago
+      },
+      {
+        userId: testUser.id,
+        type: "follow",
+        message: "Antony Munoz started following you",
+        read: false,
+        linkTo: "/profile/antonyfmunoz",
+        relatedUserId: antonyfmunoz.id,
+        relatedUserImage: "/uploads/profile-antonyfmunoz.jpg",
+        createdAt: new Date(Date.now() - 3600 * 1000 * 1) // 1 hour ago
+      }
+    ]);
 
-    console.log("Database seeded successfully!");
+    console.log("Database seeding completed successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
   } finally {
