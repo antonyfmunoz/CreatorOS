@@ -15,7 +15,8 @@ import {
   Eye, 
   BarChart2, 
   ChevronDown,
-  Share2
+  Share2,
+  ShoppingBag
 } from "lucide-react";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,50 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   // Connect platform handler
   const handleConnectPlatform = (platform: string) => {
     console.log(`Connecting to ${platform}...`);
+    toast({
+      title: `Connect to ${platform}`,
+      description: `Connecting to ${platform} would open OAuth flow in a real implementation.`
+    });
+  };
+  
+  const handleOpenTagPeople = () => {
+    console.log("Opening tag people");
+    toast({
+      title: "Tag People",
+      description: "Tag people feature would open here"
+    });
+  };
+  
+  const handleOpenTagProducts = () => {
+    console.log("Opening tag products");
+    toast({
+      title: "Tag Products",
+      description: "Tag products feature would open here"
+    });
+  };
+  
+  const handleOpenLocationPicker = () => {
+    console.log("Opening location picker");
+    toast({
+      title: "Add Location",
+      description: "Add location feature would open here"
+    });
+  };
+  
+  const handleOpenAudiencePicker = () => {
+    console.log("Opening audience picker");
+    toast({
+      title: "Audience Settings",
+      description: "Audience settings would open here"
+    });
+  };
+  
+  const handleOpenPollCreator = () => {
+    console.log("Opening poll creator");
+    toast({
+      title: "Create Poll",
+      description: "Poll creation feature would open here"
+    });
   };
   
   const createPostMutation = useMutation({
@@ -163,83 +208,91 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           </div>
         </div>
         
-        {/* Poll Button - Round gray container */}
-        <div className="px-4 py-3">
-          <div className="w-full rounded-full bg-gray-100 py-2.5 px-4 flex items-center">
-            <BarChart2 className="h-4 w-4 mr-2.5" />
-            <span className="text-sm">Poll</span>
-          </div>
-        </div>
-        
-        {/* Instagram-style options - EXACTLY matched to screenshot */}
-        <div>
-          {/* Tag People Option */}
-          <div className="flex justify-between items-center px-4 py-3.5 border-t">
-            <div className="flex items-center">
-              <Users className="h-5 w-5 mr-3" />
-              <span>Tag people</span>
+        {/* This section is the EXACT match of PhotoUploader.tsx layout */}
+        <div className="space-y-0">
+          {/* Poll Button */}
+          <button 
+            type="button"
+            className="mx-4 mt-3 mb-2 w-[calc(100%-32px)] flex items-center gap-2 px-4 py-2.5 rounded-full text-sm bg-gray-100 cursor-pointer"
+            onClick={handleOpenPollCreator}
+          >
+            <BarChart2 className="w-4 h-4" /> Poll
+          </button>
+            
+          {/* Tag people, products, location, audience */}
+          <div className="space-y-0 border-t">
+            {/* Tag people option - EXACT match */}
+            <button 
+              type="button"
+              className="flex items-center justify-between w-full py-3 px-4 bg-transparent border-none cursor-pointer"
+              onClick={handleOpenTagPeople}
+            >
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5" />
+                <span>Tag people</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </button>
+            
+            {/* Tag product button - EXACT match */}
+            <button 
+              type="button"
+              className="flex items-center justify-between w-full py-3 px-4 bg-transparent border-none cursor-pointer border-t"
+              onClick={handleOpenTagProducts}
+            >
+              <div className="flex items-center gap-3">
+                <ShoppingBag className="w-5 h-5" />
+                <span>Tag product</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </button>
+            
+            {/* Add location option - EXACT match */}
+            <button 
+              type="button"
+              className="flex items-center justify-between w-full py-3 px-4 bg-transparent border-none cursor-pointer border-t"
+              onClick={handleOpenLocationPicker}
+            >
+              <div className="flex items-center gap-3">
+                <MapPin className="w-5 h-5" />
+                <span>Add location</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </button>
+            
+            {/* Audience option - EXACT match */}
+            <div 
+              className="flex items-center justify-between w-full py-3 px-4 cursor-pointer border-t"
+              onClick={handleOpenAudiencePicker}
+            >
+              <div className="flex items-center gap-3">
+                <Eye className="w-5 h-5" />
+                <span>Audience</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Everyone</span>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
-          
-          {/* Tag Product Option */}
-          <div className="flex justify-between items-center px-4 py-3.5 border-t">
-            <div className="flex items-center">
-              <svg 
-                width="20" 
-                height="20" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
-                className="mr-3"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
-                <path d="M3 9H21" stroke="currentColor" strokeWidth="2" />
-                <path d="M9 21V9" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              <span>Tag product</span>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </div>
-          
-          {/* Add Location Option */}
-          <div className="flex justify-between items-center px-4 py-3.5 border-t">
-            <div className="flex items-center">
-              <MapPin className="h-5 w-5 mr-3" />
-              <span>Add location</span>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </div>
-          
-          {/* Audience Option */}
-          <div className="flex justify-between items-center px-4 py-3.5 border-t">
-            <div className="flex items-center">
-              <Eye className="h-5 w-5 mr-3" />
-              <span>Audience</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-muted-foreground mr-2">Everyone</span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </div>
-          
-          {/* Post to section */}
+            
+          {/* Post to section - EXACT match */}
           <div className="border-t">
             <div 
-              className="flex justify-between items-center px-4 py-3.5 cursor-pointer" 
+              className="flex items-center justify-between px-4 py-3.5 cursor-pointer" 
               onClick={() => setIsPostToExpanded(!isPostToExpanded)}
             >
               <span className="font-medium">Post to</span>
               <ChevronDown className="h-5 w-5 text-muted-foreground" />
             </div>
-            
+              
             {isPostToExpanded && (
               <div className="space-y-4 pb-4">
                 {/* X (Twitter) */}
                 <div className="flex justify-between items-center px-4">
                   <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white font-semibold text-sm">
-                      𝕏
+                    <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white">
+                      <span className="text-sm font-bold">𝕏</span>
                     </div>
                     <div>
                       <div>Connect X (Twitter)</div>
@@ -255,12 +308,12 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                     Connect
                   </Button>
                 </div>
-                
+                  
                 {/* Facebook */}
                 <div className="flex justify-between items-center px-4">
                   <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                      f
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                      <span className="text-lg">f</span>
                     </div>
                     <div>
                       <div>Connect Facebook</div>
@@ -276,7 +329,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                     Connect
                   </Button>
                 </div>
-                
+                  
                 {/* Instagram */}
                 <div className="flex justify-between items-center px-4">
                   <div className="flex items-center space-x-3">
@@ -299,7 +352,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                     Connect
                   </Button>
                 </div>
-                
+                  
                 {/* TikTok */}
                 <div className="flex justify-between items-center px-4">
                   <div className="flex items-center space-x-3">
@@ -320,7 +373,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                     Connect
                   </Button>
                 </div>
-                
+                  
                 {/* YouTube */}
                 <div className="flex justify-between items-center px-4">
                   <div className="flex items-center space-x-3">
@@ -341,8 +394,8 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
                     Connect
                   </Button>
                 </div>
-                
-                {/* Your Story */}
+                  
+                {/* Your Story - EXACT match */}
                 <div className="flex justify-between items-center px-4 pt-1">
                   <div className="flex items-center space-x-3">
                     <Share2 className="h-5 w-5" />
@@ -358,7 +411,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
           </div>
         </div>
         
-        {/* Share Button */}
+        {/* Share Button - EXACT match */}
         <div className="sticky bottom-0 w-full px-4 py-3 bg-white border-t mt-auto">
           <Button
             className="w-full bg-black text-white hover:bg-gray-900 h-11 rounded-md font-medium"
