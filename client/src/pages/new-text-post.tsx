@@ -127,27 +127,15 @@ export default function NewTextPost() {
           ) : (
             <button 
               type="button"
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                width: '100%', 
-                height: '38px', 
-                padding: '8px 16px', 
-                borderRadius: '9999px', 
-                border: 'none', 
-                cursor: 'pointer', 
-                backgroundColor: '#3B82F6', 
-                color: 'white' 
-              }}
+              className="flex items-center justify-center gap-2 w-full h-[38px] px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
               onClick={() => {
                 console.log("Opening poll modal");
                 setIsPollModalOpen(true);
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <BarChart2 style={{ width: '16px', height: '16px', marginRight: '6px' }} />
-                <span style={{ fontSize: '14px' }}>Poll</span>
+              <div className="flex items-center justify-center">
+                <BarChart2 className="w-4 h-4 mr-1.5" />
+                <span className="text-[14px]">Poll</span>
               </div>
             </button>
           )}
