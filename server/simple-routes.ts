@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import { storage } from "./database-storage";
 import { setupAuth } from "./auth";
-import { posts, users, comments } from "@shared/schema";
+import * as schema from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { db } from "./fixed-db";
 
@@ -130,6 +130,43 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error("Error fetching stories:", error);
       res.status(500).json({ message: "Failed to fetch stories" });
+    }
+  });
+  
+  app.post("/api/stories", upload.single('media'), async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const userId = req.user.id;
+      const { caption, mediaType } = req.body;
+      
+      // Get the file path if a file was uploaded
+      const mediaUrl = req.file ? `/uploads/${req.file.filename}` : req.body.mediaUrl;
+      
+      if (!mediaUrl) {
+        return res.status(400).json({ message: "Media URL is required" });
+      }
+      
+      // Calculate expiration date (24 hours from now)
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+      
+      const storyData = {
+        userId,
+        caption,
+        mediaUrl,
+        mediaType: mediaType || "image",
+        expiresAt
+      };
+      
+      const story = await db.insert(schema.stories).values(storyData).returning();
+      
+      res.status(201).json(story[0]);
+    } catch (error) {
+      console.error("Error creating story:", error);
+      res.status(500).json({ message: "Failed to create story" });
     }
   });
 

@@ -1,6 +1,6 @@
 import { db } from "./fixed-db";
 import { posts, stories } from "../shared/schema";
-import { eq, or, like } from "drizzle-orm";
+import { eq, or, like, ne, isNotNull } from "drizzle-orm";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -50,9 +50,9 @@ export async function cleanupOrphanedStories(): Promise<number> {
             )
           ).where(
             or(
-              eq(posts.imageUrl, null).not(),
-              eq(posts.videoUrl, null).not(),
-              eq(posts.audioUrl, null).not()
+              ne(posts.imageUrl, null),
+              ne(posts.videoUrl, null),
+              ne(posts.audioUrl, null)
             )
           );
       }
