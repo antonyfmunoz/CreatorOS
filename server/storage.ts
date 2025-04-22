@@ -3113,4 +3113,4 @@ export class DatabaseStorage implements IStorage {
 }
 
 // Use DatabaseStorage for production
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
