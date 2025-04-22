@@ -71,12 +71,36 @@ const AuthPage = () => {
   });
 
   const onLoginSubmit = (values: LoginFormValues) => {
-    loginMutation.mutate(values);
+    loginMutation.mutate(values, {
+      onError: (error: Error) => {
+        // For login errors, we'll set a general form error
+        if (error.message.includes('Authentication failed') || error.message.includes('Incorrect username or password')) {
+          loginForm.setError("username", {
+            type: "manual",
+            message: "Invalid username or password"
+          });
+          loginForm.setError("password", {
+            type: "manual",
+            message: "Invalid username or password"
+          });
+        }
+      }
+    });
   };
 
   const onRegisterSubmit = (values: RegisterFormValues) => {
     const { confirmPassword, ...registerData } = values;
-    registerMutation.mutate(registerData);
+    registerMutation.mutate(registerData, {
+      onError: (error: Error) => {
+        // If username already exists, set a specific form error
+        if (error.message.includes('already exists')) {
+          registerForm.setError("username", {
+            type: "manual",
+            message: "This username is already taken. Please choose a different one."
+          });
+        }
+      }
+    });
   };
 
   return (
