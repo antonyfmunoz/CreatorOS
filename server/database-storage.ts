@@ -1,259 +1,759 @@
 import { 
   users, type User, type InsertUser,
-  followers, type Follower,
+  posts, type Post, type InsertPost,
+  comments, type Comment, type InsertComment,
+  followers, type InsertFollower,
+  savedPosts, type InsertSavedPost,
+  stories, type Story, type InsertStory,
+  notifications, type Notification, type InsertNotification,
+  taggedUsers, type TaggedUser, type InsertTaggedUser
 } from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, and, or, count, sql } from "drizzle-orm";
+import { db } from "./fixed-db";
+import { eq, desc, inArray, or, and, sql, not, isNull } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import type { IStorage } from "./storage";
-import connectPgSimple from "connect-pg-simple";
+import { pool } from "./fixed-db";
+import { Json } from "drizzle-orm/pg-core";
 
-// Create PostgreSQL session store
-const PostgresStore = connectPgSimple(session);
+const PostgresSessionStore = connectPg(session);
+
+export interface IStorage {
+  // User operations
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(insertUser: InsertUser): Promise<User>;
+  updateUser(id: number, updateData: Partial<User>): Promise<User>;
+  deleteUser(id: number): Promise<void>;
+  followUser(followerId: number, followingId: number): Promise<void>;
+  unfollowUser(followerId: number, followingId: number): Promise<void>;
+  isFollowing(followerId: number, followingId: number): Promise<boolean>;
+  getFollowers(userId: number): Promise<User[]>;
+  getFollowing(userId: number): Promise<User[]>;
+  searchUsers(query: string): Promise<User[]>;
+  
+  // Post operations
+  getPosts(): Promise<(Post & { user: User })[]>;
+  getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
+  getPostsByUserId(userId: number): Promise<(Post & { user: User })[]>;
+  createPost(insertPost: InsertPost): Promise<Post>;
+  likePost(id: number): Promise<Post>;
+  unlikePost(id: number): Promise<Post>;
+  updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
+  deletePost(id: number): Promise<void>;
+  savePost(userId: number, postId: number): Promise<void>;
+  unsavePost(userId: number, postId: number): Promise<void>;
+  getSavedPosts(userId: number): Promise<(Post & { user: User })[]>;
+  
+  // Comment operations
+  getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]>;
+  createComment(insertComment: InsertComment): Promise<Comment>;
+  updateComment(id: number, content: string): Promise<Comment>;
+  deleteComment(id: number): Promise<void>;
+  likeComment(id: number): Promise<Comment>;
+  unlikeComment(id: number): Promise<Comment>;
+  
+  // Story operations
+  getStories(): Promise<(Story & { user: User })[]>;
+  getUserStories(userId: number): Promise<Story[]>;
+  getStoryById(id: number): Promise<Story | undefined>;
+  createStory(insertStory: InsertStory): Promise<Story>;
+  deleteStory(id: number): Promise<void>;
+  incrementStoryViewCount(id: number): Promise<Story>;
+  
+  // Notification operations
+  getNotificationsByUserId(userId: number): Promise<Notification[]>;
+  createNotification(insertNotification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: number): Promise<void>;
+  markAllNotificationsAsRead(userId: number): Promise<void>;
+  deleteNotification(id: number): Promise<void>;
+  deleteAllNotifications(userId: number): Promise<void>;
+  
+  // Session store for authentication
+  sessionStore: session.SessionStore;
+}
 
 export class DatabaseStorage implements IStorage {
-  public sessionStore: session.Store;
+  sessionStore: session.SessionStore;
   
   constructor() {
-    // Initialize session store with PostgreSQL
-    this.sessionStore = new PostgresStore({
-      conString: process.env.DATABASE_URL,
-      createTableIfMissing: true,
-      tableName: 'session'
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
     });
   }
-
-  // User methods
+  
+  // User operations
   async getUser(id: number): Promise<User | undefined> {
-    console.log(`Getting user with ID: ${id}`);
     try {
       const [user] = await db.select().from(users).where(eq(users.id, id));
       return user;
     } catch (error) {
-      console.error(`Error getting user with ID ${id}:`, error);
+      console.error(`Error getting user ${id}:`, error);
       return undefined;
     }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    console.log(`Getting user with username: ${username}`);
     try {
-      const result = await db.select().from(users).where(eq(users.username, username));
-      console.log(`Query result for username ${username}:`, result);
-      
-      if (result.length === 0) {
-        console.log(`No user found with username: ${username}`);
-        return undefined;
-      }
-      
-      return result[0];
+      const [user] = await db.select().from(users).where(eq(users.username, username));
+      return user;
     } catch (error) {
-      console.error(`Error getting user with username ${username}:`, error);
+      console.error(`Error getting user by username ${username}:`, error);
       return undefined;
     }
   }
 
-  async searchUsersByUsername(query: string): Promise<User[]> {
-    // Use the SQL template literals for case-insensitive search
-    return await db
-      .select()
-      .from(users)
-      .where(sql`${users.username} ILIKE ${`%${query}%`}`)
-      .limit(10);
+  async createUser(insertUser: InsertUser): Promise<User> {
+    try {
+      const [user] = await db.insert(users).values(insertUser).returning();
+      return user;
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
   }
 
-  async createUser(userData: InsertUser): Promise<User> {
-    console.log(`Creating user with username: ${userData.username}`);
-    const [user] = await db.insert(users).values(userData).returning();
-    return user;
+  async updateUser(id: number, updateData: Partial<User>): Promise<User> {
+    try {
+      const [user] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+      return user;
+    } catch (error) {
+      console.error(`Error updating user ${id}:`, error);
+      throw error;
+    }
   }
 
-  async updateUser(id: number, userData: Partial<User>): Promise<User> {
-    const [user] = await db
-      .update(users)
-      .set(userData)
-      .where(eq(users.id, id))
-      .returning();
-    return user;
+  async deleteUser(id: number): Promise<void> {
+    try {
+      await db.delete(users).where(eq(users.id, id));
+    } catch (error) {
+      console.error(`Error deleting user ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async followUser(followerId: number, followingId: number): Promise<void> {
+    try {
+      // Check if already following
+      const [existing] = await db
+        .select()
+        .from(followers)
+        .where(
+          and(
+            eq(followers.followerId, followerId),
+            eq(followers.followingId, followingId)
+          )
+        );
+      
+      if (existing) return; // Already following
+      
+      await db.insert(followers).values({
+        followerId,
+        followingId,
+      });
+    } catch (error) {
+      console.error(`Error following user ${followingId}:`, error);
+      throw error;
+    }
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+  async unfollowUser(followerId: number, followingId: number): Promise<void> {
+    try {
+      await db
+        .delete(followers)
+        .where(
+          and(
+            eq(followers.followerId, followerId),
+            eq(followers.followingId, followingId)
+          )
+        );
+    } catch (error) {
+      console.error(`Error unfollowing user ${followingId}:`, error);
+      throw error;
+    }
   }
 
-  // Follower methods  
-  async followUser(followerId: number, followedId: number): Promise<void> {
-    await db.insert(followers).values({
-      followerId,
-      followedId,
-    });
+  async isFollowing(followerId: number, followingId: number): Promise<boolean> {
+    try {
+      const [result] = await db
+        .select()
+        .from(followers)
+        .where(
+          and(
+            eq(followers.followerId, followerId),
+            eq(followers.followingId, followingId)
+          )
+        );
+      
+      return !!result;
+    } catch (error) {
+      console.error(`Error checking if user ${followerId} is following ${followingId}:`, error);
+      return false;
+    }
   }
-
-  async unfollowUser(followerId: number, followedId: number): Promise<void> {
-    await db
-      .delete(followers)
-      .where(
-        and(
-          eq(followers.followerId, followerId),
-          eq(followers.followedId, followedId)
-        )
-      );
-  }
-
+  
   async getFollowers(userId: number): Promise<User[]> {
-    const result = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        displayName: users.displayName,
-        profileImageUrl: users.profileImageUrl,
-        bio: users.bio,
-        role: users.role,
-        xpPoints: users.xpPoints,
-        level: users.level,
-        createdAt: users.createdAt,
-        password: users.password,
-      })
-      .from(followers)
-      .innerJoin(users, eq(followers.followerId, users.id))
-      .where(eq(followers.followedId, userId))
-      .orderBy(desc(followers.createdAt));
-    
-    return result;
+    try {
+      const result = await db
+        .select({ user: users })
+        .from(followers)
+        .innerJoin(users, eq(followers.followerId, users.id))
+        .where(eq(followers.followingId, userId));
+      
+      return result.map(r => r.user);
+    } catch (error) {
+      console.error(`Error getting followers for user ${userId}:`, error);
+      return [];
+    }
   }
-
+  
   async getFollowing(userId: number): Promise<User[]> {
-    const result = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        displayName: users.displayName,
-        profileImageUrl: users.profileImageUrl,
-        bio: users.bio,
-        role: users.role,
-        xpPoints: users.xpPoints,
-        level: users.level,
-        createdAt: users.createdAt,
-        password: users.password,
-      })
-      .from(followers)
-      .innerJoin(users, eq(followers.followedId, users.id))
-      .where(eq(followers.followerId, userId))
-      .orderBy(desc(followers.createdAt));
-    
-    return result;
+    try {
+      const result = await db
+        .select({ user: users })
+        .from(followers)
+        .innerJoin(users, eq(followers.followingId, users.id))
+        .where(eq(followers.followerId, userId));
+      
+      return result.map(r => r.user);
+    } catch (error) {
+      console.error(`Error getting following for user ${userId}:`, error);
+      return [];
+    }
   }
-
-  async getFollowerCount(userId: number): Promise<number> {
-    const [result] = await db
-      .select({ count: count() })
-      .from(followers)
-      .where(eq(followers.followedId, userId));
-    
-    return result.count;
-  }
-
-  async getFollowingCount(userId: number): Promise<number> {
-    const [result] = await db
-      .select({ count: count() })
-      .from(followers)
-      .where(eq(followers.followerId, userId));
-    
-    return result.count;
-  }
-
-  async isFollowing(followerId: number, followedId: number): Promise<boolean> {
-    const result = await db
-      .select()
-      .from(followers)
-      .where(
-        and(
-          eq(followers.followerId, followerId),
-          eq(followers.followedId, followedId)
+  
+  async searchUsers(query: string): Promise<User[]> {
+    try {
+      if (!query || query.trim() === '') return [];
+      
+      const queryLower = `%${query.toLowerCase()}%`;
+      
+      const result = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            sql`LOWER(${users.username}) LIKE ${queryLower}`,
+            sql`LOWER(${users.displayName}) LIKE ${queryLower}`
+          )
         )
-      );
-    
-    return result.length > 0;
+        .limit(10);
+      
+      return result;
+    } catch (error) {
+      console.error(`Error searching users with query ${query}:`, error);
+      return [];
+    }
   }
 
-  // Stubs for other methods required by IStorage interface
-  // These will need to be implemented properly when needed
-  async getPosts() { return []; }
-  async getPostById() { return undefined; }
-  async getPostsByUserId() { return []; }
-  async createPost(post: any) { return {} as any; }
-  async updatePost() { return {} as any; }
-  async deletePost() {}
-  async likePost() { return {} as any; }
-  async unlikePost() { return {} as any; }
-  async savePost() {}
-  async unsavePost() {}
-  async getSavedPosts() { return []; }
-  async getPostCountByUser() { return 0; }
-  async getCommentsByPostId() { return []; }
-  async getCommentReplies() { return []; }
-  async getCommentById() { return undefined; }
-  async createComment() { return {} as any; }
-  async updateComment() { return {} as any; }
-  async deleteComment() {}
-  async likeComment() { return {} as any; }
-  async unlikeComment() { return {} as any; }
-  async getTotalCommentCountForPost() { return 0; }
-  async getProducts() { return []; }
-  async getProductById() { return undefined; }
-  async getProductsByCategory() { return []; }
-  async createProduct() { return {} as any; }
-  async getAIAgents() { return []; }
-  async getAIAgentById() { return undefined; }
-  async getUserAIAgents() { return []; }
-  async createAIAgent() { return {} as any; }
-  async getAIChatsByAgentId() { return []; }
-  async createAIChat() { return {} as any; }
-  async updateAIChat() { return {} as any; }
-  async getCommunities() { return []; }
-  async getCommunityById() { return undefined; }
-  async createCommunity() { return {} as any; }
-  async getChannelsByCommunityId() { return []; }
-  async getChannelById() { return undefined; }
-  async createChannel() { return {} as any; }
-  async getMessagesByChannelId() { return []; }
-  async createChannelMessage() { return {} as any; }
-  async pinChannelMessage() { return {} as any; }
-  async likeChannelMessage() { return {} as any; }
-  async getRevenueByUserId() { return []; }
-  async createRevenue() { return {} as any; }
-  async getContactsByUserId() { return []; }
-  async createContact() { return {} as any; }
-  async getDocumentsByUserId() { return []; }
-  async getDocumentById() { return undefined; }
-  async createDocument() { return {} as any; }
-  async updateDocument() { return {} as any; }
-  async getNotificationsByUserId() { return []; }
-  async createNotification() { return {} as any; }
-  async markNotificationAsRead() { return {} as any; }
-  async markAllNotificationsAsRead() {}
-  async deleteNotification() {}
-  async deleteAllNotifications() {}
-  async getConversationsByUserId() { return []; }
-  async getConversationById() { return undefined; }
-  async getParticipantsByConversationId() { return []; }
-  async createConversation() { return {} as any; }
-  async addParticipantToConversation() { return {} as any; }
-  async removeParticipantFromConversation() {}
-  async deleteConversation() {}
-  async getMessagesByConversationId() { return []; }
-  async createDirectMessage() { return {} as any; }
-  async updateDirectMessage() { return {} as any; }
-  async deleteDirectMessage() {}
-  async addReactionToMessage() { return {} as any; }
-  async markMessageAsRead() { return {} as any; }
-  async markConversationAsRead() {}
-  async getUnreadMessageCountForUser() { return 0; }
-  async getStories() { return []; }
-  async getUserStories() { return []; }
-  async getStoryById() { return undefined; }
-  async createStory() { return {} as any; }
-  async deleteStory() {}
-  async incrementStoryViewCount() { return {} as any; }
+  // Post operations
+  async getPosts(): Promise<(Post & { user: User })[]> {
+    try {
+      console.log("Getting posts from database...");
+      const result = await db.select({
+        post: posts,
+        user: users,
+      }).from(posts)
+        .innerJoin(users, eq(posts.userId, users.id))
+        .orderBy(desc(posts.id));
+      
+      const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+      console.log(`Found ${postsWithUsers.length} posts in database`);
+      return postsWithUsers;
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      return [];
+    }
+  }
+
+  async getPostById(id: number): Promise<(Post & { user: User }) | undefined> {
+    try {
+      const [result] = await db.select({
+        post: posts,
+        user: users,
+      }).from(posts)
+        .innerJoin(users, eq(posts.userId, users.id))
+        .where(eq(posts.id, id));
+      
+      if (!result) return undefined;
+      
+      return { ...result.post, user: result.user };
+    } catch (error) {
+      console.error(`Error fetching post ${id}:`, error);
+      return undefined;
+    }
+  }
+  
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User })[]> {
+    try {
+      const result = await db.select({
+        post: posts,
+        user: users,
+      }).from(posts)
+        .innerJoin(users, eq(posts.userId, users.id))
+        .where(eq(posts.userId, userId))
+        .orderBy(desc(posts.id));
+      
+      return result.map(({ post, user }) => ({ ...post, user }));
+    } catch (error) {
+      console.error(`Error fetching posts for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  async createPost(insertPost: InsertPost): Promise<Post> {
+    try {
+      const [post] = await db.insert(posts).values(insertPost).returning();
+      return post;
+    } catch (error) {
+      console.error("Error creating post:", error);
+      throw error;
+    }
+  }
+
+  async likePost(id: number): Promise<Post> {
+    try {
+      const [post] = await db.select().from(posts).where(eq(posts.id, id));
+      if (!post) throw new Error(`Post with id ${id} not found`);
+      
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ likes: post.likes + 1 })
+        .where(eq(posts.id, id))
+        .returning();
+      
+      return updatedPost;
+    } catch (error) {
+      console.error(`Error liking post ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async unlikePost(id: number): Promise<Post> {
+    try {
+      const [post] = await db.select().from(posts).where(eq(posts.id, id));
+      if (!post) throw new Error(`Post with id ${id} not found`);
+      
+      // Prevent negative likes
+      const newLikes = Math.max(0, post.likes - 1);
+      
+      const [updatedPost] = await db
+        .update(posts)
+        .set({ likes: newLikes })
+        .where(eq(posts.id, id))
+        .returning();
+      
+      return updatedPost;
+    } catch (error) {
+      console.error(`Error unliking post ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async updatePost(id: number, content: string, imageUrl?: string): Promise<Post> {
+    try {
+      const [post] = await db.select().from(posts).where(eq(posts.id, id));
+      if (!post) throw new Error(`Post with id ${id} not found`);
+      
+      const updateData: Partial<Post> = { content };
+      if (imageUrl !== undefined) {
+        updateData.imageUrl = imageUrl;
+      }
+      
+      const [updatedPost] = await db
+        .update(posts)
+        .set(updateData)
+        .where(eq(posts.id, id))
+        .returning();
+      
+      return updatedPost;
+    } catch (error) {
+      console.error(`Error updating post ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async deletePost(id: number): Promise<void> {
+    try {
+      const [post] = await db.select().from(posts).where(eq(posts.id, id));
+      if (!post) throw new Error(`Post with id ${id} not found`);
+      
+      // Delete any stories associated with this post
+      try {
+        if (post.userId && post.mediaType) {
+          const mediaUrl = post.mediaType === 'photo' ? post.imageUrl : 
+                          post.mediaType === 'video' ? post.videoUrl :
+                          post.mediaType === 'audio' ? post.audioUrl : null;
+          
+          if (mediaUrl) {
+            await db.delete(stories)
+              .where(
+                and(
+                  eq(stories.userId, post.userId),
+                  eq(stories.mediaUrl, mediaUrl)
+                )
+              );
+          }
+        }
+      } catch (storyError) {
+        console.error("Error deleting related stories:", storyError);
+      }
+      
+      // Delete the post (cascade will handle comments deletion due to foreign key constraint)
+      await db.delete(posts).where(eq(posts.id, id));
+    } catch (error) {
+      console.error(`Error deleting post ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async savePost(userId: number, postId: number): Promise<void> {
+    try {
+      // Check if post exists
+      const [post] = await db.select().from(posts).where(eq(posts.id, postId));
+      if (!post) throw new Error(`Post with id ${postId} not found`);
+      
+      // Check if user exists
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) throw new Error(`User with id ${userId} not found`);
+      
+      // Check if this post is already saved by this user
+      const [existingSave] = await db
+        .select()
+        .from(savedPosts)
+        .where(
+          and(
+            eq(savedPosts.userId, userId),
+            eq(savedPosts.postId, postId)
+          )
+        );
+      
+      // If not already saved, save it
+      if (!existingSave) {
+        await db.insert(savedPosts).values({
+          userId,
+          postId,
+        });
+      }
+    } catch (error) {
+      console.error(`Error saving post ${postId} for user ${userId}:`, error);
+      throw error;
+    }
+  }
+  
+  async unsavePost(userId: number, postId: number): Promise<void> {
+    try {
+      await db
+        .delete(savedPosts)
+        .where(
+          and(
+            eq(savedPosts.userId, userId),
+            eq(savedPosts.postId, postId)
+          )
+        );
+    } catch (error) {
+      console.error(`Error unsaving post ${postId} for user ${userId}:`, error);
+      throw error;
+    }
+  }
+  
+  async getSavedPosts(userId: number): Promise<(Post & { user: User })[]> {
+    try {
+      const result = await db
+        .select({
+          post: posts,
+          user: users,
+        })
+        .from(savedPosts)
+        .innerJoin(posts, eq(savedPosts.postId, posts.id))
+        .innerJoin(users, eq(posts.userId, users.id))
+        .where(eq(savedPosts.userId, userId))
+        .orderBy(desc(posts.id));
+      
+      return result.map(({ post, user }) => ({ ...post, user }));
+    } catch (error) {
+      console.error(`Error fetching saved posts for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  // Comment operations
+  async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
+    try {
+      const result = await db
+        .select({
+          comment: comments,
+          user: users,
+        })
+        .from(comments)
+        .innerJoin(users, eq(comments.userId, users.id))
+        .where(eq(comments.postId, postId))
+        .orderBy(desc(comments.id));
+      
+      return result.map(({ comment, user }) => ({ ...comment, user }));
+    } catch (error) {
+      console.error(`Error fetching comments for post ${postId}:`, error);
+      return [];
+    }
+  }
+  
+  async createComment(insertComment: InsertComment): Promise<Comment> {
+    try {
+      const [comment] = await db.insert(comments).values(insertComment).returning();
+      
+      // Increment comment count on the post
+      const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
+      if (post) {
+        await db
+          .update(posts)
+          .set({ comments: post.comments + 1 })
+          .where(eq(posts.id, comment.postId));
+      }
+      
+      return comment;
+    } catch (error) {
+      console.error(`Error creating comment:`, error);
+      throw error;
+    }
+  }
+  
+  async updateComment(id: number, content: string): Promise<Comment> {
+    try {
+      const [updatedComment] = await db
+        .update(comments)
+        .set({ content })
+        .where(eq(comments.id, id))
+        .returning();
+      
+      if (!updatedComment) throw new Error(`Comment with id ${id} not found`);
+      return updatedComment;
+    } catch (error) {
+      console.error(`Error updating comment ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async deleteComment(id: number): Promise<void> {
+    try {
+      const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+      if (!comment) throw new Error(`Comment with id ${id} not found`);
+      
+      // Decrement comment count on the post
+      const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
+      if (post) {
+        await db
+          .update(posts)
+          .set({ comments: Math.max(0, post.comments - 1) })
+          .where(eq(posts.id, comment.postId));
+      }
+      
+      await db.delete(comments).where(eq(comments.id, id));
+    } catch (error) {
+      console.error(`Error deleting comment ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async likeComment(id: number): Promise<Comment> {
+    try {
+      const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+      if (!comment) throw new Error(`Comment with id ${id} not found`);
+      
+      const [updatedComment] = await db
+        .update(comments)
+        .set({ likes: comment.likes + 1 })
+        .where(eq(comments.id, id))
+        .returning();
+      
+      return updatedComment;
+    } catch (error) {
+      console.error(`Error liking comment ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async unlikeComment(id: number): Promise<Comment> {
+    try {
+      const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+      if (!comment) throw new Error(`Comment with id ${id} not found`);
+      
+      // Prevent negative likes
+      const newLikes = Math.max(0, comment.likes - 1);
+      
+      const [updatedComment] = await db
+        .update(comments)
+        .set({ likes: newLikes })
+        .where(eq(comments.id, id))
+        .returning();
+      
+      return updatedComment;
+    } catch (error) {
+      console.error(`Error unliking comment ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  // Story operations
+  async getStories(): Promise<(Story & { user: User })[]> {
+    try {
+      const result = await db
+        .select({
+          story: stories,
+          user: users,
+        })
+        .from(stories)
+        .innerJoin(users, eq(stories.userId, users.id))
+        .orderBy(desc(stories.id));
+      
+      return result.map(({ story, user }) => ({ ...story, user }));
+    } catch (error) {
+      console.error("Error fetching stories:", error);
+      return [];
+    }
+  }
+  
+  async getUserStories(userId: number): Promise<Story[]> {
+    try {
+      return await db
+        .select()
+        .from(stories)
+        .where(eq(stories.userId, userId))
+        .orderBy(desc(stories.id));
+    } catch (error) {
+      console.error(`Error fetching stories for user ${userId}:`, error);
+      return [];
+    }
+  }
+  
+  async getStoryById(id: number): Promise<Story | undefined> {
+    try {
+      const [story] = await db
+        .select()
+        .from(stories)
+        .where(eq(stories.id, id));
+      
+      return story;
+    } catch (error) {
+      console.error(`Error fetching story ${id}:`, error);
+      return undefined;
+    }
+  }
+  
+  async createStory(insertStory: InsertStory): Promise<Story> {
+    try {
+      const [story] = await db
+        .insert(stories)
+        .values(insertStory)
+        .returning();
+      
+      return story;
+    } catch (error) {
+      console.error("Error creating story:", error);
+      throw error;
+    }
+  }
+  
+  async deleteStory(id: number): Promise<void> {
+    try {
+      await db.delete(stories).where(eq(stories.id, id));
+    } catch (error) {
+      console.error(`Error deleting story ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async incrementStoryViewCount(id: number): Promise<Story> {
+    try {
+      const [story] = await db.select().from(stories).where(eq(stories.id, id));
+      if (!story) throw new Error(`Story with id ${id} not found`);
+      
+      const [updatedStory] = await db
+        .update(stories)
+        .set({ viewCount: story.viewCount + 1 })
+        .where(eq(stories.id, id))
+        .returning();
+      
+      return updatedStory;
+    } catch (error) {
+      console.error(`Error incrementing view count for story ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  // Notification operations
+  async getNotificationsByUserId(userId: number): Promise<Notification[]> {
+    try {
+      return await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt));
+    } catch (error) {
+      console.error(`Error fetching notifications for user ${userId}:`, error);
+      return [];
+    }
+  }
+  
+  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
+    try {
+      const [notification] = await db
+        .insert(notifications)
+        .values(insertNotification)
+        .returning();
+      
+      return notification;
+    } catch (error) {
+      console.error("Error creating notification:", error);
+      throw error;
+    }
+  }
+  
+  async markNotificationAsRead(id: number): Promise<void> {
+    try {
+      await db
+        .update(notifications)
+        .set({ read: true })
+        .where(eq(notifications.id, id));
+    } catch (error) {
+      console.error(`Error marking notification ${id} as read:`, error);
+      throw error;
+    }
+  }
+  
+  async markAllNotificationsAsRead(userId: number): Promise<void> {
+    try {
+      await db
+        .update(notifications)
+        .set({ read: true })
+        .where(eq(notifications.userId, userId));
+    } catch (error) {
+      console.error(`Error marking all notifications as read for user ${userId}:`, error);
+      throw error;
+    }
+  }
+  
+  async deleteNotification(id: number): Promise<void> {
+    try {
+      await db
+        .delete(notifications)
+        .where(eq(notifications.id, id));
+    } catch (error) {
+      console.error(`Error deleting notification ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async deleteAllNotifications(userId: number): Promise<void> {
+    try {
+      await db
+        .delete(notifications)
+        .where(eq(notifications.userId, userId));
+    } catch (error) {
+      console.error(`Error deleting all notifications for user ${userId}:`, error);
+      throw error;
+    }
+  }
 }
+
+export const storage = new DatabaseStorage();

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./fixed-db";
 import { posts, stories } from "../shared/schema";
 import { eq, or, like } from "drizzle-orm";
 

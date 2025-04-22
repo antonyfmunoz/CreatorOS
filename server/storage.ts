@@ -1873,52 +1873,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
-    const result = await db.select({
-      post: posts,
-      user: users,
-    }).from(posts)
-      .innerJoin(users, eq(posts.userId, users.id))
-      .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
-    
-    // Fetch all tagged users for all posts in a batch
-    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
-    
-    // Get all post IDs
-    const postIds = postsWithUsers.map(post => post.id);
-    
-    if (postIds.length > 0) {
-      // Fetch tagged users for all posts
-      const taggedUsersResult = await db.select({
-        taggedUser: taggedUsers,
+  async getPosts(): Promise<(Post & { user: User })[]> {
+    try {
+      console.log("Getting posts from database...");
+      const result = await db.select({
+        post: posts,
         user: users,
-        postId: taggedUsers.postId,
-      }).from(taggedUsers)
-        .innerJoin(users, eq(taggedUsers.userId, users.id))
-        .where(inArray(taggedUsers.postId, postIds));
+      }).from(posts)
+        .innerJoin(users, eq(posts.userId, users.id))
+        .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
       
-      // Group tagged users by post ID
-      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
-        if (!acc[postId]) {
-          acc[postId] = [];
-        }
-        
-        acc[postId].push({
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          profileImageUrl: user.profileImageUrl,
-          positionX: taggedUser.positionX,
-          positionY: taggedUser.positionY,
-        });
-        
-        return acc;
-      }, {} as Record<number, TaggedUser[]>);
+      // Map the results to combine post and user data
+      const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
       
-      // Add tagged users to their respective posts
-      postsWithUsers.forEach(post => {
-        post.taggedUsers = taggedUsersByPostId[post.id] || [];
-      });
+      console.log(`Found ${postsWithUsers.length} posts in database`);
+      return postsWithUsers;
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      // Return empty array instead of throwing to prevent app from crashing
+      return [];
+    }
     }
     
     return postsWithUsers;
