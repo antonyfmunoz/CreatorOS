@@ -1,4 +1,17 @@
-import { User } from "@shared/schema";
+import { users } from "@shared/schema";
+
+export interface User {
+  id: number;
+  username: string;
+  password: string;
+  displayName: string;
+  bio?: string | null;
+  profileImageUrl?: string | null;
+  role: string;
+  xpPoints: number;
+  level: number;
+  createdAt: Date | string;
+}
 
 export interface Post {
   id: number;
@@ -41,5 +54,17 @@ export interface ConversationParticipant {
   userId: number;
   conversationId: number;
   isAdmin: boolean;
+  user: User;
+}
+
+export interface Story {
+  id: number;
+  userId: number;
+  mediaUrl: string;
+  caption?: string | null;
+  hasAudio?: boolean;
+  viewCount: number;
+  createdAt: string | Date;
+  expiresAt: string | Date;
   user: User;
 }

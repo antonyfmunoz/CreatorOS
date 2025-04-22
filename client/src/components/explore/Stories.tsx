@@ -253,7 +253,7 @@ const Stories = () => {
               }`}>
                 <Avatar className="w-full h-full border-2 border-white">
                   <AvatarImage 
-                    src={user.profileImageUrl} 
+                    src={user.profileImageUrl || ''} 
                     alt={user.displayName} 
                     className="object-cover" 
                   />
@@ -319,7 +319,7 @@ const Stories = () => {
                 >
                   <Avatar className="h-10 w-10 mr-3 border-2 border-white hover:border-primary transition-colors">
                     <AvatarImage 
-                      src={selectedStory.user.profileImageUrl} 
+                      src={selectedStory.user.profileImageUrl || ''} 
                       alt={selectedStory.user.displayName} 
                     />
                     <AvatarFallback>{selectedStory.user.displayName.charAt(0)}</AvatarFallback>
