@@ -5,11 +5,14 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, BarChart2 } from "lucide-react";
+import { PollCreator } from "@/components/feed/PollCreator";
 
 export default function NewTextPost() {
   const [content, setContent] = useState("");
   const [addToStory, setAddToStory] = useState(false);
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [pollData, setPollData] = useState<any>(null);
   const [, setLocation] = useWouterLocation();
   
   const { toast } = useToast();
@@ -63,12 +66,17 @@ export default function NewTextPost() {
       return;
     }
     
-    createPostMutation.mutate({
+    const postData = {
       userId: user.id,
       content,
       mediaType: 'text',
-      addToStory
-    });
+      addToStory,
+      // Include poll data if it exists
+      ...(pollData && { pollData })
+    };
+    
+    console.log("Submitting post:", postData);
+    createPostMutation.mutate(postData);
   };
 
   return (
@@ -97,14 +105,37 @@ export default function NewTextPost() {
           ></textarea>
         </div>
         
-        {/* Poll Button */}
+        {/* Poll Button - Exactly matching the PhotoUploader.tsx line 628 */}
         <div className="p-4 border-b">
-          <button className="flex items-center justify-center gap-2 rounded-full py-2 px-4 bg-gray-50 w-full">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 20V12M10 20V4M16 20V12M22 20V4" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-sm">Poll</span>
-          </button>
+          {pollData ? (
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-medium">Poll: {pollData.question}</h3>
+                <button 
+                  className="text-red-500"
+                  onClick={() => setPollData(null)}
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="space-y-2">
+                {pollData.options.map((option: string, i: number) => (
+                  <div key={i} className="bg-muted p-2 rounded-md">{option}</div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <button 
+              type="button"
+              className="flex items-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
+              onClick={() => {
+                console.log("Opening poll modal");
+                setIsPollModalOpen(true);
+              }}
+            >
+              <BarChart2 className="w-4 h-4" /> Poll
+            </button>
+          )}
         </div>
         
         {/* Tag people */}
@@ -278,6 +309,28 @@ export default function NewTextPost() {
           Share
         </button>
       </div>
+      
+      {/* Poll Modal */}
+      {isPollModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+          <PollCreator 
+            isOpen={true}
+            onClose={() => {
+              console.log("Closing poll modal");
+              setIsPollModalOpen(false);
+            }}
+            onSave={(data) => {
+              console.log("Poll data saved:", data);
+              setPollData(data);
+              toast({
+                title: "Poll Added",
+                description: "Your poll has been added to the post"
+              });
+              setIsPollModalOpen(false);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
