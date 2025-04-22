@@ -35,15 +35,23 @@ async function hashPassword(password: string) {
 
 // Password verification function
 async function comparePasswords(supplied: string, stored: string) {
-  // Special case for development/seed data: plaintext password comparison
-  if (!stored.includes(".")) {
-    console.log("Using plaintext password comparison for development data");
-    console.log(`Supplied password length: ${supplied.length}, Stored password length: ${stored.length}`);
-    // Force return true for development/demo purposes (remove in production)
-    return true;
-  }
-  
   try {
+    // Check if this is a bcrypt hash (starts with $2b$)
+    if (stored.startsWith('$2b$')) {
+      console.log("Using bcrypt password comparison");
+      const bcrypt = require('bcrypt');
+      return await bcrypt.compare(supplied, stored);
+    }
+    
+    // Special case for development/seed data: plaintext password comparison
+    if (!stored.includes(".")) {
+      console.log("Using plaintext password comparison for development data");
+      console.log(`Supplied password length: ${supplied.length}, Stored password length: ${stored.length}`);
+      // Force return true for development/demo purposes (remove in production)
+      return true;
+    }
+    
+    // Legacy scrypt method
     const [hashed, salt] = stored.split(".");
     
     // Extra validation to ensure both parts exist
