@@ -75,22 +75,29 @@ const Stories = () => {
       
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
+        progressInterval.current = null;
       }
       
+      // Create a new interval that advances the progress bar
       progressInterval.current = setInterval(() => {
         setProgress(prev => {
-          if (prev >= 100) {
-            // Move to next story when progress completes
-            handleNextStory();
+          const newProgress = prev + (100 / (storyDuration / 100));
+          
+          if (newProgress >= 100) {
+            // Schedule the next story transition after this render cycle
+            setTimeout(() => {
+              handleNextStory();
+            }, 0);
             return 0;
           }
-          return prev + (100 / (storyDuration / 100));
+          return newProgress;
         });
       }, 100);
       
       return () => {
         if (progressInterval.current) {
           clearInterval(progressInterval.current);
+          progressInterval.current = null;
         }
       };
     }
@@ -194,16 +201,18 @@ const Stories = () => {
   
   // Handle story close
   const handleStoryClose = () => {
-    setSelectedStory(null);
-    setCurrentUserStories([]);
-    setCurrentStoryIndex(0);
-    setProgress(0);
-    
-    // Clear any running interval
+    // First clear the interval to prevent any race conditions
     if (progressInterval.current) {
       clearInterval(progressInterval.current);
       progressInterval.current = null;
     }
+    
+    // Then reset all state variables
+    setProgress(0);
+    setIsPaused(false);
+    setCurrentStoryIndex(0);
+    setCurrentUserStories([]);
+    setSelectedStory(null);
   };
   
   if (isLoading) {
