@@ -72,7 +72,7 @@ export default function NewTextPost() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white max-w-md mx-auto overflow-hidden">
+    <div className="relative h-screen bg-white max-w-md mx-auto flex flex-col">
       {/* Header */}
       <div className="flex justify-between items-center px-4 py-2.5 border-b">
         <button 
@@ -85,7 +85,7 @@ export default function NewTextPost() {
         <div className="w-4"></div>
       </div>
       
-      {/* Content Area */}
+      {/* Main scrollable content */}
       <div className="flex-1 overflow-y-auto">
         {/* Caption Input */}
         <div className="p-4 border-b">
@@ -252,7 +252,7 @@ export default function NewTextPost() {
         </div>
         
         {/* Your story */}
-        <div className="flex justify-between items-center p-4">
+        <div className="flex justify-between items-center p-4 mb-20">
           <div className="flex items-center gap-3">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 4V16M12 4L7 9M12 4L17 9" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -266,15 +266,12 @@ export default function NewTextPost() {
             className="data-[state=checked]:bg-blue-500"
           />
         </div>
-        
-        {/* Extra padding for bottom button */}
-        <div className="h-14"></div>
       </div>
       
-      {/* Share Button - Fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t">
+      {/* Share Button - Bottom */}
+      <div className="absolute bottom-0 left-0 right-0">
         <button
-          className="w-full bg-black text-white py-3 rounded-none font-medium text-sm"
+          className="block w-full bg-black text-white py-3 font-medium text-sm"
           onClick={handleSubmit}
           disabled={!content.trim()}
         >
