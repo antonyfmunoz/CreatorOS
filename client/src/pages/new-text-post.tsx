@@ -142,7 +142,17 @@ export default function NewTextPost() {
         </div>
         
         {/* Tag people */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <button 
+          type="button"
+          className="flex items-center justify-between w-full py-2 px-4 bg-transparent border-none cursor-pointer border-b"
+          onClick={() => {
+            console.log("Opening tag editor");
+            toast({
+              title: "Tag people",
+              description: "This feature will be available soon!"
+            });
+          }}
+        >
           <div className="flex items-center gap-3">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -150,11 +160,21 @@ export default function NewTextPost() {
             </svg>
             <span>Tag people</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-500" />
-        </div>
+          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+        </button>
         
         {/* Tag product */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <button 
+          type="button"
+          className="flex items-center justify-between w-full py-2 px-4 bg-transparent border-none cursor-pointer border-b"
+          onClick={() => {
+            console.log("Opening product tag editor");
+            toast({
+              title: "Tag product",
+              description: "Product tagging feature coming soon!"
+            });
+          }}
+        >
           <div className="flex items-center gap-3">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="3" y="3" width="18" height="18" rx="1" stroke="black" strokeWidth="1.5"/>
@@ -163,11 +183,21 @@ export default function NewTextPost() {
             </svg>
             <span>Tag product</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-500" />
-        </div>
+          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+        </button>
         
         {/* Add location */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <button 
+          type="button"
+          className="flex items-center justify-between w-full py-2 px-4 bg-transparent border-none cursor-pointer border-b"
+          onClick={() => {
+            console.log("Setting location");
+            toast({
+              title: "Add location",
+              description: "Location feature coming soon!"
+            });
+          }}
+        >
           <div className="flex items-center gap-3">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 21.25C12 21.25 19.5 15.75 19.5 9.75C19.5 7.76088 18.7098 5.85322 17.3033 4.4467C15.8968 3.04018 13.9891 2.25 12 2.25C10.0109 2.25 8.10322 3.04018 6.6967 4.4467C5.29018 5.85322 4.5 7.76088 4.5 9.75C4.5 15.75 12 21.25 12 21.25Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -175,11 +205,21 @@ export default function NewTextPost() {
             </svg>
             <span>Add location</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-500" />
-        </div>
+          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+        </button>
         
         {/* Audience */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <button 
+          type="button"
+          className="flex items-center justify-between w-full py-2 px-4 bg-transparent border-none cursor-pointer border-b"
+          onClick={() => {
+            console.log("Setting audience");
+            toast({
+              title: "Audience",
+              description: "Choose who can see your post"
+            });
+          }}
+        >
           <div className="flex items-center gap-3">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M2.42012 12.7132C2.28394 12.4975 2.21584 12.3897 2.17772 12.2234C2.14909 12.0985 2.14909 11.9015 2.17772 11.7766C2.21584 11.6103 2.28394 11.5025 2.42012 11.2868C3.54553 9.50484 6.8954 5 12.0004 5C17.1054 5 20.4552 9.50484 21.5806 11.2868C21.7168 11.5025 21.7849 11.6103 21.8231 11.7766C21.8517 11.9015 21.8517 12.0985 21.8231 12.2234C21.7849 12.3897 21.7168 12.4975 21.5806 12.7132C20.4552 14.4952 17.1054 19 12.0004 19C6.8954 19 3.54553 14.4952 2.42012 12.7132Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -189,9 +229,9 @@ export default function NewTextPost() {
           </div>
           <div className="flex items-center">
             <span className="text-gray-500 text-sm mr-1">Everyone</span>
-            <ChevronRight className="w-4 h-4 text-gray-500" />
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </div>
-        </div>
+        </button>
         
         {/* Post to section */}
         <div className="border-b">
