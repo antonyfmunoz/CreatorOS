@@ -38,6 +38,7 @@ async function comparePasswords(supplied: string, stored: string) {
   // Special case for development/seed data: plaintext password comparison
   if (!stored.includes(".")) {
     console.log("Using plaintext password comparison for development data");
+    console.log(`Supplied password: ${supplied.substring(0, 3)}**** vs Stored password: ${stored.substring(0, 3)}****`);
     return supplied === stored;
   }
   
@@ -82,12 +83,24 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
+        console.log(`Login attempt for username: ${username}`);
         const user = await storage.getUserByUsername(username);
-        if (!user || !(await comparePasswords(password, user.password))) {
+        
+        if (!user) {
+          console.log(`User not found: ${username}`);
           return done(null, false, { message: "Incorrect username or password" });
         }
+        
+        const isPasswordValid = await comparePasswords(password, user.password);
+        if (!isPasswordValid) {
+          console.log(`Password validation failed for user: ${username}`);
+          return done(null, false, { message: "Incorrect username or password" });
+        }
+        
+        console.log(`Successful login for: ${username}`);
         return done(null, user);
       } catch (err) {
+        console.error(`Login error:`, err);
         return done(err);
       }
     }),
@@ -111,9 +124,12 @@ export function setupAuth(app: Express) {
   // Register route - Create a new user
   app.post("/api/register", async (req, res, next) => {
     try {
+      console.log(`Registration attempt with username: ${req.body.username}`);
+      
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(req.body.username);
       if (existingUser) {
+        console.log(`Registration failed: Username '${req.body.username}' already exists`);
         return res.status(400).json({ message: "Username already exists" });
       }
 
