@@ -1670,7 +1670,7 @@ export class DatabaseStorage implements IStorage {
   
   constructor() {
     // Using dynamic import for ES modules compatibility
-    import('connect-pg-simple').then(connectPgModule => {
+    import('connect-pg-simple').then(async connectPgModule => {
       const connectPg = connectPgModule.default;
       const PostgresStore = connectPg(session);
       
@@ -1680,6 +1680,21 @@ export class DatabaseStorage implements IStorage {
         createTableIfMissing: true,
         tableName: 'session'
       });
+      
+      // Force create the session table if it doesn't exist
+      try {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS "session" (
+            "sid" varchar NOT NULL COLLATE "default",
+            "sess" json NOT NULL,
+            "expire" timestamp(6) NOT NULL,
+            CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+          )
+        `);
+        console.log("Session table created or verified");
+      } catch (error) {
+        console.error("Error creating session table:", error);
+      }
     }).catch(err => {
       console.error('Failed to initialize PostgreSQL session store:', err);
       // Fallback to memory store if PostgreSQL connection fails
