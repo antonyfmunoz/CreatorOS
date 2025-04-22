@@ -29,7 +29,7 @@ const StoryProgress: React.FC<StoryProgressProps> = ({
                   ? `${progress}%` 
                   : '0%',
               transition: index === currentIndex 
-                ? `width ${100 / (duration / 1000)}s linear` 
+                ? `width 0.15s linear` 
                 : 'none'
             }}
           />

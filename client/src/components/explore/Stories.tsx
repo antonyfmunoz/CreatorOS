@@ -84,11 +84,17 @@ const Stories = () => {
           const newProgress = prev + (100 / (storyDuration / 100));
           
           if (newProgress >= 100) {
-            // Schedule the next story transition after this render cycle
+            // Clear the interval when progress is complete
+            clearInterval(progressInterval.current!);
+            progressInterval.current = null;
+            
+            // Wait a moment to show the completed progress bar before transitioning
             setTimeout(() => {
               handleNextStory();
-            }, 0);
-            return 0;
+            }, 150);
+            
+            // Return exactly 100% to ensure the bar shows as completely filled
+            return 100;
           }
           return newProgress;
         });
