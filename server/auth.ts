@@ -6,6 +6,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { users, User } from "@shared/schema";
+import bcrypt from "bcrypt";
 
 declare global {
   namespace Express {
@@ -30,7 +31,6 @@ const scryptAsync = promisify(scrypt);
 async function hashPassword(password: string) {
   try {
     // Use bcrypt for new password hashing
-    const bcrypt = require('bcrypt');
     const saltRounds = 10;
     return await bcrypt.hash(password, saltRounds);
   } catch (error) {
@@ -48,7 +48,6 @@ async function comparePasswords(supplied: string, stored: string) {
     // Check if this is a bcrypt hash (starts with $2b$)
     if (stored.startsWith('$2b$')) {
       console.log("Using bcrypt password comparison");
-      const bcrypt = require('bcrypt');
       return await bcrypt.compare(supplied, stored);
     }
     

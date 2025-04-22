@@ -571,7 +571,34 @@ export class MemStorage implements IStorage {
 
   // User operations
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    // First check memory cache
+    const memUser = this.users.get(id);
+    
+    if (memUser) {
+      console.log(`Found user with ID ${id} in memory cache`);
+      return memUser;
+    }
+    
+    try {
+      // If not in memory, check the database directly
+      console.log(`Looking up user with ID ${id} in database`);
+      const result = await db.select().from(users).where(eq(users.id, id));
+      console.log(`Database lookup result for user ID ${id}:`, result);
+      
+      if (result && result.length > 0) {
+        // Cache the user in memory for next time
+        const user = result[0];
+        this.users.set(user.id, user);
+        console.log(`Found user with ID ${id} in database and cached`);
+        return user;
+      }
+      
+      console.log(`User with ID ${id} not found in memory or database`);
+      return undefined;
+    } catch (error) {
+      console.error(`Error looking up user with ID ${id} in database:`, error);
+      return undefined;
+    }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
