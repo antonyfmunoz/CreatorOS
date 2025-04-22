@@ -57,11 +57,12 @@ export async function cleanupOrphanedStories(): Promise<number> {
           );
       }
       
-      // If still no posts found with this media URL, delete the story
+      // Temporarily disabled story deletion for this fix
       if (postsWithMedia.length === 0) {
         console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
-        await db.delete(stories).where(eq(stories.id, story.id));
-        cleanupCount++;
+        // NOTE: Disabled deletion to preserve stories
+        // await db.delete(stories).where(eq(stories.id, story.id));
+        // cleanupCount++;
       }
     }
     
