@@ -48,8 +48,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
-      const res = await apiRequest("POST", "/api/login", credentials);
-      return await res.json();
+      try {
+        const res = await apiRequest("POST", "/api/login", credentials);
+        return await res.json();
+      } catch (error) {
+        // Extract the actual error message from the error
+        const errorMessage = error instanceof Error 
+          ? error.message.includes(':') 
+            ? error.message.split(':')[1].trim() 
+            : error.message
+          : 'Unknown error';
+        throw new Error(errorMessage);
+      }
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
@@ -65,8 +75,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      const res = await apiRequest("POST", "/api/register", credentials);
-      return await res.json();
+      try {
+        const res = await apiRequest("POST", "/api/register", credentials);
+        return await res.json();
+      } catch (error) {
+        // Extract the actual error message from the error
+        const errorMessage = error instanceof Error 
+          ? error.message.includes(':') 
+            ? error.message.split(':')[1].trim() 
+            : error.message
+          : 'Unknown error';
+        throw new Error(errorMessage);
+      }
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
