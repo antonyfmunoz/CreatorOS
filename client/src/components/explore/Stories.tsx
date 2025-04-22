@@ -23,6 +23,7 @@ const Stories = () => {
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [message, setMessage] = useState("");
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const storyDuration = 5000; // 5 seconds per story
   
@@ -365,16 +366,45 @@ const Stories = () => {
               <div className="absolute bottom-0 left-0 right-0 z-20 p-4 bg-gradient-to-t from-black/60 to-transparent">
                 <div className="flex items-center space-x-3">
                   <div 
-                    className="bg-white/10 border-0 text-white placeholder:text-white/60 h-12 rounded-full px-5 flex-1 flex items-center cursor-pointer"
+                    className="bg-white/10 border-0 text-white h-12 rounded-full px-5 flex-1 flex items-center"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="text-white/60">Send message...</span>
+                    <Input
+                      type="text"
+                      placeholder="Send message..."
+                      className="bg-transparent border-0 text-white placeholder:text-white/60 focus-visible:ring-0 focus-visible:ring-offset-0 h-full"
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      onFocus={() => setIsPaused(true)}
+                      onBlur={() => setIsPaused(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && message.trim()) {
+                          // Handle message sending
+                          console.log(`Sending message to ${selectedStory.user.displayName}: ${message}`);
+                          // Here you would implement actual message sending functionality
+                          alert(`Message sent to ${selectedStory.user.displayName}: ${message}`);
+                          setMessage('');
+                          e.preventDefault();
+                        }
+                      }}
+                    />
                   </div>
                   <div className="flex items-center space-x-4 text-white">
                     <div onClick={(e) => e.stopPropagation()}>
                       <Heart className="h-6 w-6 cursor-pointer hover:text-red-500 transition-colors" />
                     </div>
-                    <div onClick={(e) => e.stopPropagation()}>
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (message.trim()) {
+                          // Handle message sending
+                          console.log(`Sending message to ${selectedStory.user.displayName}: ${message}`);
+                          // Here you would implement actual message sending functionality
+                          alert(`Message sent to ${selectedStory.user.displayName}: ${message}`);
+                          setMessage('');
+                        }
+                      }}
+                    >
                       <Send className="h-6 w-6 cursor-pointer hover:text-blue-400 transition-colors" />
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
