@@ -1139,26 +1139,26 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <canvas ref={canvasRef} className="hidden" />
                 
                 {/* Camera controls */}
-                <div className="fixed bottom-24 inset-x-0 flex justify-center w-full gap-6">
-                  {/* Removed the X button as requested, but keeping camera exit functionality via the capture photo button */}
-                  
-                  <Button
-                    variant="default"
-                    size="icon"
-                    className="rounded-full h-16 w-16 flex items-center justify-center"
-                    onClick={capturePhoto}
-                  >
-                    <div className="bg-white rounded-full h-12 w-12 border-2 border-primary mx-auto"></div>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
-                    onClick={switchCamera}
-                  >
-                    <RefreshCw className="h-6 w-6" />
-                  </Button>
+                <div className="fixed bottom-24 inset-x-0 flex justify-center items-center">
+                  <div className="flex gap-6 justify-center items-center">
+                    <Button
+                      variant="default"
+                      size="icon"
+                      className="rounded-full h-16 w-16 flex items-center justify-center"
+                      onClick={capturePhoto}
+                    >
+                      <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="rounded-full h-14 w-14 flex items-center justify-center bg-white/20 backdrop-blur-sm border-white/40 text-white hover:bg-white/30"
+                      onClick={switchCamera}
+                    >
+                      <RefreshCw className="h-6 w-6" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
