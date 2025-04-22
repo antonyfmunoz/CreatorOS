@@ -269,9 +269,9 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button */}
-      <div className="mt-auto border-t">
+      <div className="px-4 py-3 bg-white border-t mt-auto">
         <button
-          className="w-full bg-black text-white py-2.5 font-semibold text-sm"
+          className="w-full bg-black text-white text-[15px] h-[48px] rounded font-medium"
           onClick={handleSubmit}
           disabled={!content.trim()}
         >
