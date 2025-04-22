@@ -17,6 +17,7 @@ import ContactsPage from "@/pages/contacts";
 import DocumentsPage from "@/pages/documents";
 import CreateProductPage from "@/pages/create-product";
 import CreatePostPage from "@/pages/create-post";
+import NewTextPostPage from "@/pages/new-text-post";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
@@ -77,6 +78,7 @@ function Router() {
       <ProtectedRoute path="/documents" component={DocumentsPage} />
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/create" component={CreatePostPage} />
+      <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <Route component={NotFound} />
     </Switch>
   );

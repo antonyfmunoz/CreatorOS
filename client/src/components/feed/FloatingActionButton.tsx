@@ -4,17 +4,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { TextComposer } from "@/components/feed/TextComposer";
 import { VoiceRecorder } from "@/components/feed/VoiceRecorder";
 import { VideoRecorder } from "@/components/feed/VideoRecorder";
 import { PhotoUploader } from "@/components/feed/PhotoUploader";
 import { StoryCreator } from "@/components/feed/StoryCreator";
+import { useLocation } from "wouter";
 
 export function FloatingActionButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   const [postType, setPostType] = useState<"text" | "photo" | "audio" | "video" | "story">("text");
+  const [, setLocation] = useLocation();
   
   const toggleOpen = () => {
     setIsOpen(!isOpen);
