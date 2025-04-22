@@ -133,7 +133,10 @@ export default function NewTextPost() {
                 setIsPollModalOpen(true);
               }}
             >
-              <BarChart2 className="w-4 h-4" /> <span className="text-sm">Poll</span>
+              <div className="flex items-center justify-center">
+                <BarChart2 className="w-4 h-4 mr-1.5" />
+                <span className="text-[14px]">Poll</span>
+              </div>
             </button>
           )}
         </div>
