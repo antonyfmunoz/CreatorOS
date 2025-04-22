@@ -35,10 +35,28 @@ async function hashPassword(password: string) {
 
 // Password verification function
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  // Special case for development/seed data: plaintext password comparison
+  if (!stored.includes(".")) {
+    console.log("Using plaintext password comparison for development data");
+    return supplied === stored;
+  }
+  
+  try {
+    const [hashed, salt] = stored.split(".");
+    
+    // Extra validation to ensure both parts exist
+    if (!hashed || !salt) {
+      console.error("Password format error: Missing hash or salt component");
+      return false;
+    }
+    
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch (error) {
+    console.error("Password comparison error:", error);
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
