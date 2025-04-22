@@ -73,9 +73,9 @@ export default function NewTextPost() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-white overflow-hidden">
       {/* Top Bar - Exactly like Instagram */}
-      <div className="flex justify-between items-center px-4 py-4 border-b">
+      <div className="flex justify-between items-center px-4 py-4 border-b flex-shrink-0">
         <button 
           className="text-[15px]" 
           onClick={() => setLocation('/')}
@@ -87,7 +87,7 @@ export default function NewTextPost() {
       </div>
       
       {/* Main Container */}
-      <div className="flex flex-col flex-grow overflow-y-auto">
+      <div className="flex flex-col overflow-y-auto flex-1">
         {/* Caption Input */}
         <div className="p-4 border-b">
           <textarea
@@ -295,7 +295,7 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button - EXACT MATCH */}
-      <div className="px-4 py-3 bg-white border-t mt-auto">
+      <div className="px-4 py-3 bg-white border-t flex-shrink-0">
         <button
           className="w-full bg-black text-white text-[14px] h-[38px] rounded-md font-medium"
           onClick={handleSubmit}
