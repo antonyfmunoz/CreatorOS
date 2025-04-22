@@ -270,9 +270,9 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button */}
-      <div className="fixed bottom-0 w-full max-w-md px-4 py-2 bg-white border-t">
+      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t z-10 p-3">
         <button
-          className="w-full bg-black text-white py-2.5 rounded-md font-semibold text-sm"
+          className="w-full bg-black text-white py-3 rounded-md font-semibold text-sm"
           onClick={handleSubmit}
           disabled={!content.trim()}
         >
