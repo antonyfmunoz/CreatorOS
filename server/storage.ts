@@ -23,7 +23,7 @@ import {
 import { db } from "./db";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
 import crypto from "crypto";
 
 // Storage interface for the application
@@ -575,9 +575,36 @@ export class MemStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
+    // First check memory cache
+    const memUser = Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
+    
+    if (memUser) {
+      console.log(`Found user ${username} in memory cache`);
+      return memUser;
+    }
+    
+    try {
+      // If not in memory, check the database directly
+      console.log(`Looking up user ${username} in database`);
+      const result = await db.select().from(users).where(eq(users.username, username));
+      console.log(`Database lookup result for ${username}:`, result);
+      
+      if (result && result.length > 0) {
+        // Cache the user in memory for next time
+        const user = result[0];
+        this.users.set(user.id, user);
+        console.log(`Found user ${username} in database and cached`);
+        return user;
+      }
+      
+      console.log(`User ${username} not found in memory or database`);
+      return undefined;
+    } catch (error) {
+      console.error(`Error looking up user ${username} in database:`, error);
+      return undefined;
+    }
   }
 
   async updateUser(id: number, userData: Partial<User>): Promise<User> {

@@ -28,9 +28,18 @@ const scryptAsync = promisify(scrypt);
 
 // Password hashing function
 async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
+  try {
+    // Use bcrypt for new password hashing
+    const bcrypt = require('bcrypt');
+    const saltRounds = 10;
+    return await bcrypt.hash(password, saltRounds);
+  } catch (error) {
+    console.error("Error hashing password:", error);
+    // Fallback to legacy scrypt method
+    const salt = randomBytes(16).toString("hex");
+    const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+    return `${buf.toString("hex")}.${salt}`;
+  }
 }
 
 // Password verification function
