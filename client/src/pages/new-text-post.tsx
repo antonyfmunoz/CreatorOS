@@ -72,9 +72,9 @@ export default function NewTextPost() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white max-w-[420px] mx-auto border border-gray-200">
+    <div className="flex flex-col h-screen bg-white max-w-[420px] mx-auto border border-gray-200 overflow-y-auto">
       {/* Header */}
-      <div className="flex justify-between items-center px-4 py-4 border-b">
+      <div className="flex justify-between items-center px-4 py-4 border-b sticky top-0 bg-white z-10">
         <button 
           className="text-[15px]" 
           onClick={() => setLocation('/')}
@@ -86,7 +86,7 @@ export default function NewTextPost() {
       </div>
       
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto">
+      <div>
         {/* Text Input */}
         <div className="p-4 border-b">
           <textarea
@@ -233,7 +233,7 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button */}
-      <div className="mt-auto">
+      <div className="sticky bottom-0 bg-white border-t border-gray-100">
         <button
           className="w-full bg-black text-white py-3.5 font-bold text-base"
           onClick={handleSubmit}
