@@ -127,14 +127,13 @@ export default function NewTextPost() {
           ) : (
             <button 
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
               onClick={() => {
                 console.log("Opening poll modal");
                 setIsPollModalOpen(true);
               }}
             >
-              <BarChart2 className="w-4 h-4 text-black" /> 
-              <span className="text-sm font-normal">Poll</span>
+              <BarChart2 className="w-4 h-4" /> <span className="text-sm">Poll</span>
             </button>
           )}
         </div>
