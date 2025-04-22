@@ -1148,7 +1148,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                     className="rounded-full h-16 w-16 flex items-center justify-center"
                     onClick={capturePhoto}
                   >
-                    <div className="bg-white rounded-full h-12 w-12 border-2 border-primary"></div>
+                    <div className="bg-white rounded-full h-12 w-12 border-2 border-primary mx-auto"></div>
                   </Button>
                   
                   <Button
