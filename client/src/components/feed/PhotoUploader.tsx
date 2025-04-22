@@ -627,13 +627,13 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               ) : (
                 <button 
                   type="button"
-                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
                   onClick={() => {
                     console.log("Opening poll modal");
                     setIsPollModalOpen(true);
                   }}
                 >
-                  <BarChart2 className="w-4 h-4" /> Poll
+                  <BarChart2 className="w-4 h-4" /> <span className="inline-block">Poll</span>
                 </button>
               )}
             </div>
