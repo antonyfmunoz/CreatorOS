@@ -86,10 +86,10 @@ export default function NewTextPost() {
         <div className="w-[51px]"></div>
       </div>
       
-      {/* Scrollable Container */}
+      {/* Main Container */}
       <div 
         ref={scrollContainerRef}
-        className="flex flex-col flex-grow overflow-y-auto"
+        className="flex flex-col flex-grow"
       >
         {/* Caption Input */}
         <div className="p-4 border-b">
