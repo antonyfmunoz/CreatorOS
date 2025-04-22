@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useLocation as useWouterLocation } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -8,7 +8,6 @@ import { Switch } from "@/components/ui/switch";
 
 export default function NewTextPost() {
   const [content, setContent] = useState("");
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isPostToExpanded, setIsPostToExpanded] = useState(true);
   const [addToStory, setAddToStory] = useState(false);
   const [, setLocation] = useWouterLocation();
@@ -16,6 +15,35 @@ export default function NewTextPost() {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Define mutation outside the function to avoid React Hook errors
+  const createPostMutation = useMutation({
+    mutationFn: async (postData: any) => {
+      const res = await apiRequest('POST', '/api/posts', postData);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Post created!',
+        description: 'Your post has been successfully shared.'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      
+      if (addToStory) {
+        queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+      }
+      
+      setLocation('/');
+    },
+    onError: (error) => {
+      console.error('Error creating post:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create post. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  });
   
   const handleSubmit = () => {
     if (!content.trim()) {
@@ -35,34 +63,6 @@ export default function NewTextPost() {
       });
       return;
     }
-    
-    const createPostMutation = useMutation({
-      mutationFn: async (postData: any) => {
-        const res = await apiRequest('POST', '/api/posts', postData);
-        return res.json();
-      },
-      onSuccess: () => {
-        toast({
-          title: 'Post created!',
-          description: 'Your post has been successfully shared.'
-        });
-        queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-        
-        if (addToStory) {
-          queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
-        }
-        
-        setLocation('/');
-      },
-      onError: (error) => {
-        console.error('Error creating post:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to create post. Please try again.',
-          variant: 'destructive'
-        });
-      }
-    });
     
     createPostMutation.mutate({
       userId: user.id,
@@ -87,10 +87,7 @@ export default function NewTextPost() {
       </div>
       
       {/* Main Container */}
-      <div 
-        ref={scrollContainerRef}
-        className="flex flex-col flex-grow"
-      >
+      <div className="flex flex-col flex-grow overflow-y-auto">
         {/* Caption Input */}
         <div className="p-4 border-b">
           <textarea
