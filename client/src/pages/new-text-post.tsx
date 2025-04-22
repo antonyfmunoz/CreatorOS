@@ -72,7 +72,7 @@ export default function NewTextPost() {
   };
 
   return (
-    <div className="relative h-screen bg-white max-w-md mx-auto flex flex-col">
+    <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Header */}
       <div className="flex justify-between items-center px-4 py-2.5 border-b">
         <button 
@@ -82,11 +82,11 @@ export default function NewTextPost() {
           ✕
         </button>
         <span className="font-semibold">New post</span>
-        <div className="w-4"></div>
+        <div className="w-5"></div>
       </div>
       
-      {/* Main scrollable content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* All content */}
+      <div>
         {/* Caption Input */}
         <div className="p-4 border-b">
           <textarea
@@ -252,7 +252,7 @@ export default function NewTextPost() {
         </div>
         
         {/* Your story */}
-        <div className="flex justify-between items-center p-4 mb-20">
+        <div className="flex justify-between items-center p-4">
           <div className="flex items-center gap-3">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 4V16M12 4L7 9M12 4L17 9" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -268,10 +268,10 @@ export default function NewTextPost() {
         </div>
       </div>
       
-      {/* Share Button - Bottom */}
-      <div className="absolute bottom-0 left-0 right-0">
+      {/* Share Button */}
+      <div className="mt-auto">
         <button
-          className="block w-full bg-black text-white py-3 font-medium text-sm"
+          className="block w-full bg-black text-white py-3 font-medium"
           onClick={handleSubmit}
           disabled={!content.trim()}
         >
