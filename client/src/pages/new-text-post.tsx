@@ -127,7 +127,7 @@ export default function NewTextPost() {
           ) : (
             <button 
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
+              className="flex items-center justify-center gap-2 w-full h-[38px] px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
               onClick={() => {
                 console.log("Opening poll modal");
                 setIsPollModalOpen(true);
