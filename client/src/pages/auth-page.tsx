@@ -106,7 +106,7 @@ const AuthPage = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Form section */}
-      <div className="w-full md:w-1/2 p-8 flex items-center justify-center">
+      <div className="w-full md:w-1/2 p-8 flex flex-1 items-center justify-center">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold">Welcome to CreatorOS</h1>
