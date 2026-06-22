@@ -21,18 +21,14 @@ import {
   taggedUsers, type TaggedUser, type InsertTaggedUser
 } from "@shared/schema";
 import { db } from "./db";
-import session from "express-session";
-import createMemoryStore from "memorystore";
 import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
 import crypto from "crypto";
 
 // Storage interface for the application
 export interface IStorage {
-  // Session store for authentication
-  sessionStore: session.Store;
-  
   // User operations
   getUser(id: number): Promise<User | undefined>;
+  getUserByClerkId(clerkId: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   searchUsersByUsername(query: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
@@ -176,9 +172,6 @@ export class MemStorage implements IStorage {
   private stories: Map<number, Story>;
   private followers: Map<number, Follower>;
   
-  // Session store for authentication
-  public sessionStore: session.Store;
-
   private userIdCounter = 1;
   private postIdCounter = 1;
   private commentIdCounter = 1;
@@ -217,12 +210,6 @@ export class MemStorage implements IStorage {
     this.stories = new Map();
     this.followers = new Map();
     
-    // Initialize the session store
-    const MemoryStore = createMemoryStore(session);
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
-    });
-    
     // Initialize with sample data
     this.initializeData();
   }
@@ -231,7 +218,7 @@ export class MemStorage implements IStorage {
     // Create sample users
     const user1 = this.createUser({
       username: 'johndoe',
-      password: 'password123',
+      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
       displayName: 'John Doe',
       bio: 'Digital Creator & Entrepreneur',
       profileImageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
@@ -240,7 +227,7 @@ export class MemStorage implements IStorage {
 
     const user2 = this.createUser({
       username: 'sarahmitchell',
-      password: 'password123',
+      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
       displayName: 'Sarah Mitchell',
       bio: 'Marketing Expert',
       profileImageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
@@ -249,7 +236,7 @@ export class MemStorage implements IStorage {
 
     const user3 = this.createUser({
       username: 'davidkim',
-      password: 'password123',
+      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
       displayName: 'David Kim',
       bio: 'Web Developer',
       profileImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
@@ -258,7 +245,7 @@ export class MemStorage implements IStorage {
 
     const user4 = this.createUser({
       username: 'emmathompson',
-      password: 'password123',
+      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
       displayName: 'Emma Thompson',
       bio: 'UX Designer',
       profileImageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2',
@@ -267,7 +254,7 @@ export class MemStorage implements IStorage {
 
     const user5 = this.createUser({
       username: 'michaeljones',
-      password: 'password123',
+      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
       displayName: 'Michael Jones',
       bio: 'Social Media Marketing',
       profileImageUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',
@@ -572,6 +559,12 @@ export class MemStorage implements IStorage {
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     return this.users.get(id);
+  }
+
+  async getUserByClerkId(clerkId: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.clerkId === clerkId,
+    );
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -1612,34 +1605,8 @@ export class MemStorage implements IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  public sessionStore: session.Store;
-  
   constructor() {
-    // Using dynamic import for ES modules compatibility
-    import('connect-pg-simple').then(connectPgModule => {
-      const connectPg = connectPgModule.default;
-      const PostgresStore = connectPg(session);
-      
-      // Initialize session store with PostgreSQL
-      this.sessionStore = new PostgresStore({
-        conString: process.env.DATABASE_URL,
-        createTableIfMissing: true,
-        tableName: 'session'
-      });
-    }).catch(err => {
-      console.error('Failed to initialize PostgreSQL session store:', err);
-      // Fallback to memory store if PostgreSQL connection fails
-      const MemoryStore = createMemoryStore(session);
-      this.sessionStore = new MemoryStore({
-        checkPeriod: 86400000,
-      });
-    });
-    
-    // Initialize with a temporary memory store until PostgreSQL store is ready
-    const MemoryStore = createMemoryStore(session);
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
-    });
+    // No session store needed — Clerk handles sessions
   }
   // User operations
   async getUser(id: number): Promise<User | undefined> {
@@ -1647,11 +1614,16 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByClerkId(clerkId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.clerkId, clerkId));
+    return user || undefined;
+  }
+
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
   }
-  
+
   async searchUsersByUsername(query: string): Promise<User[]> {
     // Convert to lowercase and remove @ prefix if exists
     const normalizedQuery = query.toLowerCase().replace(/^@/, '');
@@ -1680,7 +1652,7 @@ export class DatabaseStorage implements IStorage {
   }
   
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
-    // Make sure we don't update sensitive fields like password or username
+    // Make sure we don't update sensitive fields like clerkId or username
     const allowedFields: Partial<User> = {};
     
     if (userData.displayName !== undefined) allowedFields.displayName = userData.displayName;

@@ -1,111 +1,21 @@
+import { SignIn, SignUp } from "@clerk/clerk-react";
+import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/hooks/use-auth";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
-
-// Form validation schemas
-const loginSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters long"),
-  password: z.string().min(6, "Password must be at least 6 characters long"),
-});
-
-const registerSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters long"),
-  displayName: z.string().min(2, "Display name must be at least 2 characters long"),
-  password: z.string().min(6, "Password must be at least 6 characters long"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-type RegisterFormValues = z.infer<typeof registerSchema>;
 
 const AuthPage = () => {
-  const [activeTab, setActiveTab] = useState<string>("login");
+  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const { user, loginMutation, registerMutation } = useAuth();
-  
-  // Initialize forms - must be called before conditional return
-  const loginForm = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-    },
-  });
+  const { isSignedIn } = useAuth();
 
-  const registerForm = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: {
-      username: "",
-      displayName: "",
-      password: "",
-      confirmPassword: "",
-    },
-  });
-  
-  // Handle login form submission
-  const onLoginSubmit = (values: LoginFormValues) => {
-    loginMutation.mutate(values, {
-      onError: (error: Error) => {
-        // For login errors, set field-specific errors
-        if (error.message.includes('Authentication failed') || error.message.includes('Incorrect username or password')) {
-          loginForm.setError("username", {
-            type: "manual", 
-            message: "Invalid username or password"
-          });
-          loginForm.setError("password", {
-            type: "manual",
-            message: "Invalid username or password"
-          });
-        }
-      }
-    });
-  };
-
-  // Handle registration form submission
-  const onRegisterSubmit = (values: RegisterFormValues) => {
-    const { confirmPassword, ...registerData } = values;
-    registerMutation.mutate(registerData, {
-      onError: (error: Error) => {
-        // If username already exists, set a specific form error
-        if (error.message.includes('already exists')) {
-          registerForm.setError("username", {
-            type: "manual",
-            message: "This username is already taken. Please choose a different one."
-          });
-        }
-      }
-    });
-  };
-
-  // Redirect to home if already logged in (after all hooks)
-  if (user) {
+  if (isSignedIn) {
     setLocation("/");
     return null;
   }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
-      {/* Form section */}
+      {/* Auth form section */}
       <div className="w-full md:w-1/2 p-8 flex flex-1 items-center justify-center">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center mb-8">
@@ -115,177 +25,37 @@ const AuthPage = () => {
             </p>
           </div>
 
-          <Tabs
-            defaultValue="login"
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login" className="space-y-4">
-              <Form {...loginForm}>
-                <form
-                  onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={loginForm.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Username</FormLabel>
-                        <FormControl>
-                          <Input placeholder="johndoe" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={loginForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="••••••••"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={loginMutation.isPending}
-                  >
-                    {loginMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : null}
-                    Login
-                  </Button>
-                </form>
-              </Form>
-
+          {mode === "sign-in" ? (
+            <>
+              <SignIn routing="hash" />
               <div className="text-center">
                 <p className="text-sm text-gray-500">
                   Don't have an account?{" "}
                   <button
-                    onClick={() => setActiveTab("register")}
+                    onClick={() => setMode("sign-up")}
                     className="text-primary hover:underline"
                   >
                     Register now
                   </button>
                 </p>
               </div>
-            </TabsContent>
-
-            <TabsContent value="register" className="space-y-4">
-              <Form {...registerForm}>
-                <form
-                  onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={registerForm.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Username</FormLabel>
-                        <FormControl>
-                          <Input placeholder="johndoe" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={registerForm.control}
-                    name="displayName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Display Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="John Doe" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={registerForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="••••••••"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={registerForm.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="••••••••"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={registerMutation.isPending}
-                  >
-                    {registerMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : null}
-                    Create Account
-                  </Button>
-                </form>
-              </Form>
-
+            </>
+          ) : (
+            <>
+              <SignUp routing="hash" />
               <div className="text-center">
                 <p className="text-sm text-gray-500">
                   Already have an account?{" "}
                   <button
-                    onClick={() => setActiveTab("login")}
+                    onClick={() => setMode("sign-in")}
                     className="text-primary hover:underline"
                   >
                     Login
                   </button>
                 </p>
               </div>
-            </TabsContent>
-          </Tabs>
+            </>
+          )}
         </div>
       </div>
 
@@ -293,7 +63,7 @@ const AuthPage = () => {
       <div className="w-full md:w-1/2 bg-gradient-to-br from-primary/10 to-primary/20 p-8 hidden md:flex items-center justify-center">
         <div className="max-w-lg space-y-6">
           <h2 className="text-3xl font-bold">Everything Creators Need in One Place</h2>
-          
+
           <div className="space-y-4">
             <div className="bg-white/80 p-4 rounded-lg shadow-sm">
               <h3 className="font-semibold text-lg mb-2">Share & Engage</h3>
@@ -301,21 +71,21 @@ const AuthPage = () => {
                 Post stories, share content, and build an engaged community all in one platform
               </p>
             </div>
-            
+
             <div className="bg-white/80 p-4 rounded-lg shadow-sm">
               <h3 className="font-semibold text-lg mb-2">Monetize Your Content</h3>
               <p className="text-sm text-gray-600">
                 Sell digital products, courses, and services directly to your audience
               </p>
             </div>
-            
+
             <div className="bg-white/80 p-4 rounded-lg shadow-sm">
               <h3 className="font-semibold text-lg mb-2">AI-Powered Tools</h3>
               <p className="text-sm text-gray-600">
                 Leverage AI to create content, analyze audience data, and grow your business
               </p>
             </div>
-            
+
             <div className="bg-white/80 p-4 rounded-lg shadow-sm">
               <h3 className="font-semibold text-lg mb-2">Community Building</h3>
               <p className="text-sm text-gray-600">

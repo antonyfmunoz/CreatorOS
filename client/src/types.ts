@@ -2,8 +2,8 @@ import { users } from "@shared/schema";
 
 export interface User {
   id: number;
+  clerkId: string;
   username: string;
-  password: string;
   displayName: string;
   bio?: string | null;
   profileImageUrl?: string | null;

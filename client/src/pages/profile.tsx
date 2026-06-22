@@ -17,6 +17,7 @@ import { Product } from "@/types";
 import { User } from "@shared/schema";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useClerk } from "@clerk/clerk-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -30,7 +31,8 @@ import {
 const Profile = () => {
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const { user: currentUser, isLoading: isAuthLoading, logoutMutation } = useAuth();
+  const { user: currentUser, isLoading: isAuthLoading } = useAuth();
+  const { signOut } = useClerk();
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -196,7 +198,7 @@ const Profile = () => {
   };
   
   const handleLogout = () => {
-    logoutMutation.mutate();
+    signOut({ redirectUrl: "/auth" });
   };
   
   const handleLogin = () => {
