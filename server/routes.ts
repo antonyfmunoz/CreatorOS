@@ -15,6 +15,7 @@ import {
 import { db } from "./db";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
 import { setupAuth } from "./auth";
+import { getAuth } from "@clerk/express";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
@@ -25,6 +26,11 @@ const openai = new OpenAI({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", app: "creatoros" });
+  });
+
   // Set up authentication routes and middleware
   setupAuth(app);
   
@@ -62,17 +68,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update user profile
   app.patch("/api/users/:id", async (req, res) => {
     try {
-      // Verify user is authenticated and updating their own profile
-      if (!req.isAuthenticated()) {
+      const { userId: clerkUserId } = getAuth(req);
+      if (!clerkUserId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
+
       const userId = parseInt(req.params.id);
-      
-      // Only allow users to update their own profile
-      if (req.user!.id !== userId) {
-        return res.status(403).json({ message: "You can only update your own profile" });
-      }
       
       const { username, displayName, bio, profileImageUrl } = req.body;
       
@@ -94,19 +95,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Follower routes - follow a user
   app.post("/api/users/:id/follow", async (req, res) => {
     try {
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
+      const { userId: clerkUserId } = getAuth(req);
+      if (!clerkUserId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
-      const followerId = req.user!.id;
+
+      const followerId = req.body.followerId;
       const followedId = parseInt(req.params.id);
-      
-      // Cannot follow yourself
+
       if (followerId === followedId) {
         return res.status(400).json({ message: "You cannot follow yourself" });
       }
-      
+
       await storage.followUser(followerId, followedId);
       res.status(200).json({ success: true });
     } catch (error) {
@@ -118,14 +118,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Unfollow a user
   app.post("/api/users/:id/unfollow", async (req, res) => {
     try {
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
+      const { userId: clerkUserId } = getAuth(req);
+      if (!clerkUserId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
-      const followerId = req.user!.id;
+
+      const followerId = req.body.followerId;
       const followedId = parseInt(req.params.id);
-      
+
       await storage.unfollowUser(followerId, followedId);
       res.status(200).json({ success: true });
     } catch (error) {
