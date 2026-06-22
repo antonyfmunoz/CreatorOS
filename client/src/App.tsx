@@ -1,6 +1,7 @@
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { ClerkProvider, useClerk } from "@clerk/clerk-react";
 import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import Explore from "@/pages/explore";
@@ -26,39 +27,46 @@ import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
 import { ProtectedRoute } from "./lib/protected-route";
-import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { AuthProvider } from "./hooks/use-auth";
+
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
+}
+
+function LogoutRoute() {
+  const { signOut } = useClerk();
+  useEffect(() => {
+    signOut({ redirectUrl: "/auth" });
+  }, [signOut]);
+  return null;
+}
 
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
-  const { logoutMutation } = useAuth();
-  
+
   // Update the route when active tab changes
   useEffect(() => {
     window.history.pushState(null, "", `/${activeTab === 'explore' ? '' : activeTab}`);
   }, [activeTab]);
-  
+
   // Update active tab when route changes
   useEffect(() => {
     const path = window.location.pathname.substring(1);
     const validTabs = ['marketplace', 'ai', 'communities', 'profile'];
-    
+
     if (path === '') {
       setActiveTab('explore');
     } else if (validTabs.includes(path)) {
       setActiveTab(path as any);
     }
   }, [setActiveTab]);
-  
-  // Logout handler for the /logout route
-  const handleLogout = useCallback(() => {
-    logoutMutation.mutate();
-    return <Redirect to="/auth" />;
-  }, [logoutMutation]);
-  
+
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
-      <Route path="/logout" component={handleLogout} />
+      <Route path="/logout" component={LogoutRoute} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/ai" component={AI} />
@@ -88,22 +96,23 @@ function App() {
   const { isOpen } = useAIChatStore();
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
-  
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <div className="app-container">
-          <main className="tab-content">
-            <Router />
-          </main>
-          {/* Notification components moved to the Explore page header */}
-          <BottomNavigation />
-          {isOpen && <ChatInterface />}
-        </div>
-        <Toaster />
-        <ToastContainer />
-      </AuthProvider>
-    </QueryClientProvider>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <div className="app-container">
+            <main className="tab-content">
+              <Router />
+            </main>
+            <BottomNavigation />
+            {isOpen && <ChatInterface />}
+          </div>
+          <Toaster />
+          <ToastContainer />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
 
