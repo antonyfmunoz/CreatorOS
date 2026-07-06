@@ -6,3 +6,10 @@ vite.config.ts.*
 *.tar.gz.env 
 .env  
 "dump*.sql"  
+
+# WP-P4-SECRETS-001: real env files are secret-bearing — never commit.
+.env
+.env.*
+!.env.op.tpl
+!.env.tpl
+!.env.example
