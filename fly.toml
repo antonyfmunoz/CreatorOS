@@ -9,6 +9,10 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   PORT = "3000"
+  # Clerk publishable key is public (embedded in the client) and is also required
+  # at runtime by the server's clerkMiddleware. Keep in sync with build.args above.
+  # CLERK_SECRET_KEY and DATABASE_URL are set via `fly secrets set` (never here).
+  CLERK_PUBLISHABLE_KEY = "pk_test_dG9sZXJhbnQtcGFycm90LTk3LmNsZXJrLmFjY291bnRzLmRldiQ"
 
 [http_service]
   internal_port = 3000

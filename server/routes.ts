@@ -14,16 +14,23 @@ import {
 } from "../shared/schema";
 import { db } from "./db";
 import { and, desc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
-import { setupAuth } from "./auth";
-import { getAuth } from "@clerk/express";
+import { setupAuth, attachUser } from "./auth";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "your-api-key", // in production, use environment variable
-});
+// Lazily construct the OpenAI client so a missing key doesn't crash server boot;
+// AI chat routes fail with a clear error only when actually invoked without a key.
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
@@ -66,15 +73,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update user profile
-  app.patch("/api/users/:id", async (req, res) => {
+  app.patch("/api/users/:id", attachUser, async (req, res) => {
     try {
-      const { userId: clerkUserId } = getAuth(req);
-      if (!clerkUserId) {
-        return res.status(401).json({ message: "Not authenticated" });
+      const userId = parseInt(req.params.id);
+
+      // Only allow users to update their own profile
+      if (req.dbUser!.id !== userId) {
+        return res.status(403).json({ message: "You can only update your own profile" });
       }
 
-      const userId = parseInt(req.params.id);
-      
       const { username, displayName, bio, profileImageUrl } = req.body;
       
       // Only allow updating specific fields
@@ -93,14 +100,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Follower routes - follow a user
-  app.post("/api/users/:id/follow", async (req, res) => {
+  app.post("/api/users/:id/follow", attachUser, async (req, res) => {
     try {
-      const { userId: clerkUserId } = getAuth(req);
-      if (!clerkUserId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const followerId = req.body.followerId;
+      const followerId = req.dbUser!.id;
       const followedId = parseInt(req.params.id);
 
       if (followerId === followedId) {
@@ -114,16 +116,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to follow user" });
     }
   });
-  
-  // Unfollow a user
-  app.post("/api/users/:id/unfollow", async (req, res) => {
-    try {
-      const { userId: clerkUserId } = getAuth(req);
-      if (!clerkUserId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
 
-      const followerId = req.body.followerId;
+  // Unfollow a user
+  app.post("/api/users/:id/unfollow", attachUser, async (req, res) => {
+    try {
+      const followerId = req.dbUser!.id;
       const followedId = parseInt(req.params.id);
 
       await storage.unfollowUser(followerId, followedId);
@@ -183,14 +180,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Check if a user is following another user
-  app.get("/api/users/:id/is-following/:targetId", async (req, res) => {
+  app.get("/api/users/:id/is-following/:targetId", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      const followerId = req.user!.id;
+      const followerId = req.dbUser!.id;
       const followedId = parseInt(req.params.targetId);
       
       const isFollowing = await storage.isFollowing(followerId, followedId);
@@ -202,17 +194,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Upload profile image
-  app.post("/api/users/:id/profile-image", upload.single('image'), async (req, res) => {
+  app.post("/api/users/:id/profile-image", upload.single('image'), attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated and uploading their own profile image
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const userId = parseInt(req.params.id);
-      
+
       // Only allow users to update their own profile
-      if (req.user!.id !== userId) {
+      if (req.dbUser!.id !== userId) {
         return res.status(403).json({ message: "You can only update your own profile" });
       }
       
@@ -254,16 +241,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/posts", async (req, res) => {
+  app.post("/api/posts", attachUser, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       // Add authenticated user's ID to the post data
       const postData = {
         ...req.body,
-        userId: req.user.id
+        userId: req.dbUser!.id
       };
       
       const post = await storage.createPost(postData);
@@ -275,16 +258,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Handle media post uploads (image, audio, video)
-  app.post("/api/posts/media", upload.any(), async (req, res) => {
+  app.post("/api/posts/media", upload.any(), attachUser, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      const { content, userId, mediaType, isCarousel, addToStory } = req.body;
-      
-      if (!content || !userId) {
-        return res.status(400).json({ message: "Content and userId are required" });
+      const { content, mediaType, isCarousel, addToStory } = req.body;
+      const userId = req.dbUser!.id;
+
+      if (!content) {
+        return res.status(400).json({ message: "Content is required" });
       }
       
       const files = req.files as Express.Multer.File[];
@@ -294,7 +274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const postData: any = {
-        userId: parseInt(userId),
+        userId: userId,
         content,
         mediaType: mediaType || 'photo',
       };
@@ -350,7 +330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           // Create a story with the same media
           await storage.createStory({
-            userId: parseInt(userId),
+            userId: userId,
             mediaUrl: primaryMediaPath,
             mediaType: postData.mediaType,
             caption: content || null,
@@ -451,13 +431,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update post route
-  app.patch("/api/posts/:id", async (req, res) => {
+  app.patch("/api/posts/:id", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated and is the post owner
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const postId = parseInt(req.params.id);
       const { content } = req.body;
       
@@ -476,45 +451,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Delete post route
-  app.delete("/api/posts/:id", async (req, res) => {
+  app.delete("/api/posts/:id", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated and is the post owner
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const postId = parseInt(req.params.id);
-      console.log(`Deleting post ID: ${postId} for user ID: ${req.user!.id}`);
-      
-      // For improved debugging, get the details of the post being deleted
-      try {
-        const post = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
-        if (post.length > 0) {
-          console.log(`Post to delete: ${JSON.stringify(post[0])}`);
-          
-          // If we have story ID 11 (the one from the example) that doesn't seem to be matching correctly,
-          // let's check it specifically and delete it if needed
-          const storyToCheck = await db.select().from(stories).where(eq(stories.id, 11)).limit(1);
-          if (storyToCheck.length > 0) {
-            console.log(`Story ID 11 found: ${JSON.stringify(storyToCheck[0])}`);
-            console.log(`Checking if user matches post user: post user=${post[0].userId}, story user=${storyToCheck[0].userId}`);
-            
-            // If they belong to the same user, delete the story directly
-            if (storyToCheck[0].userId === post[0].userId) {
-              console.log(`Explicitly deleting story ID 11 as it matches the post's user ID`);
-              await db.delete(stories).where(eq(stories.id, 11));
-            }
-          }
-        }
-      } catch (debugError) {
-        console.error("Error in pre-delete debugging:", debugError);
-        // Continue with deletion even if debugging fails
-      }
-      
+
       // Delete post and related stories through the storage function
       await storage.deletePost(postId);
-      
-      console.log(`Post ${postId} deleted successfully`);
+
       res.status(204).send();
     } catch (error) {
       console.error(`Error deleting post:`, error);
@@ -523,16 +466,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Save post route
-  app.post("/api/posts/:id/save", async (req, res) => {
+  app.post("/api/posts/:id/save", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const postId = parseInt(req.params.id);
-      const userId = req.user!.id;
-      
+      const userId = req.dbUser!.id;
+
       await storage.savePost(userId, postId);
       res.status(200).json({ message: "Post saved successfully" });
     } catch (error) {
@@ -541,16 +479,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Unsave post route
-  app.post("/api/posts/:id/unsave", async (req, res) => {
+  app.post("/api/posts/:id/unsave", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
       const postId = parseInt(req.params.id);
-      const userId = req.user!.id;
-      
+      const userId = req.dbUser!.id;
+
       await storage.unsavePost(userId, postId);
       res.status(200).json({ message: "Post unsaved successfully" });
     } catch (error) {
@@ -559,11 +492,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get saved posts for a user
-  app.get("/api/users/:id/saved-posts", async (req, res) => {
+  app.get("/api/users/:id/saved-posts", attachUser, async (req, res) => {
     try {
-      // Verify user is authenticated and requesting their own saved posts
-      if (!req.isAuthenticated() || req.user!.id !== parseInt(req.params.id)) {
-        return res.status(401).json({ message: "Not authorized" });
+      // Verify user is requesting their own saved posts
+      if (req.dbUser!.id !== parseInt(req.params.id)) {
+        return res.status(403).json({ message: "Not authorized" });
       }
       
       const userId = parseInt(req.params.id);
@@ -668,17 +601,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/comments", async (req, res) => {
+  app.post("/api/comments", attachUser, async (req, res) => {
     try {
-      // Check if user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
       // Use the authenticated user's ID instead of trusting the client
       const commentData = {
         ...req.body,
-        userId: req.user.id
+        userId: req.dbUser!.id
       };
       
       console.log("Creating comment with data:", commentData);
@@ -715,16 +643,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update a comment
-  app.put("/api/comments/:id", async (req, res) => {
+  app.put("/api/comments/:id", attachUser, async (req, res) => {
     try {
-      // Check if user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
       const commentId = parseInt(req.params.id);
       const { content } = req.body;
-      const userId = req.user.id;
+      const userId = req.dbUser!.id;
       
       // Verify the comment belongs to the user before updating
       const comment = await storage.getCommentById(commentId);
@@ -746,15 +669,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a comment
-  app.delete("/api/comments/:id", async (req, res) => {
+  app.delete("/api/comments/:id", attachUser, async (req, res) => {
     try {
-      // Check if user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
       const commentId = parseInt(req.params.id);
-      const userId = req.user.id;
+      const userId = req.dbUser!.id;
       
       // Verify the comment belongs to the user before deleting
       const comment = await storage.getCommentById(commentId);
@@ -936,7 +854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { agentId, message, systemPrompt } = req.body;
       
       // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAI().chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt || "You are a helpful assistant." },
@@ -1405,40 +1323,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a new story
-  app.post("/api/stories", upload.single('media'), async (req, res) => {
+  app.post("/api/stories", upload.single('media'), attachUser, async (req, res) => {
     try {
-      console.log('Story upload request received:', {
-        body: req.body,
-        file: req.file ? {
-          fieldname: req.file.fieldname,
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-          filename: req.file.filename
-        } : 'No file uploaded',
-        isAuthenticated: req.isAuthenticated()
-      });
-      
       if (!req.file) {
-        console.log('No media file provided in the request');
         return res.status(400).json({ message: "No media file provided" });
       }
-      
-      // Verify user is authenticated
-      if (!req.isAuthenticated()) {
-        console.log('User not authenticated');
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      console.log('User from request:', req.user);
-      
-      // Extract data from form
-      const userId = req.body.userId ? parseInt(req.body.userId) : req.user!.id;
+
+      // Derive the acting user from the authenticated session
+      const userId = req.dbUser!.id;
       const mediaType = req.body.mediaType || 'image';
       const caption = req.body.caption || null;
-      
-      console.log('Extracted data:', { userId, mediaType, caption });
-      
+
       // Create media URL
       const mediaUrl = `/uploads/${req.file.filename}`;
       
@@ -1489,22 +1384,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Force delete story ID 11 (special endpoint for immediate testing)
-  app.delete("/api/force-delete-story/11", async (req, res) => {
-    try {
-      console.log("Executing force delete of story ID 11");
-      
-      // Direct database operation to delete story 11
-      const result = await db.delete(stories).where(eq(stories.id, 11));
-      console.log(`Force delete result:`, result);
-      
-      res.status(200).json({ message: "Story ID 11 has been forcefully deleted" });
-    } catch (error) {
-      console.error("Error force deleting story:", error);
-      res.status(500).json({ message: "Failed to force delete story" });
-    }
-  });
-
   // Increment view count for a story
   app.post("/api/stories/:id/view", async (req, res) => {
     try {

@@ -3,9 +3,12 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gz.env 
-.env  
-"dump*.sql"  
+*.tar.gz.env
+
+# Local dev cruft / DB dumps — never commit.
+dump*.sql
+New Text Document*.txt
+attached_assets/stitch_creatoros/
 
 # WP-P4-SECRETS-001: real env files are secret-bearing — never commit.
 .env

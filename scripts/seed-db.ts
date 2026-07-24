@@ -22,7 +22,7 @@ async function seedDatabase() {
     // Create users
     const [user1] = await db.insert(users).values({
       username: 'johndoe',
-      password: 'password123',
+      clerkId: 'seed_johndoe', // dev-only placeholder; never collides with real Clerk IDs (user_*)
       displayName: 'John Doe',
       bio: 'Digital Creator & Entrepreneur',
       profileImageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
@@ -33,7 +33,7 @@ async function seedDatabase() {
 
     const [user2] = await db.insert(users).values({
       username: 'sarahmitchell',
-      password: 'password123',
+      clerkId: 'seed_sarahmitchell',
       displayName: 'Sarah Mitchell',
       bio: 'Marketing Expert',
       profileImageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
@@ -44,7 +44,7 @@ async function seedDatabase() {
 
     const [user3] = await db.insert(users).values({
       username: 'davidkim',
-      password: 'password123',
+      clerkId: 'seed_davidkim',
       displayName: 'David Kim',
       bio: 'Web Developer',
       profileImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
@@ -55,7 +55,7 @@ async function seedDatabase() {
 
     const [user4] = await db.insert(users).values({
       username: 'emmathompson',
-      password: 'password123',
+      clerkId: 'seed_emmathompson',
       displayName: 'Emma Thompson',
       bio: 'UX Designer',
       profileImageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2',
@@ -66,7 +66,7 @@ async function seedDatabase() {
 
     const [user5] = await db.insert(users).values({
       username: 'michaeljones',
-      password: 'password123',
+      clerkId: 'seed_michaeljones',
       displayName: 'Michael Jones',
       bio: 'Social Media Marketing',
       profileImageUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',

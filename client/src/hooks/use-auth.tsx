@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useEffect } from "react";
 import {
   useQuery,
   useMutation,
@@ -8,6 +8,7 @@ import { User as SelectUser } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useAppStore } from "@/lib/stores";
 
 type UpdateProfileData = {
   id: number;
@@ -46,6 +47,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
     enabled: isLoaded && !!isSignedIn,
   });
+
+  // Bridge the Clerk-backed DB user into the global app store so components and
+  // stores that read `useAppStore.currentUser` (feed, messaging, profile, etc.)
+  // see the real numeric user. Clears on sign-out.
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  useEffect(() => {
+    setCurrentUser((user ?? null) as any);
+  }, [user, setCurrentUser]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: UpdateProfileData) => {

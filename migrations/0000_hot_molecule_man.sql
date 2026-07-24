@@ -90,7 +90,10 @@ CREATE TABLE "direct_messages" (
 	"sender_id" integer NOT NULL,
 	"content" text NOT NULL,
 	"read" boolean DEFAULT false NOT NULL,
-	"sent_at" timestamp DEFAULT now() NOT NULL
+	"sent_at" timestamp DEFAULT now() NOT NULL,
+	"is_edited" boolean DEFAULT false,
+	"reply_to_message_id" integer,
+	"reactions" json DEFAULT '{}'::json NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "documents" (
@@ -100,6 +103,14 @@ CREATE TABLE "documents" (
 	"content" text NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "followers" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"follower_id" integer NOT NULL,
+	"followed_id" integer NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "follower_followed_unique" UNIQUE("follower_id","followed_id")
 );
 --> statement-breakpoint
 CREATE TABLE "notifications" (
@@ -119,6 +130,9 @@ CREATE TABLE "posts" (
 	"user_id" integer NOT NULL,
 	"content" text NOT NULL,
 	"image_url" text,
+	"audio_url" text,
+	"video_url" text,
+	"media_type" text DEFAULT 'text',
 	"likes" integer DEFAULT 0 NOT NULL,
 	"comments" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
@@ -145,10 +159,39 @@ CREATE TABLE "revenue" (
 	"source" text NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "saved_posts" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"post_id" integer NOT NULL,
+	"saved_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "saved_posts_user_id_post_id_unique" UNIQUE("user_id","post_id")
+);
+--> statement-breakpoint
+CREATE TABLE "stories" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"media_url" text NOT NULL,
+	"media_type" text DEFAULT 'image' NOT NULL,
+	"caption" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"expires_at" timestamp,
+	"view_count" integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "tagged_users" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"post_id" integer NOT NULL,
+	"user_id" integer NOT NULL,
+	"position_x" double precision NOT NULL,
+	"position_y" double precision NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "unique_post_user_position" UNIQUE("post_id","user_id","position_x","position_y")
+);
+--> statement-breakpoint
 CREATE TABLE "users" (
 	"id" serial PRIMARY KEY NOT NULL,
+	"clerk_id" text NOT NULL,
 	"username" text NOT NULL,
-	"password" text NOT NULL,
 	"display_name" text NOT NULL,
 	"bio" text,
 	"profile_image_url" text,
@@ -156,6 +199,7 @@ CREATE TABLE "users" (
 	"xp_points" integer DEFAULT 0 NOT NULL,
 	"level" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "users_clerk_id_unique" UNIQUE("clerk_id"),
 	CONSTRAINT "users_username_unique" UNIQUE("username")
 );
 --> statement-breakpoint
@@ -173,8 +217,15 @@ ALTER TABLE "conversation_participants" ADD CONSTRAINT "conversation_participant
 ALTER TABLE "direct_messages" ADD CONSTRAINT "direct_messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "direct_messages" ADD CONSTRAINT "direct_messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "documents" ADD CONSTRAINT "documents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "followers" ADD CONSTRAINT "followers_follower_id_users_id_fk" FOREIGN KEY ("follower_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "followers" ADD CONSTRAINT "followers_followed_id_users_id_fk" FOREIGN KEY ("followed_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_related_user_id_users_id_fk" FOREIGN KEY ("related_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "products" ADD CONSTRAINT "products_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "revenue" ADD CONSTRAINT "revenue_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "revenue" ADD CONSTRAINT "revenue_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "saved_posts" ADD CONSTRAINT "saved_posts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "saved_posts" ADD CONSTRAINT "saved_posts_post_id_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "stories" ADD CONSTRAINT "stories_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tagged_users" ADD CONSTRAINT "tagged_users_post_id_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tagged_users" ADD CONSTRAINT "tagged_users_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
