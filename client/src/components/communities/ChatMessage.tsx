@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ChannelMessage as ChannelMessageType } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageSquare, Share2, Pin } from 'lucide-react';
+import { ThumbsUp, Pin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -98,22 +98,6 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
           >
             <ThumbsUp className="h-4 w-4 mr-1" />
             {message.likes + (isLiked ? 1 : 0)}
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-xs text-gray-500 flex items-center hover:bg-gray-100 rounded px-2 py-1 h-auto"
-          >
-            <MessageSquare className="h-4 w-4 mr-1" />
-            Reply
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-xs text-gray-500 flex items-center hover:bg-gray-100 rounded px-2 py-1 h-auto"
-          >
-            <Share2 className="h-4 w-4 mr-1" />
-            Share
           </Button>
           {message.user.role === 'admin' && (
             <Button

@@ -1,11 +1,12 @@
-import { ShoppingCart, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProductList from "@/components/marketplace/ProductList";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const Marketplace = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,11 +18,8 @@ const Marketplace = () => {
     <div className="px-4 pt-4 pb-20">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Marketplace</h1>
-        <div className="flex space-x-3">
-          <Button size="icon" variant="outline" className="bg-gray-100 rounded-full">
-            <ShoppingCart className="h-5 w-5" />
-          </Button>
-          <Button size="icon" variant="outline" className="bg-gray-100 rounded-full">
+        <div>
+          <Button size="icon" variant="outline" className="bg-gray-100 rounded-full" onClick={() => searchInputRef.current?.focus()} aria-label="Search marketplace">
             <Search className="h-5 w-5" />
           </Button>
         </div>
@@ -32,6 +30,7 @@ const Marketplace = () => {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
+            ref={searchInputRef}
             type="text"
             placeholder="Search products, creators, etc."
             className="pl-9 bg-gray-100 border-0"
