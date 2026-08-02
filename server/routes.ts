@@ -54,6 +54,35 @@ async function requireDocumentOwner(documentId: number, userId: number) {
   return { document };
 }
 
+async function createActivityNotification({
+  recipientId,
+  actorId,
+  type,
+  message,
+  linkTo,
+}: {
+  recipientId: number;
+  actorId: number;
+  type: "like" | "comment" | "follow" | "purchase";
+  message: string;
+  linkTo: string;
+}) {
+  if (recipientId === actorId) return;
+
+  const actor = await storage.getUser(actorId);
+  if (!actor) return;
+
+  await storage.createNotification({
+    userId: recipientId,
+    type,
+    message,
+    read: false,
+    linkTo,
+    relatedUserId: actor.id,
+    relatedUserImage: actor.profileImageUrl ?? null,
+  });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
@@ -132,6 +161,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.followUser(followerId, followedId);
+      await createActivityNotification({
+        recipientId: followedId,
+        actorId: followerId,
+        type: "follow",
+        message: `${req.dbUser!.displayName} started following you`,
+        linkTo: `/profile/${followerId}`,
+      });
       res.status(200).json({ success: true });
     } catch (error) {
       console.error("Error following user:", error);
@@ -449,9 +485,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post("/api/posts/:id/like", async (req, res) => {
+  app.post("/api/posts/:id/like", attachUser, async (req, res) => {
     try {
-      const post = await storage.likePost(parseInt(req.params.id));
+      const postId = parseInt(req.params.id);
+      const existingPost = await storage.getPostById(postId);
+      if (!existingPost) return res.status(404).json({ message: "Post not found" });
+
+      const post = await storage.likePost(postId);
+      await createActivityNotification({
+        recipientId: existingPost.userId,
+        actorId: req.dbUser!.id,
+        type: "like",
+        message: `${req.dbUser!.displayName} liked your post`,
+        linkTo: `/profile/${existingPost.userId}`,
+      });
       res.json(post);
     } catch (error) {
       res.status(500).json({ message: "Failed to like post" });
@@ -643,6 +690,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log("Creating comment with data:", commentData);
       const comment = await storage.createComment(commentData);
+      const post = await storage.getPostById(comment.postId);
+      if (post) {
+        await createActivityNotification({
+          recipientId: post.userId,
+          actorId: req.dbUser!.id,
+          type: "comment",
+          message: `${req.dbUser!.displayName} commented on your post`,
+          linkTo: `/profile/${post.userId}`,
+        });
+      }
       res.status(201).json(comment);
     } catch (error) {
       console.error("Error creating comment:", error);
@@ -829,6 +886,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         productId,
         status: "active",
         paymentProvider: "demo",
+      });
+      await createActivityNotification({
+        recipientId: product.userId,
+        actorId: req.dbUser!.id,
+        type: "purchase",
+        message: `${req.dbUser!.displayName} purchased ${product.title}`,
+        linkTo: `/marketplace/product/${product.id}`,
       });
       res.status(201).json(purchase);
     } catch (error) {
