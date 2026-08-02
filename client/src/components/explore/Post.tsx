@@ -169,12 +169,7 @@ const Post = ({ post }: PostProps) => {
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        // Maintain the same array order while updating the specific post
-        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
       // Remember this post was liked by adding it to likedPosts
       setLikedPosts(prev => [...prev, post.id]);
@@ -194,12 +189,7 @@ const Post = ({ post }: PostProps) => {
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        // Maintain the same array order while updating the specific post
-        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
       // Remove this post from the liked posts list
       setLikedPosts(prev => prev.filter(id => id !== post.id));
@@ -468,11 +458,7 @@ const Post = ({ post }: PostProps) => {
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => p.id === post.id ? { ...p, content: updatedPost.content } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
       // Exit editing mode and show success toast
       setIsEditing(false);

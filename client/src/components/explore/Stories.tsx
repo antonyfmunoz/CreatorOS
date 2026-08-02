@@ -14,10 +14,16 @@ import { Input } from '@/components/ui/input';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import StoryProgress from './StoryProgress';
 import { useLocation } from 'wouter';
+import { useAuth } from '@/hooks/use-auth';
+import { useMessaging } from '@/lib/stores';
+import { useToast } from '@/hooks/use-toast';
 
 const Stories = () => {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { user: currentUser } = useAuth();
+  const { createConversation, sendMessage } = useMessaging();
+  const { toast } = useToast();
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [currentUserStories, setCurrentUserStories] = useState<Story[]>([]);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
@@ -29,6 +35,24 @@ const Stories = () => {
   
   // Track where the user clicks to navigate stories
   const storyContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleStoryMessage = async () => {
+    if (!selectedStory || !message.trim()) return;
+    if (!currentUser) {
+      toast({ title: 'Sign in required', description: 'Sign in to message this creator.', variant: 'destructive' });
+      return;
+    }
+    if (selectedStory.user.id === currentUser.id) return;
+
+    try {
+      const conversationId = await createConversation([currentUser.id, selectedStory.user.id]);
+      await sendMessage(conversationId, currentUser.id, message.trim());
+      setMessage('');
+      toast({ title: 'Message sent', description: `Your message was sent to ${selectedStory.user.displayName}.` });
+    } catch {
+      toast({ title: 'Message failed', description: 'Please try again.', variant: 'destructive' });
+    }
+  };
   
   // Fetch stories with aggressive settings to ensure freshness
   const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
@@ -379,11 +403,7 @@ const Stories = () => {
                       onBlur={() => setIsPaused(false)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && message.trim()) {
-                          // Handle message sending
-                          console.log(`Sending message to ${selectedStory.user.displayName}: ${message}`);
-                          // Here you would implement actual message sending functionality
-                          alert(`Message sent to ${selectedStory.user.displayName}: ${message}`);
-                          setMessage('');
+                          handleStoryMessage();
                           e.preventDefault();
                         }
                       }}
@@ -396,13 +416,7 @@ const Stories = () => {
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (message.trim()) {
-                          // Handle message sending
-                          console.log(`Sending message to ${selectedStory.user.displayName}: ${message}`);
-                          // Here you would implement actual message sending functionality
-                          alert(`Message sent to ${selectedStory.user.displayName}: ${message}`);
-                          setMessage('');
-                        }
+                        handleStoryMessage();
                       }}
                     >
                       <Send className="h-6 w-6 cursor-pointer hover:text-blue-400 transition-colors" />

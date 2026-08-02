@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { ChevronLeft, Search, UserIcon, MessageSquare, XCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMessaging } from "@/lib/stores";
 
 const FollowingPage = () => {
   const [, setLocation] = useLocation();
   const { user: currentUser } = useAuth();
+  const { createConversation, setSelectedConversation, openMessagePanel } = useMessaging();
   const params = useParams<{ id?: string; username?: string }>();
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -75,6 +77,13 @@ const FollowingPage = () => {
     } else {
       setLocation("/");
     }
+  };
+
+  const handleMessage = async (targetUser: User) => {
+    if (!currentUser || targetUser.id === currentUser.id) return;
+    const conversationId = await createConversation([currentUser.id, targetUser.id]);
+    setSelectedConversation(conversationId);
+    openMessagePanel();
   };
   
   return (
@@ -147,7 +156,7 @@ const FollowingPage = () => {
                   <p className="text-sm text-muted-foreground">@{followedUser.username}</p>
                 </div>
               </div>
-              <Button size="sm" variant="outline" className="rounded-full">
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => handleMessage(followedUser)}>
                 <MessageSquare className="h-4 w-4 mr-2" />
                 Message
               </Button>

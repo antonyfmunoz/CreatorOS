@@ -36,6 +36,7 @@ const AI = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [bottomOpen, setBottomOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -55,6 +56,11 @@ const AI = () => {
   const { data: customAgents, isLoading: isLoadingCustom } = useQuery<AIAgent[]>({
     queryKey: ['/api/ai-agents/user', currentUser?.id],
     enabled: !!currentUser,
+    queryFn: async () => {
+      const response = await fetch(`/api/ai-agents/user/${currentUser!.id}`);
+      if (!response.ok) throw new Error('Failed to load custom agents');
+      return response.json();
+    },
   });
 
   const createAgentMutation = useMutation({
@@ -91,6 +97,7 @@ const AI = () => {
         systemPrompt: "You are a helpful assistant specialized in ",
       });
       setOpen(false);
+      setBottomOpen(false);
     },
     onError: () => {
       toast({
@@ -282,7 +289,7 @@ const AI = () => {
         )}
       </div>
       
-      <Dialog>
+      <Dialog open={bottomOpen} onOpenChange={setBottomOpen}>
         <DialogTrigger asChild>
           <Button variant="outline" className="w-full py-3 rounded-lg text-center text-sm font-medium">
             Train New AI Agent

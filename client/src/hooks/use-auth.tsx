@@ -28,6 +28,7 @@ type AuthContextType = {
   isLoading: boolean;
   error: Error | null;
   isSignedIn: boolean;
+  signOut: (options?: { redirectUrl?: string }) => Promise<void>;
   updateProfileMutation: UseMutationResult<SelectUser, Error, UpdateProfileData>;
   uploadProfileImageMutation: UseMutationResult<{ user: SelectUser; imageUrl: string }, Error, UploadProfileImageData>;
 };
@@ -36,7 +37,7 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const { isSignedIn, isLoaded } = useClerkAuth();
+  const { isSignedIn, isLoaded, signOut } = useClerkAuth();
 
   const {
     data: user,
@@ -124,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         isSignedIn: !!isSignedIn,
+        signOut,
         updateProfileMutation,
         uploadProfileImageMutation,
       }}
@@ -196,6 +198,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error: error ?? null,
         isSignedIn: true,
+        signOut: async () => undefined,
         updateProfileMutation,
         uploadProfileImageMutation,
       }}

@@ -73,7 +73,7 @@ interface CommunitiesState {
 export const useCommunitiesStore = create<CommunitiesState>((set) => ({
   activeCommunityId: 1, // Default to first community
   activeChannelId: 1, // Default to first channel
-  setActiveCommunity: (id) => set({ activeCommunityId: id }),
+  setActiveCommunity: (id) => set({ activeCommunityId: id, activeChannelId: null }),
   setActiveChannel: (id) => set({ activeChannelId: id }),
 }));
 
@@ -279,6 +279,7 @@ interface MessagingState {
   setSelectedConversation: (conversationId: number | null) => void;
   setEditingMessageId: (messageId: number | null) => void;
   setReplyingToMessage: (message: DirectMessage | null) => void;
+  openMessagePanel: () => void;
   toggleMessagePanel: () => void;
   closeMessagePanel: () => void;
 }
@@ -473,7 +474,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   markConversationAsRead: async (conversationId: number) => {
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/mark-read`, {
+      const response = await fetch(`/api/conversations/${conversationId}/read`, {
         method: 'PATCH'
       });
       
@@ -575,6 +576,8 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   },
   
   setSelectedConversation: (conversationId) => set({ selectedConversation: conversationId }),
+
+  openMessagePanel: () => set({ isMessagePanelOpen: true }),
   
   toggleMessagePanel: () => set((state) => ({
     isMessagePanelOpen: !state.isMessagePanelOpen

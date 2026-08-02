@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Folder, Share2, MoreHorizontal } from 'lucide-react';
+import { Folder } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/stores';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +19,11 @@ const DocumentEditor = () => {
   const { data: documents, isLoading } = useQuery<Document[]>({
     queryKey: ['/api/users', currentUser?.id, 'documents'],
     enabled: !!currentUser,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${currentUser!.id}/documents`);
+      if (!response.ok) throw new Error('Failed to load documents');
+      return response.json();
+    },
   });
   
   const document = documents?.[0];
@@ -56,6 +61,25 @@ const DocumentEditor = () => {
       });
     },
   });
+
+  const createDocumentMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentUser) throw new Error('You must be signed in to create a document');
+      const response = await apiRequest('POST', '/api/documents', {
+        userId: currentUser.id,
+        title: 'Untitled document',
+        content: '',
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users', currentUser?.id, 'documents'] });
+      toast({ title: 'Document created', description: 'Your new document is ready to edit.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to create a document. Please try again.', variant: 'destructive' });
+    },
+  });
   
   const handleContentChange = (e: React.FormEvent<HTMLDivElement>) => {
     setContent(e.currentTarget.innerHTML);
@@ -82,6 +106,22 @@ const DocumentEditor = () => {
       </Card>
     );
   }
+
+  if (!document) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="flex flex-col items-start gap-3 p-4">
+          <div>
+            <h2 className="font-semibold">Documents</h2>
+            <p className="text-sm text-muted-foreground">Capture an idea, brief, or draft for your creator workflow.</p>
+          </div>
+          <Button onClick={() => createDocumentMutation.mutate()} disabled={createDocumentMutation.isPending}>
+            New document
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
   
   return (
     <Card className="shadow-sm">
@@ -89,20 +129,15 @@ const DocumentEditor = () => {
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-semibold">Notion-Style Document</h2>
           <div className="flex space-x-2">
-            <Button variant="ghost" size="icon" onClick={handleSave}>
+            <Button variant="ghost" size="icon" onClick={handleSave} aria-label="Save document" disabled={updateDocumentMutation.isPending}>
               <Folder className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Share2 className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
             </Button>
           </div>
         </div>
         
         <div
           contentEditable
+          aria-label="Document content"
           className="min-h-[150px] focus:outline-none"
           onInput={handleContentChange}
           dangerouslySetInnerHTML={{ __html: content }}

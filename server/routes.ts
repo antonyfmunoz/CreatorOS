@@ -43,6 +43,17 @@ async function requirePostOwner(postId: number, userId: number) {
   return { post };
 }
 
+async function requireDocumentOwner(documentId: number, userId: number) {
+  const document = await storage.getDocumentById(documentId);
+  if (!document) {
+    return { status: 404 as const, message: "Document not found" };
+  }
+  if (document.userId !== userId) {
+    return { status: 403 as const, message: "You can only access your own documents" };
+  }
+  return { document };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
@@ -779,9 +790,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/products", async (req, res) => {
+  app.post("/api/products", attachUser, async (req, res) => {
     try {
-      const product = await storage.createProduct(req.body);
+      const product = await storage.createProduct({ ...req.body, userId: req.dbUser!.id });
       res.status(201).json(product);
     } catch (error) {
       res.status(500).json({ message: "Failed to create product" });
@@ -798,9 +809,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/ai-agents/user/:userId", async (req, res) => {
+  app.get("/api/ai-agents/user/:userId", attachUser, async (req, res) => {
     try {
-      const agents = await storage.getUserAIAgents(parseInt(req.params.userId));
+      const userId = parseInt(req.params.userId);
+      if (req.dbUser!.id !== userId) {
+        return res.status(403).json({ message: "You can only access your own AI agents" });
+      }
+      const agents = await storage.getUserAIAgents(userId);
       res.json(agents);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user AI agents" });
@@ -819,9 +834,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai-agents", async (req, res) => {
+  app.post("/api/ai-agents", attachUser, async (req, res) => {
     try {
-      const agent = await storage.createAIAgent(req.body);
+      const agent = await storage.createAIAgent({ ...req.body, userId: req.dbUser!.id });
       res.status(201).json(agent);
     } catch (error) {
       res.status(500).json({ message: "Failed to create AI agent" });
@@ -863,6 +878,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/ai-chat/message", async (req, res) => {
     try {
       const { agentId, message, systemPrompt } = req.body;
+
+      if (typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ message: "A message is required" });
+      }
+
+      if (process.env.CREATOROS_DEMO_MODE === "true") {
+        return res.json({
+          reply: `Demo response from CreatorOS: I received “${message.trim()}”. Configure OPENAI_API_KEY to use the live assistant.`,
+        });
+      }
       
       // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       const response = await getOpenAI().chat.completions.create({
@@ -968,9 +993,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Revenue routes
-  app.get("/api/users/:userId/revenue", async (req, res) => {
+  app.get("/api/users/:userId/revenue", attachUser, async (req, res) => {
     try {
-      const revenue = await storage.getRevenueByUserId(parseInt(req.params.userId));
+      const userId = parseInt(req.params.userId);
+      if (req.dbUser!.id !== userId) {
+        return res.status(403).json({ message: "You can only access your own revenue" });
+      }
+      const revenue = await storage.getRevenueByUserId(userId);
       res.json(revenue);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch revenue data" });
@@ -978,18 +1007,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Contact routes
-  app.get("/api/users/:userId/contacts", async (req, res) => {
+  app.get("/api/users/:userId/contacts", attachUser, async (req, res) => {
     try {
-      const contacts = await storage.getContactsByUserId(parseInt(req.params.userId));
+      const userId = parseInt(req.params.userId);
+      if (req.dbUser!.id !== userId) {
+        return res.status(403).json({ message: "You can only access your own contacts" });
+      }
+      const contacts = await storage.getContactsByUserId(userId);
       res.json(contacts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch contacts" });
     }
   });
 
-  app.post("/api/contacts", async (req, res) => {
+  app.post("/api/contacts", attachUser, async (req, res) => {
     try {
-      const contact = await storage.createContact(req.body);
+      const contact = await storage.createContact({ ...req.body, userId: req.dbUser!.id });
       res.status(201).json(contact);
     } catch (error) {
       res.status(500).json({ message: "Failed to create contact" });
@@ -997,38 +1030,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Document routes
-  app.get("/api/users/:userId/documents", async (req, res) => {
+  app.get("/api/users/:userId/documents", attachUser, async (req, res) => {
     try {
-      const documents = await storage.getDocumentsByUserId(parseInt(req.params.userId));
+      const userId = parseInt(req.params.userId);
+      if (req.dbUser!.id !== userId) {
+        return res.status(403).json({ message: "You can only access your own documents" });
+      }
+      const documents = await storage.getDocumentsByUserId(userId);
       res.json(documents);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch documents" });
     }
   });
 
-  app.get("/api/documents/:id", async (req, res) => {
+  app.get("/api/documents/:id", attachUser, async (req, res) => {
     try {
-      const document = await storage.getDocumentById(parseInt(req.params.id));
-      if (!document) {
-        return res.status(404).json({ message: "Document not found" });
+      const ownership = await requireDocumentOwner(parseInt(req.params.id), req.dbUser!.id);
+      if (!("document" in ownership)) {
+        return res.status(ownership.status).json({ message: ownership.message });
       }
-      res.json(document);
+      res.json(ownership.document);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch document" });
     }
   });
 
-  app.post("/api/documents", async (req, res) => {
+  app.post("/api/documents", attachUser, async (req, res) => {
     try {
-      const document = await storage.createDocument(req.body);
+      const document = await storage.createDocument({
+        ...req.body,
+        userId: req.dbUser!.id,
+      });
       res.status(201).json(document);
     } catch (error) {
       res.status(500).json({ message: "Failed to create document" });
     }
   });
 
-  app.put("/api/documents/:id", async (req, res) => {
+  app.put("/api/documents/:id", attachUser, async (req, res) => {
     try {
+      const ownership = await requireDocumentOwner(parseInt(req.params.id), req.dbUser!.id);
+      if (!("document" in ownership)) {
+        return res.status(ownership.status).json({ message: ownership.message });
+      }
       const document = await storage.updateDocument(
         parseInt(req.params.id),
         req.body.title,
@@ -1042,8 +1086,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Messaging routes
   // Get all conversations for a user
-  app.get("/api/users/:userId/conversations", async (req, res) => {
+  app.get("/api/users/:userId/conversations", attachUser, async (req, res) => {
     try {
+      if (parseInt(req.params.userId) !== req.dbUser!.id) {
+        return res.status(403).json({ message: "You can only view your own conversations" });
+      }
       const conversations = await storage.getConversationsByUserId(parseInt(req.params.userId));
       res.json(conversations);
     } catch (error) {
@@ -1053,7 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Create a new conversation
-  app.post("/api/conversations", async (req, res) => {
+  app.post("/api/conversations", attachUser, async (req, res) => {
     try {
       const { userIds, name, isGroup } = req.body;
       console.log("Received conversation creation request:", { userIds, name, isGroup });
@@ -1061,6 +1108,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userIds || !Array.isArray(userIds) || userIds.length < 2) {
         console.error("Invalid userIds:", userIds);
         return res.status(400).json({ message: "At least two users are required" });
+      }
+
+      if (!userIds.includes(req.dbUser!.id)) {
+        return res.status(403).json({ message: "You must be a participant in the conversation" });
       }
       
       // Check all userIds are valid numbers
@@ -1118,9 +1169,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get messages for a conversation
-  app.get("/api/conversations/:conversationId/messages", async (req, res) => {
+  app.get("/api/conversations/:conversationId/messages", attachUser, async (req, res) => {
     try {
-      const messages = await storage.getMessagesByConversationId(parseInt(req.params.conversationId));
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversationById(conversationId);
+      if (!conversation?.participants.some(participant => participant.userId === req.dbUser!.id)) {
+        return res.status(403).json({ message: "You are not a participant in this conversation" });
+      }
+      const messages = await storage.getMessagesByConversationId(conversationId);
       res.json(messages);
     } catch (error) {
       console.error("Error fetching messages:", error);
@@ -1129,9 +1185,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Send a message
-  app.post("/api/messages", async (req, res) => {
+  app.post("/api/messages", attachUser, async (req, res) => {
     try {
-      const message = await storage.createDirectMessage(req.body);
+      const conversation = await storage.getConversationById(req.body.conversationId);
+      if (!conversation?.participants.some(participant => participant.userId === req.dbUser!.id)) {
+        return res.status(403).json({ message: "You are not a participant in this conversation" });
+      }
+      const message = await storage.createDirectMessage({ ...req.body, senderId: req.dbUser!.id });
       res.status(201).json(message);
     } catch (error) {
       console.error("Error creating message:", error);
@@ -1184,12 +1244,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Mark conversation as read
-  app.patch("/api/conversations/:conversationId/read", async (req, res) => {
+  app.patch("/api/conversations/:conversationId/read", attachUser, async (req, res) => {
     try {
-      await storage.markConversationAsRead(
-        parseInt(req.params.conversationId),
-        req.body.userId
-      );
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversationById(conversationId);
+      if (!conversation?.participants.some(participant => participant.userId === req.dbUser!.id)) {
+        return res.status(403).json({ message: "You are not a participant in this conversation" });
+      }
+      await storage.markConversationAsRead(conversationId, req.dbUser!.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Error marking conversation as read:", error);

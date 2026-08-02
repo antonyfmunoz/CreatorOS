@@ -9,9 +9,9 @@ const Marketplace = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // Implement search functionality in a real app
-    console.log("Searching for:", searchQuery);
   };
+
+  const isSearching = searchQuery.trim().length > 0;
 
   return (
     <div className="px-4 pt-4 pb-20">
@@ -41,14 +41,15 @@ const Marketplace = () => {
         </div>
       </form>
 
-      {/* Featured Products */}
-      <ProductList title="Featured Products" section="featured" />
-
-      {/* Best Sellers */}
-      <ProductList title="Best Sellers" section="bestsellers" />
-
-      {/* Recommended Products */}
-      <ProductList title="Recommended For You" section="recommended" />
+      {isSearching ? (
+        <ProductList title={`Results for “${searchQuery.trim()}”`} section="recommended" searchQuery={searchQuery} />
+      ) : (
+        <>
+          <ProductList title="Featured Products" section="featured" />
+          <ProductList title="Best Sellers" section="bestsellers" />
+          <ProductList title="Recommended For You" section="recommended" />
+        </>
+      )}
     </div>
   );
 };

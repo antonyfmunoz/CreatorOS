@@ -19,6 +19,11 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
   const { data: channels, isLoading: isLoadingChannels } = useQuery<Channel[]>({
     queryKey: ['/api/communities', activeCommunityId, 'channels'],
     enabled: activeCommunityId !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}/channels`);
+      if (!response.ok) throw new Error("Failed to load channels");
+      return response.json();
+    },
   });
   
   if (isMobile) {

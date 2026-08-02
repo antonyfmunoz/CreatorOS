@@ -30,21 +30,33 @@ const Communities = () => {
   const { data: community, isLoading: isLoadingCommunity } = useQuery<CommunityType>({
     queryKey: ['/api/communities', activeCommunityId],
     enabled: activeCommunityId !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}`);
+      if (!response.ok) throw new Error("Failed to load community");
+      return response.json();
+    },
   });
   
   const { data: channels, isLoading: isLoadingChannels } = useQuery<ChannelType[]>({
     queryKey: ['/api/communities', activeCommunityId, 'channels'],
     enabled: activeCommunityId !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}/channels`);
+      if (!response.ok) throw new Error("Failed to load channels");
+      return response.json();
+    },
   });
-  
-  const { data: activeChannel } = useQuery<ChannelType>({
-    queryKey: ['/api/channels', activeChannelId],
-    enabled: activeChannelId !== null,
-  });
+
+  const activeChannel = channels?.find(channel => channel.id === activeChannelId);
   
   const { data: messages, isLoading: isLoadingMessages } = useQuery<ChannelMessageType[]>({
     queryKey: ['/api/channels', activeChannelId, 'messages'],
     enabled: activeChannelId !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/channels/${activeChannelId}/messages`);
+      if (!response.ok) throw new Error("Failed to load channel messages");
+      return response.json();
+    },
   });
   
   const sendMessageMutation = useMutation({

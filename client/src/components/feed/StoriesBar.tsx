@@ -118,10 +118,19 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
             {currentUser && (
               <div 
                 className="flex flex-col items-center cursor-pointer"
+                role="button"
+                tabIndex={0}
+                aria-label={hasCurrentUserStory ? "View your story" : "Create a story"}
                 onClick={hasCurrentUserStory 
                   ? () => onStoryClick && onStoryClick(currentUser.id) 
                   : handleAddStory
                 }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    hasCurrentUserStory ? onStoryClick?.(currentUser.id) : handleAddStory();
+                  }
+                }}
               >
                 <div className={`w-16 h-16 rounded-full ${
                   hasCurrentUserStory 
@@ -157,7 +166,16 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                 <div 
                   key={user.id}
                   className="flex flex-col items-center cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View ${user.displayName}'s story`}
                   onClick={() => onStoryClick && onStoryClick(user.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onStoryClick?.(user.id);
+                    }
+                  }}
                   data-user-id={user.id}
                 >
                   <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-0.5">

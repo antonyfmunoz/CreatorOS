@@ -23,6 +23,11 @@ const RevenueChart = ({ userId }: { userId: number }) => {
   const { data: revenueData, isLoading } = useQuery<Revenue[]>({
     queryKey: ['/api/users', userId, 'revenue'],
     enabled: userId > 0,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${userId}/revenue`);
+      if (!response.ok) throw new Error('Failed to load revenue');
+      return response.json();
+    },
   });
   
   if (isLoading) {

@@ -17,7 +17,6 @@ import { Product } from "@/types";
 import { User } from "@shared/schema";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useClerk } from "@clerk/clerk-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,10 +28,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const Profile = () => {
+  const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const { user: currentUser, isLoading: isAuthLoading } = useAuth();
-  const { signOut } = useClerk();
+  const { user: currentUser, isLoading: isAuthLoading, signOut } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -198,7 +197,11 @@ const Profile = () => {
   };
   
   const handleLogout = () => {
-    signOut({ redirectUrl: "/auth" });
+    if (isDemoMode) {
+      setLocation("/");
+      return;
+    }
+    void signOut({ redirectUrl: "/auth" });
   };
   
   const handleLogin = () => {

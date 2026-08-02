@@ -17,6 +17,7 @@ import RevenuePage from "@/pages/revenue";
 import ContactsPage from "@/pages/contacts";
 import DocumentsPage from "@/pages/documents";
 import CreateProductPage from "@/pages/create-product";
+import ProductDetail from "@/pages/product-detail";
 import CreatePostPage from "@/pages/create-post";
 import NewTextPostPage from "@/pages/new-text-post";
 import BottomNavigation from "@/components/layout/BottomNavigation";
@@ -26,6 +27,7 @@ import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
+import { MessageButton } from "@/components/messages";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 
@@ -85,6 +87,7 @@ function Router() {
       <ProtectedRoute path="/contacts" component={ContactsPage} />
       <ProtectedRoute path="/documents" component={DocumentsPage} />
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
+      <ProtectedRoute path="/marketplace/product/:id" component={ProductDetail} />
       <ProtectedRoute path="/create" component={CreatePostPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <Route component={NotFound} />
@@ -108,6 +111,7 @@ function AppContent() {
       </div>
       <Toaster />
       <ToastContainer />
+      <MessageButton showTrigger={false} />
     </>
   );
 }
