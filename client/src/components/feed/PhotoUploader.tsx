@@ -11,12 +11,10 @@ import {
   Plus, 
   Users, 
   MapPin, 
-  Eye, 
   Share,
   BarChart2,
   Instagram,
   Facebook,
-  ShoppingBag,
   Camera,
   RefreshCw
 } from "lucide-react";
@@ -655,24 +653,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </button>
               
-              {/* Tag product button */}
-              <button 
-                type="button"
-                className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
-                onClick={() => {
-                  toast({
-                    title: "Product tagging",
-                    description: "Product tagging feature coming soon!"
-                  });
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>Tag product</span>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
-              
               {/* Tagged users pills */}
               {taggedUsers.length > 0 && (
                 <div className="flex flex-wrap gap-2 py-2">
@@ -733,23 +713,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 </div>
               )}
               
-              <div className="flex items-center justify-between py-2"
-                onClick={() => {
-                  toast({
-                    title: "Audience",
-                    description: "Choose who can see your post",
-                  });
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <Eye className="w-5 h-5" />
-                  <span>Audience</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Everyone</span>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                </div>
-              </div>
             </div>
             
             {/* Post to / Share to */}

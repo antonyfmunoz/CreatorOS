@@ -52,7 +52,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose
 } from "@/components/ui/dialog";
@@ -652,7 +651,7 @@ const Post = ({ post }: PostProps) => {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="ml-auto">
+              <Button variant="ghost" size="icon" className="ml-auto" aria-label="Post options">
                 <MoreHorizontal className="h-5 w-5 text-gray-400" />
               </Button>
             </DropdownMenuTrigger>
@@ -806,6 +805,7 @@ const Post = ({ post }: PostProps) => {
               className="flex items-center gap-1 px-2"
               onClick={handleLikeToggle}
               disabled={isPending}
+              aria-label={isLiked ? "Unlike post" : "Like post"}
             >
               <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
               <span>{post.likes}</span>
@@ -816,6 +816,7 @@ const Post = ({ post }: PostProps) => {
               size="sm" 
               className="flex items-center gap-1 px-2"
               onClick={toggleComments}
+              aria-label="Show comments"
             >
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
               <span>{totalCommentCount}</span>
@@ -835,11 +836,9 @@ const Post = ({ post }: PostProps) => {
               }
             }}
           >
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare}>
-                <Share2 className="h-5 w-5" />
-              </Button>
-            </DialogTrigger>
+            <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare} aria-label="Share post">
+              <Share2 className="h-5 w-5" />
+            </Button>
             <DialogContent className="sm:max-w-md rounded-lg">
               <DialogHeader>
                 <DialogTitle>Share post</DialogTitle>
