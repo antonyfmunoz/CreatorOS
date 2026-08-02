@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Product } from "@/types";
 import { User } from "@shared/schema";
-import { useParams, useLocation } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +31,7 @@ const Profile = () => {
   const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileView, setProfileView] = useState<"posts" | "offers" | "playlists">("posts");
   const { user: currentUser, isLoading: isAuthLoading, signOut } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
@@ -93,6 +94,7 @@ const Profile = () => {
   const { data: products, isLoading: isLoadingProducts } = useQuery<Product[]>({
     queryKey: ['/api/products'],
   });
+  const profileProducts = products?.filter((product) => product.userId === user?.id) ?? [];
   
   // Fetch follower/following counts
   const { data: followerCount, isLoading: isLoadingFollowers } = useQuery<number>({
@@ -192,7 +194,7 @@ const Profile = () => {
   const stats = {
     followers: isLoadingFollowers ? "..." : (followerCount || 0).toString(),
     following: isLoadingFollowing ? "..." : (followingCount || 0).toString(),
-    revenue: products ? `$${(products.reduce((sum, product) => sum + product.price, 0)).toFixed(2)}` : "$0.00",
+    revenue: products ? `$${(profileProducts.reduce((sum, product) => sum + product.price, 0)).toFixed(2)}` : "$0.00",
     posts: isLoadingPostCount ? "..." : (postCount?.count || 0).toString(),
   };
   
@@ -431,15 +433,54 @@ const Profile = () => {
         )}
       </div>
       
-      {/* Profile feed with posts - X-inspired layout */}
-      <div className="border-t mt-4"></div>
-      
-      {/* Show the user's posts in X/Twitter style feed layout */}
-      {user && (
-        <ProfileFeed 
-          userId={user.id} 
-          username={user.username}
-        />
+      {/* Stitch profile destinations: posts remain the social surface, offers
+          expose the creator's real marketplace inventory, and playlists are
+          deliberately an honest empty state until playlist entities exist. */}
+      <nav className="mt-4 flex border-y border-zinc-200" aria-label="Profile content">
+        {([
+          ["posts", "Posts"],
+          ["offers", "Offers"],
+          ["playlists", "Playlists"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className={`relative flex-1 py-3 text-sm font-bold ${profileView === value ? "text-black" : "text-zinc-400"}`}
+            onClick={() => setProfileView(value)}
+          >
+            {label}
+            {profileView === value && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-black" />}
+          </button>
+        ))}
+      </nav>
+
+      {profileView === "posts" && user && (
+        <ProfileFeed userId={user.id} username={user.username} />
+      )}
+
+      {profileView === "offers" && (
+        <section className="grid grid-cols-2 gap-4 p-4">
+          {profileProducts.map((product) => (
+            <Link key={product.id} href={`/marketplace/product/${product.id}`} className="min-w-0">
+              <div className="aspect-square overflow-hidden rounded-xl bg-zinc-100">
+                {product.imageUrl ? <img src={product.imageUrl} alt={product.title} className="h-full w-full object-cover" /> : <div className="h-full bg-zinc-900" />}
+              </div>
+              <p className="mt-2 truncate text-sm font-bold">{product.title}</p>
+              <p className="text-xs text-zinc-500">${product.price.toFixed(2)}</p>
+            </Link>
+          ))}
+          {profileProducts.length === 0 && (
+            <div className="col-span-2 py-12 text-center text-sm text-zinc-500">
+              {isOwnProfile ? "Create your first offer to begin selling through CreatorOS." : "This creator has no public offers yet."}
+            </div>
+          )}
+        </section>
+      )}
+
+      {profileView === "playlists" && (
+        <section className="px-6 py-16 text-center">
+          <h2 className="font-bold">No playlists yet</h2>
+          <p className="mt-2 text-sm text-zinc-500">Playlists will become a first-class content collection once the course and media library models are in place.</p>
+        </section>
       )}
       
       {/* Only show the edit profile page for the user's own profile */}
