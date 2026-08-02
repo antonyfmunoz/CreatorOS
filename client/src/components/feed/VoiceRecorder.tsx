@@ -122,7 +122,6 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         description: 'Could not access your microphone. Please check your permissions.',
         variant: 'destructive'
       });
-      onClose();
     }
   };
 
@@ -212,7 +211,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
       
       {/* Top Bar */}
       <div className="flex justify-between items-center p-4 border-b">
-        <button className="text-foreground" onClick={onClose}>Cancel</button>
+        <button className="text-foreground" onClick={onClose} aria-label="Cancel voice post">Cancel</button>
         <h2 className="text-lg font-medium">Voice Message</h2>
         <Button 
           variant="ghost" 

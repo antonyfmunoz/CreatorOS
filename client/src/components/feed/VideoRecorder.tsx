@@ -113,7 +113,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
         
         {/* Top Bar - Instagram-like header */}
         <div className="flex justify-between items-center p-4 border-b">
-          <button className="text-foreground" onClick={onClose}>Cancel</button>
+        <button className="text-foreground" onClick={onClose} aria-label="Cancel video post">Cancel</button>
           <div className="text-sm font-medium">
             {videoDuration < 10 ? 'Short video' : 'Long video'}
           </div>
@@ -201,13 +201,6 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           >
             Upload
           </Button>
-          <Button 
-            variant="outline" 
-            size="icon"
-            className="rounded-full w-8 h-8"
-          >
-            <span className="text-xs">15s</span>
-          </Button>
         </div>
       </div>
 
@@ -217,6 +210,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
         <button 
           onClick={triggerFileSelect}
           className="flex flex-col items-center justify-center space-y-2"
+          aria-label="Upload a video"
         >
           <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
             <Upload className="h-8 w-8 text-primary-foreground" />
@@ -225,14 +219,6 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
         </button>
       </div>
 
-      {/* Bottom Nav */}
-      <div className="absolute bottom-5 left-0 right-0 flex justify-around text-sm">
-        <span>Video</span>
-        <span className="font-bold">Short</span>
-        <span>Live</span>
-        <span>Post</span>
-      </div>
-      
       {/* Hidden file input */}
       <input 
         type="file" 
