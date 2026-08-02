@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Search, ShoppingCart } from "lucide-react";
+import { Search, ShoppingCart, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications";
-import { Product, Purchase } from "@/types";
+import { Community, Product, Purchase } from "@/types";
 
 type Surface = "marketplace" | "purchases";
 type Category = "All" | "Courses" | "Communities" | "Digital Assets";
@@ -46,6 +46,29 @@ function ProductGrid({ products, emptyMessage }: { products: Product[]; emptyMes
   );
 }
 
+function CommunityGrid({ communities, emptyMessage }: { communities: Community[]; emptyMessage: string }) {
+  if (communities.length === 0) {
+    return <p className="py-12 text-center text-sm text-zinc-500">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {communities.map((community) => (
+        <Link key={community.id} href={`/communities/${community.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-100 p-4 transition-colors hover:bg-zinc-50">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${community.iconColor}`}>
+            <Users className="h-5 w-5 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-bold text-black">{community.name}</h2>
+            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-500">{community.description}</p>
+          </div>
+          <span className="shrink-0 text-xs font-bold text-black">View</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default function Marketplace() {
   const [surface, setSurface] = useState<Surface>("marketplace");
   const [category, setCategory] = useState<Category>("All");
@@ -53,6 +76,7 @@ export default function Marketplace() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { data: purchases = [], isLoading: isLoadingPurchases } = useQuery<Purchase[]>({ queryKey: ["/api/purchases"] });
+  const { data: communities = [], isLoading: isLoadingCommunities } = useQuery<Community[]>({ queryKey: ["/api/communities"] });
 
   const visibleProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -66,6 +90,10 @@ export default function Marketplace() {
 
   const purchasedProducts = purchases.map((purchase) => purchase.product);
   const isLoading = surface === "marketplace" ? isLoadingProducts : isLoadingPurchases;
+  const visibleCommunities = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return communities.filter((community) => !query || [community.name, community.description].some((value) => value.toLowerCase().includes(query)));
+  }, [communities, searchQuery]);
 
   return (
     <main className="min-h-[calc(100dvh-3.5rem)] bg-white pb-20 text-black">
@@ -112,7 +140,11 @@ export default function Marketplace() {
             </div>
           </div>
           <section className="p-4">
-            {isLoading ? <p className="py-12 text-center text-sm text-zinc-500">Loading marketplace…</p> : <ProductGrid products={visibleProducts} emptyMessage="No offers match those filters yet." />}
+            {category === "Communities" ? (
+              isLoadingCommunities ? <p className="py-12 text-center text-sm text-zinc-500">Loading communities…</p> : <CommunityGrid communities={visibleCommunities} emptyMessage="No communities match those filters yet." />
+            ) : (
+              isLoading ? <p className="py-12 text-center text-sm text-zinc-500">Loading marketplace…</p> : <ProductGrid products={visibleProducts} emptyMessage="No offers match those filters yet." />
+            )}
           </section>
         </>
       )}

@@ -20,12 +20,23 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/lib/stores";
+import { useRoute } from "wouter";
 
 const Communities = () => {
-  const { activeCommunityId, activeChannelId } = useCommunitiesStore();
+  const { activeCommunityId, activeChannelId, setActiveCommunity } = useCommunitiesStore();
+  const [, routeParams] = useRoute("/communities/:id");
   const { currentUser } = useAppStore();
   const queryClient = useQueryClient();
   const [messageInput, setMessageInput] = useState("");
+
+  // A marketplace card can open its selected community directly, while the
+  // sidebar remains the source of truth for later in-community navigation.
+  useEffect(() => {
+    const requestedId = Number(routeParams?.id);
+    if (Number.isInteger(requestedId) && requestedId > 0 && requestedId !== activeCommunityId) {
+      setActiveCommunity(requestedId);
+    }
+  }, [activeCommunityId, routeParams?.id, setActiveCommunity]);
   
   const { data: community, isLoading: isLoadingCommunity } = useQuery<CommunityType>({
     queryKey: ['/api/communities', activeCommunityId],

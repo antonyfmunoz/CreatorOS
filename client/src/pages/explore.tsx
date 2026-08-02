@@ -6,6 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
+import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,6 +23,7 @@ const Explore = () => {
   const queryClient = useQueryClient();
   const { targetPostId, clearTargetPost } = useAppStore();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   // Feed Tab State
   const [activeTab, setActiveTab] = useState<TabType>("forYou");
@@ -126,6 +130,9 @@ const Explore = () => {
       <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 py-2 flex justify-between items-center">
         <span className="text-xl font-bold tracking-tight text-black">CreatorOS</span>
         <div className="flex items-center space-x-3">
+          <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setLocation('/search')} aria-label="Search CreatorOS">
+            <Search className="h-5 w-5" />
+          </Button>
           <FilterDropdown selectedFilter={contentFilter} onSelect={setContentFilter} />
           <NotificationBell />
           <MessageButton />
