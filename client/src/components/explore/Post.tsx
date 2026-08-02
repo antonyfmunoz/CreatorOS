@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { 
-  Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, 
+  Heart, MessageSquare, Share2, Repeat2, BarChart3, MoreHorizontal, Check, Copy, Link, Send, Search,
   User as UserIcon, Users, X, Pencil, Trash, Bookmark, Edit, Save 
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -76,9 +76,11 @@ import {
 
 interface PostProps {
   post: PostType;
+  surface?: 'light' | 'dark';
 }
 
-const Post = ({ post }: PostProps) => {
+const Post = ({ post, surface = 'light' }: PostProps) => {
+  const isDark = surface === 'dark';
   const [showComments, setShowComments] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -601,6 +603,30 @@ const Post = ({ post }: PostProps) => {
     setIsDeleteConfirmOpen(true);
   };
 
+  // A repost is a real new feed item from the active creator, rather than a
+  // decorative counter. It keeps the MVP's repost control useful without
+  // pretending we have a separate federation layer yet.
+  const repostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('You must be signed in to repost');
+      const res = await apiRequest('POST', '/api/posts', {
+        content: `Reposted @${post.user.username}: ${post.content}`,
+        imageUrl: post.imageUrl ?? null,
+        mediaType: post.imageUrl ? 'photo' : 'text',
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      toast({ title: 'Reposted', description: 'The post is now on your feed.' });
+    },
+    onError: () => {
+      toast({ title: 'Could not repost', description: 'Please try again.', variant: 'destructive' });
+    },
+  });
+
+  const handleRepost = () => repostMutation.mutate();
+
   const confirmDeletePost = () => {
     setIsDeleteConfirmOpen(false);
     const postElement = document.getElementById(`post-${post.id}`);
@@ -635,12 +661,12 @@ const Post = ({ post }: PostProps) => {
   };
 
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
-  const isPending = likePostMutation.isPending || unlikePostMutation.isPending || 
+  const isPending = likePostMutation.isPending || unlikePostMutation.isPending || repostMutation.isPending ||
                    updatePostMutation.isPending || deletePostMutation.isPending || 
                    savePostMutation.isPending || unsavePostMutation.isPending;
 
   return (
-    <Card id={`post-${post.id}`} className="mb-0 overflow-hidden rounded-none border-x-0 border-t-0 border-zinc-100 shadow-none">
+    <Card id={`post-${post.id}`} className={`mb-0 overflow-hidden rounded-none border-x-0 border-t-0 shadow-none ${isDark ? 'border-zinc-800 bg-black text-white' : 'border-zinc-100 bg-white text-black'}`}>
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -671,7 +697,7 @@ const Post = ({ post }: PostProps) => {
           </Avatar>
           <div className="min-w-0">
             <p 
-              className="font-semibold text-black cursor-pointer hover:text-primary hover:underline" 
+              className={`cursor-pointer font-semibold hover:text-primary hover:underline ${isDark ? 'text-white' : 'text-black'}`}
               onClick={() => setLocation(`/profile/${post.user.id}`)}
             >
               {post.user.displayName}
@@ -763,7 +789,7 @@ const Post = ({ post }: PostProps) => {
           </div>
         ) : (
           <p 
-            className="mb-4 text-[15px] leading-6 text-black" 
+            className={`mb-4 text-[15px] leading-6 ${isDark ? 'text-white' : 'text-black'}`}
             dangerouslySetInnerHTML={{ __html: parseUserTags(post.content) }}
           />
         )}
@@ -827,7 +853,7 @@ const Post = ({ post }: PostProps) => {
         )}
         
         <div className="flex items-center justify-between text-zinc-500">
-          <div className="flex space-x-4">
+          <div className="flex flex-1 items-center justify-between">
             <Button 
               variant="ghost" 
               size="sm" 
@@ -850,6 +876,22 @@ const Post = ({ post }: PostProps) => {
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
               <span>{totalCommentCount}</span>
             </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex items-center gap-1 px-2"
+              onClick={handleRepost}
+              disabled={isPending}
+              aria-label="Repost"
+            >
+              <Repeat2 className="h-5 w-5" />
+            </Button>
+
+            <span className="flex items-center gap-1 px-2 text-sm" aria-label="Post analytics">
+              <BarChart3 className="h-5 w-5" />
+              <span className="sr-only">Post analytics</span>
+            </span>
           </div>
           
           <Dialog 
@@ -865,7 +907,7 @@ const Post = ({ post }: PostProps) => {
               }
             }}
           >
-            <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare} aria-label="Share post">
+            <Button variant="ghost" size="sm" className="ml-1 flex items-center px-2" onClick={handleShare} aria-label="Share post">
               <Share2 className="h-5 w-5" />
             </Button>
             <DialogContent className="sm:max-w-md rounded-lg">

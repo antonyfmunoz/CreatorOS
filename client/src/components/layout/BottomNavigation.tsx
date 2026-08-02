@@ -11,7 +11,13 @@ import { useLocation } from 'wouter';
 
 const BottomNavigation = () => {
   const { activeTab, setActiveTab } = useAppStore();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+
+  // These are focused, full-screen Stitch surfaces. Their own headers provide
+  // the exit path; retaining the global nav here breaks the approved layout.
+  if (["/search", "/messages", "/profile", "/communities"].some((path) => location === path || location.startsWith(`${path}/`))) {
+    return null;
+  }
 
   const tabs = [
     { id: 'explore', label: 'Explore', icon: Compass, href: '/' },

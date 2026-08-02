@@ -5,7 +5,6 @@ import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationBell } from "@/components/notifications";
-import { MessageButton } from "@/components/messages";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
@@ -14,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import new feed components
 import { Tabs, TabType } from "@/components/feed/Tabs";
-import { FilterDropdown, ContentFilterType } from "@/components/feed/FilterDropdown";
+import { ContentFilterType } from "@/components/feed/FilterDropdown";
 import { VoicePostCard } from "@/components/feed/VoicePostCard";
 import { FloatingActionButton } from "@/components/feed/FloatingActionButton";
 import { StoriesBar } from "@/components/feed/StoriesBar";
@@ -28,8 +27,9 @@ const Explore = () => {
   // Feed Tab State
   const [activeTab, setActiveTab] = useState<TabType>("forYou");
   
-  // Content Filter State
-  const [contentFilter, setContentFilter] = useState<ContentFilterType>("all");
+  // The approved Explore surface is intentionally unfiltered; discovery filters
+  // live in Marketplace so the feed keeps its compact Stitch layout.
+  const [contentFilter] = useState<ContentFilterType>("all");
   
   // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
@@ -133,9 +133,7 @@ const Explore = () => {
           <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setLocation('/search')} aria-label="Search CreatorOS">
             <Search className="h-5 w-5" />
           </Button>
-          <FilterDropdown selectedFilter={contentFilter} onSelect={setContentFilter} />
           <NotificationBell />
-          <MessageButton />
         </div>
       </header>
 

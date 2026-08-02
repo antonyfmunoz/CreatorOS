@@ -1,268 +1,63 @@
-import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react";
 import { Post as PostType } from "@/types";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
+import Post from "@/components/explore/Post";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDistanceToNow } from "date-fns";
-import { 
-  Heart, MessageSquare, Share2, Image as ImageIcon, 
-  Music, Video 
-} from "lucide-react";
-import { useLocation } from "wouter";
 
 interface ProfileFeedProps {
   userId: number;
   username: string;
 }
 
-const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
-  const [activeTab, setActiveTab] = useState("all");
-  const [, setLocation] = useLocation();
-
-  // Fetch user posts with filtering
+// The public profile intentionally uses the same complete interaction row as
+// Explore. This keeps likes, comments, reposts, analytics, and sharing
+// consistent instead of presenting a second, partly-dead version of a post.
+export default function ProfileFeed({ userId, username }: ProfileFeedProps) {
   const { data: posts, isLoading, error } = useQuery<PostType[]>({
-    queryKey: ["/api/users/posts", userId, activeTab],
+    queryKey: ["/api/users/posts", userId],
     queryFn: async () => {
-      let url = `/api/users/${userId}/posts`;
-      if (activeTab !== "all") {
-        url += `?type=${activeTab}`;
-      }
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to fetch posts");
-      return res.json();
+      const response = await fetch(`/api/users/${userId}/posts`);
+      if (!response.ok) throw new Error("Failed to fetch posts");
+      return response.json();
     },
   });
 
   if (isLoading) {
-    return (
-      <div className="mt-4 space-y-4">
-        {[1, 2, 3].map((i) => (
-          <Card key={i} className="mb-0 overflow-hidden rounded-none border-x-0 border-t-0 border-zinc-800 bg-black text-white shadow-none">
-            <CardContent className="p-4">
-              <div className="flex items-center mb-3">
-                <Skeleton className="w-10 h-10 rounded-full mr-3" />
-                <div className="flex-1">
-                  <Skeleton className="h-4 w-24 mb-2" />
-                  <Skeleton className="h-3 w-16" />
-                </div>
-              </div>
-              <Skeleton className="h-20 w-full mb-4" />
-              <div className="flex justify-between">
-                <Skeleton className="h-6 w-16" />
-                <Skeleton className="h-6 w-16" />
-                <Skeleton className="h-6 w-16" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
+    return <ProfileFeedSkeleton />;
   }
 
   if (error) {
     return (
       <div className="mt-8 text-center">
-        <p className="text-destructive">Error loading posts: {error.message}</p>
-        <Button 
-          variant="outline" 
-          className="mt-4"
-          onClick={() => window.location.reload()}
-        >
-          Try Again
-        </Button>
+        <p className="text-red-400">Could not load posts.</p>
+        <Button variant="outline" className="mt-4 border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white" onClick={() => window.location.reload()}>Try again</Button>
       </div>
     );
   }
 
-  const noPosts = !posts || posts.length === 0;
-
-  return (
-    <div className="mt-2">
-      <Tabs
-        defaultValue="all"
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="w-full"
-      >
-        <div className="px-4">
-          <TabsList className="flex w-full overflow-x-auto gap-1.5 bg-zinc-900 text-zinc-300">
-            <TabsTrigger value="all" className="flex-1 px-2 min-w-0 text-sm">All</TabsTrigger>
-            <TabsTrigger value="photo" className="flex-1 px-2 min-w-0 text-sm">Photos</TabsTrigger>
-            <TabsTrigger value="video" className="flex-1 px-2 min-w-0 text-sm">Video</TabsTrigger>
-            <TabsTrigger value="text" className="flex-1 px-2 min-w-0 text-sm">Text</TabsTrigger>
-            <TabsTrigger value="audio" className="flex-1 px-2 min-w-0 text-sm">Audio</TabsTrigger>
-          </TabsList>
-        </div>
-
-        <TabsContent value="all" className="mt-0">
-          {renderPosts(posts, noPosts, username)}
-        </TabsContent>
-        
-        <TabsContent value="text" className="mt-0">
-          {renderPosts(
-            posts?.filter(post => !post.imageUrl),
-            noPosts || !posts?.some(post => !post.imageUrl),
-            username,
-            "text"
-          )}
-        </TabsContent>
-        
-        <TabsContent value="photo" className="mt-0">
-          {renderPosts(
-            posts?.filter(post => post.imageUrl),
-            noPosts || !posts?.some(post => post.imageUrl),
-            username,
-            "photo"
-          )}
-        </TabsContent>
-        
-        <TabsContent value="audio" className="mt-0">
-          {renderPosts(
-            posts?.filter(post => post.audioUrl),
-            true, // Currently no audio posts supported
-            username,
-            "audio"
-          )}
-        </TabsContent>
-        
-        <TabsContent value="video" className="mt-0">
-          {renderPosts(
-            posts?.filter(post => post.videoUrl),
-            true, // Currently no video posts supported
-            username,
-            "video"
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-};
-
-function renderPosts(
-  posts: PostType[] | undefined,
-  noPosts: boolean,
-  username: string,
-  type?: string
-) {
-  if (noPosts) {
+  if (!posts?.length) {
     return (
       <div className="py-12 text-center text-white">
-        <div className="mx-auto w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center mb-3">
-          {type === "photo" ? (
-            <ImageIcon className="h-6 w-6 text-muted-foreground" />
-          ) : type === "audio" ? (
-            <Music className="h-6 w-6 text-muted-foreground" />
-          ) : type === "video" ? (
-            <Video className="h-6 w-6 text-muted-foreground" />
-          ) : (
-            <MessageSquare className="h-6 w-6 text-muted-foreground" />
-          )}
-        </div>
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900"><MessageSquare className="h-6 w-6 text-zinc-500" /></div>
         <h3 className="text-lg font-medium">No posts yet</h3>
-        <p className="text-zinc-500 text-sm mt-1">
-          {type === "photo"
-            ? `@${username.toLowerCase()} hasn't shared any photos`
-            : type === "text"
-            ? `@${username.toLowerCase()} hasn't written any text posts`
-            : type === "audio"
-            ? `@${username.toLowerCase()} hasn't shared any audio posts`
-            : type === "video"
-            ? `@${username.toLowerCase()} hasn't shared any video posts`
-            : `When @${username.toLowerCase()} shares posts, you'll see them here`}
-        </p>
+        <p className="mt-1 text-sm text-zinc-500">When @{username.toLowerCase()} shares posts, they will appear here.</p>
       </div>
     );
   }
 
+  return <div className="mt-1 divide-y divide-zinc-800">{posts.map((post) => <Post key={post.id} post={post} surface="dark" />)}</div>;
+}
+
+function ProfileFeedSkeleton() {
   return (
-    <div className="mt-0 space-y-0 divide-y">
-      {posts?.map((post) => (
-        <PostItem key={post.id} post={post} />
+    <div className="mt-4 space-y-4">
+      {[1, 2].map((item) => (
+        <Card key={item} className="overflow-hidden rounded-none border-x-0 border-t-0 border-zinc-800 bg-black text-white shadow-none">
+          <CardContent className="p-4"><div className="mb-3 flex items-center"><Skeleton className="mr-3 h-10 w-10 rounded-full bg-zinc-800" /><div className="flex-1"><Skeleton className="mb-2 h-4 w-24 bg-zinc-800" /><Skeleton className="h-3 w-16 bg-zinc-800" /></div></div><Skeleton className="mb-4 h-20 w-full bg-zinc-800" /><div className="flex justify-between"><Skeleton className="h-6 w-16 bg-zinc-800" /><Skeleton className="h-6 w-16 bg-zinc-800" /><Skeleton className="h-6 w-16 bg-zinc-800" /></div></CardContent>
+        </Card>
       ))}
     </div>
   );
 }
-
-const PostItem = ({ post }: { post: PostType }) => {
-  const [, setLocation] = useLocation();
-  const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
-
-  return (
-    <div className="py-3 px-4">
-      <div className="flex mb-2">
-        <Avatar 
-          className="w-10 h-10 mr-3 cursor-pointer"
-          onClick={() => setLocation(`/profile/${post.user.id}`)}
-        >
-          <AvatarImage src={post.user.profileImageUrl || undefined} alt={post.user.displayName} />
-          <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1">
-          <div className="flex items-center">
-            <p 
-              className="font-bold text-sm cursor-pointer hover:underline"
-              onClick={() => setLocation(`/profile/${post.user.id}`)}
-            >
-              {post.user.displayName}
-            </p>
-            <p className="text-gray-500 text-sm ml-1">@{post.user.username.toLowerCase()} · {formattedDate}</p>
-          </div>
-          <p className="mt-1 text-sm">{post.content}</p>
-          
-          {post.imageUrl && (
-            <div className="mt-2">
-              <img 
-                src={post.imageUrl} 
-                alt="Post content" 
-                className="w-full h-auto rounded-lg border border-border" 
-              />
-            </div>
-          )}
-          
-          {post.audioUrl && (
-            <div className="mt-2">
-              <audio 
-                controls 
-                className="w-full rounded-lg border border-border bg-muted p-1"
-              >
-                <source src={post.audioUrl} />
-                Your browser does not support the audio element.
-              </audio>
-            </div>
-          )}
-          
-          {post.videoUrl && (
-            <div className="mt-2">
-              <video 
-                controls 
-                className="w-full h-auto rounded-lg border border-border" 
-              >
-                <source src={post.videoUrl} />
-                Your browser does not support the video element.
-              </video>
-            </div>
-          )}
-          
-          <div className="flex items-center mt-3 text-gray-500 text-sm space-x-6">
-            <button className="flex items-center hover:text-blue-500">
-              <MessageSquare className="h-4 w-4 mr-1" />
-              <span>{post.comments}</span>
-            </button>
-            <button className="flex items-center hover:text-red-500">
-              <Heart className="h-4 w-4 mr-1" />
-              <span>{post.likes}</span>
-            </button>
-            <button className="flex items-center hover:text-green-500">
-              <Share2 className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default ProfileFeed;

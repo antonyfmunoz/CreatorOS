@@ -12,7 +12,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { DirectMessage, Conversation, User as UserType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Link, useLocation } from 'wouter';
 import { 
   DropdownMenu, 
@@ -304,7 +304,7 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-background">
+    <div className="flex h-full flex-col bg-black text-white">
       {/* Delete conversation confirmation dialog */}
       <AlertDialog open={conversationToDelete !== null} onOpenChange={(open) => !open && setConversationToDelete(null)}>
         <AlertDialogContent>
@@ -327,17 +327,19 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
       </AlertDialog>
       
       {/* Header */}
-      <div className="p-4 border-b flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-zinc-900 px-4 py-3">
         {selectedConversation ? (
           <>
             <Button 
               variant="ghost" 
               size="icon" 
               onClick={() => setSelectedConversation(null)}
+              className="text-white hover:bg-zinc-900 hover:text-white"
+              aria-label="Back to messages"
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
-            <h2 className="font-semibold">
+            <h2 className="font-bold text-white">
               {(() => {
                 const conversation = conversations.find(c => c.id === selectedConversation);
                 if (!conversation) return 'Chat';
@@ -361,19 +363,38 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                 );
               })()}
             </h2>
-            <Button variant="ghost" size="icon" onClick={dismissPanel} aria-label="Close messages">
+            <Button variant="ghost" size="icon" className="text-white hover:bg-zinc-900 hover:text-white" onClick={dismissPanel} aria-label="Close messages">
               <X className="h-5 w-5" />
             </Button>
           </>
         ) : (
           <>
-            <h2 className="font-semibold text-lg">Messages</h2>
-            <Button variant="ghost" size="icon" onClick={dismissPanel} aria-label="Close messages">
-              <X className="h-5 w-5" />
+            <Button variant="ghost" size="icon" className="-ml-2 text-white hover:bg-zinc-900 hover:text-white" onClick={dismissPanel} aria-label="Back from messages">
+              <ChevronLeft className="h-7 w-7" />
+            </Button>
+            <h2 className="mr-auto text-2xl font-bold text-white">Messages</h2>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-zinc-900 hover:text-white" onClick={() => setActiveTab('create-group')} aria-label="Create group chat">
+              <Plus className="h-7 w-7" />
             </Button>
           </>
         )}
       </div>
+
+      {!selectedConversation && (
+        <div className="bg-black px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+            <Input
+              value={searchQuery}
+              onFocus={() => setActiveTab('search')}
+              onChange={(e) => { setSearchQuery(e.target.value); setActiveTab('search'); }}
+              placeholder="Search creators, drops, or tags"
+              className="h-12 rounded-2xl border-0 bg-zinc-900 pl-10 pr-10 text-white placeholder:text-zinc-500 focus-visible:ring-zinc-700"
+            />
+            {searchQuery && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-zinc-400 hover:bg-transparent hover:text-white" onClick={() => { setSearchQuery(''); setActiveTab('conversations'); }} aria-label="Clear message search"><X className="h-5 w-5" /></Button>}
+          </div>
+        </div>
+      )}
       
       {/* Content */}
       <ScrollArea className="flex-1">
@@ -408,22 +429,6 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
         ) : (
           // Tabs for conversations and search
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="px-6 pt-2">
-              <TabsList className="w-full flex gap-2.5">
-                <TabsTrigger value="conversations" className="flex-1 text-xs px-1">
-                  <MessageSquare className="h-4 w-4 mr-1" />
-                  Chats
-                </TabsTrigger>
-                <TabsTrigger value="search" className="flex-1 text-xs px-1">
-                  <Search className="h-4 w-4 mr-1" />
-                  Search
-                </TabsTrigger>
-                <TabsTrigger value="create-group" className="flex-1 text-xs px-1">
-                  <Users className="h-4 w-4 mr-1" />
-                  Group
-                </TabsTrigger>
-              </TabsList>
-            </div>
             
             <TabsContent value="conversations" className="mt-0">
               <div className="divide-y">
@@ -431,7 +436,7 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                   conversations.map((conversation) => (
                     <div 
                       key={conversation.id}
-                      className="p-4 hover:bg-muted/50 cursor-pointer relative group"
+                      className="group relative cursor-pointer p-4 hover:bg-zinc-950"
                     >
                       {/* Three dot menu */}
                       <div className="absolute right-2 top-2">
@@ -440,7 +445,7 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                              className="h-7 w-7 text-white opacity-0 hover:bg-zinc-800 hover:text-white group-hover:opacity-100"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
@@ -499,18 +504,18 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                         })()}
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center">
-                            <p className="font-medium truncate flex items-center">
-                              {conversation.name && <Users className="h-3 w-3 mr-1 text-muted-foreground" />}
+                            <p className="flex items-center truncate font-bold text-white">
+                              {conversation.name && <Users className="mr-1 h-3 w-3 text-zinc-500" />}
                               {getConversationName(conversation)}
                             </p>
                             {conversation.lastMessage && (
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-zinc-500">
                                 {formatDistanceToNow(new Date(conversation.lastMessage.sentAt), { addSuffix: true })}
                               </p>
                             )}
                           </div>
                           {conversation.lastMessage && (
-                            <p className="text-sm text-muted-foreground truncate">
+                            <p className="truncate text-sm text-zinc-400">
                               {conversation.lastMessage.senderId === user?.id ? 
                                 "You: " : `${conversation.lastMessage.sender?.displayName.split(' ')[0] || 'User'}: `}
                               {conversation.lastMessage.content}
@@ -527,8 +532,8 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                   ))
                 ) : (
                   <div className="flex flex-col items-center justify-center p-8 text-center">
-                    <p className="font-medium mb-1">No conversations yet</p>
-                    <p className="text-muted-foreground text-sm">
+                    <p className="mb-1 font-medium text-white">No conversations yet</p>
+                    <p className="text-sm text-zinc-500">
                       Search for users to start chatting
                     </p>
                   </div>
@@ -537,19 +542,7 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
             </TabsContent>
             
             <TabsContent value="search" className="mt-0">
-              <div className="p-4">
-                <div className="mb-4">
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by username"
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Enter a username to search, e.g. john
-                  </p>
-                </div>
-                
+              <div className="px-4 pb-4">
                 <div className="space-y-2">
                   {isSearching ? (
                     <div className="flex justify-center py-4">
@@ -594,14 +587,14 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                     </div>
                   ) : searchQuery && searchQuery.length > 1 ? (
                     <div className="text-center py-4">
-                      <p>No users found</p>
+                      <p className="text-zinc-500">No creators found</p>
                     </div>
                   ) : (
                     <div className="text-center py-4">
-                      <Users className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
-                      <p className="font-medium mb-1">Find people to chat with</p>
-                      <p className="text-sm text-muted-foreground">
-                        Search for users by typing their username
+                      <Users className="mx-auto mb-2 h-10 w-10 text-zinc-600" />
+                      <p className="mb-1 font-medium text-white">Find people to chat with</p>
+                      <p className="text-sm text-zinc-500">
+                        Search for creators by name or username
                       </p>
                     </div>
                   )}
