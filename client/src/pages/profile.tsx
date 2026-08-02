@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppStore } from "@/lib/stores";
 import { 
   Settings, LogOut, LogIn, User as UserIcon, GridIcon, 
@@ -8,12 +8,13 @@ import {
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
 import ProfileFeed from "@/components/profile/ProfileFeed";
+import Post from "@/components/explore/Post";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfilePage from "@/components/profile/EditProfilePage";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Product } from "@/types";
+import { Post as PostType, Product } from "@/types";
 import { User } from "@shared/schema";
 import { Link, useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,7 +32,7 @@ const Profile = () => {
   const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [profileView, setProfileView] = useState<"posts" | "offers" | "playlists">("posts");
+  const [profileView, setProfileView] = useState<"posts" | "reposts" | "likes" | "tagged" | "offers" | "playlists" | "public">("posts");
   const { user: currentUser, isLoading: isAuthLoading, signOut } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
@@ -95,6 +96,19 @@ const Profile = () => {
     queryKey: ['/api/products'],
   });
   const profileProducts = products?.filter((product) => product.userId === user?.id) ?? [];
+  const { data: allPosts = [], isLoading: isLoadingAllPosts } = useQuery<PostType[]>({
+    queryKey: ["/api/posts"],
+  });
+  const likedPostIds = useMemo(() => {
+    try {
+      return new Set<number>(JSON.parse(localStorage.getItem("likedPosts") ?? "[]"));
+    } catch {
+      return new Set<number>();
+    }
+  }, [profileView]);
+  const reposts = allPosts.filter((post) => post.userId === user?.id && post.content.startsWith("Reposted "));
+  const taggedPosts = allPosts.filter((post) => post.taggedUsers?.some((taggedUser) => taggedUser.id === user?.id));
+  const likedPosts = allPosts.filter((post) => likedPostIds.has(post.id));
   
   // Fetch follower/following counts
   const { data: followerCount, isLoading: isLoadingFollowers } = useQuery<number>({
@@ -433,18 +447,19 @@ const Profile = () => {
         )}
       </div>
       
-      {/* Stitch profile destinations: posts remain the social surface, offers
-          expose the creator's real marketplace inventory, and playlists are
-          deliberately an honest empty state until playlist entities exist. */}
-      <nav className="mt-4 flex border-y border-zinc-800" aria-label="Profile content">
+      <nav className="mt-4 flex overflow-x-auto border-y border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Profile content">
         {([
           ["posts", "Posts"],
+          ["reposts", "Reposts"],
+          ["likes", "Likes"],
+          ["tagged", "Tagged"],
           ["offers", "Offers"],
           ["playlists", "Playlists"],
+          ["public", "Public"],
         ] as const).map(([value, label]) => (
           <button
             key={value}
-            className={`relative flex-1 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
+            className={`relative shrink-0 px-4 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
             onClick={() => setProfileView(value)}
           >
             {label}
@@ -455,6 +470,37 @@ const Profile = () => {
 
       {profileView === "posts" && user && (
         <ProfileFeed userId={user.id} username={user.username} />
+      )}
+
+      {profileView === "reposts" && (
+        <ProfilePostList
+          isLoading={isLoadingAllPosts}
+          posts={reposts}
+          emptyTitle="No reposts yet"
+          emptyDescription="Reposts from this creator will appear here."
+        />
+      )}
+
+      {profileView === "likes" && (
+        isOwnProfile ? (
+          <ProfilePostList
+            isLoading={isLoadingAllPosts}
+            posts={likedPosts}
+            emptyTitle="No liked posts yet"
+            emptyDescription="Posts you like will appear here on this device."
+          />
+        ) : (
+          <ProfileTabEmpty title="Likes are private" description="This creator's likes are only visible from their own profile." />
+        )
+      )}
+
+      {profileView === "tagged" && (
+        <ProfilePostList
+          isLoading={isLoadingAllPosts}
+          posts={taggedPosts}
+          emptyTitle="No tagged posts yet"
+          emptyDescription="Posts that tag this creator will appear here."
+        />
       )}
 
       {profileView === "offers" && (
@@ -477,15 +523,22 @@ const Profile = () => {
       )}
 
       {profileView === "playlists" && (
+        <ProfileTabEmpty title="No playlists yet" description="Create and curate playlists is the next content-library capability." />
+      )}
+
+      {profileView === "public" && user && (
         <section className="px-6 py-16 text-center">
-          <h2 className="font-bold">No playlists yet</h2>
-          <p className="mt-2 text-sm text-zinc-500">Playlists will become a first-class content collection once the course and media library models are in place.</p>
+          <h2 className="font-bold text-white">Public profile</h2>
+          <p className="mt-2 text-sm text-zinc-500">Open the shareable version of @{user.username}'s profile.</p>
+          <Button className="mt-5 bg-[#1d9bf0] text-white hover:bg-[#1d9bf0]/90" onClick={() => setLocation(`/user/${user.username}`)}>
+            Open public profile
+          </Button>
         </section>
       )}
       
       {/* Only show the edit profile page for the user's own profile */}
       {isOwnProfile && isEditProfileOpen && user && (
-        <div className="fixed inset-0 bg-white z-50">
+        <div className="fixed inset-0 z-50 bg-black">
           <EditProfilePage 
             user={user} 
             onClose={() => setIsEditProfileOpen(false)} 
@@ -497,3 +550,29 @@ const Profile = () => {
 };
 
 export default Profile;
+
+function ProfilePostList({
+  posts,
+  isLoading,
+  emptyTitle,
+  emptyDescription,
+}: {
+  posts: PostType[];
+  isLoading: boolean;
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  if (isLoading) {
+    return <div className="space-y-3 p-4"><Skeleton className="h-28 w-full bg-zinc-800" /><Skeleton className="h-28 w-full bg-zinc-800" /></div>;
+  }
+
+  if (!posts.length) {
+    return <ProfileTabEmpty title={emptyTitle} description={emptyDescription} />;
+  }
+
+  return <div className="divide-y divide-zinc-800">{posts.map((post) => <Post key={post.id} post={post} surface="dark" />)}</div>;
+}
+
+function ProfileTabEmpty({ title, description }: { title: string; description: string }) {
+  return <section className="px-6 py-16 text-center"><h2 className="font-bold text-white">{title}</h2><p className="mt-2 text-sm text-zinc-500">{description}</p></section>;
+}
