@@ -145,12 +145,12 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   const isSaving = updateProfileMutation.isPending || uploadProfileImageMutation.isPending;
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex h-screen flex-col bg-black text-white">
       {/* Sticky Header - Instagram-style */}
-      <header className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-3">
         <button 
           onClick={onClose}
-          className="text-black p-1"
+          className="p-1 text-zinc-400 transition-colors hover:text-white"
         >
           <ArrowLeft size={20} />
         </button>
@@ -158,7 +158,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
         <Button
           disabled={!isDirty || isSaving}
           onClick={form.handleSubmit(onSubmit)}
-          className="text-black font-semibold bg-transparent hover:bg-transparent hover:text-gray-600 px-0 py-0 h-auto"
+          className="h-auto bg-transparent px-0 py-0 font-semibold text-[#1d9bf0] hover:bg-transparent hover:text-[#1d9bf0]/80 disabled:text-zinc-600"
           variant="ghost"
         >
           {isSaving ? (
@@ -201,14 +201,14 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               className="relative cursor-pointer group mx-auto"
               onClick={triggerUpload}
             >
-              <Avatar className="w-[77px] h-[77px] border border-gray-200">
+              <Avatar className="h-[77px] w-[77px] border border-zinc-700">
                 <AvatarImage 
                   src={previewUrl} 
                   alt="Profile" 
                   className="object-cover" 
                 />
-                <AvatarFallback className="bg-gray-100">
-                  <Camera className="h-8 w-8 text-gray-500" />
+                <AvatarFallback className="bg-zinc-900">
+                  <Camera className="h-8 w-8 text-zinc-500" />
                 </AvatarFallback>
               </Avatar>
               
@@ -219,7 +219,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
             </div>
             
             <button 
-              className="text-black text-sm font-medium mt-3 text-center"
+              className="mt-3 text-center text-sm font-medium text-[#1d9bf0]"
               onClick={triggerUpload}
             >
               Change profile photo
@@ -235,12 +235,12 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="displayName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Name</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Name</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Name" 
                       {...field} 
-                      className="rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="border-zinc-800 bg-zinc-900 px-3 py-2 text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       maxLength={30}
                     />
                   </FormControl>
@@ -254,12 +254,12 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="username"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Username</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Username</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Username" 
                       {...field}
-                      className="rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 lowercase focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="border-zinc-800 bg-zinc-900 px-3 py-2 lowercase text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       onChange={(e) => field.onChange(e.target.value.toLowerCase())}
                       maxLength={20}
                     />
@@ -274,16 +274,16 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="bio"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Bio</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Bio</FormLabel>
                   <FormControl>
                     <Textarea 
                       placeholder="Bio" 
-                      className="resize-none rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 min-h-[100px] focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="min-h-[100px] resize-none border-zinc-800 bg-zinc-900 px-3 py-2 text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       {...field} 
                       maxLength={150}
                     />
                   </FormControl>
-                  <div className="text-xs text-gray-500 text-right">
+                  <div className="text-right text-xs text-zinc-500">
                     {field.value?.length || 0}/150
                   </div>
                   <FormMessage />

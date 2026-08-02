@@ -28,7 +28,7 @@ const BottomNavigation = () => {
   ] as const;
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-100 bg-white">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-800 bg-black">
       <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -43,7 +43,7 @@ const BottomNavigation = () => {
               }}
               className={cn(
                 "flex h-full flex-1 items-center justify-center transition-colors",
-                isActive ? "text-black" : "text-zinc-400 hover:text-zinc-700"
+                isActive ? "text-white" : "text-zinc-500 hover:text-white"
               )}
               aria-label={tab.label}
               aria-current={isActive ? 'page' : undefined}

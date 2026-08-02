@@ -128,7 +128,7 @@ const Communities = () => {
   const pinnedMessages = messages?.filter(msg => msg.isPinned) || [];
   
   return (
-    <div className="flex h-screen pb-16">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 pb-16">
       {/* Mobile sidebar using Sheet component */}
       <Sheet>
         <SheetTrigger asChild>
@@ -149,14 +149,14 @@ const Communities = () => {
       <ChannelSidebar />
       
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-zinc-950 text-white">
+      <div className="flex min-w-0 flex-1 flex-col bg-zinc-950 text-white">
         {/* Top Bar */}
         <div className="p-4 border-b border-zinc-800 flex items-center">
           <div className="md:hidden w-6"></div> {/* Spacer for mobile */}
-          <h2 className="text-lg font-semibold ml-2 md:ml-0">
+          <h2 className="ml-2 min-w-0 flex-1 truncate text-lg font-semibold md:ml-0">
             {activeChannel ? `#${activeChannel.name}` : 'Select a channel'}
           </h2>
-          <div className="ml-auto flex items-center space-x-1">
+          <div className="ml-auto flex shrink-0 items-center space-x-1">
             {activeCommunityId && (
               <Button
                 variant={isMember ? "secondary" : "outline"}
@@ -182,7 +182,7 @@ const Communities = () => {
         {/* Channel List */}
         {channels && channels.length > 0 && (
           <div className="p-4 border-b border-zinc-800">
-            <div className="flex overflow-x-auto scrollbar-hide space-x-4">
+            <div className="flex space-x-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {isLoadingChannels ? (
                 Array(5).fill(0).map((_, i) => (
                   <Skeleton key={i} className="w-24 h-8 rounded-full" />

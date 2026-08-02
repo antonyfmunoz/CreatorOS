@@ -124,12 +124,12 @@ const Explore = () => {
   };
 
   return (
-    <div className="pb-20">
+    <div className="min-h-dvh bg-black pb-20 text-white">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 py-2 flex justify-between items-center">
-        <span className="text-xl font-bold tracking-tight text-black">CreatorOS</span>
+      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
+        <span className="text-xl font-bold tracking-tight text-white">CreatorOS</span>
         <div className="flex items-center space-x-3">
-          <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setLocation('/search')} aria-label="Search CreatorOS">
+          <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/search')} aria-label="Search CreatorOS">
             <Search className="h-5 w-5" />
           </Button>
           <NotificationBell />
@@ -156,7 +156,7 @@ const Explore = () => {
           Array(3)
             .fill(0)
             .map((_, i) => (
-              <div key={i} className="border-b border-zinc-100 bg-white overflow-hidden">
+              <div key={i} className="overflow-hidden border-b border-zinc-800 bg-black">
                 <div className="p-4">
                   <div className="flex items-center mb-3">
                     <Skeleton className="w-10 h-10 rounded-full mr-3" />
@@ -198,13 +198,13 @@ const Explore = () => {
             )}
             
             {/* Regular post listing */}
-            {sortedPosts.map((post) => <Post key={post.id} post={post} />)}
+            {sortedPosts.map((post) => <Post key={post.id} post={post} surface="dark" />)}
             
             {/* Empty state */}
             {posts?.length === 0 && !isLoading && (
               <div className="text-center py-10">
-                <h3 className="text-xl font-medium mb-2">No posts yet</h3>
-                <p className="text-gray-500">
+                <h3 className="mb-2 text-xl font-medium text-white">No posts yet</h3>
+                <p className="text-zinc-500">
                   {activeTab === "following" 
                     ? "Start following creators to see posts in your feed" 
                     : contentFilter !== "all"

@@ -20,31 +20,31 @@ export default function SearchPage() {
   }), [normalizedQuery, products, users]);
 
   return (
-    <main className="min-h-[calc(100dvh-3.5rem)] bg-white pb-20 text-black">
-      <header className="sticky top-0 z-20 flex h-14 items-center border-b border-zinc-100 bg-white px-4">
-        <Button variant="ghost" size="icon" className="-ml-2 mr-1 rounded-full" onClick={() => setLocation('/')} aria-label="Back to explore">
+    <main className="min-h-dvh bg-black text-white">
+      <header className="sticky top-0 z-20 flex h-14 items-center border-b border-zinc-800 bg-black px-4">
+        <Button variant="ghost" size="icon" className="-ml-2 mr-1 rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/')} aria-label="Back to explore">
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search creators, drops, or tags" className="h-10 rounded-full border-0 bg-zinc-100 pl-9 shadow-none" />
+          <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search creators, drops, or tags" className="h-10 rounded-full border-0 bg-zinc-900 pl-9 text-white shadow-none placeholder:text-zinc-500" />
         </div>
       </header>
 
       {!normalizedQuery ? (
         <section className="px-4 py-8">
-          <h1 className="text-lg font-bold">Discover CreatorOS</h1>
+          <h1 className="text-lg font-bold text-white">Discover CreatorOS</h1>
           <p className="mt-2 text-sm leading-6 text-zinc-500">Search creators and their courses, communities, and digital assets.</p>
         </section>
       ) : (
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-zinc-800">
           <section className="px-4 py-5">
             <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Creators</h2>
             <div className="space-y-3">
               {matches.users.map((user) => (
                 <Link key={user.id} href={`/profile/${user.id}`} className="flex items-center gap-3">
                   <Avatar className="h-11 w-11"><AvatarImage src={user.profileImageUrl || undefined} /><AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback></Avatar>
-                  <div className="min-w-0"><p className="truncate text-sm font-bold">{user.displayName}</p><p className="truncate text-xs text-zinc-500">@{user.username}</p></div>
+                  <div className="min-w-0"><p className="truncate text-sm font-bold text-white">{user.displayName}</p><p className="truncate text-xs text-zinc-500">@{user.username}</p></div>
                 </Link>
               ))}
               {matches.users.length === 0 && <p className="text-sm text-zinc-500">No creators found.</p>}
@@ -55,8 +55,8 @@ export default function SearchPage() {
             <div className="grid grid-cols-2 gap-4">
               {matches.products.map((product) => (
                 <Link key={product.id} href={`/marketplace/product/${product.id}`} className="min-w-0">
-                  <div className="aspect-square overflow-hidden rounded-xl bg-zinc-100">{product.imageUrl && <img src={product.imageUrl} alt={product.title} className="h-full w-full object-cover" />}</div>
-                  <p className="mt-2 truncate text-sm font-bold">{product.title}</p><p className="truncate text-xs text-zinc-500">by {product.user.displayName}</p>
+                  <div className="aspect-square overflow-hidden rounded-xl bg-zinc-900">{product.imageUrl && <img src={product.imageUrl} alt={product.title} className="h-full w-full object-cover" />}</div>
+                  <p className="mt-2 truncate text-sm font-bold text-white">{product.title}</p><p className="truncate text-xs text-zinc-500">by {product.user.displayName}</p>
                 </Link>
               ))}
               {matches.products.length === 0 && <p className="col-span-2 text-sm text-zinc-500">No offers found.</p>}

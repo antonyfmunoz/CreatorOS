@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
-import { BarChart2 } from "lucide-react";
+import { BarChart2, Upload } from "lucide-react";
 import { PollCreator } from "@/components/feed/PollCreator";
 
 export default function NewTextPost() {
@@ -80,25 +80,26 @@ export default function NewTextPost() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
+    <main className="flex min-h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-black pb-20 text-white">
       {/* Header */}
-      <div className="flex justify-between items-center px-4 py-2.5 border-b">
+      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
         <button 
-          className="text-xl" 
+          className="rounded-full px-2 py-1 text-xl text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white"
           onClick={() => setLocation('/')}
+          aria-label="Cancel post"
         >
           ✕
         </button>
         <span className="font-semibold">New post</span>
         <div className="w-5"></div>
-      </div>
+      </header>
       
       {/* All content */}
       <div>
         {/* Caption Input */}
-        <div className="p-4 border-b">
+        <div className="border-b border-zinc-800 p-4">
           <textarea
-            className="w-full h-20 text-base resize-none outline-none"
+            className="h-28 w-full resize-none bg-transparent text-base text-white outline-none placeholder:text-zinc-500"
             placeholder="Write a caption..."
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -106,13 +107,13 @@ export default function NewTextPost() {
         </div>
         
         {/* Poll Button - Exactly matching the PhotoUploader.tsx line 628 */}
-        <div className="p-4 space-y-4 border-b">
+        <div className="space-y-4 border-b border-zinc-800 p-4">
           {pollData ? (
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="rounded-lg bg-zinc-900 p-3">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-medium">Poll: {pollData.question}</h3>
                 <button 
-                  className="text-red-500"
+                  className="text-red-400"
                   onClick={() => setPollData(null)}
                 >
                   Remove
@@ -120,14 +121,14 @@ export default function NewTextPost() {
               </div>
               <div className="space-y-2">
                 {pollData.options.map((option: string, i: number) => (
-                  <div key={i} className="bg-muted p-2 rounded-md">{option}</div>
+                  <div key={i} className="rounded-md bg-zinc-800 p-2">{option}</div>
                 ))}
               </div>
             </div>
           ) : (
             <button 
               type="button"
-              className="flex items-center justify-center gap-2 w-full h-[38px] px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
+              className="flex h-[38px] w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-zinc-700 bg-transparent px-4 py-2 text-zinc-200 transition-colors hover:bg-zinc-900"
               onClick={() => {
                 console.log("Opening poll modal");
                 setIsPollModalOpen(true);
@@ -141,18 +142,15 @@ export default function NewTextPost() {
           )}
         </div>
         
-        <div className="border-b p-3">
+        <div className="border-b border-zinc-800 p-3">
           <p className="font-medium text-[14px]">Post to CreatorOS</p>
-          <p className="mt-1 text-[11px] text-gray-500">Your post will appear on your CreatorOS profile and feed.</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Your post will appear on your CreatorOS profile and feed.</p>
         </div>
         
         {/* Your story */}
         <div className="flex justify-between items-center p-3">
           <div className="flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 4V16M12 4L7 9M12 4L17 9" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M4 14V18C4 19.1046 4.89543 20 6 20H18C19.1046 20 20 19.1046 20 18V14" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <Upload className="h-[18px] w-[18px] text-zinc-300" />
             <span className="text-[13px] font-medium">Your story</span>
           </div>
           <Switch 
@@ -164,19 +162,19 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button */}
-      <div className="px-2 py-2.5 bg-white border-t mt-auto">
+      <footer className="mt-auto border-t border-zinc-800 bg-black px-3 py-3">
         <button
-          className="w-full bg-black text-white text-[14px] py-2 rounded font-medium"
+          className="w-full rounded-lg bg-[#1d9bf0] py-2.5 text-[14px] font-bold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           onClick={handleSubmit}
           disabled={!content.trim()}
         >
           Share
         </button>
-      </div>
+      </footer>
       
       {/* Poll Modal */}
       {isPollModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-black">
           <PollCreator 
             isOpen={true}
             onClose={() => {
@@ -195,6 +193,6 @@ export default function NewTextPost() {
           />
         </div>
       )}
-    </div>
+    </main>
   );
 }

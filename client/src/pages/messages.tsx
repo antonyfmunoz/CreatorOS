@@ -10,7 +10,7 @@ export default function MessagesPage() {
   const [, setLocation] = useLocation();
 
   return (
-    <main className="min-h-[calc(100dvh-3.5rem)] bg-white pb-14 text-black">
+    <main className="h-dvh bg-black text-white">
       <MessagePanel onClose={() => setLocation('/')} />
     </main>
   );

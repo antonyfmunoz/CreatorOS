@@ -38,7 +38,7 @@ function ProductGrid({ products, emptyMessage }: { products: Product[]; emptyMes
               {productKind(product).slice(0, -1)}
             </span>
           </div>
-          <h2 className="mt-2 truncate text-sm font-bold text-black">{product.title}</h2>
+          <h2 className="mt-2 truncate text-sm font-bold text-white">{product.title}</h2>
           <p className="truncate text-[11px] text-zinc-500">by {product.user.displayName}</p>
         </Link>
       ))}
@@ -54,15 +54,15 @@ function CommunityGrid({ communities, emptyMessage }: { communities: Community[]
   return (
     <div className="space-y-3">
       {communities.map((community) => (
-        <Link key={community.id} href={`/communities/${community.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-100 p-4 transition-colors hover:bg-zinc-50">
+        <Link key={community.id} href={`/communities/${community.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 transition-colors hover:bg-zinc-900">
           <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${community.iconColor}`}>
             <Users className="h-5 w-5 text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-bold text-black">{community.name}</h2>
+            <h2 className="truncate text-sm font-bold text-white">{community.name}</h2>
             <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-500">{community.description}</p>
           </div>
-          <span className="shrink-0 text-xs font-bold text-black">View</span>
+          <span className="shrink-0 text-xs font-bold text-white">View</span>
         </Link>
       ))}
     </div>
@@ -96,29 +96,29 @@ export default function Marketplace() {
   }, [communities, searchQuery]);
 
   return (
-    <main className="min-h-[calc(100dvh-3.5rem)] bg-white pb-20 text-black">
-      <header className="sticky top-0 z-30 bg-white">
+    <main className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
+      <header className="sticky top-0 z-30 border-b border-zinc-800 bg-black">
         <div className="flex h-14 items-center justify-between px-4">
           <h1 className="text-xl font-bold tracking-tight">CreatorOS</h1>
           <div className="flex items-center">
-            <Button size="icon" variant="ghost" className="rounded-full" onClick={() => searchInputRef.current?.focus()} aria-label="Search marketplace">
+            <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => searchInputRef.current?.focus()} aria-label="Search marketplace">
               <Search className="h-6 w-6" />
             </Button>
             <NotificationBell />
-            <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setSurface("purchases")} aria-label="Open purchases">
+            <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setSurface("purchases")} aria-label="Open purchases">
               <ShoppingCart className="h-6 w-6" />
             </Button>
           </div>
         </div>
-        <div className="flex border-b border-zinc-100">
+        <div className="flex border-b border-zinc-800">
           {(["marketplace", "purchases"] as const).map((tab) => (
             <button
               key={tab}
-              className={`relative flex-1 py-3 text-sm font-bold capitalize ${surface === tab ? "text-black" : "text-zinc-400"}`}
+              className={`relative flex-1 py-3 text-sm font-bold capitalize ${surface === tab ? "text-white" : "text-zinc-500"}`}
               onClick={() => setSurface(tab)}
             >
               {tab}
-              {surface === tab && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-black" />}
+              {surface === tab && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d9bf0]" />}
             </button>
           ))}
         </div>
@@ -126,14 +126,14 @@ export default function Marketplace() {
 
       {surface === "marketplace" && (
         <>
-          <div className="border-b border-zinc-50 px-4 py-3">
+          <div className="border-b border-zinc-800 px-4 py-3">
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              <Input ref={searchInputRef} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search creators, offers, or topics" className="h-10 rounded-full border-0 bg-zinc-100 pl-9 shadow-none" />
+              <Input ref={searchInputRef} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search creators, offers, or topics" className="h-10 rounded-full border-0 bg-zinc-900 pl-9 text-white shadow-none placeholder:text-zinc-500" />
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {categories.map((item) => (
-                <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-5 py-1.5 text-xs font-bold ${category === item ? "bg-black text-white" : "bg-zinc-100 text-black"}`}>
+                <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-5 py-1.5 text-xs font-bold ${category === item ? "bg-[#1d9bf0] text-white" : "bg-zinc-900 text-zinc-300"}`}>
                   {item}
                 </button>
               ))}
@@ -151,7 +151,7 @@ export default function Marketplace() {
 
       {surface === "purchases" && (
         <section className="p-4">
-          <h2 className="mb-4 text-base font-bold">Your purchases</h2>
+          <h2 className="mb-4 text-base font-bold text-white">Your purchases</h2>
           {isLoading ? <p className="py-12 text-center text-sm text-zinc-500">Loading purchases…</p> : <ProductGrid products={purchasedProducts} emptyMessage="Your purchased courses, communities, and digital assets will appear here." />}
         </section>
       )}

@@ -9,19 +9,19 @@ interface TabsProps {
 
 export function Tabs({ activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex border-b border-gray-200 dark:border-gray-800 w-full">
+    <div className="flex w-full border-b border-zinc-800 bg-black">
       <button
         onClick={() => onChange("forYou")}
         className={cn(
           "flex-1 py-3 text-sm font-medium text-center transition-colors relative",
           activeTab === "forYou"
-            ? "text-black dark:text-white"
-            : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300"
+            ? "text-white"
+            : "text-zinc-500 hover:text-zinc-300"
         )}
       >
         For You
         {activeTab === "forYou" && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black dark:bg-white" />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1d9bf0]" />
         )}
       </button>
       <button
@@ -29,13 +29,13 @@ export function Tabs({ activeTab, onChange }: TabsProps) {
         className={cn(
           "flex-1 py-3 text-sm font-medium text-center transition-colors relative",
           activeTab === "following"
-            ? "text-black dark:text-white"
-            : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-300"
+            ? "text-white"
+            : "text-zinc-500 hover:text-zinc-300"
         )}
       >
         Following
         {activeTab === "following" && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black dark:bg-white" />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1d9bf0]" />
         )}
       </button>
     </div>

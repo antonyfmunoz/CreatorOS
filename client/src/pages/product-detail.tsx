@@ -47,13 +47,13 @@ export default function ProductDetail() {
   });
 
   if (isLoading) {
-    return <Skeleton className="m-4 h-[420px]" />;
+    return <Skeleton className="m-4 h-[420px] bg-zinc-900" />;
   }
 
   if (!product) {
     return (
-      <div className="p-4 pb-20">
-        <Button variant="ghost" onClick={() => setLocation("/marketplace")}>
+      <div className="min-h-dvh bg-black p-4 pb-20 text-white">
+        <Button variant="ghost" className="text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/marketplace")}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to marketplace
         </Button>
         <p className="mt-8 text-muted-foreground">This product is no longer available.</p>
@@ -62,19 +62,19 @@ export default function ProductDetail() {
   }
 
   return (
-    <div className="min-h-[calc(100dvh-3.5rem)] bg-white p-4 pb-28 text-black">
-      <Button variant="ghost" className="mb-4" onClick={() => setLocation("/marketplace")}>
+    <div className="min-h-[calc(100dvh-3.5rem)] bg-black p-4 pb-28 text-white">
+      <Button variant="ghost" className="mb-4 text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/marketplace")}>
         <ArrowLeft className="mr-2 h-4 w-4" /> Marketplace
       </Button>
-      <Card className="overflow-hidden border-zinc-100 shadow-none">
+      <Card className="overflow-hidden border-zinc-800 bg-zinc-950 text-white shadow-none">
         {product.imageUrl ? (
           <img src={product.imageUrl} alt={product.title} className="aspect-square w-full object-cover" />
         ) : (
-          <div className="flex aspect-square items-center justify-center bg-muted">
+          <div className="flex aspect-square items-center justify-center bg-zinc-900">
             <Package className="h-16 w-16 text-muted-foreground" />
           </div>
         )}
-        <CardContent className="space-y-4 p-5">
+        <CardContent className="space-y-4 p-5 text-white">
           <div>
             <p className="text-sm text-muted-foreground">{product.category}</p>
             <h1 className="text-2xl font-bold">{product.title}</h1>
@@ -84,7 +84,7 @@ export default function ProductDetail() {
           <p className="text-2xl font-bold">${product.price.toFixed(2)}</p>
         </CardContent>
       </Card>
-      <div className="fixed inset-x-0 bottom-14 z-40 border-t border-zinc-100 bg-white p-4">
+      <div className="fixed inset-x-0 bottom-14 z-40 border-t border-zinc-800 bg-black p-4">
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-lg font-bold">${product.price.toFixed(2)}</p>
@@ -93,9 +93,9 @@ export default function ProductDetail() {
           {product.userId === user?.id ? (
             <Button variant="secondary" disabled>Your offer</Button>
           ) : hasAccess ? (
-            <Button className="gap-2 bg-black text-white" disabled><Check className="h-4 w-4" /> In purchases</Button>
+            <Button className="gap-2 bg-zinc-800 text-white" disabled><Check className="h-4 w-4" /> In purchases</Button>
           ) : (
-            <Button className="gap-2 bg-black text-white" disabled={!isDemoMode || grantAccess.isPending} onClick={() => grantAccess.mutate()}>
+            <Button className="gap-2 bg-[#1d9bf0] text-white hover:bg-[#1d9bf0]/90" disabled={!isDemoMode || grantAccess.isPending} onClick={() => grantAccess.mutate()}>
               <ShoppingCart className="h-4 w-4" /> {grantAccess.isPending ? "Adding…" : isDemoMode ? "Get demo access" : "Checkout soon"}
             </Button>
           )}

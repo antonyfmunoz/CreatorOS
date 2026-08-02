@@ -77,7 +77,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   
   if (isLoading) {
     return (
-      <div className="py-3 mb-4">
+      <div className="mb-4 bg-black py-3 text-white">
         <div className="overflow-x-auto px-4">
           <div className="flex space-x-4">
             {/* Current user story skeleton */}
@@ -137,7 +137,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                     ? 'bg-gradient-to-r from-primary to-secondary p-0.5' 
                     : ''
                 }`}>
-                  <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-white' : 'w-16 h-16'}`}>
+                  <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-black' : 'w-16 h-16'}`}>
                     <AvatarImage
                       src={currentUser.profileImageUrl || undefined}
                       alt={currentUser.displayName}
@@ -148,7 +148,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                   
                   {/* Add story plus icon */}
                   {!hasCurrentUserStory && (
-                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center border-2 border-white">
+                    <div className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border-2 border-black bg-[#1d9bf0] text-white">
                       <Plus className="w-4 h-4" />
                     </div>
                   )}
@@ -179,7 +179,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                   data-user-id={user.id}
                 >
                   <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-0.5">
-                    <Avatar className="w-full h-full border-2 border-white">
+                    <Avatar className="h-full w-full border-2 border-black">
                       <AvatarImage
                         src={user.profileImageUrl || undefined}
                         alt={user.displayName}
