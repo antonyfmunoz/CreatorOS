@@ -191,9 +191,11 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
             ) : (
               <div className="divide-y">
                 {filteredUsers.map((user: any) => (
-                  <div 
+                  <button
+                    type="button"
                     key={user.id}
-                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted"
+                    className="flex w-full items-center justify-between p-4 text-left hover:bg-muted"
+                    aria-label={`Tag ${user.displayName}`}
                     onClick={() => {
                       handleAddTag(user);
                       setIsSearchView(false);
@@ -217,7 +219,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                     {taggedUsers.some(tagged => tagged.id === user.id) && (
                       <div className="text-sm text-primary font-semibold">Tagged</div>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
