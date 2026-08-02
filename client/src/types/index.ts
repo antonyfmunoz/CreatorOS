@@ -59,6 +59,16 @@ export interface Product {
   user: User;
 }
 
+export interface Purchase {
+  id: number;
+  buyerId: number;
+  productId: number;
+  status: string;
+  paymentProvider: string;
+  purchasedAt: string;
+  product: Product;
+}
+
 export interface AIAgent {
   id: number;
   userId: number;

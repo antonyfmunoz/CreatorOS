@@ -790,6 +790,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/purchases", attachUser, async (req, res) => {
+    try {
+      const purchases = await storage.getPurchasesByBuyerId(req.dbUser!.id);
+      res.json(purchases);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch purchases" });
+    }
+  });
+
+  // This is intentionally limited to demo mode. Production entitlement creation
+  // must be triggered by a verified Stripe webhook, never by a client request.
+  app.post("/api/products/:id/demo-access", attachUser, async (req, res) => {
+    try {
+      if (process.env.CREATOROS_DEMO_MODE !== "true") {
+        return res.status(501).json({ message: "Payments are not connected yet" });
+      }
+
+      const productId = parseInt(req.params.id);
+      const product = await storage.getProductById(productId);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      if (product.userId === req.dbUser!.id) {
+        return res.status(400).json({ message: "You already own this product" });
+      }
+
+      const purchase = await storage.createPurchase({
+        buyerId: req.dbUser!.id,
+        productId,
+        status: "active",
+        paymentProvider: "demo",
+      });
+      res.status(201).json(purchase);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to grant demo access" });
+    }
+  });
+
   app.post("/api/products", attachUser, async (req, res) => {
     try {
       const product = await storage.createProduct({ ...req.body, userId: req.dbUser!.id });

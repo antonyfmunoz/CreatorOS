@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 
-const categories = ['Course', 'eBook', 'Template', 'Software', 'Coaching'];
+const categories = ['Course', 'Community', 'Digital Asset', 'Coaching', 'Software'];
 
 const ProductForm = () => {
   const { currentUser } = useAppStore();

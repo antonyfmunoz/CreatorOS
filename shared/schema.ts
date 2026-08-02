@@ -108,6 +108,27 @@ export const insertProductSchema = createInsertSchema(products).pick({
   imageUrl: true,
 });
 
+// Purchase / entitlement schema. Payment providers create these records only
+// after a verified payment; demo mode uses the same entitlement path with a
+// clearly marked demo provider so the MVP can be exercised end-to-end.
+export const purchases = pgTable("purchases", {
+  id: serial("id").primaryKey(),
+  buyerId: integer("buyer_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  productId: integer("product_id").references(() => products.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("active").notNull(),
+  paymentProvider: text("payment_provider").default("demo").notNull(),
+  purchasedAt: timestamp("purchased_at").defaultNow().notNull(),
+}, (table) => ({
+  buyerProductUnique: unique("buyer_product_unique").on(table.buyerId, table.productId),
+}));
+
+export const insertPurchaseSchema = createInsertSchema(purchases).pick({
+  buyerId: true,
+  productId: true,
+  status: true,
+  paymentProvider: true,
+});
+
 // AI Agent schema
 export const aiAgents = pgTable("ai_agents", {
   id: serial("id").primaryKey(),
@@ -366,6 +387,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   comments: many(comments),
   products: many(products),
+  purchases: many(purchases),
   aiAgents: many(aiAgents),
   aiChats: many(aiChats),
   channelMessages: many(channelMessages),
@@ -435,8 +457,14 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   replies: many(comments, { relationName: "parent_comment" }),
 }));
 
-export const productsRelations = relations(products, ({ one }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
   user: one(users, { fields: [products.userId], references: [users.id] }),
+  purchases: many(purchases),
+}));
+
+export const purchasesRelations = relations(purchases, ({ one }) => ({
+  buyer: one(users, { fields: [purchases.buyerId], references: [users.id] }),
+  product: one(products, { fields: [purchases.productId], references: [products.id] }),
 }));
 
 export const aiAgentsRelations = relations(aiAgents, ({ one, many }) => ({
@@ -517,6 +545,8 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Purchase = typeof purchases.$inferSelect;
+export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
 
 export type AIAgent = typeof aiAgents.$inferSelect;
 export type InsertAIAgent = z.infer<typeof insertAiAgentSchema>;

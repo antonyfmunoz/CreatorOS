@@ -3,6 +3,7 @@ import {
   posts, type Post, type InsertPost,
   comments, type Comment, type InsertComment,
   products, type Product, type InsertProduct,
+  purchases, type Purchase, type InsertPurchase,
   aiAgents, type AIAgent, type InsertAIAgent,
   aiChats, type AIChat, type InsertAIChat,
   communities, type Community, type InsertCommunity,
@@ -83,6 +84,9 @@ export interface IStorage {
   getProductById(id: number): Promise<(Product & { user: User }) | undefined>;
   getProductsByCategory(category: string): Promise<(Product & { user: User })[]>;
   createProduct(product: InsertProduct): Promise<Product>;
+  getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]>;
+  getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined>;
+  createPurchase(purchase: InsertPurchase): Promise<Purchase>;
 
   // AI Agent operations
   getAIAgents(): Promise<AIAgent[]>;
@@ -166,6 +170,7 @@ export class MemStorage implements IStorage {
   private posts: Map<number, Post>;
   private comments: Map<number, Comment>;
   private products: Map<number, Product>;
+  private purchases: Map<number, Purchase>;
   private aiAgents: Map<number, AIAgent>;
   private aiChats: Map<number, AIChat>;
   private communities: Map<number, Community>;
@@ -185,6 +190,7 @@ export class MemStorage implements IStorage {
   private postIdCounter = 1;
   private commentIdCounter = 1;
   private productIdCounter = 1;
+  private purchaseIdCounter = 1;
   private aiAgentIdCounter = 1;
   private aiChatIdCounter = 1;
   private communityIdCounter = 1;
@@ -204,6 +210,7 @@ export class MemStorage implements IStorage {
     this.posts = new Map();
     this.comments = new Map();
     this.products = new Map();
+    this.purchases = new Map();
     this.aiAgents = new Map();
     this.aiChats = new Map();
     this.communities = new Map();
@@ -1036,6 +1043,39 @@ export class MemStorage implements IStorage {
     };
     this.products.set(id, product);
     return product;
+  }
+
+  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
+    return Array.from(this.purchases.values())
+      .filter((purchase) => purchase.buyerId === buyerId)
+      .map((purchase) => {
+        const product = this.products.get(purchase.productId)!;
+        const user = this.users.get(product.userId)!;
+        return { ...purchase, product: { ...product, user } };
+      })
+      .sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+  }
+
+  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
+    return Array.from(this.purchases.values()).find(
+      (purchase) => purchase.buyerId === buyerId && purchase.productId === productId,
+    );
+  }
+
+  async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
+    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    if (existing) return existing;
+
+    const purchase: Purchase = {
+      id: this.purchaseIdCounter++,
+      buyerId: insertPurchase.buyerId,
+      productId: insertPurchase.productId,
+      status: insertPurchase.status ?? "active",
+      paymentProvider: insertPurchase.paymentProvider ?? "demo",
+      purchasedAt: new Date(),
+    };
+    this.purchases.set(purchase.id, purchase);
+    return purchase;
   }
 
   // AI Agent operations
@@ -2384,6 +2424,33 @@ export class DatabaseStorage implements IStorage {
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
     const [product] = await db.insert(products).values(insertProduct).returning();
     return product;
+  }
+
+  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
+    const result = await db.select({
+      purchase: purchases,
+      product: products,
+      user: users,
+    }).from(purchases)
+      .innerJoin(products, eq(purchases.productId, products.id))
+      .innerJoin(users, eq(products.userId, users.id))
+      .where(eq(purchases.buyerId, buyerId))
+      .orderBy(desc(purchases.purchasedAt));
+
+    return result.map(({ purchase, product, user }) => ({ ...purchase, product: { ...product, user } }));
+  }
+
+  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
+    const [purchase] = await db.select().from(purchases)
+      .where(and(eq(purchases.buyerId, buyerId), eq(purchases.productId, productId)));
+    return purchase || undefined;
+  }
+
+  async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
+    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    if (existing) return existing;
+    const [purchase] = await db.insert(purchases).values(insertPurchase).returning();
+    return purchase;
   }
 
   // AI Agent operations
