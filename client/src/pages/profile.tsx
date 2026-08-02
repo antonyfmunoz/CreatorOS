@@ -454,7 +454,7 @@ const Profile = () => {
         )}
       </div>
       
-      <nav className="mt-4 flex overflow-x-auto border-y border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Profile content">
+      <nav className="mt-4 grid grid-cols-7 border-y border-zinc-800" aria-label="Profile content">
         {([
           ["posts", "Posts"],
           ["reposts", "Reposts"],
@@ -466,7 +466,7 @@ const Profile = () => {
         ] as const).map(([value, label]) => (
           <button
             key={value}
-            className={`relative shrink-0 px-4 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
+            className={`relative min-w-0 px-1 py-3 text-[11px] font-bold leading-none sm:text-sm ${profileView === value ? "text-white" : "text-zinc-500"}`}
             onClick={() => setProfileView(value)}
           >
             {label}
