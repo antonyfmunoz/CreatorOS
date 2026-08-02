@@ -27,11 +27,12 @@ import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import ToastContainer from "@/components/notifications/ToastContainer";
 import { ProtectedRoute } from "./lib/protected-route";
-import { AuthProvider } from "./hooks/use-auth";
+import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
 
-if (!CLERK_PUBLISHABLE_KEY) {
+if (!DEMO_MODE && !CLERK_PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
 }
 
@@ -43,13 +44,12 @@ function LogoutRoute() {
   return null;
 }
 
+function DemoLogoutRoute() {
+  return <Redirect to="/" />;
+}
+
 function Router() {
   const { activeTab, setActiveTab } = useAppStore();
-
-  // Update the route when active tab changes
-  useEffect(() => {
-    window.history.pushState(null, "", `/${activeTab === 'explore' ? '' : activeTab}`);
-  }, [activeTab]);
 
   // Update active tab when route changes
   useEffect(() => {
@@ -66,7 +66,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
-      <Route path="/logout" component={LogoutRoute} />
+      <Route path="/logout" component={DEMO_MODE ? DemoLogoutRoute : LogoutRoute} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/ai" component={AI} />
@@ -92,24 +92,42 @@ function Router() {
   );
 }
 
-function App() {
+function AppContent() {
   const { isOpen } = useAIChatStore();
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <>
+      <div className="app-container">
+        <main className="tab-content">
+          <Router />
+        </main>
+        <BottomNavigation />
+        {isOpen && <ChatInterface />}
+      </div>
+      <Toaster />
+      <ToastContainer />
+    </>
+  );
+}
+
+function App() {
+  if (DEMO_MODE) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <DemoAuthProvider>
+          <AppContent />
+        </DemoAuthProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY!}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <div className="app-container">
-            <main className="tab-content">
-              <Router />
-            </main>
-            <BottomNavigation />
-            {isOpen && <ChatInterface />}
-          </div>
-          <Toaster />
-          <ToastContainer />
+          <AppContent />
         </AuthProvider>
       </QueryClientProvider>
     </ClerkProvider>

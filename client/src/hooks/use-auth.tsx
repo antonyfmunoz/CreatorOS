@@ -133,6 +133,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Local-only identity bridge used by `npm run dev:demo`. It exercises the same
+ * API and ownership paths as production without embedding test credentials in
+ * the client or requiring a Clerk session.
+ */
+export function DemoAuthProvider({ children }: { children: ReactNode }) {
+  const { toast } = useToast();
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  const {
+    data: user,
+    error,
+    isLoading,
+  } = useQuery<SelectUser | null, Error>({
+    queryKey: ["/api/user"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  useEffect(() => {
+    setCurrentUser((user ?? null) as any);
+  }, [user, setCurrentUser]);
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: UpdateProfileData) => {
+      const { id, ...updateData } = data;
+      const res = await apiRequest("PATCH", `/api/users/${id}`, updateData);
+      return await res.json();
+    },
+    onSuccess: (updatedUser: SelectUser) => {
+      queryClient.setQueryData(["/api/user"], updatedUser);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Profile updated", description: "Your profile has been successfully updated." });
+    },
+  });
+
+  const uploadProfileImageMutation = useMutation({
+    mutationFn: async (data: UploadProfileImageData) => {
+      const formData = new FormData();
+      formData.append("image", data.imageFile);
+      const res = await fetch(`/api/users/${data.id}/profile-image`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to upload image");
+      }
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/user"], data.user);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Profile image updated", description: "Your profile image has been successfully updated." });
+    },
+  });
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user: user ?? null,
+        isLoading,
+        error: error ?? null,
+        isSignedIn: true,
+        updateProfileMutation,
+        uploadProfileImageMutation,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

@@ -55,7 +55,7 @@ export interface IStorage {
 
   // Post operations
   getPosts(): Promise<(Post & { user: User })[]>;
-  getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
+  getPostById(id: number): Promise<(Post & { user: User; taggedUsers?: TaggedUserProfile[] }) | undefined>;
   getPostsByUserId(userId: number): Promise<(Post & { user: User })[]>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
@@ -3055,4 +3055,9 @@ export class DatabaseStorage implements IStorage {
 }
 
 // Replace MemStorage with DatabaseStorage
-export const storage = new DatabaseStorage();
+// Demo mode intentionally keeps data local to the process. It lets contributors
+// exercise the creator flow without production credentials; all deployed modes
+// continue to use the authoritative Postgres store.
+export const storage: IStorage = process.env.CREATOROS_DEMO_MODE === "true"
+  ? new MemStorage()
+  : new DatabaseStorage();

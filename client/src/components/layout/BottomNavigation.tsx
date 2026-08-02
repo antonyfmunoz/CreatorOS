@@ -7,9 +7,11 @@ import {
   User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocation } from 'wouter';
 
 const BottomNavigation = () => {
   const { activeTab, setActiveTab } = useAppStore();
+  const [, setLocation] = useLocation();
 
   const tabs = [
     { id: 'explore', label: 'Explore', icon: Search },
@@ -29,7 +31,10 @@ const BottomNavigation = () => {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setLocation(tab.id === 'explore' ? '/' : `/${tab.id}`);
+              }}
               className={cn(
                 "flex flex-col items-center p-2 rounded-lg",
                 isActive ? "text-primary font-medium" : "text-gray-500"

@@ -32,6 +32,17 @@ function getOpenAI(): OpenAI {
   return openaiClient;
 }
 
+async function requirePostOwner(postId: number, userId: number) {
+  const post = await storage.getPostById(postId);
+  if (!post) {
+    return { status: 404 as const, message: "Post not found" };
+  }
+  if (post.userId !== userId) {
+    return { status: 403 as const, message: "You can only change your own posts" };
+  }
+  return { post };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
@@ -387,10 +398,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Tagged users API endpoint
-  app.post("/api/posts/:postId/tagged-users", async (req, res) => {
+  app.post("/api/posts/:postId/tagged-users", attachUser, async (req, res) => {
     try {
       const postId = parseInt(req.params.postId);
       const { userId, positionX, positionY } = req.body;
+
+      const ownership = await requirePostOwner(postId, req.dbUser!.id);
+      if (!("post" in ownership)) {
+        return res.status(ownership.status).json({ message: ownership.message });
+      }
       
       // Validate required fields
       if (!userId || positionX === undefined || positionY === undefined) {
@@ -439,6 +455,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!content || content.trim() === "") {
         return res.status(400).json({ message: "Content cannot be empty" });
       }
+
+      const ownership = await requirePostOwner(postId, req.dbUser!.id);
+      if (!("post" in ownership)) {
+        return res.status(ownership.status).json({ message: ownership.message });
+      }
       
       // Optional image URL update
       const imageUrl = req.body.imageUrl;
@@ -455,6 +476,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const postId = parseInt(req.params.id);
 
+      const ownership = await requirePostOwner(postId, req.dbUser!.id);
+      if (!("post" in ownership)) {
+        return res.status(ownership.status).json({ message: ownership.message });
+      }
+      
       // Delete post and related stories through the storage function
       await storage.deletePost(postId);
 
@@ -527,31 +553,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Debug endpoint to check tagged users for a post
+  // Tagged users are projection data returned with the post. Going through the
+  // storage boundary keeps the endpoint usable in standalone/demo mode too.
   app.get("/api/posts/:postId/tagged-users", async (req, res) => {
     try {
       const postId = parseInt(req.params.postId);
-      
-      // Get tagged users directly from the database
-      const result = await db.select({
-        taggedUser: taggedUsers,
-        user: users,
-      }).from(taggedUsers)
-        .innerJoin(users, eq(taggedUsers.userId, users.id))
-        .where(eq(taggedUsers.postId, postId));
-      
-      // Format the response
-      const taggedUsersList = result.map(({ taggedUser, user }) => ({
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        profileImageUrl: user.profileImageUrl,
-        positionX: taggedUser.positionX,
-        positionY: taggedUser.positionY,
-      }));
-      
-      console.log(`Found ${taggedUsersList.length} tagged users for post ${postId}`);
-      res.json(taggedUsersList);
+      const post = await storage.getPostById(postId);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      res.json(post.taggedUsers ?? []);
     } catch (error) {
       console.error("Error getting tagged users:", error);
       res.status(500).json({ message: "Failed to get tagged users" });

@@ -86,6 +86,13 @@ export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
  * Replaces Passport.js local strategy and session middleware.
  */
 export function setupAuth(app: Express) {
+  if (process.env.CREATOROS_DEMO_MODE === "true") {
+    app.get("/api/user", attachUser, (req: Request, res: Response) => {
+      res.json(req.dbUser);
+    });
+    return;
+  }
+
   // Apply Clerk middleware globally — parses auth state on every request.
   app.use(clerkMiddleware());
 
@@ -118,6 +125,15 @@ export async function attachUser(
   next: NextFunction,
 ) {
   try {
+    if (process.env.CREATOROS_DEMO_MODE === "true") {
+      const demoUser = await storage.getUser(1);
+      if (!demoUser) {
+        return res.status(500).json({ message: "Demo user is unavailable" });
+      }
+      req.dbUser = demoUser;
+      return next();
+    }
+
     const { userId } = getAuth(req);
     if (!userId) {
       return res.status(401).json({ message: "Not authenticated" });
