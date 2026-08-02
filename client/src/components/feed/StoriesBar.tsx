@@ -132,7 +132,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                   }
                 }}
               >
-                <div className={`w-16 h-16 rounded-full ${
+                <div className={`relative h-16 w-16 rounded-full ${
                   hasCurrentUserStory 
                     ? 'bg-gradient-to-r from-primary to-secondary p-0.5' 
                     : ''
