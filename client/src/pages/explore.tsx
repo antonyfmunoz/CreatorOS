@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { User } from "@/types";
 
 // Import new feed components
 import { Tabs, TabType } from "@/components/feed/Tabs";
@@ -20,6 +22,7 @@ import { StoriesBar } from "@/components/feed/StoriesBar";
 const Explore = () => {
   const queryClient = useQueryClient();
   const { targetPostId, clearTargetPost } = useAppStore();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   
@@ -53,6 +56,16 @@ const Explore = () => {
       
       // Sort by ID to ensure consistent order
       return filteredPosts.sort((a, b) => b.id - a.id);
+    },
+  });
+
+  const { data: following = [] } = useQuery<User[]>({
+    queryKey: ["/api/users", user?.id, "following"],
+    enabled: activeTab === "following" && !!user,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${user!.id}/following`);
+      if (!response.ok) throw new Error("Failed to load followed creators");
+      return response.json();
     },
   });
   
@@ -111,8 +124,12 @@ const Explore = () => {
   // Sort posts by ID in descending order to maintain consistent position
   const sortedPosts = useMemo(() => {
     if (!posts) return [];
-    return [...posts].sort((a, b) => b.id - a.id);
-  }, [posts]);
+    const followedIds = new Set(following.map((followedUser) => followedUser.id));
+    const visiblePosts = activeTab === "following"
+      ? posts.filter((post) => followedIds.has(post.userId))
+      : posts;
+    return [...visiblePosts].sort((a, b) => b.id - a.id);
+  }, [activeTab, following, posts]);
 
   // Callback for story click in the following tab
   const handleStoryClick = (userId: number) => {
@@ -201,7 +218,7 @@ const Explore = () => {
             {sortedPosts.map((post) => <Post key={post.id} post={post} surface="dark" />)}
             
             {/* Empty state */}
-            {posts?.length === 0 && !isLoading && (
+            {sortedPosts.length === 0 && !isLoading && (
               <div className="text-center py-10">
                 <h3 className="mb-2 text-xl font-medium text-white">No posts yet</h3>
                 <p className="text-zinc-500">
