@@ -2,12 +2,12 @@ export interface User {
   id: number;
   username: string;
   displayName: string;
-  bio?: string;
-  profileImageUrl?: string;
+  bio?: string | null;
+  profileImageUrl?: string | null;
   role: string;
   xpPoints: number;
   level: number;
-  createdAt: string;
+  createdAt: string | Date;
 }
 
 export interface TaggedUser {

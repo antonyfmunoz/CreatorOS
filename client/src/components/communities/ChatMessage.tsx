@@ -59,7 +59,7 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
         </div>
         <div className="flex">
           <Avatar className="w-8 h-8 mr-2">
-            <AvatarImage src={message.user.profileImageUrl} alt={message.user.displayName} />
+            <AvatarImage src={message.user.profileImageUrl ?? undefined} alt={message.user.displayName} />
             <AvatarFallback>{message.user.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
           <div>
@@ -77,7 +77,7 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
   return (
     <div className="flex mb-6">
       <Avatar className="w-10 h-10 rounded-full mr-3">
-        <AvatarImage src={message.user.profileImageUrl} alt={message.user.displayName} />
+        <AvatarImage src={message.user.profileImageUrl ?? undefined} alt={message.user.displayName} />
         <AvatarFallback>{message.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div>

@@ -21,8 +21,17 @@ import {
   taggedUsers, type TaggedUser, type InsertTaggedUser
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
 import crypto from "crypto";
+
+type TaggedUserProfile = {
+  id: number;
+  username: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  positionX: number;
+  positionY: number;
+};
 
 // Storage interface for the application
 export interface IStorage {
@@ -750,6 +759,9 @@ export class MemStorage implements IStorage {
       createdAt: now,
       // Ensure required fields have default values
       imageUrl: insertPost.imageUrl ?? null,
+      audioUrl: insertPost.audioUrl ?? null,
+      videoUrl: insertPost.videoUrl ?? null,
+      mediaType: insertPost.mediaType ?? "text",
     };
     this.posts.set(id, post);
     return post;
@@ -1018,8 +1030,9 @@ export class MemStorage implements IStorage {
       ...insertProduct, 
       id, 
       rating: 0, 
-      reviewCount: 0, 
+      reviewCount: 0,
       createdAt: now,
+      imageUrl: insertProduct.imageUrl ?? null,
     };
     this.products.set(id, product);
     return product;
@@ -1049,6 +1062,7 @@ export class MemStorage implements IStorage {
       createdAt: now, 
       chatCount: 0,
       status: 'active',
+      isCustom: insertAgent.isCustom ?? false,
     };
     this.aiAgents.set(id, agent);
     return agent;
@@ -1146,6 +1160,7 @@ export class MemStorage implements IStorage {
       id, 
       likes: 0,
       createdAt: now,
+      isPinned: insertMessage.isPinned ?? false,
     };
     this.channelMessages.set(id, message);
     return message;
@@ -1192,7 +1207,13 @@ export class MemStorage implements IStorage {
   async createContact(insertContact: InsertContact): Promise<Contact> {
     const id = this.contactIdCounter++;
     const now = new Date();
-    const contact: Contact = { ...insertContact, id, createdAt: now };
+    const contact: Contact = {
+      ...insertContact,
+      id,
+      createdAt: now,
+      contactImage: insertContact.contactImage ?? null,
+      purchaseInfo: insertContact.purchaseInfo ?? null,
+    };
     this.contacts.set(id, contact);
     return contact;
   }
@@ -1442,6 +1463,9 @@ export class MemStorage implements IStorage {
       id,
       sentAt: now,
       read: false,
+      isEdited: message.isEdited ?? false,
+      replyToMessageId: message.replyToMessageId ?? null,
+      reactions: message.reactions ?? {},
     };
     
     this.directMessages.set(id, directMessage);
@@ -1476,7 +1500,7 @@ export class MemStorage implements IStorage {
     if (!message) throw new Error('Message not found');
     
     // Initialize reactions object if it doesn't exist
-    const reactions = message.reactions || {};
+    const reactions = (message.reactions ?? {}) as Record<string, string>;
     
     // Convert number to string for consistent object keys
     const userIdStr = userId.toString();
@@ -1776,7 +1800,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
+  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1785,7 +1809,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
     
     // Fetch all tagged users for all posts in a batch
-    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
     
     // Get all post IDs
     const postIds = postsWithUsers.map(post => post.id);
@@ -1816,7 +1840,7 @@ export class DatabaseStorage implements IStorage {
         });
         
         return acc;
-      }, {} as Record<number, TaggedUser[]>);
+      }, {} as Record<number, TaggedUserProfile[]>);
       
       // Add tagged users to their respective posts
       postsWithUsers.forEach(post => {
@@ -1827,7 +1851,7 @@ export class DatabaseStorage implements IStorage {
     return postsWithUsers;
   }
 
-  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] }) | undefined> {
+  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] }) | undefined> {
     const [result] = await db.select({
       post: posts,
       user: users,
@@ -1837,7 +1861,7 @@ export class DatabaseStorage implements IStorage {
     
     if (!result) return undefined;
     
-    const postWithUser = { ...result.post, user: result.user };
+    const postWithUser: Post & { user: User; taggedUsers: TaggedUserProfile[] } = { ...result.post, user: result.user, taggedUsers: [] };
     
     // Fetch tagged users for this post
     const taggedUsersResult = await db.select({
@@ -1864,7 +1888,7 @@ export class DatabaseStorage implements IStorage {
     return postWithUser;
   }
   
-  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1874,7 +1898,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.id)); // Sort newest first
     
     // Fetch all tagged users for all posts in a batch
-    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
     
     // Get all post IDs
     const postIds = postsWithUsers.map(post => post.id);
@@ -1905,7 +1929,7 @@ export class DatabaseStorage implements IStorage {
         });
         
         return acc;
-      }, {} as Record<number, TaggedUser[]>);
+      }, {} as Record<number, TaggedUserProfile[]>);
       
       // Add tagged users to their respective posts
       postsWithUsers.forEach(post => {

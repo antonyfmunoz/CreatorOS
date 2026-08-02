@@ -501,7 +501,7 @@ const SingleComment = ({
         className="w-8 h-8 shrink-0 cursor-pointer"
         onClick={() => setLocation(`/user/${comment.user.username}`)}
       >
-        <AvatarImage src={comment.user.profileImageUrl} alt={comment.user.displayName} />
+        <AvatarImage src={comment.user.profileImageUrl ?? undefined} alt={comment.user.displayName} />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
@@ -785,7 +785,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
       {currentUser && (
         <div className="flex gap-2 items-center mt-2">
           <Avatar className="w-8 h-8">
-            <AvatarImage src={currentUser.profileImageUrl} alt={currentUser.displayName} />
+            <AvatarImage src={currentUser.profileImageUrl ?? undefined} alt={currentUser.displayName} />
             <AvatarFallback>{currentUser.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
           <div className="flex-1 relative">

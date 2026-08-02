@@ -9,11 +9,11 @@ import {
   ChartBarStacked, 
   Image, 
   GraduationCap,
-  Italic
+  type LucideIcon
 } from "lucide-react";
 
 // Map of icon names to Lucide components
-const iconMap: Record<string, Italic> = {
+const iconMap: Record<string, LucideIcon> = {
   Pencil,
   Code,
   ChartBarStacked,

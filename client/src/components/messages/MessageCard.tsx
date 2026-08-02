@@ -178,7 +178,7 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
               }
             }}
           >
-            <AvatarImage src={message.sender?.profileImageUrl} />
+            <AvatarImage src={message.sender?.profileImageUrl ?? undefined} />
             <AvatarFallback>{message.sender?.displayName?.charAt(0) || 'U'}</AvatarFallback>
           </Avatar>
         )}
