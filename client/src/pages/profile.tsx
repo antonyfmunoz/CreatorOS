@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/lib/stores";
 import { 
   Settings, LogOut, LogIn, User as UserIcon, GridIcon, 
@@ -91,6 +91,13 @@ const Profile = () => {
   
   // Use either the fetched user or current user based on route
   const user = isOwnProfile ? currentUser : fetchedUser;
+  const isViewingCurrentUser = Boolean(user && currentUser && user.id === currentUser.id);
+
+  // A public-profile route is a fresh destination. Reset the local content
+  // tab so opening it does not carry the previous profile tab into the route.
+  useEffect(() => {
+    setProfileView("posts");
+  }, [params.id, params.username]);
   
   const { data: products, isLoading: isLoadingProducts } = useQuery<Product[]>({
     queryKey: ['/api/products'],
@@ -145,7 +152,7 @@ const Profile = () => {
   // Check if the logged-in user is following this profile
   const { data: isFollowing, isLoading: isLoadingFollowStatus } = useQuery<boolean>({
     queryKey: ['/api/users/is-following', currentUser?.id, user?.id],
-    enabled: !!currentUser && !!user && !isOwnProfile,
+    enabled: !!currentUser && !!user && !isViewingCurrentUser,
     queryFn: async () => {
       const res = await fetch(`/api/users/${currentUser?.id}/is-following/${user?.id}`);
       if (!res.ok) return false;
@@ -276,7 +283,7 @@ const Profile = () => {
   return (
     <div className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
       {/* Sticky Header for viewing other users' profiles (similar to explore) */}
-      {!isOwnProfile && (
+      {!isViewingCurrentUser && (
         <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
           <div className="flex items-center gap-2">
             <Button 
@@ -297,7 +304,7 @@ const Profile = () => {
       )}
       
       {/* Instagram-style username header - only for own profile */}
-      {isOwnProfile && (
+      {isViewingCurrentUser && (
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center">
             <h1 className="text-xl font-bold lowercase">{user?.username}</h1>
@@ -398,7 +405,7 @@ const Profile = () => {
         </div>
         
         {/* Edit Profile Button or Follow/Unfollow Button */}
-        {isOwnProfile ? (
+        {isViewingCurrentUser ? (
           <Button 
             variant="outline" 
             size="sm" 
@@ -482,7 +489,7 @@ const Profile = () => {
       )}
 
       {profileView === "likes" && (
-        isOwnProfile ? (
+        isViewingCurrentUser ? (
           <ProfilePostList
             isLoading={isLoadingAllPosts}
             posts={likedPosts}
@@ -516,7 +523,7 @@ const Profile = () => {
           ))}
           {profileProducts.length === 0 && (
             <div className="col-span-2 py-12 text-center text-sm text-zinc-500">
-              {isOwnProfile ? "Create your first offer to begin selling through CreatorOS." : "This creator has no public offers yet."}
+              {isViewingCurrentUser ? "Create your first offer to begin selling through CreatorOS." : "This creator has no public offers yet."}
             </div>
           )}
         </section>
@@ -537,7 +544,7 @@ const Profile = () => {
       )}
       
       {/* Only show the edit profile page for the user's own profile */}
-      {isOwnProfile && isEditProfileOpen && user && (
+      {isViewingCurrentUser && isEditProfileOpen && user && (
         <div className="fixed inset-0 z-50 bg-black">
           <EditProfilePage 
             user={user} 
