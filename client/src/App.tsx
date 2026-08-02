@@ -60,7 +60,7 @@ function Router() {
   // Update active tab when route changes
   useEffect(() => {
     const path = window.location.pathname.substring(1);
-    const validTabs = ['marketplace', 'create', 'messages', 'ai', 'communities', 'profile'];
+    const validTabs = ['marketplace', 'create', 'ai', 'communities', 'profile'];
 
     if (path === '') {
       setActiveTab('explore');

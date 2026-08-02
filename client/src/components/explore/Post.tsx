@@ -46,7 +46,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useLocation } from 'wouter';
-import { parseUserTagsToJSX, parseUserTags } from '@/lib/textParser';
 import {
   Dialog,
   DialogContent,
@@ -110,9 +109,14 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
     const saved = localStorage.getItem('savedPosts');
     return saved ? JSON.parse(saved) : [];
   });
+  const [repostedPosts, setRepostedPosts] = useState<number[]>(() => {
+    const saved = localStorage.getItem('repostedPosts');
+    return saved ? JSON.parse(saved) : [];
+  });
   
   const isLiked = likedPosts.includes(post.id);
   const isSaved = savedPosts.includes(post.id);
+  const isReposted = repostedPosts.includes(post.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -174,6 +178,10 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
   useEffect(() => {
     localStorage.setItem('savedPosts', JSON.stringify(savedPosts));
   }, [savedPosts]);
+
+  useEffect(() => {
+    localStorage.setItem('repostedPosts', JSON.stringify(repostedPosts));
+  }, [repostedPosts]);
 
   const likePostMutation = useMutation({
     mutationFn: async () => {
@@ -618,6 +626,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      setRepostedPosts((previous) => previous.includes(post.id) ? previous : [...previous, post.id]);
       toast({ title: 'Reposted', description: 'The post is now on your feed.' });
     },
     onError: () => {
@@ -625,7 +634,31 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
     },
   });
 
-  const handleRepost = () => repostMutation.mutate();
+  const handleRepost = () => {
+    if (!isReposted) repostMutation.mutate();
+  };
+
+  const renderPostContent = () => post.content.split(/(@[A-Za-z0-9_]+)/g).map((part, index) => {
+    if (!part.startsWith('@')) return part;
+
+    const username = part.slice(1);
+    const mentionedUser = users?.find((candidate) => candidate.username.toLowerCase() === username.toLowerCase());
+    if (!mentionedUser) {
+      return <span key={`${part}-${index}`} className="font-medium text-[#1d9bf0]">{part}</span>;
+    }
+
+    return (
+      <button
+        key={`${part}-${index}`}
+        type="button"
+        className="font-medium text-[#1d9bf0] hover:underline"
+        aria-label={`Open @${mentionedUser.username}'s profile`}
+        onClick={() => setLocation(`/profile/${mentionedUser.id}`)}
+      >
+        {part}
+      </button>
+    );
+  });
 
   const confirmDeletePost = () => {
     setIsDeleteConfirmOpen(false);
@@ -788,10 +821,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
             </div>
           </div>
         ) : (
-          <p 
-            className={`mb-4 text-[15px] leading-6 ${isDark ? 'text-white' : 'text-black'}`}
-            dangerouslySetInnerHTML={{ __html: parseUserTags(post.content) }}
-          />
+          <p className={`mb-4 text-[15px] leading-6 ${isDark ? 'text-white' : 'text-black'}`}>{renderPostContent()}</p>
         )}
         
         {post.imageUrl && (
@@ -857,7 +887,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
             <Button 
               variant="ghost" 
               size="sm" 
-              className="flex items-center gap-1 px-2"
+              className={`flex items-center gap-1 px-2 ${isLiked ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/15 hover:text-rose-500' : ''}`}
               onClick={handleLikeToggle}
               disabled={isPending}
               aria-label={isLiked ? "Unlike post" : "Like post"}
@@ -880,12 +910,12 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
             <Button
               variant="ghost"
               size="sm"
-              className="flex items-center gap-1 px-2"
+              className={`flex items-center gap-1 px-2 ${isReposted ? 'bg-[#1d9bf0]/10 text-[#1d9bf0] hover:bg-[#1d9bf0]/15 hover:text-[#1d9bf0]' : ''}`}
               onClick={handleRepost}
-              disabled={isPending}
-              aria-label="Repost"
+              disabled={isPending || isReposted}
+              aria-label={isReposted ? "Reposted" : "Repost"}
             >
-              <Repeat2 className="h-5 w-5" />
+              <Repeat2 className={`h-5 w-5 ${isReposted ? 'fill-[#1d9bf0]' : ''}`} />
             </Button>
 
             <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2" onClick={() => setLocation(`/posts/${post.id}/analytics`)} aria-label="View post analytics"><BarChart3 className="h-5 w-5" /></Button>

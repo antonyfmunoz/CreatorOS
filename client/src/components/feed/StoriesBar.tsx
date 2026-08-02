@@ -78,7 +78,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   if (isLoading) {
     return (
       <div className="mb-4 bg-black py-3 text-white">
-        <div className="overflow-x-auto px-4">
+        <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex space-x-4">
             {/* Current user story skeleton */}
             <div className="flex flex-col items-center">
@@ -112,7 +112,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   return (
     <>
       <div className="py-3 mb-4">
-        <div className="overflow-x-auto px-4">
+        <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex space-x-4">
             {/* Current user's story or create story button */}
             {currentUser && (

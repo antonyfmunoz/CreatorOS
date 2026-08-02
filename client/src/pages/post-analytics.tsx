@@ -1,5 +1,6 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BarChart3, Heart, MessageSquare } from "lucide-react";
+import { ArrowLeft, BarChart3, Bookmark, Heart, MessageSquare, Repeat2, type LucideIcon } from "lucide-react";
 import { useParams, useLocation } from "wouter";
 import { Post } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,20 @@ export default function PostAnalyticsPage() {
       return response.json();
     },
   });
+  const { data: allPosts = [] } = useQuery<Post[]>({
+    queryKey: ["/api/posts"],
+  });
+  const savedPostIds = useMemo(() => {
+    try {
+      return new Set<number>(JSON.parse(localStorage.getItem("savedPosts") ?? "[]"));
+    } catch {
+      return new Set<number>();
+    }
+  }, [postId]);
+
+  const repostCount = post ? allPosts.filter((candidate) => candidate.userId !== post.userId && candidate.content.startsWith(`Reposted @${post.user.username}: ${post.content}`)).length : 0;
+  const commentCount = commentData?.count ?? 0;
+  const interactions = post ? post.likes + commentCount + repostCount : 0;
 
   return (
     <main className="min-h-dvh bg-black text-white">
@@ -37,16 +52,22 @@ export default function PostAnalyticsPage() {
         {isLoading ? <p className="text-sm text-zinc-500">Loading performance...</p> : post ? <>
           <div className="mb-7 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-900"><BarChart3 className="h-5 w-5" /></div><div><p className="text-sm font-bold">{post.user.displayName}</p><p className="text-xs text-zinc-500">This post's recorded engagement</p></div></div>
           <div className="grid grid-cols-2 gap-3">
+            <Metric icon={BarChart3} value={interactions} label="Interactions" emphasis />
             <Metric icon={Heart} value={post.likes} label="Likes" />
-            <Metric icon={MessageSquare} value={commentData?.count ?? 0} label="Comments" />
+            <Metric icon={MessageSquare} value={commentCount} label="Comments" />
+            <Metric icon={Repeat2} value={repostCount} label="Reposts" />
+            <Metric icon={Bookmark} value={savedPostIds.has(post.id) ? 1 : 0} label="Saved by you" />
           </div>
-          <p className="mt-6 text-sm leading-6 text-zinc-500">Reach and audience-retention metrics will be added with distribution analytics. The numbers above are live CreatorOS engagement records.</p>
+          <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <h2 className="text-sm font-bold">Performance notes</h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">Interactions combine likes, comments, and reposts. Saves reflect this account on this device. Reach, views, and retention require distribution tracking and are not presented as invented numbers.</p>
+          </section>
         </> : <p className="text-sm text-zinc-500">This post is unavailable.</p>}
       </section>
     </main>
   );
 }
 
-function Metric({ icon: Icon, value, label }: { icon: typeof Heart; value: number; label: string }) {
-  return <div className="rounded-2xl bg-zinc-900 p-5"><Icon className="h-5 w-5 text-zinc-400" /><p className="mt-5 text-3xl font-bold">{value}</p><p className="mt-1 text-sm text-zinc-500">{label}</p></div>;
+function Metric({ icon: Icon, value, label, emphasis = false }: { icon: LucideIcon; value: number; label: string; emphasis?: boolean }) {
+  return <div className={`rounded-2xl p-5 ${emphasis ? "bg-[#1d9bf0] text-white" : "bg-zinc-900"}`}><Icon className={`h-5 w-5 ${emphasis ? "text-white" : "text-zinc-400"}`} /><p className="mt-5 text-3xl font-bold">{value}</p><p className={`mt-1 text-sm ${emphasis ? "text-white/75" : "text-zinc-500"}`}>{label}</p></div>;
 }

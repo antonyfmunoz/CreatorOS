@@ -3,7 +3,7 @@ import {
   Compass,
   Store,
   Plus,
-  MessageSquare, 
+  UsersRound,
   User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ const BottomNavigation = () => {
 
   // These are focused, full-screen Stitch surfaces. Their own headers provide
   // the exit path; retaining the global nav here breaks the approved layout.
-  if (["/search", "/messages", "/profile", "/communities", "/posts"].some((path) => location === path || location.startsWith(`${path}/`))) {
+  if (["/search", "/messages", "/posts"].some((path) => location === path || location.startsWith(`${path}/`))) {
     return null;
   }
 
@@ -23,7 +23,7 @@ const BottomNavigation = () => {
     { id: 'explore', label: 'Explore', icon: Compass, href: '/' },
     { id: 'marketplace', label: 'Marketplace', icon: Store, href: '/marketplace' },
     { id: 'create', label: 'Create', icon: Plus, href: '/create' },
-    { id: 'messages', label: 'Messages', icon: MessageSquare, href: '/messages' },
+    { id: 'communities', label: 'Communities', icon: UsersRound, href: '/communities' },
     { id: 'profile', label: 'Profile', icon: User, href: '/profile' },
   ] as const;
 

@@ -32,7 +32,7 @@ const Profile = () => {
   const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [profileView, setProfileView] = useState<"posts" | "reposts" | "likes" | "tagged" | "offers" | "playlists" | "public">("posts");
+  const [profileView, setProfileView] = useState<"posts" | "reposts" | "likes" | "tagged" | "offers" | "playlists">("posts");
   const { user: currentUser, isLoading: isAuthLoading, signOut } = useAuth();
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
@@ -454,7 +454,7 @@ const Profile = () => {
         )}
       </div>
       
-      <nav className="mt-4 grid grid-cols-7 border-y border-zinc-800" aria-label="Profile content">
+      <nav className="mt-4 flex snap-x snap-mandatory overflow-x-auto border-y border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Profile content">
         {([
           ["posts", "Posts"],
           ["reposts", "Reposts"],
@@ -462,11 +462,10 @@ const Profile = () => {
           ["tagged", "Tagged"],
           ["offers", "Offers"],
           ["playlists", "Playlists"],
-          ["public", "Public"],
         ] as const).map(([value, label]) => (
           <button
             key={value}
-            className={`relative min-w-0 px-1 py-3 text-[11px] font-bold leading-none sm:text-sm ${profileView === value ? "text-white" : "text-zinc-500"}`}
+            className={`relative shrink-0 basis-1/3 snap-start px-3 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
             onClick={() => setProfileView(value)}
           >
             {label}
@@ -533,15 +532,6 @@ const Profile = () => {
         <ProfileTabEmpty title="No playlists yet" description="Create and curate playlists is the next content-library capability." />
       )}
 
-      {profileView === "public" && user && (
-        <section className="px-6 py-16 text-center">
-          <h2 className="font-bold text-white">Public profile</h2>
-          <p className="mt-2 text-sm text-zinc-500">Open the shareable version of @{user.username}'s profile.</p>
-          <Button className="mt-5 bg-[#1d9bf0] text-white hover:bg-[#1d9bf0]/90" onClick={() => setLocation(`/user/${user.username}`)}>
-            Open public profile
-          </Button>
-        </section>
-      )}
       
       {/* Only show the edit profile page for the user's own profile */}
       {isViewingCurrentUser && isEditProfileOpen && user && (
