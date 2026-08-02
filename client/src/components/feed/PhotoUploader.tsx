@@ -755,12 +755,12 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             {/* Post to / Share to */}
             <div className="px-4 pb-4 border-b">
               <div className="flex items-center justify-between pb-3">
-                <span className="font-medium">Post to</span>
+                <span className="font-medium">Post to CreatorOS</span>
                 <ChevronRight className="w-5 h-5 text-muted-foreground transform rotate-90" />
               </div>
               
               {/* Social platforms */}
-              <div className="space-y-3">
+              <div className="hidden" aria-hidden="true">
                 {/* X (Twitter) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
