@@ -35,12 +35,23 @@ const AgentCard = ({ agent, layout = "grid" }: AgentCardProps) => {
   const handleOpenChat = () => {
     openChat(agent);
   };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleOpenChat();
+    }
+  };
   
   if (layout === "list") {
     return (
       <Card 
         className="overflow-hidden cursor-pointer hover:border-primary transition-colors"
         onClick={handleOpenChat}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${agent.name} chat`}
       >
         <CardContent className="p-4 flex">
           <div className={`w-12 h-12 rounded-lg ${agent.backgroundColor} flex items-center justify-center mr-4`}>
@@ -69,6 +80,10 @@ const AgentCard = ({ agent, layout = "grid" }: AgentCardProps) => {
     <Card 
       className="overflow-hidden cursor-pointer hover:border-primary transition-colors"
       onClick={handleOpenChat}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${agent.name} chat`}
     >
       <CardContent className="p-4">
         <div className={`w-12 h-12 rounded-lg ${agent.backgroundColor} flex items-center justify-center mb-3`}>

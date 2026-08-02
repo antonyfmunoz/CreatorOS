@@ -883,7 +883,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "A message is required" });
       }
 
-      if (process.env.CREATOROS_DEMO_MODE === "true") {
+      if (process.env.CREATOROS_DEMO_MODE === "true" || !process.env.OPENAI_API_KEY) {
         return res.json({
           reply: `Demo response from CreatorOS: I received “${message.trim()}”. Configure OPENAI_API_KEY to use the live assistant.`,
         });

@@ -28,6 +28,7 @@ const MessageButton = ({ showTrigger = true }: MessageButtonProps) => {
           variant="outline" 
           className="bg-white/90 rounded-full relative mr-2"
           onClick={openMessagePanel}
+          aria-label="Open messages"
       >
           <MessageSquare className="h-5 w-5" />
           {unreadCount > 0 && (
