@@ -108,6 +108,7 @@ export function FloatingActionButton() {
                   }}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Create story"
                 >
                   <Clock className="h-5 w-5" />
                 </Button>
@@ -131,6 +132,7 @@ export function FloatingActionButton() {
                   }}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Create text post"
                 >
                   <Edit className="h-5 w-5" />
                 </Button>
@@ -149,6 +151,7 @@ export function FloatingActionButton() {
                   onClick={() => openPostModal("audio")}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Create audio post"
                 >
                   <Mic className="h-5 w-5" />
                 </Button>
@@ -167,6 +170,7 @@ export function FloatingActionButton() {
                   onClick={() => openPostModal("video")}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Create video post"
                 >
                   <Video className="h-5 w-5" />
                 </Button>
@@ -185,6 +189,7 @@ export function FloatingActionButton() {
                   onClick={() => openPostModal("photo")}
                   variant="secondary"
                   className="rounded-full h-12 w-12 shadow-lg flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Create photo post"
                 >
                   <Camera className="h-5 w-5" />
                 </Button>
@@ -203,6 +208,7 @@ export function FloatingActionButton() {
             "rounded-full h-14 w-14 shadow-xl flex items-center justify-center transition-transform",
             isOpen && "rotate-45"
           )}
+          aria-label={isOpen ? "Close create menu" : "Open create menu"}
         >
           <Plus className="h-6 w-6" />
         </Button>
