@@ -187,6 +187,22 @@ export const insertCommunitySchema = createInsertSchema(communities).pick({
   iconColor: true,
 });
 
+export const communityMemberships = pgTable("community_memberships", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  communityId: integer("community_id").references(() => communities.id, { onDelete: "cascade" }).notNull(),
+  role: text("role").default("member").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+}, (table) => ({
+  userCommunityUnique: unique("user_community_unique").on(table.userId, table.communityId),
+}));
+
+export const insertCommunityMembershipSchema = createInsertSchema(communityMemberships).pick({
+  userId: true,
+  communityId: true,
+  role: true,
+});
+
 // Channel schema
 export const channels = pgTable("channels", {
   id: serial("id").primaryKey(),
@@ -388,6 +404,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   comments: many(comments),
   products: many(products),
   purchases: many(purchases),
+  communityMemberships: many(communityMemberships),
   aiAgents: many(aiAgents),
   aiChats: many(aiChats),
   channelMessages: many(channelMessages),
@@ -479,6 +496,12 @@ export const aiChatsRelations = relations(aiChats, ({ one }) => ({
 
 export const communitiesRelations = relations(communities, ({ many }) => ({
   channels: many(channels),
+  memberships: many(communityMemberships),
+}));
+
+export const communityMembershipsRelations = relations(communityMemberships, ({ one }) => ({
+  user: one(users, { fields: [communityMemberships.userId], references: [users.id] }),
+  community: one(communities, { fields: [communityMemberships.communityId], references: [communities.id] }),
 }));
 
 export const channelsRelations = relations(channels, ({ one, many }) => ({
@@ -556,6 +579,8 @@ export type InsertAIChat = z.infer<typeof insertAiChatSchema>;
 
 export type Community = typeof communities.$inferSelect;
 export type InsertCommunity = z.infer<typeof insertCommunitySchema>;
+export type CommunityMembership = typeof communityMemberships.$inferSelect;
+export type InsertCommunityMembership = z.infer<typeof insertCommunityMembershipSchema>;
 
 export type Channel = typeof channels.$inferSelect;
 export type InsertChannel = z.infer<typeof insertChannelSchema>;

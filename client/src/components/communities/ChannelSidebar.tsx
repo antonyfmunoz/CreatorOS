@@ -26,12 +26,8 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
     },
   });
   
-  if (isMobile) {
-    return null; // Don't render on mobile, handled by modal
-  }
-  
   return (
-    <div className="w-1/4 bg-gray-800 text-white p-4 hidden md:block">
+    <div className={isMobile ? "h-full w-full bg-zinc-950 p-4 text-white" : "hidden w-1/4 bg-zinc-950 p-4 text-white md:block"}>
       <h2 className="text-xl font-bold mb-6">Communities</h2>
       
       <div className="space-y-6">

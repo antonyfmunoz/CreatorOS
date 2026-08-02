@@ -972,6 +972,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/communities/:id/membership", attachUser, async (req, res) => {
+    try {
+      const communityId = parseInt(req.params.id);
+      const membership = await storage.getCommunityMembership(req.dbUser!.id, communityId);
+      res.json({ isMember: Boolean(membership), membership: membership ?? null });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch community membership" });
+    }
+  });
+
+  app.post("/api/communities/:id/join", attachUser, async (req, res) => {
+    try {
+      const communityId = parseInt(req.params.id);
+      const community = await storage.getCommunityById(communityId);
+      if (!community) return res.status(404).json({ message: "Community not found" });
+      const membership = await storage.joinCommunity({
+        userId: req.dbUser!.id,
+        communityId,
+        role: "member",
+      });
+      res.status(201).json(membership);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to join community" });
+    }
+  });
+
   // Channel routes
   app.get("/api/communities/:communityId/channels", async (req, res) => {
     try {
@@ -1001,9 +1027,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/channel-messages", async (req, res) => {
+  app.post("/api/channel-messages", attachUser, async (req, res) => {
     try {
-      const message = await storage.createChannelMessage(req.body);
+      const channel = await storage.getChannelById(req.body.channelId);
+      if (!channel) return res.status(404).json({ message: "Channel not found" });
+      const membership = await storage.getCommunityMembership(req.dbUser!.id, channel.communityId);
+      if (!membership) return res.status(403).json({ message: "Join this community before posting" });
+      const message = await storage.createChannelMessage({
+        channelId: channel.id,
+        userId: req.dbUser!.id,
+        content: req.body.content,
+        isPinned: false,
+      });
       res.status(201).json(message);
     } catch (error) {
       res.status(500).json({ message: "Failed to create message" });

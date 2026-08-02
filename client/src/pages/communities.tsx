@@ -5,13 +5,13 @@ import {
   Community as CommunityType, 
   ChannelMessage as ChannelMessageType 
 } from "@/types";
-import { Search, Bell, MoreHorizontal, Hash, Send, Menu } from "lucide-react";
+import { Search, Bell, MoreHorizontal, Hash, Send, Menu, Check, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChannelSidebar from "@/components/communities/ChannelSidebar";
 import ChatMessage from "@/components/communities/ChatMessage";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { 
   Sheet, 
   SheetContent, 
@@ -48,6 +48,33 @@ const Communities = () => {
   });
 
   const activeChannel = channels?.find(channel => channel.id === activeChannelId);
+  const { data: membership, isLoading: isLoadingMembership } = useQuery<{ isMember: boolean }>({
+    queryKey: ['/api/communities', activeCommunityId, 'membership'],
+    enabled: activeCommunityId !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}/membership`);
+      if (!response.ok) throw new Error("Failed to load community membership");
+      return response.json();
+    },
+  });
+  const isMember = membership?.isMember === true;
+
+  useEffect(() => {
+    if (channels?.length && activeChannelId === null) {
+      useCommunitiesStore.getState().setActiveChannel(channels[0].id);
+    }
+  }, [activeChannelId, channels]);
+
+  const joinCommunityMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeCommunityId) throw new Error("Choose a community first");
+      const response = await apiRequest('POST', `/api/communities/${activeCommunityId}/join`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/communities', activeCommunityId, 'membership'] });
+    },
+  });
   
   const { data: messages, isLoading: isLoadingMessages } = useQuery<ChannelMessageType[]>({
     queryKey: ['/api/channels', activeChannelId, 'messages'],
@@ -103,11 +130,7 @@ const Communities = () => {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 bg-gray-800 text-white w-4/5">
-          <div className="p-4">
-            <h2 className="text-xl font-bold mb-6">Communities</h2>
-            {/* Same content as ChannelSidebar but formatted for mobile */}
-            {/* This is intentionally simplified for this example */}
-          </div>
+          <ChannelSidebar isMobile />
         </SheetContent>
       </Sheet>
       
@@ -115,14 +138,24 @@ const Communities = () => {
       <ChannelSidebar />
       
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-zinc-950 text-white">
         {/* Top Bar */}
-        <div className="p-4 border-b border-gray-200 flex items-center">
+        <div className="p-4 border-b border-zinc-800 flex items-center">
           <div className="md:hidden w-6"></div> {/* Spacer for mobile */}
           <h2 className="text-lg font-semibold ml-2 md:ml-0">
             {activeChannel ? `#${activeChannel.name}` : 'Select a channel'}
           </h2>
-          <div className="ml-auto flex space-x-2">
+          <div className="ml-auto flex items-center space-x-1">
+            {activeCommunityId && (
+              <Button
+                variant={isMember ? "secondary" : "outline"}
+                className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-800"
+                disabled={isLoadingMembership || isMember || joinCommunityMutation.isPending}
+                onClick={() => joinCommunityMutation.mutate()}
+              >
+                {isMember ? <><Check className="mr-1 h-3.5 w-3.5" /> Joined</> : <><UserPlus className="mr-1 h-3.5 w-3.5" /> {joinCommunityMutation.isPending ? "Joining…" : "Join"}</>}
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="rounded-full">
               <Search className="h-5 w-5" />
             </Button>
@@ -137,7 +170,7 @@ const Communities = () => {
         
         {/* Channel List */}
         {channels && channels.length > 0 && (
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-zinc-800">
             <div className="flex overflow-x-auto scrollbar-hide space-x-4">
               {isLoadingChannels ? (
                 Array(5).fill(0).map((_, i) => (
@@ -164,9 +197,9 @@ const Communities = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Day Divider */}
           <div className="flex items-center">
-            <div className="flex-1 border-t border-gray-200"></div>
-            <span className="px-2 text-sm text-gray-500">Today</span>
-            <div className="flex-1 border-t border-gray-200"></div>
+            <div className="flex-1 border-t border-zinc-800"></div>
+            <span className="px-2 text-sm text-zinc-500">Today</span>
+            <div className="flex-1 border-t border-zinc-800"></div>
           </div>
           
           {/* Pinned Messages */}
@@ -205,23 +238,23 @@ const Communities = () => {
         </div>
         
         {/* Message Input */}
-        <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200">
+        <form onSubmit={handleSendMessage} className="p-4 border-t border-zinc-800">
           <div className="flex">
-            <div className="flex-1 bg-gray-100 rounded-lg flex items-center p-2">
+            <div className="flex-1 rounded-lg bg-zinc-900 flex items-center p-2">
               <Input
                 type="text"
-                placeholder={`Message ${activeChannel ? `#${activeChannel.name}` : 'channel'}`}
-                className="flex-1 bg-transparent border-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                placeholder={isMember ? `Message ${activeChannel ? `#${activeChannel.name}` : 'channel'}` : "Join this community to send messages"}
+                className="flex-1 border-none bg-transparent text-white placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0"
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                disabled={!activeChannelId || !currentUser}
+                disabled={!activeChannelId || !currentUser || !isMember}
               />
             </div>
             <Button 
               type="submit" 
               className="ml-2 p-2 rounded-lg" 
               size="icon"
-              disabled={!messageInput.trim() || sendMessageMutation.isPending || !activeChannelId || !currentUser}
+              disabled={!messageInput.trim() || sendMessageMutation.isPending || !activeChannelId || !currentUser || !isMember}
               aria-label="Send community message"
             >
               <Send className="h-5 w-5" />

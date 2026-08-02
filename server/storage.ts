@@ -7,6 +7,7 @@ import {
   aiAgents, type AIAgent, type InsertAIAgent,
   aiChats, type AIChat, type InsertAIChat,
   communities, type Community, type InsertCommunity,
+  communityMemberships, type CommunityMembership, type InsertCommunityMembership,
   channels, type Channel, type InsertChannel,
   channelMessages, type ChannelMessage, type InsertChannelMessage,
   revenue, type Revenue, type InsertRevenue,
@@ -103,6 +104,8 @@ export interface IStorage {
   getCommunities(): Promise<Community[]>;
   getCommunityById(id: number): Promise<Community | undefined>;
   createCommunity(community: InsertCommunity): Promise<Community>;
+  getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined>;
+  joinCommunity(membership: InsertCommunityMembership): Promise<CommunityMembership>;
 
   // Channel operations
   getChannelsByCommunityId(communityId: number): Promise<Channel[]>;
@@ -174,6 +177,7 @@ export class MemStorage implements IStorage {
   private aiAgents: Map<number, AIAgent>;
   private aiChats: Map<number, AIChat>;
   private communities: Map<number, Community>;
+  private communityMemberships: Map<number, CommunityMembership>;
   private channels: Map<number, Channel>;
   private channelMessages: Map<number, ChannelMessage>;
   private revenues: Map<number, Revenue>;
@@ -194,6 +198,7 @@ export class MemStorage implements IStorage {
   private aiAgentIdCounter = 1;
   private aiChatIdCounter = 1;
   private communityIdCounter = 1;
+  private communityMembershipIdCounter = 1;
   private channelIdCounter = 1;
   private channelMessageIdCounter = 1;
   private revenueIdCounter = 1;
@@ -214,6 +219,7 @@ export class MemStorage implements IStorage {
     this.aiAgents = new Map();
     this.aiChats = new Map();
     this.communities = new Map();
+    this.communityMemberships = new Map();
     this.channels = new Map();
     this.channelMessages = new Map();
     this.revenues = new Map();
@@ -1161,6 +1167,26 @@ export class MemStorage implements IStorage {
     const community: Community = { ...insertCommunity, id, createdAt: now };
     this.communities.set(id, community);
     return community;
+  }
+
+  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
+    return Array.from(this.communityMemberships.values()).find(
+      (membership) => membership.userId === userId && membership.communityId === communityId,
+    );
+  }
+
+  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+    if (existing) return existing;
+    const membership: CommunityMembership = {
+      id: this.communityMembershipIdCounter++,
+      userId: insertMembership.userId,
+      communityId: insertMembership.communityId,
+      role: insertMembership.role ?? "member",
+      joinedAt: new Date(),
+    };
+    this.communityMemberships.set(membership.id, membership);
+    return membership;
   }
 
   // Channel operations
@@ -2523,6 +2549,19 @@ export class DatabaseStorage implements IStorage {
   async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
     const [community] = await db.insert(communities).values(insertCommunity).returning();
     return community;
+  }
+
+  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
+    const [membership] = await db.select().from(communityMemberships)
+      .where(and(eq(communityMemberships.userId, userId), eq(communityMemberships.communityId, communityId)));
+    return membership || undefined;
+  }
+
+  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+    if (existing) return existing;
+    const [membership] = await db.insert(communityMemberships).values(insertMembership).returning();
+    return membership;
   }
 
   // Channel operations
