@@ -20,6 +20,7 @@ import CreateProductPage from "@/pages/create-product";
 import ProductDetail from "@/pages/product-detail";
 import CreatePostPage from "@/pages/create-post";
 import NewTextPostPage from "@/pages/new-text-post";
+import MessagesPage from "@/pages/messages";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
@@ -56,7 +57,7 @@ function Router() {
   // Update active tab when route changes
   useEffect(() => {
     const path = window.location.pathname.substring(1);
-    const validTabs = ['marketplace', 'ai', 'communities', 'profile'];
+    const validTabs = ['marketplace', 'create', 'messages', 'ai', 'communities', 'profile'];
 
     if (path === '') {
       setActiveTab('explore');
@@ -89,6 +90,7 @@ function Router() {
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/marketplace/product/:id" component={ProductDetail} />
       <ProtectedRoute path="/create" component={CreatePostPage} />
+      <ProtectedRoute path="/messages" component={MessagesPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <Route component={NotFound} />
     </Switch>

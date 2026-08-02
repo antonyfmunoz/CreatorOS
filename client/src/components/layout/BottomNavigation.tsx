@@ -1,8 +1,8 @@
 import { useAppStore } from '@/lib/stores';
 import { 
-  Search, 
-  ShoppingBag, 
-  Bot, 
+  Compass,
+  Store,
+  Plus,
   MessageSquare, 
   User
 } from 'lucide-react';
@@ -14,16 +14,16 @@ const BottomNavigation = () => {
   const [, setLocation] = useLocation();
 
   const tabs = [
-    { id: 'explore', label: 'Explore', icon: Search },
-    { id: 'marketplace', label: 'Marketplace', icon: ShoppingBag },
-    { id: 'ai', label: 'AI Agents', icon: Bot },
-    { id: 'communities', label: 'Communities', icon: MessageSquare },
-    { id: 'profile', label: 'Profile', icon: User },
+    { id: 'explore', label: 'Explore', icon: Compass, href: '/' },
+    { id: 'marketplace', label: 'Marketplace', icon: Store, href: '/marketplace' },
+    { id: 'create', label: 'Create', icon: Plus, href: '/create' },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, href: '/messages' },
+    { id: 'profile', label: 'Profile', icon: User, href: '/profile' },
   ] as const;
 
   return (
-    <div className="fixed bottom-0 left-0 w-full bg-white shadow-lg border-t border-gray-200 z-50">
-      <div className="flex justify-around items-center py-2 px-1">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-100 bg-white">
+      <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -33,20 +33,22 @@ const BottomNavigation = () => {
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                setLocation(tab.id === 'explore' ? '/' : `/${tab.id}`);
+                setLocation(tab.href);
               }}
               className={cn(
-                "flex flex-col items-center p-2 rounded-lg",
-                isActive ? "text-primary font-medium" : "text-gray-500"
+                "flex h-full flex-1 items-center justify-center transition-colors",
+                isActive ? "text-black" : "text-zinc-400 hover:text-zinc-700"
               )}
+              aria-label={tab.label}
+              aria-current={isActive ? 'page' : undefined}
             >
-              <Icon className="h-6 w-6" />
-              <span className="text-xs mt-1">{tab.label}</span>
+              <Icon className={cn("h-6 w-6", tab.id === 'create' && "h-7 w-7")} strokeWidth={isActive ? 2.5 : 2} />
+              <span className="sr-only">{tab.label}</span>
             </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 };
 

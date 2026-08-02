@@ -12,7 +12,6 @@ import { Avatar } from '@/components/ui/avatar';
 import { AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { DirectMessage, Conversation, User as UserType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
-import { SheetClose, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link, useLocation } from 'wouter';
 import { 
@@ -39,7 +38,7 @@ interface MessagePanelProps {
   onClose?: () => void;
 }
 
-const MessagePanel = () => {
+const MessagePanel = ({ onClose }: MessagePanelProps) => {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [newMessage, setNewMessage] = useState('');
@@ -71,6 +70,7 @@ const MessagePanel = () => {
     createConversation,
     closeMessagePanel
   } = useMessaging();
+  const dismissPanel = onClose ?? closeMessagePanel;
 
   // Fetch conversations when component mounts
   useEffect(() => {
@@ -337,7 +337,7 @@ const MessagePanel = () => {
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
-            <SheetTitle className="font-semibold">
+            <h2 className="font-semibold">
               {(() => {
                 const conversation = conversations.find(c => c.id === selectedConversation);
                 if (!conversation) return 'Chat';
@@ -360,21 +360,17 @@ const MessagePanel = () => {
                   getConversationName(conversation)
                 );
               })()}
-            </SheetTitle>
-            <SheetClose asChild>
-              <Button variant="ghost" size="icon">
-                <X className="h-5 w-5" />
-              </Button>
-            </SheetClose>
+            </h2>
+            <Button variant="ghost" size="icon" onClick={dismissPanel} aria-label="Close messages">
+              <X className="h-5 w-5" />
+            </Button>
           </>
         ) : (
           <>
-            <SheetTitle className="font-semibold text-lg">Messages</SheetTitle>
-            <SheetClose asChild>
-              <Button variant="ghost" size="icon">
-                <X className="h-5 w-5" />
-              </Button>
-            </SheetClose>
+            <h2 className="font-semibold text-lg">Messages</h2>
+            <Button variant="ghost" size="icon" onClick={dismissPanel} aria-label="Close messages">
+              <X className="h-5 w-5" />
+            </Button>
           </>
         )}
       </div>

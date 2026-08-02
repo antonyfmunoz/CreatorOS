@@ -4,11 +4,11 @@ import { User, AIAgent, AIChat, ChatMessage, Notification, Conversation, DirectM
 // App state store for current active tab, user, etc.
 // `currentUser` is the Clerk-backed DB user, bridged in from AuthProvider (see use-auth.tsx).
 interface AppState {
-  activeTab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile';
+  activeTab: 'explore' | 'marketplace' | 'create' | 'messages' | 'ai' | 'communities' | 'profile';
   currentUser: User | null;
   isLoading: boolean;
   targetPostId: number | null; // Track the post to highlight
-  setActiveTab: (tab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile') => void;
+  setActiveTab: (tab: 'explore' | 'marketplace' | 'create' | 'messages' | 'ai' | 'communities' | 'profile') => void;
   setCurrentUser: (user: User | null) => void;
   setIsLoading: (isLoading: boolean) => void;
   navigateToPost: (postId: number) => void; // Function to navigate to a specific post
