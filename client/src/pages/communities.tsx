@@ -208,9 +208,6 @@ const Communities = () => {
         <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200">
           <div className="flex">
             <div className="flex-1 bg-gray-100 rounded-lg flex items-center p-2">
-              <Button type="button" variant="ghost" size="icon" className="p-1 text-gray-500">
-                <Plus className="h-5 w-5" />
-              </Button>
               <Input
                 type="text"
                 placeholder={`Message ${activeChannel ? `#${activeChannel.name}` : 'channel'}`}
@@ -219,18 +216,13 @@ const Communities = () => {
                 onChange={(e) => setMessageInput(e.target.value)}
                 disabled={!activeChannelId || !currentUser}
               />
-              <Button type="button" variant="ghost" size="icon" className="p-1 text-gray-500">
-                <Smile className="h-5 w-5" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="p-1 text-gray-500">
-                <Image className="h-5 w-5" />
-              </Button>
             </div>
             <Button 
               type="submit" 
               className="ml-2 p-2 rounded-lg" 
               size="icon"
               disabled={!messageInput.trim() || sendMessageMutation.isPending || !activeChannelId || !currentUser}
+              aria-label="Send community message"
             >
               <Send className="h-5 w-5" />
             </Button>
@@ -240,8 +232,5 @@ const Communities = () => {
     </div>
   );
 };
-
-// Missing imports from the code above
-import { Plus, Smile, Image } from 'lucide-react';
 
 export default Communities;
