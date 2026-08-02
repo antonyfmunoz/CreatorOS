@@ -52,10 +52,10 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
   
   if (isPinned) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+      <div className="mb-4 rounded-xl border border-[#1d9bf0]/30 bg-[#1d9bf0]/10 p-3 text-white">
         <div className="flex items-center mb-2">
-          <Pin className="h-4 w-4 text-yellow-500 mr-1" />
-          <span className="text-xs text-yellow-700">Pinned Message</span>
+          <Pin className="mr-1 h-4 w-4 text-[#1d9bf0]" />
+          <span className="text-xs text-[#1d9bf0]">Pinned Message</span>
         </div>
         <div className="flex">
           <Avatar className="w-8 h-8 mr-2">
@@ -65,7 +65,7 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
           <div>
             <div className="flex items-center">
               <span className="font-semibold text-sm">{message.user.displayName}</span>
-              <span className="ml-2 text-xs text-gray-500">{message.user.role}</span>
+              <span className="ml-2 text-xs text-zinc-500">{message.user.role}</span>
             </div>
             <p className="text-sm">{message.content}</p>
           </div>
@@ -83,8 +83,8 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
       <div>
         <div className="flex items-center">
           <span className="font-semibold">{message.user.displayName}</span>
-          <span className="ml-2 text-xs text-gray-500">{formattedTime}</span>
-          <Badge variant="outline" className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
+          <span className="ml-2 text-xs text-zinc-500">{formattedTime}</span>
+          <Badge variant="outline" className="ml-2 rounded border-[#1d9bf0]/30 bg-[#1d9bf0]/10 px-1.5 py-0.5 text-xs text-[#1d9bf0]">
             Lvl {message.user.level}
           </Badge>
         </div>
@@ -93,7 +93,7 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-xs text-gray-500 flex items-center hover:bg-gray-100 rounded px-2 py-1 h-auto"
+            className="flex h-auto items-center rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-900 hover:text-white"
             onClick={handleLike}
           >
             <ThumbsUp className="h-4 w-4 mr-1" />
@@ -103,7 +103,7 @@ const ChatMessage = ({ message, isPinned = false }: ChatMessageProps) => {
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs text-gray-500 flex items-center hover:bg-gray-100 rounded px-2 py-1 h-auto"
+              className="flex h-auto items-center rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-900 hover:text-white"
               onClick={handlePin}
             >
               <Pin className="h-4 w-4 mr-1" />

@@ -122,6 +122,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
   const { user } = useAuth();
   const { createConversation, sendMessage } = useMessaging();
   const [, setLocation] = useLocation();
+  const isOwnRepost = Boolean(user && post.userId === user.id && post.content.startsWith("Reposted "));
 
   // Get the current user
   const { data: users } = useQuery<User[]>({
@@ -635,7 +636,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
   });
 
   const handleRepost = () => {
-    if (!isReposted) repostMutation.mutate();
+    if (!isReposted && !isOwnRepost) repostMutation.mutate();
   };
 
   const renderPostContent = () => post.content.split(/(@[A-Za-z0-9_]+)/g).map((part, index) => {
@@ -912,8 +913,9 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
               size="sm"
               className={`flex items-center gap-1 px-2 ${isReposted ? 'bg-[#1d9bf0]/10 text-[#1d9bf0] hover:bg-[#1d9bf0]/15 hover:text-[#1d9bf0]' : ''}`}
               onClick={handleRepost}
-              disabled={isPending || isReposted}
-              aria-label={isReposted ? "Reposted" : "Repost"}
+              disabled={isPending || isReposted || isOwnRepost}
+              aria-label={isOwnRepost ? "Your repost" : isReposted ? "Reposted" : "Repost"}
+              title={isOwnRepost ? "You cannot repost your own repost" : undefined}
             >
               <Repeat2 className={`h-5 w-5 ${isReposted ? 'fill-[#1d9bf0]' : ''}`} />
             </Button>

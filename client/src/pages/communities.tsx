@@ -128,19 +128,19 @@ const Communities = () => {
   const pinnedMessages = messages?.filter(msg => msg.isPinned) || [];
   
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 pb-16">
+    <div className="flex h-screen overflow-hidden bg-black pb-14">
       {/* Mobile sidebar using Sheet component */}
       <Sheet>
         <SheetTrigger asChild>
           <Button 
             variant="ghost" 
             size="icon" 
-            className="md:hidden absolute left-4 top-4 z-10"
+            className="absolute left-4 top-4 z-10 text-zinc-400 hover:bg-zinc-900 hover:text-white md:hidden"
           >
             <Menu className="h-6 w-6" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 bg-gray-800 text-white w-4/5">
+        <SheetContent side="left" className="w-4/5 border-r border-zinc-800 bg-black p-0 text-white">
           <ChannelSidebar isMobile />
         </SheetContent>
       </Sheet>
@@ -149,7 +149,7 @@ const Communities = () => {
       <ChannelSidebar />
       
       {/* Main Chat Area */}
-      <div className="flex min-w-0 flex-1 flex-col bg-zinc-950 text-white">
+      <div className="flex min-w-0 flex-1 flex-col bg-black text-white">
         {/* Top Bar */}
         <div className="p-4 border-b border-zinc-800 flex items-center">
           <div className="md:hidden w-6"></div> {/* Spacer for mobile */}
@@ -167,13 +167,13 @@ const Communities = () => {
                 {isMember ? <><Check className="mr-1 h-3.5 w-3.5" /> Joined</> : <><UserPlus className="mr-1 h-3.5 w-3.5" /> {joinCommunityMutation.isPending ? "Joining…" : "Join"}</>}
               </Button>
             )}
-            <Button variant="ghost" size="icon" className="rounded-full">
+            <Button variant="ghost" size="icon" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" aria-label="Search community">
               <Search className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="rounded-full">
+            <Button variant="ghost" size="icon" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" aria-label="Community notifications">
               <Bell className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="rounded-full">
+            <Button variant="ghost" size="icon" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" aria-label="Community options">
               <MoreHorizontal className="h-5 w-5" />
             </Button>
           </div>
@@ -243,7 +243,7 @@ const Communities = () => {
           
           {messages?.length === 0 && !isLoadingMessages && (
             <div className="text-center py-10">
-              <p className="text-gray-500">No messages yet. Start the conversation!</p>
+              <p className="text-zinc-500">No messages yet. Start the conversation!</p>
             </div>
           )}
         </div>
@@ -263,7 +263,7 @@ const Communities = () => {
             </div>
             <Button 
               type="submit" 
-              className="ml-2 p-2 rounded-lg" 
+              className="ml-2 rounded-lg bg-[#1d9bf0] p-2 text-white hover:bg-[#1d9bf0]/90"
               size="icon"
               disabled={!messageInput.trim() || sendMessageMutation.isPending || !activeChannelId || !currentUser || !isMember}
               aria-label="Send community message"

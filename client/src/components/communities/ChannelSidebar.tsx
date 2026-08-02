@@ -32,12 +32,12 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
       
       <div className="space-y-6">
         <div>
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Your Communities</h3>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Your Communities</h3>
           
           {isLoadingCommunities ? (
             <div className="space-y-2">
               {Array(3).fill(0).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full bg-gray-700" />
+                <Skeleton key={i} className="h-10 w-full bg-zinc-900" />
               ))}
             </div>
           ) : (
@@ -47,11 +47,11 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
                   key={community.id}
                   className={`
                     flex items-center p-2 rounded-md cursor-pointer
-                    ${activeCommunityId === community.id ? 'bg-gray-700' : 'hover:bg-gray-700'}
+                    ${activeCommunityId === community.id ? 'bg-[#1d9bf0]/15 text-white' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'}
                   `}
                   onClick={() => setActiveCommunity(community.id)}
                 >
-                  <span className={`w-2 h-2 ${community.iconColor} rounded-full mr-2`}></span>
+                  <span className={`mr-2 h-2 w-2 rounded-full ${activeCommunityId === community.id ? 'bg-[#1d9bf0]' : 'bg-zinc-600'}`}></span>
                   <span>{community.name}</span>
                 </li>
               ))}
@@ -61,12 +61,12 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
         
         {activeCommunityId && (
           <div>
-            <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Channels</h3>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Channels</h3>
             
             {isLoadingChannels ? (
               <div className="space-y-2">
                 {Array(5).fill(0).map((_, i) => (
-                  <Skeleton key={i} className="h-8 w-full bg-gray-700" />
+                  <Skeleton key={i} className="h-8 w-full bg-zinc-900" />
                 ))}
               </div>
             ) : (
@@ -77,11 +77,11 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
                       key={channel.id}
                       className={`
                         flex items-center p-2 rounded-md cursor-pointer
-                        ${activeChannelId === channel.id ? 'bg-gray-700' : 'hover:bg-gray-700'}
+                        ${activeChannelId === channel.id ? 'bg-[#1d9bf0]/15 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}
                       `}
                       onClick={() => setActiveChannel(channel.id)}
                     >
-                      <Hash className="h-4 w-4 mr-2 text-gray-400" />
+                      <Hash className="mr-2 h-4 w-4 text-zinc-500" />
                       <span>{channel.name}</span>
                     </li>
                   ))}
@@ -92,19 +92,19 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
         )}
         
         <div>
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Direct Messages</h3>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Direct Messages</h3>
           <ul className="space-y-2">
-            <li className="flex items-center p-2 hover:bg-gray-700 rounded-md cursor-pointer">
+            <li className="flex cursor-pointer items-center rounded-md p-2 text-zinc-300 hover:bg-zinc-900 hover:text-white">
               <div className="relative mr-2">
-                <div className="w-6 h-6 rounded-full bg-gray-500"></div>
+                <div className="h-6 w-6 rounded-full bg-zinc-700"></div>
                 <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full"></span>
               </div>
               <span>David Kim</span>
             </li>
-            <li className="flex items-center p-2 hover:bg-gray-700 rounded-md cursor-pointer">
+            <li className="flex cursor-pointer items-center rounded-md p-2 text-zinc-300 hover:bg-zinc-900 hover:text-white">
               <div className="relative mr-2">
-                <div className="w-6 h-6 rounded-full bg-gray-500"></div>
-                <span className="absolute bottom-0 right-0 w-2 h-2 bg-gray-500 rounded-full"></span>
+                <div className="h-6 w-6 rounded-full bg-zinc-700"></div>
+                <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-zinc-600"></span>
               </div>
               <span>Sarah Mitchell</span>
             </li>

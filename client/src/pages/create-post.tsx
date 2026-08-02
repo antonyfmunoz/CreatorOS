@@ -374,28 +374,28 @@ export default function CreatePost() {
   };
 
   return (
-    <div className="container max-w-2xl mx-auto py-8 px-4">
-      <Card className="shadow-md">
-        <CardHeader className="flex flex-row items-center space-y-0 gap-2">
+    <main className="min-h-dvh bg-black text-white">
+      <Card className="mx-auto min-h-dvh max-w-lg rounded-none border-0 bg-black text-white shadow-none">
+        <CardHeader className="sticky top-0 z-20 flex h-14 flex-row items-center gap-2 space-y-0 border-b border-zinc-800 bg-black px-3 py-0">
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => setLocation('/')}
-            className="mr-2"
+            className="mr-1 text-white hover:bg-zinc-900 hover:text-white"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex flex-1 items-center gap-2 text-base text-white">
             {renderPostTypeIcon()}
             {postType.charAt(0).toUpperCase() + postType.slice(1)} Post
           </CardTitle>
         </CardHeader>
         
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-[calc(100dvh-3.5rem)] flex-col">
+          <CardContent className="flex-1 space-y-5 p-4">
             <Textarea
               placeholder={`What's on your mind?`}
-              className="min-h-32 resize-none"
+              className="min-h-28 resize-none rounded-xl border-zinc-800 bg-zinc-950 text-white placeholder:text-zinc-500"
               value={content}
               onChange={(e) => setContent(e.target.value)}
             />
@@ -403,9 +403,9 @@ export default function CreatePost() {
             {postType === 'photo' && (
               <div className="space-y-4">
                 {!imagePreviewUrl ? (
-                  <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-12 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={triggerFileInput}>
-                    <FileImage className="h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-sm text-gray-500">Click to upload an image</p>
+                  <div className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput}>
+                    <FileImage className="mb-4 h-12 w-12 text-zinc-500" />
+                    <p className="text-sm text-zinc-500">Choose a photo</p>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -419,7 +419,7 @@ export default function CreatePost() {
                     <img 
                       src={imagePreviewUrl} 
                       alt="Preview" 
-                      className="rounded-lg max-h-96 w-full object-cover" 
+                      className="aspect-[4/5] w-full rounded-2xl object-cover"
                     />
                     <Button
                       type="button"
@@ -438,7 +438,7 @@ export default function CreatePost() {
             {postType === 'audio' && (
               <div className="space-y-4">
                 {!audioUrl ? (
-                  <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-12">
+                  <div className="flex aspect-[4/5] items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12">
                     <Button
                       type="button"
                       variant={isRecording ? "destructive" : "default"}
@@ -459,7 +459,7 @@ export default function CreatePost() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="border rounded-lg p-4 space-y-3">
+                  <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                     <div className="flex items-center justify-between">
                       <Button
                         type="button"
@@ -469,7 +469,7 @@ export default function CreatePost() {
                       >
                         {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                       </Button>
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-zinc-500">
                         {formatTime(currentTime)} / {formatTime(audioDuration)}
                       </div>
                       <Button
@@ -491,9 +491,9 @@ export default function CreatePost() {
             {postType === 'video' && (
               <div className="space-y-4">
                 {!videoPreviewUrl ? (
-                  <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-12 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" onClick={triggerFileInput}>
-                    <Upload className="h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-sm text-gray-500">Click to upload a video</p>
+                  <div className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput}>
+                    <Upload className="mb-4 h-12 w-12 text-zinc-500" />
+                    <p className="text-sm text-zinc-500">Choose a video</p>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -507,7 +507,7 @@ export default function CreatePost() {
                     <video 
                       src={videoPreviewUrl} 
                       controls 
-                      className="rounded-lg w-full" 
+                      className="aspect-[4/5] w-full rounded-2xl object-cover"
                     />
                     <Button
                       type="button"
@@ -524,7 +524,7 @@ export default function CreatePost() {
             )}
           </CardContent>
           
-          <CardFooter className="flex justify-end">
+          <CardFooter className="sticky bottom-0 flex justify-end border-t border-zinc-800 bg-black p-3">
             <Button
               type="submit"
               disabled={isSubmitting || (
@@ -533,7 +533,7 @@ export default function CreatePost() {
                 (postType === 'video' && !videoFile) ||
                 (postType === 'text' && !content.trim())
               )}
-              className="flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 bg-[#1d9bf0] text-white hover:bg-[#1d9bf0]/90"
             >
               <Send className="h-4 w-4" />
               Post
@@ -541,6 +541,6 @@ export default function CreatePost() {
           </CardFooter>
         </form>
       </Card>
-    </div>
+    </main>
   );
 }
