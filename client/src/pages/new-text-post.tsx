@@ -233,96 +233,9 @@ export default function NewTextPost() {
           </div>
         </div>
         
-        {/* Post to section */}
-        <div className="border-b">
-          <div className="flex items-center justify-between p-3">
-            <span className="font-medium text-[14px]">Post to</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="rotate-180">
-              <path d="M6 9L12 15L18 9" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          
-          {/* X (Twitter) */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px] font-semibold">X</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect X (Twitter)</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* Facebook */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px] font-bold">f</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect Facebook</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* Instagram */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center">
-                <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full border-[1px] border-black"></div>
-                </div>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect Instagram</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* TikTok */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px]">♪</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect TikTok</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* YouTube */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-red-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-[8px]">▶</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect YouTube</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
+        <div className="border-b p-3">
+          <p className="font-medium text-[14px]">Post to CreatorOS</p>
+          <p className="mt-1 text-[11px] text-gray-500">Your post will appear on your CreatorOS profile and feed.</p>
         </div>
         
         {/* Your story */}
