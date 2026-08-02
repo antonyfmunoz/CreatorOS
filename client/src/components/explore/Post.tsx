@@ -63,6 +63,16 @@ import {
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PostProps {
   post: PostType;
@@ -91,6 +101,7 @@ const Post = ({ post }: PostProps) => {
     return saved ? JSON.parse(saved) : [];
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
   const [showTags, setShowTags] = useState(false);
   const [savedPosts, setSavedPosts] = useState<number[]>(() => {
@@ -586,24 +597,23 @@ const Post = ({ post }: PostProps) => {
     setIsEditing(false);
   };
 
-  // Handle delete post with confirmation
   const handleDeletePost = () => {
-    if (confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
-      // Immediately hide the post from UI before the API call completes
-      const postElement = document.getElementById(`post-${post.id}`);
-      if (postElement) {
-        postElement.style.display = 'none';
-      }
-      
-      // Also update the cache immediately
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.filter(p => p.id !== post.id);
-      });
-      
-      // Then call the API
-      deletePostMutation.mutate();
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const confirmDeletePost = () => {
+    setIsDeleteConfirmOpen(false);
+    const postElement = document.getElementById(`post-${post.id}`);
+    if (postElement) {
+      postElement.style.display = 'none';
     }
+
+    queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+      if (!oldData) return oldData;
+      return oldData.filter(p => p.id !== post.id);
+    });
+
+    deletePostMutation.mutate();
   };
 
   // Handle save/unsave post toggle
@@ -631,6 +641,25 @@ const Post = ({ post }: PostProps) => {
 
   return (
     <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePost}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CardContent className="p-4">
         <div className="flex items-center mb-3">
           <Avatar 
