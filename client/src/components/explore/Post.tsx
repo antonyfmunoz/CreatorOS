@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { 
-  Heart, MessageSquare, Share2, Repeat2, BarChart3, MoreHorizontal, Check, Copy, Link, Send, Search,
+  Heart, MessageSquare, Share2, Repeat2, BarChart3, MoreHorizontal, Check, Copy, Send, Search,
   User as UserIcon, Users, X, Pencil, Trash, Bookmark, Edit, Save 
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -888,10 +888,7 @@ const Post = ({ post, surface = 'light' }: PostProps) => {
               <Repeat2 className="h-5 w-5" />
             </Button>
 
-            <span className="flex items-center gap-1 px-2 text-sm" aria-label="Post analytics">
-              <BarChart3 className="h-5 w-5" />
-              <span className="sr-only">Post analytics</span>
-            </span>
+            <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2" onClick={() => setLocation(`/posts/${post.id}/analytics`)} aria-label="View post analytics"><BarChart3 className="h-5 w-5" /></Button>
           </div>
           
           <Dialog 

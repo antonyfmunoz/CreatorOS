@@ -23,6 +23,7 @@ import NewTextPostPage from "@/pages/new-text-post";
 import MessagesPage from "@/pages/messages";
 import SearchPage from "@/pages/search";
 import CreatePage from "@/pages/create";
+import PostAnalyticsPage from "@/pages/post-analytics";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
 import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
@@ -97,6 +98,7 @@ function Router() {
       <ProtectedRoute path="/messages" component={MessagesPage} />
       <ProtectedRoute path="/search" component={SearchPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
+      <ProtectedRoute path="/posts/:id/analytics" component={PostAnalyticsPage} />
       <Route component={NotFound} />
     </Switch>
   );

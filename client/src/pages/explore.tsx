@@ -15,7 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabType } from "@/components/feed/Tabs";
 import { ContentFilterType } from "@/components/feed/FilterDropdown";
 import { VoicePostCard } from "@/components/feed/VoicePostCard";
-import { FloatingActionButton } from "@/components/feed/FloatingActionButton";
 import { StoriesBar } from "@/components/feed/StoriesBar";
 
 const Explore = () => {
@@ -218,8 +217,6 @@ const Explore = () => {
         )}
       </div>
       
-      {/* Floating Action Button */}
-      <FloatingActionButton />
     </div>
   );
 };

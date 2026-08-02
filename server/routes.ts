@@ -263,6 +263,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/posts/:id", async (req, res) => {
+    try {
+      const post = await storage.getPostById(parseInt(req.params.id));
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      res.json(post);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch post" });
+    }
+  });
+
   app.post("/api/posts", attachUser, async (req, res) => {
     try {
       // Add authenticated user's ID to the post data

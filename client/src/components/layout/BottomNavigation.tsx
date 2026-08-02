@@ -15,7 +15,7 @@ const BottomNavigation = () => {
 
   // These are focused, full-screen Stitch surfaces. Their own headers provide
   // the exit path; retaining the global nav here breaks the approved layout.
-  if (["/search", "/messages", "/profile", "/communities"].some((path) => location === path || location.startsWith(`${path}/`))) {
+  if (["/search", "/messages", "/profile", "/communities", "/posts"].some((path) => location === path || location.startsWith(`${path}/`))) {
     return null;
   }
 
