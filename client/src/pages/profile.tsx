@@ -260,20 +260,20 @@ const Profile = () => {
   }
   
   return (
-    <div className="pb-20">
+    <div className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
       {/* Sticky Header for viewing other users' profiles (similar to explore) */}
       {!isOwnProfile && (
-        <header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
+        <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
           <div className="flex items-center gap-2">
             <Button 
               variant="ghost" 
               size="icon" 
-              className="p-1" 
+              className="p-1 text-white hover:bg-zinc-900 hover:text-white" 
               onClick={() => setLocation("/")}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="text-lg font-semibold text-black dark:text-white lowercase">{user?.username}</span>
+            <span className="text-lg font-semibold text-white lowercase">{user?.username}</span>
           </div>
           <div className="flex items-center space-x-3">
             <NotificationBell />
@@ -284,14 +284,14 @@ const Profile = () => {
       
       {/* Instagram-style username header - only for own profile */}
       {isOwnProfile && (
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center">
-            <h1 className="text-lg font-bold lowercase">{user?.username}</h1>
+            <h1 className="text-xl font-bold lowercase">{user?.username}</h1>
           </div>
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="p-1">
+              <Button variant="ghost" size="icon" className="p-1 text-white hover:bg-zinc-900 hover:text-white">
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -342,7 +342,7 @@ const Profile = () => {
           <div className="flex flex-1 items-center">
             <div className="flex-1 text-center">
               <div className="text-base font-semibold">{stats.posts}</div>
-              <div className="text-xs">posts</div>
+              <div className="text-xs uppercase tracking-tight text-zinc-500">posts</div>
             </div>
             <div 
               className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1" 
@@ -357,7 +357,7 @@ const Profile = () => {
               }}
             >
               <div className="text-base font-semibold">{stats.followers}</div>
-              <div className="text-xs">followers</div>
+              <div className="text-xs uppercase tracking-tight text-zinc-500">followers</div>
             </div>
             <div 
               className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1"
@@ -372,15 +372,15 @@ const Profile = () => {
               }}
             >
               <div className="text-base font-semibold">{stats.following}</div>
-              <div className="text-xs">following</div>
+              <div className="text-xs uppercase tracking-tight text-zinc-500">following</div>
             </div>
           </div>
         </div>
         
         {/* Name and Bio */}
         <div className="mb-3">
-          <div className="font-semibold text-sm leading-5">{user?.displayName}</div>
-          <div className="text-sm leading-5 mt-1">{user?.bio || "Creator OS user"}</div>
+          <div className="font-semibold text-base leading-5">{user?.displayName}</div>
+          <div className="mt-1 text-sm leading-5 text-zinc-400">{user?.bio || "Creator OS user"}</div>
         </div>
         
         {/* Edit Profile Button or Follow/Unfollow Button */}
@@ -388,21 +388,21 @@ const Profile = () => {
           <Button 
             variant="outline" 
             size="sm" 
-            className="w-full h-[30px] text-sm font-medium rounded-md"
+            className="h-10 w-full rounded-lg border-zinc-800 bg-zinc-900 text-sm font-bold text-white hover:bg-zinc-800"
             onClick={() => setIsEditProfileOpen(true)}
           >
             Edit Profile
           </Button>
         ) : currentUser ? (
           isLoadingFollowStatus ? (
-            <Button variant="outline" size="sm" className="w-full h-[30px] text-sm font-medium rounded-md" disabled>
+            <Button variant="outline" size="sm" className="h-10 w-full rounded-lg border-zinc-800 bg-zinc-900 text-sm font-bold text-white hover:bg-zinc-800" disabled>
               <span className="animate-pulse">Loading...</span>
             </Button>
           ) : isFollowing ? (
             <Button 
               variant="outline" 
               size="sm" 
-              className="w-full h-[30px] text-sm font-medium rounded-md"
+              className="h-10 w-full rounded-lg border-zinc-800 bg-zinc-900 text-sm font-bold text-white hover:bg-zinc-800"
               onClick={() => unfollowMutation.mutate()}
               disabled={unfollowMutation.isPending}
             >
@@ -413,7 +413,7 @@ const Profile = () => {
             <Button 
               variant="default" 
               size="sm" 
-              className="w-full h-[30px] text-sm font-medium rounded-md"
+              className="h-10 w-full rounded-lg bg-white text-sm font-bold text-black hover:bg-zinc-200"
               onClick={() => followMutation.mutate()}
               disabled={followMutation.isPending}
             >
@@ -425,7 +425,7 @@ const Profile = () => {
           <Button 
             variant="default" 
             size="sm" 
-            className="w-full h-[30px] text-sm font-medium rounded-md"
+            className="h-10 w-full rounded-lg bg-white text-sm font-bold text-black hover:bg-zinc-200"
             onClick={handleLogin}
           >
             <LogIn className="mr-1 h-3.5 w-3.5" /> Sign in to follow
@@ -436,7 +436,7 @@ const Profile = () => {
       {/* Stitch profile destinations: posts remain the social surface, offers
           expose the creator's real marketplace inventory, and playlists are
           deliberately an honest empty state until playlist entities exist. */}
-      <nav className="mt-4 flex border-y border-zinc-200" aria-label="Profile content">
+      <nav className="mt-4 flex border-y border-zinc-800" aria-label="Profile content">
         {([
           ["posts", "Posts"],
           ["offers", "Offers"],
@@ -444,11 +444,11 @@ const Profile = () => {
         ] as const).map(([value, label]) => (
           <button
             key={value}
-            className={`relative flex-1 py-3 text-sm font-bold ${profileView === value ? "text-black" : "text-zinc-400"}`}
+            className={`relative flex-1 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
             onClick={() => setProfileView(value)}
           >
             {label}
-            {profileView === value && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-black" />}
+            {profileView === value && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
           </button>
         ))}
       </nav>
@@ -461,7 +461,7 @@ const Profile = () => {
         <section className="grid grid-cols-2 gap-4 p-4">
           {profileProducts.map((product) => (
             <Link key={product.id} href={`/marketplace/product/${product.id}`} className="min-w-0">
-              <div className="aspect-square overflow-hidden rounded-xl bg-zinc-100">
+              <div className="aspect-square overflow-hidden rounded-xl bg-zinc-900">
                 {product.imageUrl ? <img src={product.imageUrl} alt={product.title} className="h-full w-full object-cover" /> : <div className="h-full bg-zinc-900" />}
               </div>
               <p className="mt-2 truncate text-sm font-bold">{product.title}</p>

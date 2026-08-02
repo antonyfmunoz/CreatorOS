@@ -123,8 +123,8 @@ const Explore = () => {
   return (
     <div className="pb-20">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
-        <span className="text-xl font-semibold text-black dark:text-white">CreatorOS</span>
+      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 py-2 flex justify-between items-center">
+        <span className="text-xl font-bold tracking-tight text-black">CreatorOS</span>
         <div className="flex items-center space-x-3">
           <FilterDropdown selectedFilter={contentFilter} onSelect={setContentFilter} />
           <NotificationBell />
@@ -137,10 +137,8 @@ const Explore = () => {
         <Tabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
-      {/* Stories Bar - Only shown in Following tab */}
-      {activeTab === "following" && (
-        <StoriesBar onStoryClick={handleStoryClick} />
-      )}
+      {/* Stitch Explore keeps the story rail visible above both feed modes. */}
+      <StoriesBar onStoryClick={handleStoryClick} />
 
       {/* Original Stories component for compatibility */}
       <div className="hidden">
@@ -148,13 +146,13 @@ const Explore = () => {
       </div>
 
       {/* Content Feed */}
-      <div className="space-y-6 px-4 mt-4">
+      <div className="space-y-0">
         {isLoading ? (
           // Loading skeletons
           Array(3)
             .fill(0)
             .map((_, i) => (
-              <div key={i} className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div key={i} className="border-b border-zinc-100 bg-white overflow-hidden">
                 <div className="p-4">
                   <div className="flex items-center mb-3">
                     <Skeleton className="w-10 h-10 rounded-full mr-3" />

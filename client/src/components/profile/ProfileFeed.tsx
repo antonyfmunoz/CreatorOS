@@ -40,7 +40,7 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
     return (
       <div className="mt-4 space-y-4">
         {[1, 2, 3].map((i) => (
-          <Card key={i} className="mb-4 overflow-hidden">
+          <Card key={i} className="mb-0 overflow-hidden rounded-none border-x-0 border-t-0 border-zinc-800 bg-black text-white shadow-none">
             <CardContent className="p-4">
               <div className="flex items-center mb-3">
                 <Skeleton className="w-10 h-10 rounded-full mr-3" />
@@ -88,7 +88,7 @@ const ProfileFeed = ({ userId, username }: ProfileFeedProps) => {
         className="w-full"
       >
         <div className="px-4">
-          <TabsList className="flex w-full overflow-x-auto gap-1.5">
+          <TabsList className="flex w-full overflow-x-auto gap-1.5 bg-zinc-900 text-zinc-300">
             <TabsTrigger value="all" className="flex-1 px-2 min-w-0 text-sm">All</TabsTrigger>
             <TabsTrigger value="photo" className="flex-1 px-2 min-w-0 text-sm">Photos</TabsTrigger>
             <TabsTrigger value="video" className="flex-1 px-2 min-w-0 text-sm">Video</TabsTrigger>
@@ -149,8 +149,8 @@ function renderPosts(
 ) {
   if (noPosts) {
     return (
-      <div className="py-12 text-center">
-        <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+      <div className="py-12 text-center text-white">
+        <div className="mx-auto w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center mb-3">
           {type === "photo" ? (
             <ImageIcon className="h-6 w-6 text-muted-foreground" />
           ) : type === "audio" ? (
@@ -162,7 +162,7 @@ function renderPosts(
           )}
         </div>
         <h3 className="text-lg font-medium">No posts yet</h3>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-zinc-500 text-sm mt-1">
           {type === "photo"
             ? `@${username.toLowerCase()} hasn't shared any photos`
             : type === "text"

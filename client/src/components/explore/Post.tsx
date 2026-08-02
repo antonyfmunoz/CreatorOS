@@ -640,7 +640,7 @@ const Post = ({ post }: PostProps) => {
                    savePostMutation.isPending || unsavePostMutation.isPending;
 
   return (
-    <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
+    <Card id={`post-${post.id}`} className="mb-0 overflow-hidden rounded-none border-x-0 border-t-0 border-zinc-100 shadow-none">
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -669,14 +669,14 @@ const Post = ({ post }: PostProps) => {
             <AvatarImage src={post.user.profileImageUrl || undefined} alt={post.user.displayName} />
             <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
-          <div>
+          <div className="min-w-0">
             <p 
-              className="font-semibold cursor-pointer hover:text-primary hover:underline" 
+              className="font-semibold text-black cursor-pointer hover:text-primary hover:underline" 
               onClick={() => setLocation(`/profile/${post.user.id}`)}
             >
               {post.user.displayName}
             </p>
-            <p className="text-xs text-gray-500">{formattedDate}</p>
+            <p className="truncate text-xs text-zinc-500">@{post.user.username} · {formattedDate}</p>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -763,7 +763,7 @@ const Post = ({ post }: PostProps) => {
           </div>
         ) : (
           <p 
-            className="mb-4" 
+            className="mb-4 text-[15px] leading-6 text-black" 
             dangerouslySetInnerHTML={{ __html: parseUserTags(post.content) }}
           />
         )}
@@ -773,7 +773,7 @@ const Post = ({ post }: PostProps) => {
             <img 
               src={post.imageUrl} 
               alt="Post content" 
-              className={`w-full object-contain rounded-lg cursor-pointer ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
+              className={`aspect-square w-full rounded-xl object-cover cursor-pointer ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
               onClick={() => {
                 console.log("Image clicked, toggling tags. Tagged users:", post.taggedUsers);
                 setShowTags(!showTags);
@@ -826,7 +826,7 @@ const Post = ({ post }: PostProps) => {
           </div>
         )}
         
-        <div className="flex items-center justify-between text-gray-500">
+        <div className="flex items-center justify-between text-zinc-500">
           <div className="flex space-x-4">
             <Button 
               variant="ghost" 
