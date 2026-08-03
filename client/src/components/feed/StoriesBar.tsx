@@ -79,16 +79,16 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     return (
       <div className="mb-4 bg-black py-3 text-white">
         <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex space-x-4">
+          <div className="flex w-max space-x-4 pr-4">
             {/* Current user story skeleton */}
-            <div className="flex flex-col items-center">
+            <div className="flex shrink-0 flex-col items-center">
               <Skeleton className="w-16 h-16 rounded-full" />
               <Skeleton className="w-12 h-3 mt-1" />
             </div>
             
             {/* Other users stories skeletons */}
             {Array(4).fill(0).map((_, i) => (
-              <div key={i} className="flex flex-col items-center">
+              <div key={i} className="flex shrink-0 flex-col items-center">
                 <Skeleton className="w-16 h-16 rounded-full" />
                 <Skeleton className="w-12 h-3 mt-1" />
               </div>
@@ -113,11 +113,11 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     <>
       <div className="py-3 mb-4">
         <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex space-x-4">
+          <div className="flex w-max space-x-4 pr-4">
             {/* Current user's story or create story button */}
             {currentUser && (
               <div 
-                className="flex flex-col items-center cursor-pointer"
+                className="flex shrink-0 flex-col items-center cursor-pointer"
                 role="button"
                 tabIndex={0}
                 aria-label={hasCurrentUserStory ? "View your story" : "Create a story"}
@@ -165,7 +165,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
               .map((user) => (
                 <div 
                   key={user.id}
-                  className="flex flex-col items-center cursor-pointer"
+                  className="flex shrink-0 flex-col items-center cursor-pointer"
                   role="button"
                   tabIndex={0}
                   aria-label={`View ${user.displayName}'s story`}

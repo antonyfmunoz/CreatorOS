@@ -6,7 +6,6 @@ import { Progress } from "@/components/ui/progress";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { Button } from "@/components/ui/button";
 import { Loader2, Mic, Pause, Play } from "lucide-react";
-import { DialogTitle } from "@/components/ui/dialog";
 
 interface VoiceRecorderProps {
   onClose: () => void;
@@ -206,12 +205,12 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
-      <DialogTitle className="sr-only">Create New Voice Post</DialogTitle>
+    <div className="flex min-h-dvh flex-col overflow-hidden bg-black text-white">
+      <h1 className="sr-only">Create New Voice Post</h1>
       
       {/* Top Bar */}
-      <div className="flex justify-between items-center p-4 border-b">
-        <button className="text-foreground" onClick={onClose} aria-label="Cancel voice post">Cancel</button>
+      <div className="flex items-center justify-between border-b border-zinc-800 p-4">
+        <button className="text-zinc-300" onClick={onClose} aria-label="Cancel voice post">Cancel</button>
         <h2 className="text-lg font-medium">Voice Message</h2>
         <Button 
           variant="ghost" 
@@ -305,10 +304,10 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         
         {/* Caption input - only show if recording is complete */}
         {audioBlob && (
-          <div className="p-4 border-b">
+          <div className="border-b border-zinc-800 p-4">
             <input
               type="text"
-              className="w-full p-3 bg-background border border-border rounded"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
               placeholder="Add caption (optional)"
               value={content}
               onChange={(e) => setContent(e.target.value)}

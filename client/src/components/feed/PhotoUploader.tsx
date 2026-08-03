@@ -23,7 +23,6 @@ import { LocationPicker, type LocationData } from "@/components/feed/LocationPic
 import { TagEditor, type TaggedUser } from "@/components/feed/TagEditor";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 interface PhotoUploaderProps {
@@ -447,11 +446,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   // If images are selected, show the carousel editor and options
   if (imagePreviews.length > 0) {
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
-        <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
+      <div className="flex min-h-dvh flex-col overflow-hidden bg-black text-white">
+        <h1 className="sr-only">Create New Photo Post</h1>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b h-[58px]">
+        <div className="flex h-[58px] items-center justify-between border-b border-zinc-800 p-4">
           <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
           <h2 className="text-lg font-medium">New post</h2>
           <div className="w-10 h-6"></div> {/* Empty space to balance the header */}
@@ -464,7 +463,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         >
           {/* Image preview carousel */}
           <div 
-            className="relative w-full aspect-square bg-muted flex items-center justify-center"
+            className="relative flex aspect-square w-full items-center justify-center bg-zinc-900"
             onClick={() => {
               if (taggedUsers.length > 0) {
                 setShowTagLabels(!showTagLabels);
@@ -583,9 +582,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           </div>
           
           {/* Caption input */}
-          <div className="p-4 border-b">
+          <div className="border-b border-zinc-800 p-4">
             <textarea
-              className="w-full p-3 bg-background border border-border rounded resize-none"
+              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
               placeholder="Write a caption..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -909,9 +908,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             </div>
             
             {/* Share Button */}
-            <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
+            <div className="sticky bottom-0 w-full border-t border-zinc-800 bg-black px-4 pb-4 pt-2">
               <Button 
-                className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
+                className="flex w-full items-center justify-center rounded-xl bg-[#1d9bf0] py-2 text-white hover:bg-[#1a8cd8]"
                 onClick={handlePost}
               >
                 Share
@@ -1020,11 +1019,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   
   // Photo selection mode with Instagram-inspired UI, similar to story creator
   return (
-    <div className="flex flex-col w-full h-[100vh] bg-white text-foreground">
-      <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
+    <div className="flex h-[100vh] w-full flex-col bg-black text-white">
+      <h1 className="sr-only">Create New Photo Post</h1>
       
       {/* Top bar - exactly like story creator */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-white z-50">
+      <div className="z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-3">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -1044,15 +1043,15 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="flex items-center justify-center min-h-full">
           {!cameraMode ? (
             <div className="flex flex-col items-center w-full max-w-md px-4">
-              <DialogDescription className="text-center text-gray-500 mb-8">
+              <p className="mb-8 text-center text-zinc-400">
                 Add photos or videos to your post to share with your followers.
-              </DialogDescription>
+              </p>
               
               <div className="w-full grid grid-cols-2 gap-4">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-white hover:bg-zinc-800"
                   onClick={triggerFileSelect}
                 >
                   <Upload className="h-7 w-7 mb-2" />
@@ -1062,7 +1061,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-white hover:bg-zinc-800"
                   onClick={startCamera}
                 >
                   <Camera className="h-7 w-7 mb-2" />

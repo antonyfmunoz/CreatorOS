@@ -15,8 +15,24 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { PhotoUploader } from "@/components/feed/PhotoUploader";
+import { VideoRecorder } from "@/components/feed/VideoRecorder";
+import { VoiceRecorder } from "@/components/feed/VoiceRecorder";
 
 export default function CreatePost() {
+  const queryString = useSearch();
+  const postType = new URLSearchParams(queryString).get("type") || "text";
+  const [, setLocation] = useWouterLocation();
+  const closeComposer = () => setLocation("/create");
+
+  if (postType === "photo") return <PhotoUploader onClose={closeComposer} />;
+  if (postType === "video") return <VideoRecorder onClose={closeComposer} />;
+  if (postType === "audio") return <VoiceRecorder onClose={closeComposer} />;
+
+  return <CreatePostForm />;
+}
+
+function CreatePostForm() {
   const queryString = useSearch();
   const searchParams = new URLSearchParams(queryString);
   const postType = searchParams.get("type") || "text";
