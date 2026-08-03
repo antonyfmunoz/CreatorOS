@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, type HTMLAttributes, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
+import { forwardRef, useImperativeHandle, useRef, type HTMLAttributes, type PointerEvent, type WheelEvent } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -7,15 +7,13 @@ import { cn } from "@/lib/utils";
  * instead of a hidden scrollbar.
  */
 export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, onClickCapture, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWheel, ...props }, forwardedRef) => {
+  ({ className, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWheel, ...props }, forwardedRef) => {
     const railRef = useRef<HTMLDivElement>(null);
     const drag = useRef<{ pointerId: number; startX: number; startScrollLeft: number; didMove: boolean } | null>(null);
-    const suppressNextClick = useRef(false);
     useImperativeHandle(forwardedRef, () => railRef.current as HTMLDivElement);
 
     const stopDragging = (event: PointerEvent<HTMLDivElement>) => {
       if (drag.current?.pointerId === event.pointerId) {
-        suppressNextClick.current = drag.current.didMove;
         drag.current = null;
         event.currentTarget.classList.remove("is-dragging");
       }
@@ -34,17 +32,9 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
       <div
         ref={railRef}
         className={cn("horizontal-rail cursor-grab select-none active:cursor-grabbing", className)}
-        onClickCapture={(event: MouseEvent<HTMLDivElement>) => {
-          onClickCapture?.(event);
-          if (!suppressNextClick.current) return;
-          suppressNextClick.current = false;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
         onPointerDown={(event) => {
           onPointerDown?.(event);
           if (event.defaultPrevented || event.pointerType !== "mouse") return;
-          suppressNextClick.current = false;
           drag.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: event.currentTarget.scrollLeft, didMove: false };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
@@ -52,7 +42,7 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
           onPointerMove?.(event);
           if (!drag.current || drag.current.pointerId !== event.pointerId) return;
           const distance = event.clientX - drag.current.startX;
-          if (!drag.current.didMove && Math.abs(distance) >= 6) {
+          if (!drag.current.didMove && Math.abs(distance) >= 12) {
             drag.current.didMove = true;
             event.currentTarget.classList.add("is-dragging");
           }
