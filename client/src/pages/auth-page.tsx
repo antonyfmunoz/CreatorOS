@@ -1,5 +1,6 @@
-import { SignIn } from "@clerk/clerk-react";
+import { SignIn, SignUp } from "@clerk/clerk-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useState } from "react";
 import { useLocation } from "wouter";
 
 const clerkAppearance = {
@@ -24,6 +25,7 @@ const clerkAppearance = {
 } as const;
 
 const AuthPage = () => {
+  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
 
@@ -37,14 +39,37 @@ const AuthPage = () => {
       {/* Auth form section */}
       <div className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 md:w-1/2 md:px-10">
         <div className="w-full max-w-md space-y-6">
-          <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold tracking-tight">Welcome to CreativesOS</h1>
-            <p className="mt-2 text-zinc-400">
-              Your all-in-one platform for creatives
-            </p>
-          </div>
-
-          <SignIn routing="hash" appearance={clerkAppearance} />
+          {mode === "sign-in" ? (
+            <>
+              <SignIn routing="hash" appearance={clerkAppearance} />
+              <div className="text-center">
+                <p className="text-sm text-zinc-400">
+                  Don't have an account?{" "}
+                  <button
+                    onClick={() => setMode("sign-up")}
+                    className="text-primary hover:underline"
+                  >
+                    Register now
+                  </button>
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <SignUp routing="hash" appearance={clerkAppearance} />
+              <div className="text-center">
+                <p className="text-sm text-zinc-400">
+                  Already have an account?{" "}
+                  <button
+                    onClick={() => setMode("sign-in")}
+                    className="text-primary hover:underline"
+                  >
+                    Login
+                  </button>
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
