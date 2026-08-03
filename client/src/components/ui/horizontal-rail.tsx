@@ -44,6 +44,7 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
         onPointerDown={(event) => {
           onPointerDown?.(event);
           if (event.defaultPrevented || event.pointerType !== "mouse") return;
+          suppressNextClick.current = false;
           drag.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: event.currentTarget.scrollLeft, didMove: false };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
