@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
@@ -57,11 +57,12 @@ function DemoLogoutRoute() {
 }
 
 function Router() {
-  const { activeTab, setActiveTab } = useAppStore();
+  const { setActiveTab } = useAppStore();
+  const [location] = useLocation();
 
   // Update active tab when route changes
   useEffect(() => {
-    const path = window.location.pathname.substring(1);
+    const path = location.substring(1).split('/')[0];
     const validTabs = ['marketplace', 'create', 'ai', 'communities', 'profile'];
 
     if (path === '') {
@@ -69,7 +70,7 @@ function Router() {
     } else if (validTabs.includes(path)) {
       setActiveTab(path as any);
     }
-  }, [setActiveTab]);
+  }, [location, setActiveTab]);
 
   return (
     <Switch>

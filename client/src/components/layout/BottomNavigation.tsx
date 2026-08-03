@@ -10,8 +10,20 @@ import { cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
 
 const BottomNavigation = () => {
-  const { activeTab, setActiveTab } = useAppStore();
+  const { setActiveTab } = useAppStore();
   const [location, setLocation] = useLocation();
+
+  const activeTab = location === "/" || location.startsWith("/posts/")
+    ? "explore"
+    : location.startsWith("/marketplace")
+      ? "marketplace"
+      : location.startsWith("/create") || location === "/new-text-post"
+        ? "create"
+        : location.startsWith("/communities")
+          ? "communities"
+          : location.startsWith("/profile") || location.startsWith("/user/") || ["/saved-posts", "/followers", "/following", "/revenue", "/contacts", "/documents"].some((path) => location === path || location.startsWith(`${path}/`))
+            ? "profile"
+            : null;
 
   // These are focused, full-screen Stitch surfaces. Their own headers provide
   // the exit path; retaining the global nav here breaks the approved layout.

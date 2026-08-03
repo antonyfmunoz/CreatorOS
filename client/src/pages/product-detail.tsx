@@ -8,10 +8,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-export default function ProductDetail() {
+export default function ProductDetail({ id: routeProductId }: { id?: string }) {
   const [, setLocation] = useLocation();
-  const { id } = useParams<{ id: string }>();
-  const productId = Number(id);
+  const params = useParams<{ id?: string }>();
+  const productId = Number(routeProductId ?? params.id);
   const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const { user } = useAuth();
   const { toast } = useToast();
