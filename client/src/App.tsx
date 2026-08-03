@@ -75,6 +75,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
       <Route path="/logout" component={DEMO_MODE ? DemoLogoutRoute : LogoutRoute} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
@@ -114,7 +115,7 @@ function AppContent() {
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   const [location] = useLocation();
-  const isAuthRoute = location === "/auth" || location === "/logout";
+  const isAuthRoute = location === "/auth" || location === "/register" || location === "/logout";
 
   return (
     <>

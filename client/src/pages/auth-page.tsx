@@ -1,6 +1,5 @@
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
 import { useLocation } from "wouter";
 
 const clerkAppearance = {
@@ -12,9 +11,9 @@ const clerkAppearance = {
 } as const;
 
 const AuthPage = () => {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
+  const isRegistration = location === "/register";
 
   if (isSignedIn) {
     setLocation("/");
@@ -33,14 +32,14 @@ const AuthPage = () => {
             </p>
           </div>
 
-          {mode === "sign-in" ? (
+          {!isRegistration ? (
             <>
-              <SignIn routing="hash" appearance={clerkAppearance} />
+              <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/register" />
               <div className="text-center">
                 <p className="text-sm text-zinc-400">
                   Don't have an account?{" "}
                   <button
-                    onClick={() => setMode("sign-up")}
+                    onClick={() => setLocation("/register")}
                     className="text-primary hover:underline"
                   >
                     Register now
@@ -50,12 +49,12 @@ const AuthPage = () => {
             </>
           ) : (
             <>
-              <SignUp routing="hash" appearance={clerkAppearance} />
+              <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth" />
               <div className="text-center">
                 <p className="text-sm text-zinc-400">
                   Already have an account?{" "}
                   <button
-                    onClick={() => setMode("sign-in")}
+                    onClick={() => setLocation("/auth")}
                     className="text-primary hover:underline"
                   >
                     Login
