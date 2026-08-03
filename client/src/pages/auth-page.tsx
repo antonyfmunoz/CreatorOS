@@ -1,6 +1,5 @@
-import { SignIn, SignUp } from "@clerk/clerk-react";
+import { SignIn } from "@clerk/clerk-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
 import { useLocation } from "wouter";
 
 const clerkAppearance = {
@@ -25,7 +24,6 @@ const clerkAppearance = {
 } as const;
 
 const AuthPage = () => {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
 
@@ -46,37 +44,7 @@ const AuthPage = () => {
             </p>
           </div>
 
-          {mode === "sign-in" ? (
-            <>
-              <SignIn routing="hash" appearance={clerkAppearance} />
-              <div className="text-center">
-                <p className="text-sm text-zinc-400">
-                  Don't have an account?{" "}
-                  <button
-                    onClick={() => setMode("sign-up")}
-                    className="text-primary hover:underline"
-                  >
-                    Register now
-                  </button>
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <SignUp routing="hash" appearance={clerkAppearance} />
-              <div className="text-center">
-                <p className="text-sm text-zinc-400">
-                  Already have an account?{" "}
-                  <button
-                    onClick={() => setMode("sign-in")}
-                    className="text-primary hover:underline"
-                  >
-                    Login
-                  </button>
-                </p>
-              </div>
-            </>
-          )}
+          <SignIn routing="hash" appearance={clerkAppearance} />
         </div>
       </div>
 
