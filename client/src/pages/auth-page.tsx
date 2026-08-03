@@ -42,7 +42,7 @@ const AuthPage = () => {
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold tracking-tight">Welcome to CreativesOS</h1>
             <p className="mt-2 text-zinc-400">
-              Your all-in-one platform for creators
+              Your all-in-one platform for creatives
             </p>
           </div>
 

@@ -113,14 +113,16 @@ function AppContent() {
   const { isOpen } = useAIChatStore();
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
+  const [location] = useLocation();
+  const isAuthRoute = location === "/auth" || location === "/logout";
 
   return (
     <>
-      <div className="app-container">
+      <div className={isAuthRoute ? "app-container pb-0" : "app-container"}>
         <main className="tab-content">
           <Router />
         </main>
-        <BottomNavigation />
+        {!isAuthRoute && <BottomNavigation />}
         {isOpen && <ChatInterface />}
       </div>
       <Toaster />
