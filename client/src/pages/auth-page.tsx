@@ -7,20 +7,7 @@ const clerkAppearance = {
   elements: {
     rootBox: "!w-full !max-w-none",
     cardBox: "!w-full",
-    card: "!w-full !max-w-none !rounded-xl !border !border-zinc-800 !bg-zinc-950 !shadow-none",
-    headerTitle: "!text-white",
-    headerSubtitle: "!text-zinc-400",
-    socialButtonsBlockButton:
-      "!border-zinc-700 !bg-zinc-900 !text-white hover:!bg-zinc-800",
-    dividerLine: "!bg-zinc-800",
-    dividerText: "!text-zinc-500",
-    formFieldLabel: "!text-zinc-300",
-    formFieldInput:
-      "!border-zinc-700 !bg-zinc-900 !text-white placeholder:!text-zinc-500",
-    formButtonPrimary: "!bg-sky-500 hover:!bg-sky-400 !text-white",
-    footer: "!bg-transparent",
-    footerActionText: "!text-zinc-400",
-    footerActionLink: "!text-sky-400 hover:!text-sky-300",
+    card: "!w-full !max-w-none !rounded-xl",
   },
 } as const;
 
@@ -39,6 +26,13 @@ const AuthPage = () => {
       {/* Auth form section */}
       <div className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 md:w-1/2 md:px-10">
         <div className="w-full max-w-md space-y-6">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to CreativesOS</h1>
+            <p className="mt-2 text-zinc-400">
+              Your all-in-one platform for creatives
+            </p>
+          </div>
+
           {mode === "sign-in" ? (
             <>
               <SignIn routing="hash" appearance={clerkAppearance} />
