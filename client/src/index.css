@@ -75,6 +75,20 @@
   .tab-content {
     @apply w-full h-full;
   }
+
+  /* Touch-first rails: hide the visual scrollbar without disabling natural
+     swipe, trackpad, Shift+wheel, or keyboard scrolling. */
+  .horizontal-rail {
+    @apply flex overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 1rem;
+    touch-action: pan-x pan-y;
+  }
+
+  .horizontal-rail > * {
+    scroll-snap-align: start;
+  }
 }
 
 /* Hide the default close button in story dialog */

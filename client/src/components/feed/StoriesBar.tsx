@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { StoryCreator } from './StoryCreator';
+import { HorizontalRail } from '@/components/ui/horizontal-rail';
 
 // Define the User type inline to avoid import issues
 interface User {
@@ -78,7 +79,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   if (isLoading) {
     return (
       <div className="mb-4 bg-black py-3 text-white">
-        <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <HorizontalRail className="px-4">
           <div className="flex w-max space-x-4 pr-4">
             {/* Current user story skeleton */}
             <div className="flex shrink-0 flex-col items-center">
@@ -94,7 +95,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
               </div>
             ))}
           </div>
-        </div>
+        </HorizontalRail>
       </div>
     );
   }
@@ -112,7 +113,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   return (
     <>
       <div className="py-3 mb-4">
-        <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <HorizontalRail className="px-4">
           <div className="flex w-max space-x-4 pr-4">
             {/* Current user's story or create story button */}
             {currentUser && (
@@ -195,7 +196,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
               ))
             }
           </div>
-        </div>
+        </HorizontalRail>
       </div>
       
       {/* Story Creator Dialog */}

@@ -248,7 +248,7 @@ const Stories = () => {
   
   if (isLoading) {
     return (
-      <div className="overflow-x-auto scrollbar-hide mb-6">
+      <div className="horizontal-rail mb-6">
         <div className="flex space-x-4">
           {Array(5).fill(0).map((_, i) => (
             <div key={i} className="flex flex-col items-center">
@@ -263,7 +263,7 @@ const Stories = () => {
   
   return (
     <>
-      <div className="overflow-x-auto scrollbar-hide mb-6 stories-container">
+      <div className="horizontal-rail mb-6 stories-container">
         <div className="flex space-x-4">
           {uniqueUsers.map((user) => (
             <div 

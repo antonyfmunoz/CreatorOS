@@ -5,8 +5,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
-import { BarChart2, Upload } from "lucide-react";
+import { BarChart2, ImagePlus, Mic, Upload, Video } from "lucide-react";
 import { PollCreator } from "@/components/feed/PollCreator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
 
 export default function NewTextPost() {
   const [content, setContent] = useState("");
@@ -91,16 +93,17 @@ export default function NewTextPost() {
           ✕
         </button>
         <span className="font-semibold">New post</span>
-        <div className="w-5"></div>
+        <button className="rounded-full bg-[#1d9bf0] px-3 py-1 text-xs font-bold text-white disabled:opacity-40" onClick={handleSubmit} disabled={!content.trim() || createPostMutation.isPending}>Share</button>
       </header>
       
       {/* All content */}
       <div>
         {/* Caption Input */}
-        <div className="border-b border-zinc-800 p-4">
+        <div className="flex gap-3 border-b border-zinc-800 p-4">
+          <Avatar className="h-10 w-10 shrink-0"><AvatarImage src={user?.profileImageUrl || undefined} /><AvatarFallback>{user?.displayName?.charAt(0) ?? "Y"}</AvatarFallback></Avatar>
           <textarea
-            className="h-28 w-full resize-none bg-transparent text-base text-white outline-none placeholder:text-zinc-500"
-            placeholder="Write a caption..."
+            className="h-36 w-full resize-none bg-transparent text-lg text-white outline-none placeholder:text-zinc-500"
+            placeholder="What's on your mind?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
           ></textarea>
@@ -126,19 +129,12 @@ export default function NewTextPost() {
               </div>
             </div>
           ) : (
-            <button 
-              type="button"
-              className="flex h-[38px] w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-zinc-700 bg-transparent px-4 py-2 text-zinc-200 transition-colors hover:bg-zinc-900"
-              onClick={() => {
-                console.log("Opening poll modal");
-                setIsPollModalOpen(true);
-              }}
-            >
-              <div className="flex items-center justify-center">
-                <BarChart2 className="w-4 h-4 mr-1.5" />
-                <span className="text-[14px]">Poll</span>
-              </div>
-            </button>
+            <HorizontalRail className="gap-3">
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=photo')}><ImagePlus className="h-4 w-4 text-[#1d9bf0]" /> Photo</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=video')}><Video className="h-4 w-4 text-[#1d9bf0]" /> Video</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=audio')}><Mic className="h-4 w-4 text-[#1d9bf0]" /> Audio</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setIsPollModalOpen(true)}><BarChart2 className="h-4 w-4 text-[#1d9bf0]" /> Poll</button>
+            </HorizontalRail>
           )}
         </div>
         

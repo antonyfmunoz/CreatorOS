@@ -467,6 +467,13 @@ export class MemStorage implements IStorage {
       name: 'resources',
     });
 
+    // Each discoverable community receives an actual channel structure. The
+    // member gate in the route layer keeps this content private until joined.
+    this.createChannel({ communityId: 2, name: 'general' });
+    this.createChannel({ communityId: 2, name: 'content-strategy' });
+    this.createChannel({ communityId: 3, name: 'general' });
+    this.createChannel({ communityId: 3, name: 'design-feedback' });
+
     // Create channel messages
     this.createChannelMessage({
       channelId: 1,
@@ -493,6 +500,20 @@ export class MemStorage implements IStorage {
       channelId: 1,
       userId: 5,
       content: 'Welcome to the Web Developers community! Please read our guidelines and introduce yourself in the #introductions channel.',
+      isPinned: true,
+    });
+
+    this.createChannelMessage({
+      channelId: 6,
+      userId: 2,
+      content: 'Welcome creators! Share your latest idea, experiment, or launch.',
+      isPinned: true,
+    });
+
+    this.createChannelMessage({
+      channelId: 8,
+      userId: 4,
+      content: 'Drop work-in-progress designs here for thoughtful feedback.',
       isPinned: true,
     });
 

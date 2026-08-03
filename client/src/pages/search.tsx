@@ -5,6 +5,7 @@ import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
 import { Product, User } from "@/types";
 
 export default function SearchPage() {
@@ -65,9 +66,9 @@ export default function SearchPage() {
 
           <div>
             <h2 className="mb-4 text-2xl font-bold text-white">Recent Product Searches</h2>
-            <div className="flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <HorizontalRail className="gap-3">
               {recentProducts.map((product) => <Link key={product.id} href={`/marketplace/product/${product.id}`} className="w-40 shrink-0"><div className="aspect-square overflow-hidden rounded-2xl bg-zinc-900">{product.imageUrl && <img src={product.imageUrl} alt={product.title} className="h-full w-full object-cover" />}</div><p className="mt-2 truncate text-base font-medium">{product.title}</p></Link>)}
-            </div>
+            </HorizontalRail>
           </div>
 
           <div>

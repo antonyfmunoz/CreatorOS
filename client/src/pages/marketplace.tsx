@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Search, ShoppingCart, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications";
 import { Community, Product, Purchase } from "@/types";
@@ -131,7 +132,7 @@ export default function Marketplace() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
               <Input ref={searchInputRef} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search creators, offers, or topics" className="h-10 rounded-full border-0 bg-zinc-900 pl-9 text-white shadow-none placeholder:text-zinc-500" />
             </div>
-            <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <HorizontalRail className="pb-1">
               <div className="flex w-max gap-2 pr-4">
                 {categories.map((item) => (
                   <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-5 py-1.5 text-xs font-bold ${category === item ? "bg-[#1d9bf0] text-white" : "bg-zinc-900 text-zinc-300"}`}>
@@ -139,7 +140,7 @@ export default function Marketplace() {
                   </button>
                 ))}
               </div>
-            </div>
+            </HorizontalRail>
           </div>
           <section className="p-4">
             {category === "Communities" ? (

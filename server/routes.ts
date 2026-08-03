@@ -1073,9 +1073,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Channel routes
-  app.get("/api/communities/:communityId/channels", async (req, res) => {
+  app.get("/api/communities/:communityId/channels", attachUser, async (req, res) => {
     try {
-      const channels = await storage.getChannelsByCommunityId(parseInt(req.params.communityId));
+      const communityId = parseInt(req.params.communityId);
+      const membership = await storage.getCommunityMembership(req.dbUser!.id, communityId);
+      if (!membership) return res.status(403).json({ message: "Join this community to view its channels" });
+      const channels = await storage.getChannelsByCommunityId(communityId);
       res.json(channels);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch channels" });
@@ -1092,9 +1095,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Channel Message routes
-  app.get("/api/channels/:channelId/messages", async (req, res) => {
+  app.get("/api/channels/:channelId/messages", attachUser, async (req, res) => {
     try {
-      const messages = await storage.getMessagesByChannelId(parseInt(req.params.channelId));
+      const channel = await storage.getChannelById(parseInt(req.params.channelId));
+      if (!channel) return res.status(404).json({ message: "Channel not found" });
+      const membership = await storage.getCommunityMembership(req.dbUser!.id, channel.communityId);
+      if (!membership) return res.status(403).json({ message: "Join this community to view its messages" });
+      const messages = await storage.getMessagesByChannelId(channel.id);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messages" });

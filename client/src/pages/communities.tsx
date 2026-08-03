@@ -5,10 +5,11 @@ import {
   Community as CommunityType, 
   ChannelMessage as ChannelMessageType 
 } from "@/types";
-import { Search, Bell, MoreHorizontal, Hash, Send, Menu, Check, UserPlus } from "lucide-react";
+import { Search, Bell, MoreHorizontal, Hash, Send, Menu, Check, UserPlus, ChevronLeft, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
 import ChannelSidebar from "@/components/communities/ChannelSidebar";
 import ChatMessage from "@/components/communities/ChatMessage";
 import { useEffect, useState } from "react";
@@ -20,11 +21,12 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/lib/stores";
-import { useRoute } from "wouter";
+import { useLocation, useRoute } from "wouter";
 
 const Communities = () => {
   const { activeCommunityId, activeChannelId, setActiveCommunity } = useCommunitiesStore();
   const [, routeParams] = useRoute("/communities/:id");
+  const [, setLocation] = useLocation();
   const { currentUser } = useAppStore();
   const queryClient = useQueryClient();
   const [messageInput, setMessageInput] = useState("");
@@ -49,17 +51,6 @@ const Communities = () => {
     },
   });
   
-  const { data: channels, isLoading: isLoadingChannels } = useQuery<ChannelType[]>({
-    queryKey: ['/api/communities', activeCommunityId, 'channels'],
-    enabled: activeCommunityId !== null,
-    queryFn: async () => {
-      const response = await fetch(`/api/communities/${activeCommunityId}/channels`);
-      if (!response.ok) throw new Error("Failed to load channels");
-      return response.json();
-    },
-  });
-
-  const activeChannel = channels?.find(channel => channel.id === activeChannelId);
   const { data: membership, isLoading: isLoadingMembership } = useQuery<{ isMember: boolean }>({
     queryKey: ['/api/communities', activeCommunityId, 'membership'],
     enabled: activeCommunityId !== null,
@@ -70,6 +61,18 @@ const Communities = () => {
     },
   });
   const isMember = membership?.isMember === true;
+
+  const { data: channels, isLoading: isLoadingChannels } = useQuery<ChannelType[]>({
+    queryKey: ['/api/communities', activeCommunityId, 'channels'],
+    enabled: activeCommunityId !== null && isMember,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}/channels`);
+      if (!response.ok) throw new Error("Failed to load channels");
+      return response.json();
+    },
+  });
+
+  const activeChannel = channels?.find(channel => channel.id === activeChannelId);
 
   useEffect(() => {
     if (channels?.length && activeChannelId === null) {
@@ -90,7 +93,7 @@ const Communities = () => {
   
   const { data: messages, isLoading: isLoadingMessages } = useQuery<ChannelMessageType[]>({
     queryKey: ['/api/channels', activeChannelId, 'messages'],
-    enabled: activeChannelId !== null,
+    enabled: activeChannelId !== null && isMember,
     queryFn: async () => {
       const response = await fetch(`/api/channels/${activeChannelId}/messages`);
       if (!response.ok) throw new Error("Failed to load channel messages");
@@ -127,6 +130,31 @@ const Communities = () => {
   
   // Find pinned messages
   const pinnedMessages = messages?.filter(msg => msg.isPinned) || [];
+
+  if (isLoadingCommunity || isLoadingMembership) {
+    return <main className="flex min-h-dvh items-center justify-center bg-black px-6 text-center text-sm text-zinc-500">Loading community access…</main>;
+  }
+
+  if (!isMember) {
+    return (
+      <main className="flex min-h-dvh flex-col bg-black px-5 pb-24 pt-5 text-white">
+        <header className="flex items-center justify-between">
+          <Button variant="ghost" size="icon" className="-ml-2 rounded-full text-white hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/marketplace")} aria-label="Back to marketplace"><ChevronLeft className="h-7 w-7" /></Button>
+          <span className="text-lg font-bold">CreatorOS</span>
+          <span className="w-10" />
+        </header>
+        <section className="m-auto w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-950 p-7 text-center shadow-2xl shadow-black">
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900"><LockKeyhole className="h-7 w-7 text-zinc-300" /></span>
+          <h1 className="mt-6 text-2xl font-bold">Join {community?.name ?? "this community"}</h1>
+          <p className="mt-3 text-sm leading-6 text-zinc-500">{community?.description ?? "Community conversations, channels, and live rooms are available to members."}</p>
+          <Button className="mt-7 h-11 w-full rounded-full bg-[#1d9bf0] font-bold text-white hover:bg-[#1a8cd8]" disabled={joinCommunityMutation.isPending || !activeCommunityId} onClick={() => joinCommunityMutation.mutate()}>
+            <UserPlus className="mr-2 h-4 w-4" /> {joinCommunityMutation.isPending ? "Joining…" : "Join community"}
+          </Button>
+          <button className="mt-4 text-sm font-semibold text-zinc-400 hover:text-white" onClick={() => setLocation("/marketplace")}>Browse other communities</button>
+        </section>
+      </main>
+    );
+  }
   
   return (
     <div className="flex h-screen overflow-hidden bg-black pb-14">
@@ -142,7 +170,7 @@ const Communities = () => {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-4/5 border-r border-zinc-800 bg-black p-0 text-white">
-          <ChannelSidebar isMobile />
+          <ChannelSidebar isMobile isMember={isMember} />
         </SheetContent>
       </Sheet>
       
@@ -155,18 +183,21 @@ const Communities = () => {
       </aside>
 
       {/* Desktop Sidebar */}
-      <ChannelSidebar />
+      <ChannelSidebar isMember={isMember} />
       
       {/* Main Chat Area */}
       <div className="flex min-w-0 flex-1 flex-col bg-black text-white">
         {/* Top Bar */}
-        <div className="p-4 border-b border-zinc-800 flex items-center">
+        <div className="flex h-16 items-center border-b border-zinc-800 px-4">
           <div className="md:hidden w-6"></div> {/* Spacer for mobile */}
-          <h2 className="ml-2 min-w-0 flex-1 truncate text-2xl font-bold md:ml-0">
+          <h2 className="min-w-0 flex-1 truncate text-2xl font-bold">
+            {activeChannel ? `# ${activeChannel.name}` : community?.name ?? 'Select a community'}
+          </h2>
+          <h2 className="sr-only">
             {community ? `${community.name} ›` : 'Select a community'}
           </h2>
           <div className="ml-auto flex shrink-0 items-center space-x-1">
-            {activeCommunityId && (
+            {false && activeCommunityId && (
               <Button
                 variant={isMember ? "secondary" : "outline"}
                 className="h-8 rounded-full border-zinc-700 bg-zinc-900 px-3 text-xs text-white hover:bg-zinc-800"
@@ -191,7 +222,7 @@ const Communities = () => {
         {/* Channel List */}
         {channels && channels.length > 0 && (
           <div className="border-b border-zinc-800 p-4 md:hidden">
-            <div className="flex space-x-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <HorizontalRail className="space-x-4">
               {isLoadingChannels ? (
                 Array(5).fill(0).map((_, i) => (
                   <Skeleton key={i} className="w-24 h-8 rounded-full" />
@@ -209,18 +240,17 @@ const Communities = () => {
                   </Button>
                 ))
               )}
-            </div>
+            </HorizontalRail>
           </div>
         )}
         
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Day Divider */}
-          <div className="flex items-center">
-            <div className="flex-1 border-t border-zinc-800"></div>
-            <span className="px-2 text-sm text-zinc-500">Today</span>
-            <div className="flex-1 border-t border-zinc-800"></div>
-          </div>
+        <div className="flex-1 space-y-6 overflow-y-auto p-4">
+          <section className="border-b border-zinc-800 pb-6">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800"><Hash className="h-9 w-9" /></span>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight">Welcome to #{activeChannel?.name ?? "the community"}!</h1>
+            <p className="mt-2 text-base text-zinc-500">This is the start of the #{activeChannel?.name ?? "community"} channel.</p>
+          </section>
           
           {/* Pinned Messages */}
           {pinnedMessages.map(message => (

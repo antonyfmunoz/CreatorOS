@@ -114,7 +114,7 @@ const ProductList = ({ title, section, searchQuery = "" }: { title: string; sect
       <div>
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
         
-        <div className="overflow-x-auto scrollbar-hide mb-6">
+        <div className="horizontal-rail mb-6">
           <div className="flex space-x-4">
             {categories.map((category) => (
               <Button

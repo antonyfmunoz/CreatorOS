@@ -11,6 +11,7 @@ import { MessageButton } from "@/components/messages";
 import ProfileFeed from "@/components/profile/ProfileFeed";
 import Post from "@/components/explore/Post";
 import { Button } from "@/components/ui/button";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfilePage from "@/components/profile/EditProfilePage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -475,7 +476,7 @@ const Profile = () => {
         )}
       </div>
       
-      <nav className="mt-4 flex snap-x snap-mandatory overflow-x-auto border-y border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Profile content">
+      <HorizontalRail className="mt-4 border-y border-zinc-800" role="navigation" aria-label="Profile content">
         {([
           ["posts", "Posts"],
           ["reposts", "Reposts"],
@@ -493,7 +494,7 @@ const Profile = () => {
             {profileView === value && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-white" />}
           </button>
         ))}
-      </nav>
+      </HorizontalRail>
 
       {profileView === "posts" && user && (
         <ProfileFeed userId={user.id} username={user.username} />
