@@ -419,7 +419,7 @@ const Profile = () => {
         
         {/* Name and Bio */}
         <div className="mb-4">
-          <div className="text-lg font-medium leading-6">{user?.bio || "Creator OS user"}</div>
+          {user?.bio && <div className="text-lg font-medium leading-6">{user.bio}</div>}
           <div className="mt-2 flex items-center gap-2 text-sm text-zinc-500"><CalendarDays className="h-4 w-4" />{joinedLabel}</div>
         </div>
         
