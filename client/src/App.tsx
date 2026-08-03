@@ -23,6 +23,8 @@ import NewTextPostPage from "@/pages/new-text-post";
 import MessagesPage from "@/pages/messages";
 import SearchPage from "@/pages/search";
 import CreatePage from "@/pages/create";
+import CreateEventPage from "@/pages/create-event";
+import NotificationsPage from "@/pages/notifications";
 import PostAnalyticsPage from "@/pages/post-analytics";
 import BottomNavigation from "@/components/layout/BottomNavigation";
 import { useCallback, useEffect } from "react";
@@ -94,8 +96,10 @@ function Router() {
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/marketplace/product/:id" component={ProductDetail} />
       <ProtectedRoute path="/create/post" component={CreatePostPage} />
+      <ProtectedRoute path="/create/event" component={CreateEventPage} />
       <ProtectedRoute path="/create" component={CreatePage} />
       <ProtectedRoute path="/messages" component={MessagesPage} />
+      <ProtectedRoute path="/notifications" component={NotificationsPage} />
       <ProtectedRoute path="/search" component={SearchPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <ProtectedRoute path="/posts/:id/analytics" component={PostAnalyticsPage} />

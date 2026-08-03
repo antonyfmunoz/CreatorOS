@@ -3,7 +3,8 @@ import { useAppStore } from "@/lib/stores";
 import { 
   Settings, LogOut, LogIn, User as UserIcon, GridIcon, 
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
-  FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft
+  FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft,
+  CalendarDays, LayoutDashboard, Menu, MessageSquare, Share2
 } from "lucide-react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
@@ -230,6 +231,21 @@ const Profile = () => {
   const handleLogin = () => {
     setLocation("/auth");
   };
+
+  const handleShareProfile = async () => {
+    if (!user) return;
+    const profileUrl = `${window.location.origin}/user/${user.username}`;
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      toast({ title: "Profile link copied", description: "Share it with your audience." });
+    } catch {
+      toast({ title: "Profile link", description: profileUrl });
+    }
+  };
+
+  const joinedLabel = user?.createdAt
+    ? `Joined ${new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
+    : "Joined CreatorOS";
   
   if (isAuthLoading || (isLoadingUser && !isOwnProfile)) {
     return (
@@ -305,15 +321,17 @@ const Profile = () => {
       
       {/* Instagram-style username header - only for own profile */}
       {isViewingCurrentUser && (
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <div className="flex items-center">
-            <h1 className="text-xl font-bold lowercase">{user?.username}</h1>
-          </div>
+        <div className="flex h-16 items-center justify-between border-b border-zinc-800 px-4">
+          <h1 className="text-2xl font-bold lowercase tracking-tight">{user?.username}</h1>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="text-white hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/messages")} aria-label="Open messages">
+              <MessageSquare className="h-6 w-6" />
+            </Button>
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="p-1 text-white hover:bg-zinc-900 hover:text-white">
-                <Settings className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="text-white hover:bg-zinc-900 hover:text-white" aria-label="Open profile menu">
+                <Menu className="h-7 w-7" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -342,31 +360,30 @@ const Profile = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       )}
       
       {/* Profile Info Section */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="px-4 pb-2 pt-5">
         {/* Avatar and Stats Row */}
-        <div className="flex mb-5">
+        <div className="mb-5 flex items-start gap-5">
           {/* Avatar */}
-          <div className="mr-7">
-            <Avatar className="w-[77px] h-[77px]">
+          <div className="relative shrink-0">
+            <Avatar className="h-20 w-20 border border-zinc-700">
               <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.displayName || "User"} />
               <AvatarFallback>
                 {user?.displayName?.charAt(0) || "U"}
               </AvatarFallback>
             </Avatar>
+            {isViewingCurrentUser && <span className="absolute bottom-0 right-0 h-6 w-6 rounded-full border-[3px] border-black bg-emerald-500" aria-label="Online" />}
           </div>
           
-          {/* Stats in 3 columns */}
-          <div className="flex flex-1 items-center">
-            <div className="flex-1 text-center">
-              <div className="text-base font-semibold">{stats.posts}</div>
-              <div className="text-xs uppercase tracking-tight text-zinc-500">posts</div>
-            </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xl font-bold leading-6">{user?.displayName}</p>
+            <div className="mt-3 flex max-w-[240px] gap-8">
             <div 
-              className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1" 
+              className="cursor-pointer rounded-md text-left hover:bg-zinc-900"
               onClick={() => {
                 if (params.username) {
                   setLocation(`/user/${params.username}/followers`);
@@ -377,11 +394,11 @@ const Profile = () => {
                 }
               }}
             >
-              <div className="text-base font-semibold">{stats.followers}</div>
-              <div className="text-xs uppercase tracking-tight text-zinc-500">followers</div>
+              <div className="text-xl font-bold leading-5">{stats.followers}</div>
+              <div className="mt-1 text-sm text-zinc-500">followers</div>
             </div>
             <div 
-              className="flex-1 text-center cursor-pointer hover:bg-muted rounded-md py-1"
+              className="cursor-pointer rounded-md text-left hover:bg-zinc-900"
               onClick={() => {
                 if (params.username) {
                   setLocation(`/user/${params.username}/following`);
@@ -392,28 +409,32 @@ const Profile = () => {
                 }
               }}
             >
-              <div className="text-base font-semibold">{stats.following}</div>
-              <div className="text-xs uppercase tracking-tight text-zinc-500">following</div>
+              <div className="text-xl font-bold leading-5">{stats.following}</div>
+              <div className="mt-1 text-sm text-zinc-500">following</div>
+            </div>
             </div>
           </div>
         </div>
         
         {/* Name and Bio */}
-        <div className="mb-3">
-          <div className="font-semibold text-base leading-5">{user?.displayName}</div>
-          <div className="mt-1 text-sm leading-5 text-zinc-400">{user?.bio || "Creator OS user"}</div>
+        <div className="mb-4">
+          <div className="text-lg font-medium leading-6">{user?.bio || "Creator OS user"}</div>
+          <div className="mt-2 flex items-center gap-2 text-sm text-zinc-500"><CalendarDays className="h-4 w-4" />{joinedLabel}</div>
         </div>
         
         {/* Edit Profile Button or Follow/Unfollow Button */}
         {isViewingCurrentUser ? (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-10 w-full rounded-lg border-zinc-800 bg-zinc-900 text-sm font-bold text-white hover:bg-zinc-800"
-            onClick={() => setIsEditProfileOpen(true)}
-          >
-            Edit Profile
-          </Button>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" size="sm" className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-base font-bold text-white hover:bg-zinc-800" onClick={() => setIsEditProfileOpen(true)}>Edit profile</Button>
+              <Button variant="outline" size="sm" className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-base font-bold text-white hover:bg-zinc-800" onClick={handleShareProfile}><Share2 className="mr-2 h-4 w-4" />Share profile</Button>
+            </div>
+            <button onClick={() => setLocation("/revenue")} className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left transition-colors hover:bg-zinc-800">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800 text-zinc-300"><LayoutDashboard className="h-6 w-6" /></span>
+              <span className="flex-1 text-lg font-bold">Business dashboard</span>
+              <span className="text-2xl text-zinc-500">›</span>
+            </button>
+          </>
         ) : currentUser ? (
           isLoadingFollowStatus ? (
             <Button variant="outline" size="sm" className="h-10 w-full rounded-lg border-zinc-800 bg-zinc-900 text-sm font-bold text-white hover:bg-zinc-800" disabled>

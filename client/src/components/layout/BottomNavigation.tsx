@@ -15,7 +15,7 @@ const BottomNavigation = () => {
 
   // These are focused, full-screen Stitch surfaces. Their own headers provide
   // the exit path; retaining the global nav here breaks the approved layout.
-  if (["/search", "/messages", "/posts"].some((path) => location === path || location.startsWith(`${path}/`))) {
+  if (["/search", "/messages", "/notifications", "/posts"].some((path) => location === path || location.startsWith(`${path}/`))) {
     return null;
   }
 
@@ -28,8 +28,8 @@ const BottomNavigation = () => {
   ] as const;
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-800 bg-black">
-      <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-1/2 z-50 w-full max-w-[720px] -translate-x-1/2 border-x border-t border-zinc-800 bg-black">
+      <div className="mx-auto flex h-14 items-center justify-between px-4">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

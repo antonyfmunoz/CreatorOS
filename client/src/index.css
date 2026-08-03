@@ -69,7 +69,7 @@
 
 @layer components {
   .app-container {
-    @apply min-h-[100dvh] w-full pb-16 relative;
+    @apply relative mx-auto min-h-[100dvh] w-full max-w-[720px] border-x border-zinc-900 bg-black pb-16;
   }
 
   .tab-content {

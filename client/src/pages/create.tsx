@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, FileText, Image, Mic, PackagePlus, Video } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarPlus, FileText, Image, Mic, PackagePlus, Video } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 
@@ -51,6 +51,14 @@ export default function CreatePage() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-black/15"><PackagePlus className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Create an offer</span><span className="mt-1 block text-xs leading-5 text-white/80">Start a course, community, digital asset, coaching offer, or software product.</span></span>
           <BookOpen className="h-5 w-5 text-zinc-300" />
+        </button>
+      </section>
+
+      <section className="px-4 pt-8">
+        <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Bring people together</p>
+        <button onClick={() => setLocation("/create/event")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><CalendarPlus className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Create an event</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Schedule a community gathering and publish the announcement.</span></span>
         </button>
       </section>
     </main>

@@ -28,6 +28,7 @@ const Communities = () => {
   const { currentUser } = useAppStore();
   const queryClient = useQueryClient();
   const [messageInput, setMessageInput] = useState("");
+  const { data: allCommunities = [] } = useQuery<CommunityType[]>({ queryKey: ["/api/communities"] });
 
   // A marketplace card can open its selected community directly, while the
   // sidebar remains the source of truth for later in-community navigation.
@@ -145,6 +146,14 @@ const Communities = () => {
         </SheetContent>
       </Sheet>
       
+      <aside className="hidden w-16 shrink-0 flex-col items-center gap-4 border-r border-zinc-800 bg-[#111113] py-4 md:flex" aria-label="Community switcher">
+        {allCommunities.map((item) => (
+          <button key={item.id} onClick={() => setActiveCommunity(item.id)} className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-bold transition-transform hover:scale-105 ${item.id === activeCommunityId ? "border-white text-white" : "border-zinc-700 text-zinc-400"}`} style={{ backgroundColor: item.id === activeCommunityId ? item.iconColor : "#242426" }} aria-label={`Open ${item.name}`}>
+            {item.name.slice(0, 2).toUpperCase()}
+          </button>
+        ))}
+      </aside>
+
       {/* Desktop Sidebar */}
       <ChannelSidebar />
       
@@ -153,8 +162,8 @@ const Communities = () => {
         {/* Top Bar */}
         <div className="p-4 border-b border-zinc-800 flex items-center">
           <div className="md:hidden w-6"></div> {/* Spacer for mobile */}
-          <h2 className="ml-2 min-w-0 flex-1 truncate text-lg font-semibold md:ml-0">
-            {activeChannel ? `#${activeChannel.name}` : 'Select a channel'}
+          <h2 className="ml-2 min-w-0 flex-1 truncate text-2xl font-bold md:ml-0">
+            {community ? `${community.name} ›` : 'Select a community'}
           </h2>
           <div className="ml-auto flex shrink-0 items-center space-x-1">
             {activeCommunityId && (
@@ -181,7 +190,7 @@ const Communities = () => {
         
         {/* Channel List */}
         {channels && channels.length > 0 && (
-          <div className="p-4 border-b border-zinc-800">
+          <div className="border-b border-zinc-800 p-4 md:hidden">
             <div className="flex space-x-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {isLoadingChannels ? (
                 Array(5).fill(0).map((_, i) => (
