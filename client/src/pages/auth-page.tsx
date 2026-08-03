@@ -13,7 +13,7 @@ const clerkAppearance = {
 const AuthPage = () => {
   const [location, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
-  const isRegistration = location === "/register";
+  const isRegistration = location === "/auth/register";
 
   if (isSignedIn) {
     setLocation("/");
@@ -34,12 +34,12 @@ const AuthPage = () => {
 
           {!isRegistration ? (
             <>
-              <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/register" />
+              <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/auth/register" />
               <div className="text-center">
                 <p className="text-sm text-zinc-400">
                   Don't have an account?{" "}
                   <button
-                    onClick={() => setLocation("/register")}
+                    onClick={() => setLocation("/auth/register")}
                     className="text-primary hover:underline"
                   >
                     Register now

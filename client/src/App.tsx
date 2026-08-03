@@ -56,6 +56,14 @@ function DemoLogoutRoute() {
   return <Redirect to="/" />;
 }
 
+function LoginRoute() {
+  return <Redirect to="/auth" />;
+}
+
+function LegacyRegisterRoute() {
+  return <Redirect to="/auth/register" />;
+}
+
 function Router() {
   const { setActiveTab } = useAppStore();
   const [location] = useLocation();
@@ -75,7 +83,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
-      <Route path="/register" component={AuthPage} />
+      <Route path="/auth/register" component={AuthPage} />
+      <Route path="/login" component={LoginRoute} />
+      <Route path="/register" component={LegacyRegisterRoute} />
       <Route path="/logout" component={DEMO_MODE ? DemoLogoutRoute : LogoutRoute} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
@@ -115,7 +125,12 @@ function AppContent() {
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   const [location] = useLocation();
-  const isAuthRoute = location === "/auth" || location === "/register" || location === "/logout";
+  const isAuthRoute =
+    location === "/auth" ||
+    location === "/auth/register" ||
+    location === "/login" ||
+    location === "/register" ||
+    location === "/logout";
 
   return (
     <>
