@@ -246,7 +246,7 @@ const Profile = () => {
 
   const joinedLabel = user?.createdAt
     ? `Joined ${new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
-    : "Joined CreatorOS";
+    : "Joined CreativesOS";
   
   if (isAuthLoading || (isLoadingUser && !isOwnProfile)) {
     return (
@@ -544,7 +544,7 @@ const Profile = () => {
           ))}
           {profileProducts.length === 0 && (
             <div className="col-span-2 py-12 text-center text-sm text-zinc-500">
-              {isViewingCurrentUser ? "Create your first offer to begin selling through CreatorOS." : "This creator has no public offers yet."}
+              {isViewingCurrentUser ? "Create your first offer to begin selling through CreativesOS." : "This creator has no public offers yet."}
             </div>
           )}
         </section>

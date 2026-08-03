@@ -717,7 +717,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
             {/* Post to / Share to */}
             <div className="px-4 pb-4 border-b">
               <div className="flex items-center justify-between pb-3">
-                <span className="font-medium">Post to CreatorOS</span>
+                <span className="font-medium">Post to CreativesOS</span>
                 <ChevronRight className="w-5 h-5 text-muted-foreground transform rotate-90" />
               </div>
               

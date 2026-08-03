@@ -20,9 +20,9 @@ export const PostOptionsPanel = ({ onShare }: PostOptionsPanelProps) => {
     <div className="flex min-h-full flex-col">
       <div className="flex-grow space-y-4 px-4 py-5">
         <div className="rounded-lg border border-border bg-muted/30 p-4">
-          <p className="font-medium">Post to CreatorOS</p>
+          <p className="font-medium">Post to CreativesOS</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Your post will appear in your CreatorOS feed and on your profile.
+            Your post will appear in your CreativesOS feed and on your profile.
           </p>
         </div>
 

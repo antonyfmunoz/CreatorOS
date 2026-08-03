@@ -19,7 +19,7 @@ const AuthPage = () => {
       <div className="w-full md:w-1/2 p-8 flex flex-1 items-center justify-center">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold">Welcome to CreatorOS</h1>
+            <h1 className="text-3xl font-bold">Welcome to CreativesOS</h1>
             <p className="text-gray-500 mt-2">
               Your all-in-one platform for creators
             </p>

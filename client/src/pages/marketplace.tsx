@@ -100,7 +100,7 @@ export default function Marketplace() {
     <main className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
       <header className="sticky top-0 z-30 border-b border-zinc-800 bg-black">
         <div className="flex h-14 items-center justify-between px-4">
-          <h1 className="text-xl font-bold tracking-tight">CreatorOS</h1>
+          <h1 className="text-xl font-bold tracking-tight">CreativesOS</h1>
           <div className="flex items-center">
             <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => searchInputRef.current?.focus()} aria-label="Search marketplace">
               <Search className="h-6 w-6" />

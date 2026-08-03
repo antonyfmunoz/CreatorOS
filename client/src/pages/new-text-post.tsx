@@ -139,8 +139,8 @@ export default function NewTextPost() {
         </div>
         
         <div className="border-b border-zinc-800 p-3">
-          <p className="font-medium text-[14px]">Post to CreatorOS</p>
-          <p className="mt-1 text-[11px] text-zinc-500">Your post will appear on your CreatorOS profile and feed.</p>
+          <p className="font-medium text-[14px]">Post to CreativesOS</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Your post will appear on your CreativesOS profile and feed.</p>
         </div>
         
         {/* Your story */}

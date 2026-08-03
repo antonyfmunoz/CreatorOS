@@ -144,9 +144,9 @@ const Explore = () => {
     <div className="min-h-dvh bg-black pb-20 text-white">
       {/* Sticky Header */}
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
-        <span className="text-xl font-bold tracking-tight text-white">CreatorOS</span>
+        <span className="text-xl font-bold tracking-tight text-white">CreativesOS</span>
         <div className="flex items-center space-x-3">
-          <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/search')} aria-label="Search CreatorOS">
+          <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/search')} aria-label="Search CreativesOS">
             <Search className="h-5 w-5" />
           </Button>
           <NotificationBell />

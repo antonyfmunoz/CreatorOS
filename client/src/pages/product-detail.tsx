@@ -61,7 +61,7 @@ export default function ProductDetail({ id: routeProductId }: { id?: string }) {
         <Button variant="ghost" size="icon" className="-ml-2 text-white hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/marketplace")} aria-label="Back to marketplace">
           <ArrowLeft className="h-6 w-6" />
         </Button>
-        <span className="text-xl font-bold">CreatorOS</span>
+        <span className="text-xl font-bold">CreativesOS</span>
       </header>
 
       {product.imageUrl ? <img src={product.imageUrl} alt={product.title} className="aspect-[16/10] w-full object-cover" /> : <div className="flex aspect-[16/10] items-center justify-center bg-zinc-900"><Package className="h-16 w-16 text-zinc-500" /></div>}

@@ -140,7 +140,7 @@ const Communities = () => {
       <main className="flex min-h-dvh flex-col bg-black px-5 pb-24 pt-5 text-white">
         <header className="flex items-center justify-between">
           <Button variant="ghost" size="icon" className="-ml-2 rounded-full text-white hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/marketplace")} aria-label="Back to marketplace"><ChevronLeft className="h-7 w-7" /></Button>
-          <span className="text-lg font-bold">CreatorOS</span>
+          <span className="text-lg font-bold">CreativesOS</span>
           <span className="w-10" />
         </header>
         <section className="m-auto w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-950 p-7 text-center shadow-2xl shadow-black">

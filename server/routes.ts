@@ -86,7 +86,7 @@ async function createActivityNotification({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", app: "creatoros" });
+    res.json({ status: "ok", app: "creativesos" });
   });
 
   // Set up authentication routes and middleware
@@ -995,7 +995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (process.env.CREATOROS_DEMO_MODE === "true" || !process.env.OPENAI_API_KEY) {
         return res.json({
-          reply: `Demo response from CreatorOS: I received “${message.trim()}”. Configure OPENAI_API_KEY to use the live assistant.`,
+          reply: `Demo response from CreativesOS: I received “${message.trim()}”. Configure OPENAI_API_KEY to use the live assistant.`,
         });
       }
       
