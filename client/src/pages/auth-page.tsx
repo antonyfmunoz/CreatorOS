@@ -3,6 +3,27 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { useLocation } from "wouter";
 
+const clerkAppearance = {
+  elements: {
+    rootBox: "!w-full !max-w-none",
+    cardBox: "!w-full",
+    card: "!w-full !max-w-none !rounded-xl !border !border-zinc-800 !bg-zinc-950 !shadow-none",
+    headerTitle: "!text-white",
+    headerSubtitle: "!text-zinc-400",
+    socialButtonsBlockButton:
+      "!border-zinc-700 !bg-zinc-900 !text-white hover:!bg-zinc-800",
+    dividerLine: "!bg-zinc-800",
+    dividerText: "!text-zinc-500",
+    formFieldLabel: "!text-zinc-300",
+    formFieldInput:
+      "!border-zinc-700 !bg-zinc-900 !text-white placeholder:!text-zinc-500",
+    formButtonPrimary: "!bg-sky-500 hover:!bg-sky-400 !text-white",
+    footer: "!bg-transparent",
+    footerActionText: "!text-zinc-400",
+    footerActionLink: "!text-sky-400 hover:!text-sky-300",
+  },
+} as const;
+
 const AuthPage = () => {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [, setLocation] = useLocation();
@@ -16,20 +37,20 @@ const AuthPage = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Auth form section */}
-      <div className="w-full md:w-1/2 p-8 flex flex-1 items-center justify-center">
+      <div className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 md:w-1/2 md:px-10">
         <div className="w-full max-w-md space-y-6">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold">Welcome to CreativesOS</h1>
-            <p className="text-gray-500 mt-2">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to CreativesOS</h1>
+            <p className="mt-2 text-zinc-400">
               Your all-in-one platform for creators
             </p>
           </div>
 
           {mode === "sign-in" ? (
             <>
-              <SignIn routing="hash" />
+              <SignIn routing="hash" appearance={clerkAppearance} />
               <div className="text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-zinc-400">
                   Don't have an account?{" "}
                   <button
                     onClick={() => setMode("sign-up")}
@@ -42,9 +63,9 @@ const AuthPage = () => {
             </>
           ) : (
             <>
-              <SignUp routing="hash" />
+              <SignUp routing="hash" appearance={clerkAppearance} />
               <div className="text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-zinc-400">
                   Already have an account?{" "}
                   <button
                     onClick={() => setMode("sign-in")}
@@ -60,7 +81,7 @@ const AuthPage = () => {
       </div>
 
       {/* Hero section */}
-      <div className="w-full md:w-1/2 bg-gradient-to-br from-primary/10 to-primary/20 p-8 hidden md:flex items-center justify-center">
+      <div className="hidden w-full items-center justify-center bg-gradient-to-br from-sky-500/10 to-violet-500/10 p-8 md:flex md:w-1/2">
         <div className="max-w-lg space-y-6">
           <h2 className="text-3xl font-bold">Everything Creators Need in One Place</h2>
 
