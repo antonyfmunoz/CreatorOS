@@ -20,7 +20,7 @@ import {
   type AutomationDefinition,
 } from "../shared/schema";
 import { getAutomationAction, listAutomationActions } from "./automation-actions";
-import { createAutomationRun, decideAutomationApproval, processAutomationRun } from "./automation-engine";
+import { cancelAutomationRun, createAutomationRun, decideAutomationApproval, processAutomationRun } from "./automation-engine";
 import {
   automationApprovalDecisionSchema,
   automationConfigContainsSecret,
@@ -335,11 +335,9 @@ export function registerAutomationRoutes(app: Express) {
 
   app.post("/api/automations/runs/:runId/cancel", attachUser, limitAutomationMutation, async (req, res) => {
     try {
-      const { run, definition } = await ownedRun(req.dbUser!.id, req.params.runId);
+      const { run } = await ownedRun(req.dbUser!.id, req.params.runId);
       if (isTerminalAutomationStatus(run.status)) return res.status(409).json({ message: "This run has already finished" });
-      const [updated] = await db.update(automationRuns).set({ status: "canceled", finishedAt: new Date(), updatedAt: new Date() }).where(eq(automationRuns.id, run.id)).returning();
-      await db.update(automationStepRuns).set({ status: "canceled", finishedAt: new Date(), updatedAt: new Date() }).where(and(eq(automationStepRuns.runId, run.id), inArray(automationStepRuns.status, ["queued", "running", "waiting_approval"])));
-      await writeDefinitionAudit("automation.run.canceled", req.dbUser!.id, definition, { runId: run.id });
+      const updated = await cancelAutomationRun({ run, actorUserId: req.dbUser!.id });
       res.json(updated);
     } catch (error) {
       automationError(res, error);

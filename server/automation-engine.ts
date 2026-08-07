@@ -366,6 +366,30 @@ export async function decideAutomationApproval(input: {
   return { approval: updated, runId: approval.runId };
 }
 
+export async function cancelAutomationRun(input: { run: AutomationRun; actorUserId: number }) {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const [updated] = await tx.update(automationRuns).set({
+      status: "canceled",
+      finishedAt: now,
+      heartbeatAt: now,
+      updatedAt: now,
+    }).where(and(eq(automationRuns.id, input.run.id), inArray(automationRuns.status, ["queued", "running", "waiting_approval"]))).returning();
+    if (!updated) throw new Error("This run has already finished");
+    await tx.update(automationStepRuns).set({ status: "canceled", finishedAt: now, updatedAt: now }).where(and(eq(automationStepRuns.runId, input.run.id), inArray(automationStepRuns.status, ["queued", "running", "waiting_approval"])));
+    await tx.update(automationApprovals).set({ status: "expired", decidedByUserId: input.actorUserId, decidedAt: now, updatedAt: now }).where(and(eq(automationApprovals.runId, input.run.id), eq(automationApprovals.status, "pending")));
+    await tx.insert(automationAuditEvents).values({
+      actorUserId: input.actorUserId,
+      businessId: input.run.businessId,
+      definitionId: input.run.definitionId,
+      runId: input.run.id,
+      eventType: "automation.run.canceled",
+      metadata: { reason: "owner_requested" },
+    });
+    return updated;
+  });
+}
+
 export async function recoverStaleAutomationRuns() {
   const staleBefore = new Date(Date.now() - STALE_RUN_MS);
   const staleRuns = await db.select({ id: automationRuns.id }).from(automationRuns).where(and(eq(automationRuns.status, "running"), lt(automationRuns.heartbeatAt, staleBefore))).limit(RUN_BATCH_SIZE);

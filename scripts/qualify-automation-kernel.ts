@@ -17,6 +17,7 @@ import {
   users,
 } from "../shared/schema";
 import {
+  cancelAutomationRun,
   createAutomationRun,
   decideAutomationApproval,
   processAutomationRun,
@@ -118,6 +119,12 @@ async function main() {
   const [campaignCount] = await db.select({ count: count() }).from(campaigns).where(eq(campaigns.ownerUserId, user.id));
   assert(completedApproval.status === "succeeded" && campaignCount.count === 1, "Approved action did not complete exactly once");
 
+  const canceledRun = await createAutomationRun({ definition: approvalDefinition, initiatedByUserId: user.id, input: {}, idempotencyKey: "qualification-canceled-run", maxCostUnits: 10 });
+  await processAutomationRun(canceledRun.id);
+  const canceledResult = await cancelAutomationRun({ run: canceledRun, actorUserId: user.id });
+  const [expiredApproval] = await db.select().from(automationApprovals).where(eq(automationApprovals.runId, canceledRun.id));
+  assert(canceledResult.status === "canceled" && expiredApproval.status === "expired", "Cancel did not atomically clear the pending approval");
+
   const failingDefinition = await createDefinition({
     ownerUserId: user.id,
     businessId: business.id,
@@ -174,6 +181,7 @@ async function main() {
     totalCostUnits: summary.totalCostUnits,
     concurrentLoadRuns: 50,
     approvalGate: "passed",
+    cancellation: "passed",
     idempotency: "passed",
     retryDeadLetter: "passed",
     staleRecovery: "passed",
