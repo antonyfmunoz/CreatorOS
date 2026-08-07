@@ -328,6 +328,44 @@ export async function processAutomationRun(runId: string) {
   return true;
 }
 
+export async function decideAutomationApproval(input: {
+  approvalId: string;
+  userId: number;
+  decision: "approved" | "declined";
+  note?: string;
+}) {
+  const [approval] = await db.select().from(automationApprovals).where(eq(automationApprovals.id, input.approvalId)).limit(1);
+  if (!approval) throw new Error("Approval not found");
+  if (approval.requestedForUserId !== input.userId) throw new Error("This approval belongs to another user");
+  if (approval.status !== "pending") throw new Error("This approval has already been decided");
+
+  const [updated] = await db.transaction(async (tx) => {
+    const [row] = await tx.update(automationApprovals).set({
+      status: input.decision,
+      decidedByUserId: input.userId,
+      decidedAt: new Date(),
+      updatedAt: new Date(),
+      evidence: { ...(approval.evidence ?? {}), decisionNote: input.note ?? null },
+    }).where(and(eq(automationApprovals.id, approval.id), eq(automationApprovals.status, "pending"))).returning();
+    if (!row) throw new Error("Approval decision raced with another request");
+    if (input.decision === "approved") {
+      await tx.update(automationStepRuns).set({ status: "queued", updatedAt: new Date() }).where(eq(automationStepRuns.id, approval.stepRunId));
+      await tx.update(automationRuns).set({ status: "queued", nextAttemptAt: sql`now()`, updatedAt: new Date() }).where(eq(automationRuns.id, approval.runId));
+    } else {
+      await tx.update(automationStepRuns).set({ status: "canceled", finishedAt: new Date(), updatedAt: new Date() }).where(eq(automationStepRuns.id, approval.stepRunId));
+      await tx.update(automationRuns).set({ status: "failed", errorCode: "approval_declined", errorMessage: "Required approval was declined", finishedAt: new Date(), updatedAt: new Date() }).where(eq(automationRuns.id, approval.runId));
+    }
+    await tx.insert(automationAuditEvents).values({
+      actorUserId: input.userId,
+      runId: approval.runId,
+      eventType: `automation.approval.${input.decision}`,
+      metadata: { approvalId: approval.id, note: input.note ?? null },
+    });
+    return [row];
+  });
+  return { approval: updated, runId: approval.runId };
+}
+
 export async function recoverStaleAutomationRuns() {
   const staleBefore = new Date(Date.now() - STALE_RUN_MS);
   const staleRuns = await db.select({ id: automationRuns.id }).from(automationRuns).where(and(eq(automationRuns.status, "running"), lt(automationRuns.heartbeatAt, staleBefore))).limit(RUN_BATCH_SIZE);

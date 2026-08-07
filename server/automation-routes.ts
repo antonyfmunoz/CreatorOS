@@ -20,7 +20,7 @@ import {
   type AutomationDefinition,
 } from "../shared/schema";
 import { getAutomationAction, listAutomationActions } from "./automation-actions";
-import { createAutomationRun, processAutomationRun } from "./automation-engine";
+import { createAutomationRun, decideAutomationApproval, processAutomationRun } from "./automation-engine";
 import {
   automationApprovalDecisionSchema,
   automationConfigContainsSecret,
@@ -37,8 +37,9 @@ import { automationMutationRateLimiter } from "./security";
 function automationError(res: Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ message: "Invalid automation request", issues: error.issues });
   const message = error instanceof Error ? error.message : "Automation request failed";
-  const status = /not found/i.test(message) ? 404 : /not authorized|permission/i.test(message) ? 403 : /budget|active run|archived/i.test(message) ? 409 : 500;
-  return res.status(status).json({ message });
+  const status = /not found/i.test(message) ? 404 : /not authorized|permission|belongs to another user/i.test(message) ? 403 : /budget|active run|archived|already been decided|raced/i.test(message) ? 409 : 500;
+  if (status === 500) console.error("Automation route failed", { errorType: error instanceof Error ? error.name : typeof error });
+  return res.status(status).json({ message: status === 500 ? "Automation request failed" : message });
 }
 
 async function userCanAccessDefinition(userId: number, definition: AutomationDefinition) {
@@ -365,25 +366,9 @@ export function registerAutomationRoutes(app: Express) {
   app.post("/api/automations/approvals/:approvalId/decision", attachUser, limitAutomationMutation, async (req, res) => {
     try {
       const input = automationApprovalDecisionSchema.parse(req.body);
-      const [approval] = await db.select().from(automationApprovals).where(eq(automationApprovals.id, req.params.approvalId)).limit(1);
-      if (!approval) return res.status(404).json({ message: "Approval not found" });
-      if (approval.requestedForUserId !== req.dbUser!.id) return res.status(403).json({ message: "This approval belongs to another user" });
-      if (approval.status !== "pending") return res.status(409).json({ message: "This approval has already been decided" });
-      const [updated] = await db.transaction(async (tx) => {
-        const [row] = await tx.update(automationApprovals).set({ status: input.decision, decidedByUserId: req.dbUser!.id, decidedAt: new Date(), updatedAt: new Date(), evidence: sql`${automationApprovals.evidence} || ${JSON.stringify({ decisionNote: input.note ?? null })}::json` }).where(and(eq(automationApprovals.id, approval.id), eq(automationApprovals.status, "pending"))).returning();
-        if (!row) throw new Error("Approval decision raced with another request");
-        if (input.decision === "approved") {
-          await tx.update(automationStepRuns).set({ status: "queued", updatedAt: new Date() }).where(eq(automationStepRuns.id, approval.stepRunId));
-          await tx.update(automationRuns).set({ status: "queued", nextAttemptAt: sql`now()`, updatedAt: new Date() }).where(eq(automationRuns.id, approval.runId));
-        } else {
-          await tx.update(automationStepRuns).set({ status: "canceled", finishedAt: new Date(), updatedAt: new Date() }).where(eq(automationStepRuns.id, approval.stepRunId));
-          await tx.update(automationRuns).set({ status: "failed", errorCode: "approval_declined", errorMessage: "Required approval was declined", finishedAt: new Date(), updatedAt: new Date() }).where(eq(automationRuns.id, approval.runId));
-        }
-        await tx.insert(automationAuditEvents).values({ actorUserId: req.dbUser!.id, runId: approval.runId, eventType: `automation.approval.${input.decision}`, metadata: { approvalId: approval.id, note: input.note ?? null } });
-        return [row];
-      });
-      if (input.decision === "approved") void processAutomationRun(approval.runId);
-      res.json(updated);
+      const result = await decideAutomationApproval({ approvalId: req.params.approvalId, userId: req.dbUser!.id, decision: input.decision, note: input.note });
+      if (input.decision === "approved") void processAutomationRun(result.runId);
+      res.json(result.approval);
     } catch (error) {
       automationError(res, error);
     }

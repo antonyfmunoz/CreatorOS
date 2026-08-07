@@ -18,6 +18,7 @@ import {
 } from "../shared/schema";
 import {
   createAutomationRun,
+  decideAutomationApproval,
   processAutomationRun,
   recoverStaleAutomationRuns,
 } from "../server/automation-engine";
@@ -110,11 +111,8 @@ async function main() {
   const [waitingRun] = await db.select().from(automationRuns).where(eq(automationRuns.id, approvalRun.id));
   const [approval] = await db.select().from(automationApprovals).where(eq(automationApprovals.runId, approvalRun.id));
   assert(waitingRun.status === "waiting_approval" && approval?.status === "pending", "Consequential action did not pause for approval");
-  await db.transaction(async (tx) => {
-    await tx.update(automationApprovals).set({ status: "approved", decidedByUserId: user.id, decidedAt: new Date() }).where(eq(automationApprovals.id, approval.id));
-    await tx.update(automationStepRuns).set({ status: "queued" }).where(eq(automationStepRuns.id, approval.stepRunId));
-    await tx.update(automationRuns).set({ status: "queued", nextAttemptAt: sql`now()` }).where(eq(automationRuns.id, approvalRun.id));
-  });
+  const approvalDecision = await decideAutomationApproval({ approvalId: approval.id, userId: user.id, decision: "approved", note: "Qualification approval" });
+  assert(approvalDecision.approval.evidence?.decisionNote === "Qualification approval", "Approval evidence was not persisted");
   await processAutomationRun(approvalRun.id);
   const [completedApproval] = await db.select().from(automationRuns).where(eq(automationRuns.id, approvalRun.id));
   const [campaignCount] = await db.select({ count: count() }).from(campaigns).where(eq(campaigns.ownerUserId, user.id));
