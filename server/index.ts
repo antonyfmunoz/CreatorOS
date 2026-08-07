@@ -4,33 +4,39 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import path from "path";
 import { scheduleCleanupTasks } from "./cleanup";
+import { scheduleDistributionProcessing } from "./distribution";
+import { scheduleUmhDelivery } from "./umh";
+import { apiRateLimiter, securityHeaders } from "./security";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(securityHeaders);
+app.use(apiRateLimiter());
+app.use(express.json({
+  limit: "1mb",
+  verify: (req, _res, body) => {
+    (req as Request).rawBody = Buffer.from(body);
+  },
+}));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+  fallthrough: false,
+  setHeaders: (res) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+  },
+}));
 
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "…";
       }
@@ -49,8 +55,8 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    console.error("Unhandled request error:", err);
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
@@ -73,6 +79,8 @@ app.use((req, res, next) => {
     
     // Start the scheduled cleanup tasks
     scheduleCleanupTasks();
+    scheduleDistributionProcessing();
+    scheduleUmhDelivery();
     log('Story cleanup tasks scheduled');
   });
 })();

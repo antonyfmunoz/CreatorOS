@@ -398,6 +398,7 @@ function CreatePostForm() {
             size="icon" 
             onClick={() => setLocation('/')}
             className="mr-1 text-white hover:bg-zinc-900 hover:text-white"
+            aria-label="Back to Explore"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -419,7 +420,7 @@ function CreatePostForm() {
             {postType === 'photo' && (
               <div className="space-y-4">
                 {!imagePreviewUrl ? (
-                  <div className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput}>
+                  <div role="button" tabIndex={0} aria-label="Choose a photo" className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); triggerFileInput(); } }}>
                     <FileImage className="mb-4 h-12 w-12 text-zinc-500" />
                     <p className="text-sm text-zinc-500">Choose a photo</p>
                     <input
@@ -443,6 +444,7 @@ function CreatePostForm() {
                       size="icon"
                       className="absolute top-2 right-2"
                       onClick={removeFile}
+                      aria-label="Remove photo"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -482,6 +484,7 @@ function CreatePostForm() {
                         variant="outline"
                         size="icon"
                         onClick={toggleAudioPlayback}
+                        aria-label={isPlaying ? "Pause recorded audio" : "Play recorded audio"}
                       >
                         {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                       </Button>
@@ -493,6 +496,7 @@ function CreatePostForm() {
                         variant="outline"
                         size="icon"
                         onClick={removeFile}
+                        aria-label="Remove recorded audio"
                       >
                         <Trash className="h-4 w-4" />
                       </Button>
@@ -507,7 +511,7 @@ function CreatePostForm() {
             {postType === 'video' && (
               <div className="space-y-4">
                 {!videoPreviewUrl ? (
-                  <div className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput}>
+                  <div role="button" tabIndex={0} aria-label="Choose a video" className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-12 transition-colors hover:bg-zinc-900" onClick={triggerFileInput} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); triggerFileInput(); } }}>
                     <Upload className="mb-4 h-12 w-12 text-zinc-500" />
                     <p className="text-sm text-zinc-500">Choose a video</p>
                     <input
@@ -531,6 +535,7 @@ function CreatePostForm() {
                       size="icon"
                       className="absolute top-2 right-2"
                       onClick={removeFile}
+                      aria-label="Remove video"
                     >
                       <X className="h-4 w-4" />
                     </Button>

@@ -1,27 +1,35 @@
 import { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAppStore } from '@/lib/stores';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useLocation } from 'wouter';
 
 const categories = ['Course', 'Community', 'Digital Asset', 'Coaching', 'Software'];
+type Business = { id: string; name: string; handle: string; isDefault: boolean };
 
 const ProductForm = () => {
   const { currentUser } = useAppStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     price: '',
     category: 'Course',
+    businessId: '',
+  });
+  const { data: businesses = [] } = useQuery<Business[]>({
+    queryKey: ['/api/businesses'],
+    enabled: Boolean(currentUser),
+    queryFn: async () => (await apiRequest('GET', '/api/businesses')).json(),
   });
   
   const createProductMutation = useMutation({
@@ -29,18 +37,17 @@ const ProductForm = () => {
       if (!currentUser) throw new Error('User not authenticated');
       
       const product = {
-        userId: currentUser.id,
-        title: formData.title,
-        description: formData.description,
-        price: parseFloat(formData.price),
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        price: Number(formData.price),
         category: formData.category,
-        imageUrl: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643', // Default placeholder image
+        ...(formData.businessId ? { businessId: formData.businessId } : {}),
       };
       
       const res = await apiRequest('POST', '/api/products', product);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (product) => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
       toast({
         title: 'Product Created',
@@ -52,7 +59,9 @@ const ProductForm = () => {
         description: '',
         price: '',
         category: 'Course',
+        businessId: '',
       });
+      setLocation(`/products/${product.id}/edit`);
     },
     onError: (error) => {
       toast({
@@ -78,25 +87,28 @@ const ProductForm = () => {
   };
   
   return (
-    <Card className="shadow-sm mb-6">
-      <CardContent className="p-4">
-        <h2 className="font-semibold mb-4">Create New Product</h2>
-        
+    <section className="mx-auto max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-white">
+        <div className="mb-5">
+          <h2 className="text-sm font-bold">Offer details</h2>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">Create the offer first, then add protected files, delivery, and payout settings.</p>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="title" className="text-sm text-gray-600 block mb-1">Product Title</Label>
+            <Label htmlFor="title" className="mb-2 block text-sm text-zinc-300">Offer title</Label>
             <Input
               id="title"
               name="title"
               placeholder="e.g. Advanced SEO Course"
               value={formData.title}
               onChange={handleChange}
+              maxLength={160}
+              className="border-zinc-700 bg-black text-white placeholder:text-zinc-600"
               required
             />
           </div>
           
           <div>
-            <Label htmlFor="description" className="text-sm text-gray-600 block mb-1">Description</Label>
+            <Label htmlFor="description" className="mb-2 block text-sm text-zinc-300">Description</Label>
             <Textarea
               id="description"
               name="description"
@@ -104,13 +116,15 @@ const ProductForm = () => {
               rows={3}
               value={formData.description}
               onChange={handleChange}
+              maxLength={10000}
+              className="min-h-28 border-zinc-700 bg-black text-white placeholder:text-zinc-600"
               required
             />
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="price" className="text-sm text-gray-600 block mb-1">Price ($)</Label>
+              <Label htmlFor="price" className="mb-2 block text-sm text-zinc-300">Price (USD)</Label>
               <Input
                 id="price"
                 name="price"
@@ -120,14 +134,15 @@ const ProductForm = () => {
                 placeholder="49.99"
                 value={formData.price}
                 onChange={handleChange}
+                className="border-zinc-700 bg-black text-white placeholder:text-zinc-600"
                 required
               />
             </div>
             
             <div>
-              <Label htmlFor="category" className="text-sm text-gray-600 block mb-1">Category</Label>
-              <Select onValueChange={handleSelectChange} defaultValue={formData.category}>
-                <SelectTrigger>
+              <Label htmlFor="category" className="mb-2 block text-sm text-zinc-300">Category</Label>
+              <Select onValueChange={handleSelectChange} value={formData.category}>
+                <SelectTrigger className="border-zinc-700 bg-black text-white">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -140,17 +155,23 @@ const ProductForm = () => {
               </Select>
             </div>
           </div>
+          {businesses.length > 1 && <div>
+            <Label className="mb-2 block text-sm text-zinc-300">Business</Label>
+            <Select value={formData.businessId} onValueChange={(businessId) => setFormData((current) => ({ ...current, businessId }))}>
+              <SelectTrigger className="border-zinc-700 bg-black text-white"><SelectValue placeholder="Your default business" /></SelectTrigger>
+              <SelectContent>{businesses.map((business) => <SelectItem key={business.id} value={business.id}>{business.name}{business.isDefault ? ' (default)' : ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>}
           
           <Button 
             type="submit" 
-            className="w-full" 
+            className="h-11 w-full rounded-xl bg-white font-bold text-black hover:bg-zinc-200"
             disabled={createProductMutation.isPending}
           >
-            {createProductMutation.isPending ? 'Creating...' : 'Create Product'}
+            {createProductMutation.isPending ? 'Creating…' : 'Continue to setup'}
           </Button>
         </form>
-      </CardContent>
-    </Card>
+    </section>
   );
 };
 

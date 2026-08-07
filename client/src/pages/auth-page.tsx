@@ -1,6 +1,6 @@
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useLocation } from "wouter";
+import { Redirect, useLocation } from "wouter";
 
 const clerkAppearance = {
   elements: {
@@ -16,8 +16,7 @@ const AuthPage = () => {
   const isRegistration = location === "/auth/register";
 
   if (isSignedIn) {
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   return (
@@ -49,12 +48,12 @@ const AuthPage = () => {
             </>
           ) : (
             <>
-              <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth" />
+              <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth/login" />
               <div className="text-center">
                 <p className="text-sm text-zinc-400">
                   Already have an account?{" "}
                   <button
-                    onClick={() => setLocation("/auth")}
+                    onClick={() => setLocation("/auth/login")}
                     className="text-primary hover:underline"
                   >
                     Login

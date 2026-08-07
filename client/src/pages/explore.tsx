@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationBell } from "@/components/notifications";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,8 +16,8 @@ import { User } from "@/types";
 // Import new feed components
 import { Tabs, TabType } from "@/components/feed/Tabs";
 import { ContentFilterType } from "@/components/feed/FilterDropdown";
-import { VoicePostCard } from "@/components/feed/VoicePostCard";
 import { StoriesBar } from "@/components/feed/StoriesBar";
+import { parseStoryId } from "@/lib/story-links";
 
 const Explore = () => {
   const queryClient = useQueryClient();
@@ -25,6 +25,8 @@ const Explore = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const initialStoryId = parseStoryId(search);
   
   // Feed Tab State
   const [activeTab, setActiveTab] = useState<TabType>("forYou");
@@ -163,7 +165,7 @@ const Explore = () => {
 
       {/* Original Stories component for compatibility */}
       <div className="hidden">
-        <Stories />
+        <Stories initialStoryId={initialStoryId} />
       </div>
 
       {/* Content Feed */}
@@ -197,23 +199,6 @@ const Explore = () => {
             ))
         ) : (
           <>
-            {/* Example Voice Post Card - we'll show this only for demonstration */}
-            {contentFilter === "audio" && (
-              <VoicePostCard
-                user={{
-                  id: 1,
-                  name: "Voice Demo",
-                  username: "voicedemo",
-                  avatar: "https://avatars.githubusercontent.com/u/1?v=4"
-                }}
-                audioUrl="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"
-                transcript="This is an example voice post with a transcript that can be toggled. The actual audio is from a free source for demonstration purposes."
-                createdAt={new Date().toISOString()}
-                likes={42}
-                comments={7}
-              />
-            )}
-            
             {/* Regular post listing */}
             {sortedPosts.map((post) => <Post key={post.id} post={post} surface="dark" />)}
             

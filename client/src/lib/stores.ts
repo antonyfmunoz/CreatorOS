@@ -71,8 +71,11 @@ interface CommunitiesState {
 }
 
 export const useCommunitiesStore = create<CommunitiesState>((set) => ({
-  activeCommunityId: 1, // Default to first community
-  activeChannelId: 1, // Default to first channel
+  // IDs are selected from server-backed collections. Hard-coded defaults can
+  // point at archived or nonexistent records and expose a misleading access
+  // gate before the live list has loaded.
+  activeCommunityId: null,
+  activeChannelId: null,
   setActiveCommunity: (id) => set({ activeCommunityId: id, activeChannelId: null }),
   setActiveChannel: (id) => set({ activeChannelId: id }),
 }));

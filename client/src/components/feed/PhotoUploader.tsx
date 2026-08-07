@@ -22,6 +22,7 @@ import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
 import { TagEditor, type TaggedUser } from "@/components/feed/TagEditor";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { cn } from "@/lib/utils";
 
@@ -896,15 +897,12 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <Share className="w-5 h-5" />
                 <span>Your story</span>
               </div>
-              <div 
-                className={`w-12 h-6 ${addToStory ? 'bg-primary' : 'bg-gray-200'} rounded-full relative cursor-pointer group`}
-                onClick={() => {
-                  setAddToStory(!addToStory);
-                }}
+              <Switch
                 id="story-toggle"
-              >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out ${addToStory ? 'translate-x-5 left-2' : 'translate-x-0 left-1'}`}></div>
-              </div>
+                checked={addToStory}
+                onCheckedChange={setAddToStory}
+                aria-label="Add photo post to your story"
+              />
             </div>
             
             {/* Share Button */}
@@ -942,7 +940,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <PostOptionsPanel 
                   content={content}
                   onContentChange={setContent}
+                  addToStory={addToStory}
+                  onAddToStoryChange={setAddToStory}
                   onShare={handlePost}
+                  isSharing={createPostMutation.isPending}
+                  shareDisabled={imageFiles.length === 0}
                 />
               </div>
             </div>
@@ -1029,6 +1031,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           size="icon" 
           className="rounded-full h-8 w-8" 
           onClick={onClose}
+          aria-label="Cancel photo post"
         >
           <X className="h-5 w-5" />
         </Button>

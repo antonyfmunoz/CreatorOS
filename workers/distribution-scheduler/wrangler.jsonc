@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "creativesos-distribution-scheduler",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-05",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "API_BASE_URL": "https://creativesos.net"
+  }
+}

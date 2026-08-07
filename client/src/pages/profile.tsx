@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/stores";
 import { 
   Settings, LogOut, LogIn, User as UserIcon, GridIcon, 
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
   FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft,
-  CalendarDays, LayoutDashboard, Menu, MessageSquare, Share2
+  CalendarDays, LayoutDashboard, Menu, MessageSquare, Share2, Copy, Camera, AtSign,
+  MoreHorizontal, Send, Plus, Trash2
 } from "lucide-react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
 import ProfileFeed from "@/components/profile/ProfileFeed";
 import Post from "@/components/explore/Post";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { HorizontalRail } from "@/components/ui/horizontal-rail";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfilePage from "@/components/profile/EditProfilePage";
@@ -29,13 +32,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+type CreatorPlaylist = {
+  id: string;
+  name: string;
+  description: string;
+  postIds: number[];
+  createdAt: string;
+};
 
 const Profile = () => {
   const isDemoMode = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
   const [, setLocation] = useLocation();
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isShareProfileOpen, setIsShareProfileOpen] = useState(false);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [playlistName, setPlaylistName] = useState("");
+  const [playlistDescription, setPlaylistDescription] = useState("");
   const [profileView, setProfileView] = useState<"posts" | "reposts" | "likes" | "tagged" | "offers" | "playlists">("posts");
   const { user: currentUser, isLoading: isAuthLoading, signOut } = useAuth();
+  const { data: playlists = [] } = useQuery<CreatorPlaylist[]>({ queryKey: ["/api/playlists"], enabled: !!currentUser, queryFn: async () => { const response = await fetch("/api/playlists"); if (!response.ok) throw new Error("Failed to load playlists"); return response.json(); } });
   const params = useParams<{ id?: string; username?: string }>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -79,8 +102,7 @@ const Profile = () => {
         const res = await fetch(`/api/users?username=${params.username}`);
         if (!res.ok) throw new Error('Failed to fetch user');
         const users = await res.json();
-        // Find the user with matching username
-        const user = users.find((u: User) => u.username === params.username);
+        const user = users[0] as User | undefined;
         if (!user) throw new Error('User not found');
         return user;
       }
@@ -101,23 +123,38 @@ const Profile = () => {
     setProfileView("posts");
   }, [params.id, params.username]);
   
-  const { data: products, isLoading: isLoadingProducts } = useQuery<Product[]>({
-    queryKey: ['/api/products'],
+  const { data: profileProducts = [], isLoading: isLoadingProducts } = useQuery<Product[]>({
+    queryKey: ['/api/users', user?.id, 'products'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${user!.id}/products`);
+      if (!response.ok) throw new Error('Failed to fetch profile products');
+      return response.json();
+    },
   });
-  const profileProducts = products?.filter((product) => product.userId === user?.id) ?? [];
   const { data: allPosts = [], isLoading: isLoadingAllPosts } = useQuery<PostType[]>({
     queryKey: ["/api/posts"],
   });
-  const likedPostIds = useMemo(() => {
-    try {
-      return new Set<number>(JSON.parse(localStorage.getItem("likedPosts") ?? "[]"));
-    } catch {
-      return new Set<number>();
-    }
-  }, [profileView]);
+  const { data: savedPosts = [] } = useQuery<PostType[]>({
+    queryKey: [`/api/users/${currentUser?.id}/saved-posts`],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${currentUser!.id}/saved-posts`);
+      if (!response.ok) throw new Error("Failed to load saved posts");
+      return response.json();
+    },
+  });
+  const { data: likedPosts = [] } = useQuery<PostType[]>({
+    queryKey: [`/api/users/${currentUser?.id}/liked-posts`],
+    enabled: !!currentUser && isViewingCurrentUser,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${currentUser!.id}/liked-posts`);
+      if (!response.ok) throw new Error("Failed to load liked posts");
+      return response.json();
+    },
+  });
   const reposts = allPosts.filter((post) => post.userId === user?.id && post.content.startsWith("Reposted "));
   const taggedPosts = allPosts.filter((post) => post.taggedUsers?.some((taggedUser) => taggedUser.id === user?.id));
-  const likedPosts = allPosts.filter((post) => likedPostIds.has(post.id));
   
   // Fetch follower/following counts
   const { data: followerCount, isLoading: isLoadingFollowers } = useQuery<number>({
@@ -217,7 +254,6 @@ const Profile = () => {
   const stats = {
     followers: isLoadingFollowers ? "..." : (followerCount || 0).toString(),
     following: isLoadingFollowing ? "..." : (followingCount || 0).toString(),
-    revenue: products ? `$${(profileProducts.reduce((sum, product) => sum + product.price, 0)).toFixed(2)}` : "$0.00",
     posts: isLoadingPostCount ? "..." : (postCount?.count || 0).toString(),
   };
   
@@ -233,9 +269,14 @@ const Profile = () => {
     setLocation("/auth");
   };
 
-  const handleShareProfile = async () => {
+  const getProfileUrl = () => {
     if (!user) return;
-    const profileUrl = `${window.location.origin}/user/${user.username}`;
+    return `${window.location.origin}/user/${user.username}`;
+  };
+
+  const copyProfileLink = async () => {
+    const profileUrl = getProfileUrl();
+    if (!profileUrl) return;
     try {
       await navigator.clipboard.writeText(profileUrl);
       toast({ title: "Profile link copied", description: "Share it with your audience." });
@@ -244,13 +285,60 @@ const Profile = () => {
     }
   };
 
+  const shareProfileWithSystemSheet = async () => {
+    const profileUrl = getProfileUrl();
+    if (!profileUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${user?.displayName || user?.username} on CreativesOS`, url: profileUrl });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    await copyProfileLink();
+  };
+
+  const openShareTarget = async (target: "messages" | "whatsapp" | "instagram" | "x") => {
+    const profileUrl = getProfileUrl();
+    if (!profileUrl) return;
+    const message = `Follow my work on CreativesOS: ${profileUrl}`;
+    const encodedMessage = encodeURIComponent(message);
+
+    if (target === "messages") {
+      window.location.href = `sms:?body=${encodedMessage}`;
+    } else if (target === "whatsapp") {
+      window.open(`https://wa.me/?text=${encodedMessage}`, "_blank", "noopener,noreferrer");
+    } else if (target === "x") {
+      window.open(`https://twitter.com/intent/tweet?text=${encodedMessage}`, "_blank", "noopener,noreferrer");
+    } else {
+      await copyProfileLink();
+      toast({ title: "Link copied for Instagram", description: "Paste it into your story, bio, or a new post." });
+    }
+    setIsShareProfileOpen(false);
+  };
+
+  const createPlaylist = async () => {
+    const name = playlistName.trim();
+    if (!name) {
+      toast({ title: "Name your playlist", description: "Choose a title before creating it.", variant: "destructive" });
+      return;
+    }
+    const savedPostIds = savedPosts.map((post) => post.id);
+    try { await apiRequest("POST", "/api/playlists", { name, description: playlistDescription.trim(), postIds: savedPostIds }); await queryClient.invalidateQueries({ queryKey: ["/api/playlists"] }); } catch { toast({ title: "Could not create playlist", variant: "destructive" }); return; }
+    setPlaylistName("");
+    setPlaylistDescription("");
+    setIsCreatingPlaylist(false);
+    toast({ title: "Playlist created", description: savedPostIds.length ? `${savedPostIds.length} saved posts are ready to organize.` : "Save posts from the feed to build this collection." });
+  };
+
   const joinedLabel = user?.createdAt
     ? `Joined ${new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
     : "Joined CreativesOS";
   
   if (isAuthLoading || (isLoadingUser && !isOwnProfile)) {
     return (
-      <div className="px-4 pt-4 pb-20">
+      <div className="min-h-dvh bg-black px-4 pb-20 pt-4 text-white">
         <div className="flex items-center mb-6">
           <Skeleton className="w-16 h-16 rounded-full mr-4" />
           <div>
@@ -262,7 +350,7 @@ const Profile = () => {
         
         <div className="grid grid-cols-3 gap-4 mb-6">
           {Array(3).fill(0).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm p-4 text-center">
+            <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-center">
               <Skeleton className="h-6 w-16 mx-auto mb-1" />
               <Skeleton className="h-4 w-12 mx-auto" />
             </div>
@@ -343,8 +431,8 @@ const Profile = () => {
                 <BookmarkIcon className="mr-2 h-4 w-4" /> Saved
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setLocation("/revenue")}>
-                <DollarSign className="mr-2 h-4 w-4" /> Revenue
+              <DropdownMenuItem onClick={() => setLocation("/earnings")}>
+                <DollarSign className="mr-2 h-4 w-4" /> Creator earnings
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocation("/contacts")}>
                 <UsersIcon className="mr-2 h-4 w-4" /> Contacts
@@ -383,8 +471,10 @@ const Profile = () => {
           <div className="min-w-0 flex-1">
             <p className="truncate text-xl font-bold leading-6">{user?.displayName}</p>
             <div className="mt-3 flex max-w-[240px] gap-8">
-            <div 
-              className="cursor-pointer rounded-md text-left hover:bg-zinc-900"
+            <button
+              type="button"
+              className="rounded-md text-left hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={`View ${stats.followers} followers`}
               onClick={() => {
                 if (params.username) {
                   setLocation(`/user/${params.username}/followers`);
@@ -397,9 +487,11 @@ const Profile = () => {
             >
               <div className="text-xl font-bold leading-5">{stats.followers}</div>
               <div className="mt-1 text-sm text-zinc-500">followers</div>
-            </div>
-            <div 
-              className="cursor-pointer rounded-md text-left hover:bg-zinc-900"
+            </button>
+            <button
+              type="button"
+              className="rounded-md text-left hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={`View ${stats.following} following`}
               onClick={() => {
                 if (params.username) {
                   setLocation(`/user/${params.username}/following`);
@@ -412,7 +504,7 @@ const Profile = () => {
             >
               <div className="text-xl font-bold leading-5">{stats.following}</div>
               <div className="mt-1 text-sm text-zinc-500">following</div>
-            </div>
+            </button>
             </div>
           </div>
         </div>
@@ -428,9 +520,9 @@ const Profile = () => {
           <>
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" size="sm" className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-base font-bold text-white hover:bg-zinc-800" onClick={() => setIsEditProfileOpen(true)}>Edit profile</Button>
-              <Button variant="outline" size="sm" className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-base font-bold text-white hover:bg-zinc-800" onClick={handleShareProfile}><Share2 className="mr-2 h-4 w-4" />Share profile</Button>
+              <Button variant="outline" size="sm" className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-base font-bold text-white hover:bg-zinc-800" onClick={() => setIsShareProfileOpen(true)}><Share2 className="mr-2 h-4 w-4" />Share profile</Button>
             </div>
-            <button onClick={() => setLocation("/revenue")} className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left transition-colors hover:bg-zinc-800">
+            <button onClick={() => setLocation("/business")} className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left transition-colors hover:bg-zinc-800">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800 text-zinc-300"><LayoutDashboard className="h-6 w-6" /></span>
               <span className="flex-1 text-lg font-bold">Business dashboard</span>
               <span className="text-2xl text-zinc-500">›</span>
@@ -515,7 +607,7 @@ const Profile = () => {
             isLoading={isLoadingAllPosts}
             posts={likedPosts}
             emptyTitle="No liked posts yet"
-            emptyDescription="Posts you like will appear here on this device."
+            emptyDescription="Posts you like will appear here on your profile."
           />
         ) : (
           <ProfileTabEmpty title="Likes are private" description="This creator's likes are only visible from their own profile." />
@@ -551,7 +643,14 @@ const Profile = () => {
       )}
 
       {profileView === "playlists" && (
-        <ProfileTabEmpty title="No playlists yet" description="Create and curate playlists is the next content-library capability." />
+        <section className="p-4">
+          <div className="flex items-center justify-between">
+            <div><h2 className="text-base font-bold text-white">Playlists</h2><p className="mt-1 text-xs text-zinc-500">Organize saved posts into collections.</p></div>
+            {isViewingCurrentUser && <Button size="sm" className="rounded-full bg-white text-black hover:bg-zinc-200" onClick={() => setIsCreatingPlaylist((open) => !open)}><Plus className="mr-1 h-4 w-4" /> New</Button>}
+          </div>
+          {isViewingCurrentUser && isCreatingPlaylist && <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><Input value={playlistName} onChange={(event) => setPlaylistName(event.target.value)} placeholder="Playlist name" className="border-zinc-700 bg-black text-white placeholder:text-zinc-600" /><Textarea value={playlistDescription} onChange={(event) => setPlaylistDescription(event.target.value)} placeholder="What is this collection for?" className="mt-3 min-h-20 resize-none border-zinc-700 bg-black text-white placeholder:text-zinc-600" /><div className="mt-3 flex justify-end gap-2"><Button variant="ghost" size="sm" className="text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setIsCreatingPlaylist(false)}>Cancel</Button><Button size="sm" className="bg-white text-black hover:bg-zinc-200" onClick={createPlaylist}>Create playlist</Button></div></div>}
+          {playlists.length === 0 ? <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 px-6 py-12 text-center"><BookmarkIcon className="mx-auto h-6 w-6 text-zinc-600" /><h3 className="mt-3 text-sm font-bold text-white">No playlists yet</h3><p className="mt-2 text-sm leading-6 text-zinc-500">Create a collection, then save posts from the feed to keep inspiration and resources together.</p>{isViewingCurrentUser && <Button variant="outline" size="sm" className="mt-4 border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800" onClick={() => setIsCreatingPlaylist(true)}>Create your first playlist</Button>}</div> : <div className="mt-4 space-y-3">{playlists.map((playlist) => <article key={playlist.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-800 text-white"><BookmarkIcon className="h-5 w-5" /></span><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-white">{playlist.name}</h3><p className="mt-1 text-xs leading-5 text-zinc-500">{playlist.description || "Saved posts collection"}</p><p className="mt-2 text-xs font-semibold text-zinc-400">{playlist.postIds.length} saved {playlist.postIds.length === 1 ? "post" : "posts"}</p></div>{isViewingCurrentUser && <button type="button" onClick={async () => { await apiRequest("DELETE", `/api/playlists/${playlist.id}`); queryClient.invalidateQueries({ queryKey: ["/api/playlists"] }); }} className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-white" aria-label={`Delete ${playlist.name}`}><Trash2 className="h-4 w-4" /></button>}</div><Button variant="outline" size="sm" className="mt-4 w-full border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800" onClick={() => setLocation("/saved-posts")}>View saved posts</Button></article>)}</div>}
+        </section>
       )}
 
       
@@ -564,6 +663,43 @@ const Profile = () => {
           />
         </div>
       )}
+
+      <Dialog open={isShareProfileOpen} onOpenChange={setIsShareProfileOpen}>
+        <DialogContent className="bottom-0 top-auto max-w-[720px] translate-y-0 gap-0 rounded-t-3xl border-zinc-800 bg-white p-0 text-black data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full sm:rounded-t-3xl">
+          <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-zinc-300" />
+          <DialogHeader className="px-5 pb-4 pt-5 text-left">
+            <DialogTitle className="text-base font-bold text-black">Share to…</DialogTitle>
+            <DialogDescription className="sr-only">Share your public CreativesOS profile.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-4 gap-3 border-b border-zinc-200 px-5 pb-5">
+            {[
+              { label: "Messages", icon: MessageSquare, action: () => void openShareTarget("messages"), tone: "bg-emerald-100 text-emerald-700" },
+              { label: "WhatsApp", icon: Send, action: () => void openShareTarget("whatsapp"), tone: "bg-emerald-100 text-emerald-700" },
+              { label: "Instagram", icon: Camera, action: () => void openShareTarget("instagram"), tone: "bg-pink-100 text-pink-700" },
+              { label: "X", icon: AtSign, action: () => void openShareTarget("x"), tone: "bg-zinc-900 text-white" },
+            ].map(({ label, icon: Icon, action, tone }) => (
+              <button key={label} type="button" onClick={action} className="flex flex-col items-center gap-2 rounded-xl py-1 text-xs font-semibold text-zinc-700 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400" aria-label={`Share with ${label}`}>
+                <span className={`flex h-12 w-12 items-center justify-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="p-3">
+            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><Copy className="h-4 w-4" /></span>
+              Copy link
+            </button>
+            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); setLocation("/messages"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><Send className="h-4 w-4" /></span>
+              Send in DM
+            </button>
+            <button type="button" onClick={() => void shareProfileWithSystemSheet()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><MoreHorizontal className="h-4 w-4" /></span>
+              Share to…
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

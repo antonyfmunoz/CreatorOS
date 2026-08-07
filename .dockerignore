@@ -1,0 +1,12 @@
+# Local development and repository history are never required to build or run
+# the production image. Uploaded media remains included temporarily because
+# its durable object-storage migration has not happened yet.
+.git
+node_modules
+dist
+attached_assets
+tests
+*.log
+.env
+.env.*
+!.env.example

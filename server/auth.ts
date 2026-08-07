@@ -3,6 +3,7 @@ import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { clerkClient } from "./clerkAdmin";
 import type { User } from "@shared/schema";
+import { ensureDefaultBusiness } from "./businesses";
 
 // Make the resolved DB user available on the request for downstream handlers.
 declare global {
@@ -27,6 +28,14 @@ function normalizeUsername(seed: string): string {
   return cleaned || "user";
 }
 
+function verifiedPrimaryEmail(clerkUser: Awaited<ReturnType<typeof clerkClient.users.getUser>>): string | undefined {
+  const primaryEmail = clerkUser.emailAddresses.find(
+    (email) => email.id === clerkUser.primaryEmailAddressId,
+  );
+  if (primaryEmail?.verification?.status !== "verified") return undefined;
+  return primaryEmail.emailAddress.trim().toLowerCase();
+}
+
 /**
  * Find a username that isn't taken yet, appending a numeric suffix on collision.
  */
@@ -49,15 +58,38 @@ async function uniqueUsername(base: string): Promise<string> {
  */
 export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
   const existing = await storage.getUserByClerkId(clerkUserId);
-  if (existing) return existing;
+  if (existing) {
+    // Existing test-instance users acquire their verified email before the
+    // production key switch. After the switch this branch is inexpensive.
+    if (!existing.authEmail) {
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
+      const authEmail = verifiedPrimaryEmail(clerkUser);
+      if (authEmail) {
+        existing.authEmail = authEmail;
+        await storage.rebindClerkIdentity(existing.id, clerkUserId, authEmail);
+      }
+    }
+    await ensureDefaultBusiness(existing);
+    return existing;
+  }
 
   // First authenticated request for this Clerk user — build a DB profile
   // from the Clerk account.
   const clerkUser = await clerkClient.users.getUser(clerkUserId);
 
-  const primaryEmail = clerkUser.emailAddresses.find(
-    (e) => e.id === clerkUser.primaryEmailAddressId,
-  )?.emailAddress;
+  const primaryEmail = verifiedPrimaryEmail(clerkUser);
+
+  // Clerk development and production instances intentionally have separate
+  // user IDs. A new live account with the same verified email therefore
+  // reclaims the existing local profile and all of its related data.
+  if (primaryEmail) {
+    const legacyUser = await storage.getUserByAuthEmail(primaryEmail);
+    if (legacyUser) {
+      const reboundUser = await storage.rebindClerkIdentity(legacyUser.id, clerkUserId, primaryEmail);
+      await ensureDefaultBusiness(reboundUser);
+      return reboundUser;
+    }
+  }
 
   const usernameSeed =
     clerkUser.username ||
@@ -71,14 +103,17 @@ export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
     clerkUser.username ||
     username;
 
-  return storage.createUser({
+  const user = await storage.createUser({
     clerkId: clerkUserId,
+    authEmail: primaryEmail ?? null,
     username,
     displayName,
     bio: null,
     profileImageUrl: clerkUser.imageUrl ?? null,
     role: "creator",
   });
+  await ensureDefaultBusiness(user);
+  return user;
 }
 
 /**
@@ -93,8 +128,22 @@ export function setupAuth(app: Express) {
     return;
   }
 
-  // Apply Clerk middleware globally — parses auth state on every request.
-  app.use(clerkMiddleware());
+  // Configure Clerk explicitly instead of depending on the SDK's environment
+  // discovery. The browser build uses the Vite-prefixed value; the server needs
+  // the same public identifier under its non-Vite name. Keeping this fallback
+  // here makes local development, Fly, and `op run` resolve the same instance.
+  const publishableKey =
+    process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const authorizedParties = process.env.PUBLIC_APP_URL
+    ? [process.env.PUBLIC_APP_URL]
+    : undefined;
+  app.use(
+    clerkMiddleware({
+      secretKey: process.env.CLERK_SECRET_KEY,
+      publishableKey,
+      authorizedParties,
+    }),
+  );
 
   // Current user route — returns the full DB user, provisioning on first sight.
   app.get("/api/user", attachUser, (req: Request, res: Response) => {
@@ -107,7 +156,12 @@ export function setupAuth(app: Express) {
  * Returns 401 if the request has no authenticated user.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const { userId } = getAuth(req);
+  let userId: string | null;
+  try {
+    ({ userId } = getAuth(req));
+  } catch {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
   if (!userId) {
     return res.status(401).json({ message: "Not authenticated" });
   }
@@ -134,7 +188,15 @@ export async function attachUser(
       return next();
     }
 
-    const { userId } = getAuth(req);
+    let userId: string | null;
+    try {
+      ({ userId } = getAuth(req));
+    } catch {
+      // A request without a valid Clerk context is unauthenticated, not a
+      // server fault. This also keeps protected API contracts deterministic
+      // during local and deployment health checks.
+      return res.status(401).json({ message: "Not authenticated" });
+    }
     if (!userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }

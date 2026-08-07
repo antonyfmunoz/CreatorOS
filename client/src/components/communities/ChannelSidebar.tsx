@@ -1,17 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCommunitiesStore } from '@/lib/stores';
 import { Community, Channel } from '@/types';
-import { Hash } from 'lucide-react';
+import { Hash, Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 
 interface ChannelSidebarProps {
   isMobile?: boolean;
   isMember?: boolean;
+  canManage?: boolean;
+  onCreateChannel?: () => void;
 }
 
-const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarProps) => {
+const ChannelSidebar = ({ isMobile = false, isMember = false, canManage = false, onCreateChannel }: ChannelSidebarProps) => {
+  const [channelSearch, setChannelSearch] = useState("");
   const { activeCommunityId, activeChannelId, setActiveCommunity, setActiveChannel } = useCommunitiesStore();
   
   const { data: communities, isLoading: isLoadingCommunities } = useQuery<Community[]>({
@@ -28,6 +33,7 @@ const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarPr
     },
   });
   const activeCommunity = communities?.find((community) => community.id === activeCommunityId);
+  const visibleChannels = channels?.filter((channel) => channel.name.toLowerCase().includes(channelSearch.trim().toLowerCase()));
   
   return (
     <div className={isMobile ? "h-full w-full bg-zinc-950 p-4 text-white" : "hidden w-52 shrink-0 border-r border-zinc-800 bg-[#171719] p-4 text-white md:block"}>
@@ -50,11 +56,11 @@ const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarPr
                   key={community.id}
                   className={`
                     flex items-center p-2 rounded-md cursor-pointer
-                    ${activeCommunityId === community.id ? 'bg-[#1d9bf0]/15 text-white' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'}
+                    ${activeCommunityId === community.id ? 'bg-white text-black' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'}
                   `}
                   onClick={() => setActiveCommunity(community.id)}
                 >
-                  <span className={`mr-2 h-2 w-2 rounded-full ${activeCommunityId === community.id ? 'bg-[#1d9bf0]' : 'bg-zinc-600'}`}></span>
+                  <span className={`mr-2 h-2 w-2 rounded-full ${activeCommunityId === community.id ? 'bg-black' : 'bg-zinc-600'}`}></span>
                   <span>{community.name}</span>
                 </li>
               ))}
@@ -64,8 +70,11 @@ const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarPr
         
         {isMember && activeCommunityId && (
           <div>
-          {!isMobile && <Input placeholder="Search channels" className="mb-6 h-11 rounded-xl border-0 bg-black px-4 text-white placeholder:text-zinc-500" />}
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Text channels</h3>
+          <Input aria-label="Search channels" value={channelSearch} onChange={(event) => setChannelSearch(event.target.value)} placeholder="Search channels" className="mb-6 h-11 rounded-xl border-0 bg-black px-4 text-white placeholder:text-zinc-500" />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Text channels</h3>
+            {canManage && onCreateChannel && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full text-zinc-500 hover:bg-zinc-900 hover:text-white" onClick={onCreateChannel} aria-label="Create channel"><Plus className="h-4 w-4" /></Button>}
+          </div>
             
             {isLoadingChannels ? (
               <div className="space-y-2">
@@ -76,7 +85,7 @@ const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarPr
             ) : (
               <ScrollArea className="h-40">
                 <ul className="space-y-1 pr-4">
-                  {channels?.map(channel => (
+                  {visibleChannels?.map(channel => (
                     <li 
                       key={channel.id}
                       className={`
@@ -89,6 +98,7 @@ const ChannelSidebar = ({ isMobile = false, isMember = false }: ChannelSidebarPr
                       <span>{channel.name}</span>
                     </li>
                   ))}
+                  {visibleChannels?.length === 0 && <li className="px-2 py-4 text-center text-xs text-zinc-500">No channels match “{channelSearch}”.</li>}
                 </ul>
               </ScrollArea>
             )}

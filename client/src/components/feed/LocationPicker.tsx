@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, MapPin, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { X, ChevronRight, MapPin, Search } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface LocationPickerProps {
   isOpen: boolean;
@@ -11,136 +11,50 @@ interface LocationPickerProps {
 
 export interface LocationData {
   name: string;
-  address?: string;
   postCount?: number;
-  distance?: string;
 }
 
-// Sample location data - in a real app, this would come from an API
-const sampleLocations: LocationData[] = [
-  { name: "Portland, Oregon", postCount: 13000000, distance: "44km" },
-  { name: "Gales Creek, Oregon", postCount: 5000, distance: "2.1km" },
-  { name: "Portland Oregon", address: "Portland, Oregon", postCount: 222000, distance: "44km" },
-  { name: "Beaverton, Oregon", postCount: 729000, distance: "36km" },
-  { name: "Oregon Coast", postCount: 85100, distance: "44km" },
-  { name: "The Ritz-Carlton, Portland", address: "900 SW Washington Street, Portland, Oregon", postCount: 1000, distance: "44km" },
-  { name: "Liberty High School", address: "7445 NW Wagon Drive, Hillsboro, Oregon", postCount: 100, distance: "25.9km" },
-  { name: "Oregon Zoo", address: "4001 SW Canyon Rd, Portland, Oregon", postCount: 270000, distance: "41km" },
-  { name: "Roseland Theater", address: "8 NW 6th Ave, Portland, Oregon", postCount: 122000, distance: "44km" },
-  { name: "My World", postCount: 0 },
-  { name: "Keller Auditorium", address: "222 SW Clay St, Portland, Oregon", postCount: 79900, distance: "44km" },
-  { name: "Cedar Hills, Oregon", postCount: 24100, distance: "35km" },
-  { name: "Forest Park", postCount: 91800, distance: "39km" },
-];
+const formatPostCount = (count: number) => `${count.toLocaleString()} post${count === 1 ? "" : "s"}`;
 
 export const LocationPicker = ({ isOpen, onClose, onSelect }: LocationPickerProps) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const { toast } = useToast();
+  const normalizedQuery = searchQuery.replace(/\s+/g, " ").trim();
+  const locations = useQuery<LocationData[]>({
+    queryKey: ["/api/locations", normalizedQuery],
+    enabled: isOpen,
+    queryFn: async () => {
+      const response = await fetch(`/api/locations?q=${encodeURIComponent(normalizedQuery)}`);
+      if (!response.ok) throw new Error("Locations could not be loaded");
+      return response.json();
+    },
+    staleTime: 30_000,
+  });
+  const exactMatch = locations.data?.some((location) => location.name.toLowerCase() === normalizedQuery.toLowerCase());
 
-  // Reset search query when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setSearchQuery("");
-      console.log("Location picker opened");
-    }
-  }, [isOpen]);
+  if (!isOpen) return null;
 
-  const formatPostCount = (count: number): string => {
-    if (count >= 1000000) {
-      return `${Math.floor(count / 1000000)}M posts`;
-    } else if (count >= 1000) {
-      return `${Math.floor(count / 1000)}K posts`;
-    } else if (count > 0) {
-      return `${count} posts`;
-    } else {
-      return '';
-    }
-  };
-
-  const filteredLocations = searchQuery 
-    ? sampleLocations.filter(location => 
-        location.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (location.address && location.address.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : sampleLocations;
-
-  const handleSelectLocation = (location: LocationData) => {
-    console.log("Location selected:", location);
+  const select = (location: LocationData) => {
     onSelect(location);
     onClose();
   };
 
-  // Since we're now conditionally rendering the entire component in PhotoUploader, 
-  // we don't need to check isOpen here anymore - but keeping the prop for consistency
-
   return (
-    <div className="fixed inset-0 z-50 bg-background">
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b">
-          <button 
-            onClick={onClose}
-            className="p-1 rounded-full"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <h2 className="text-lg font-medium">Locations</h2>
-          <button 
-            onClick={onClose}
-            className="text-primary font-semibold px-2"
-          >
-            Cancel
-          </button>
+    <div className="fixed inset-0 z-50 bg-black text-white">
+      <div className="mx-auto flex h-full w-full max-w-[720px] flex-col">
+        <header className="flex h-14 items-center justify-between border-b border-zinc-800 px-4">
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-zinc-300 hover:bg-zinc-900 hover:text-white" aria-label="Close locations"><X className="h-5 w-5" /></button>
+          <h2 className="text-lg font-bold">Add location</h2>
+          <button type="button" onClick={onClose} className="px-2 text-sm font-semibold text-[#1d9bf0]">Cancel</button>
+        </header>
+
+        <div className="border-b border-zinc-800 px-4 py-3">
+          <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" /><Input autoFocus aria-label="Search or enter a location" placeholder="Search or enter a location" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} maxLength={180} className="rounded-full border-0 bg-zinc-900 pl-10 text-white placeholder:text-zinc-500" /></div>
         </div>
 
-        {/* Search bar */}
-        <div className="px-4 py-2 border-b">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-muted text-foreground placeholder:text-muted-foreground pl-10 rounded-lg border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-          </div>
-        </div>
-
-        {/* Location list */}
         <div className="flex-1 overflow-y-auto">
-          {filteredLocations.map((location, index) => (
-            <button 
-              key={index}
-              className="w-full text-left px-4 py-3 hover:bg-muted border-b border-border last:border-b-0"
-              onClick={() => handleSelectLocation(location)}
-            >
-              <div className="flex justify-between">
-                <div>
-                  <p className="text-foreground">{location.name}</p>
-                  <div className="flex text-muted-foreground text-sm mt-1">
-                    {location.postCount !== undefined && (
-                      <span>{formatPostCount(location.postCount)}</span>
-                    )}
-                    {location.distance && (
-                      <>
-                        {location.postCount !== undefined && <span className="mx-1.5">•</span>}
-                        <span>{location.distance}</span>
-                      </>
-                    )}
-                    {location.address && (
-                      <>
-                        {(location.postCount !== undefined || location.distance) && <span className="mx-1.5">•</span>}
-                        <span className="truncate max-w-[200px]">{location.address}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="self-center">
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </div>
-            </button>
-          ))}
+          {normalizedQuery && !exactMatch && <button type="button" className="flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-4 text-left hover:bg-zinc-950" onClick={() => select({ name: normalizedQuery })}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900"><MapPin className="h-5 w-5 text-zinc-300" /></span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">Use “{normalizedQuery}”</span><span className="mt-0.5 block text-xs text-zinc-500">Add this location to your post</span></span><ChevronRight className="h-5 w-5 text-zinc-600" /></button>}
+
+          {locations.isLoading ? <div className="px-5 py-12 text-center text-sm text-zinc-500">Loading locations…</div> : locations.isError ? <div className="px-5 py-12 text-center"><p className="text-sm text-zinc-400">Existing locations could not be loaded.</p>{normalizedQuery && <p className="mt-2 text-xs text-zinc-600">You can still use the location you entered above.</p>}</div> : locations.data?.length ? locations.data.map((location) => <button type="button" key={location.name.toLowerCase()} className="flex w-full items-center gap-3 border-b border-zinc-900 px-4 py-4 text-left hover:bg-zinc-950" onClick={() => select(location)}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900"><MapPin className="h-5 w-5 text-zinc-400" /></span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{location.name}</span>{location.postCount !== undefined && <span className="mt-0.5 block text-xs text-zinc-500">{formatPostCount(location.postCount)}</span>}</span><ChevronRight className="h-5 w-5 text-zinc-600" /></button>) : !normalizedQuery && <div className="mx-auto max-w-sm px-8 py-20 text-center"><MapPin className="mx-auto h-8 w-8 text-zinc-600" /><h3 className="mt-4 font-semibold">No locations used yet</h3><p className="mt-2 text-sm leading-6 text-zinc-500">Enter a city, venue, or place to add the first real location.</p></div>}
         </div>
       </div>
     </div>

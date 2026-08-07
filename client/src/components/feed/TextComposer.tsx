@@ -19,6 +19,34 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const createPostMutation = useMutation({
+    mutationFn: async (postData: { content: string; mediaType: string; addToStory: boolean }) => {
+      const res = await apiRequest('POST', '/api/posts', postData);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Post created!',
+        description: 'Your post has been successfully shared.'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+
+      if (addToStory) {
+        queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
+      }
+
+      onClose();
+    },
+    onError: (error) => {
+      console.error('Error creating post:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create post. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  });
   
   const handleSubmit = () => {
     if (!content.trim()) {
@@ -39,36 +67,7 @@ export const TextComposer = ({ onClose }: TextComposerProps) => {
       return;
     }
     
-    const createPostMutation = useMutation({
-      mutationFn: async (postData: any) => {
-        const res = await apiRequest('POST', '/api/posts', postData);
-        return res.json();
-      },
-      onSuccess: () => {
-        toast({
-          title: 'Post created!',
-          description: 'Your post has been successfully shared.'
-        });
-        queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-        
-        if (addToStory) {
-          queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
-        }
-        
-        onClose();
-      },
-      onError: (error) => {
-        console.error('Error creating post:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to create post. Please try again.',
-          variant: 'destructive'
-        });
-      }
-    });
-    
     createPostMutation.mutate({
-      userId: user.id,
       content,
       mediaType: 'text',
       addToStory

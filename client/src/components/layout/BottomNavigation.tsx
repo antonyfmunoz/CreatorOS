@@ -13,15 +13,15 @@ const BottomNavigation = () => {
   const { setActiveTab } = useAppStore();
   const [location, setLocation] = useLocation();
 
-  const activeTab = location === "/" || location.startsWith("/posts/")
+  const activeTab = location === "/" || location.startsWith("/post/") || location.startsWith("/posts/")
     ? "explore"
-    : location.startsWith("/marketplace")
+    : location.startsWith("/marketplace") || ["/cart", "/orders", "/checkout"].some((path) => location === path || location.startsWith(`${path}/`)) || location.startsWith("/learn") || location.startsWith("/courses/")
       ? "marketplace"
-      : location.startsWith("/create") || location === "/new-text-post"
+      : location.startsWith("/create") || location === "/new-text-post" || ["/studio", "/distribution", "/business", "/campaigns", "/earnings", "/products", "/ai"].some((path) => location === path || location.startsWith(`${path}/`))
         ? "create"
         : location.startsWith("/communities")
           ? "communities"
-          : location.startsWith("/profile") || location.startsWith("/user/") || ["/saved-posts", "/followers", "/following", "/revenue", "/contacts", "/documents"].some((path) => location === path || location.startsWith(`${path}/`))
+          : location.startsWith("/profile") || location.startsWith("/user/") || ["/saved-posts", "/followers", "/following", "/revenue", "/contacts", "/documents", "/moderation"].some((path) => location === path || location.startsWith(`${path}/`))
             ? "profile"
             : null;
 

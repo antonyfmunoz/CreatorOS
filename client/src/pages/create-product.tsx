@@ -25,25 +25,24 @@ const CreateProductPage = () => {
   }
 
   return (
-    <div className="pb-20">
+    <main className="min-h-dvh bg-black pb-24 text-white">
       {/* Header with back button */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <header className="flex h-16 items-center gap-2 border-b border-zinc-800 px-4">
         <Button 
           variant="ghost" 
           size="icon" 
           onClick={() => setLocation("/profile")}
-          className="mr-2"
+          className="-ml-2 text-zinc-400 hover:bg-zinc-900 hover:text-white"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-lg font-bold flex-1 text-center">Create Product</h1>
-        <div className="w-9"></div> {/* Empty div for balance */}
-      </div>
+        <div><h1 className="text-lg font-bold">Create an offer</h1><p className="text-xs text-zinc-500">Build something your audience can discover and buy.</p></div>
+      </header>
       
       <div className="p-4">
         <ProductForm />
       </div>
-    </div>
+    </main>
   );
 };
 

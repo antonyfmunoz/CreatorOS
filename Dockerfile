@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 
@@ -9,10 +9,15 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY . .
+RUN chmod +x /app/scripts/migrate-production.mjs
 
 # Vite inlines VITE_* env vars at build time via import.meta.env
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+
+# A missing key produces a bundle that cannot render. Fail the image build
+# instead of allowing that broken bundle to reach production.
+RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY"
 
 RUN npm run build
 

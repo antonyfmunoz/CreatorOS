@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ArrowLeft, Bell, Download, Heart, MessageCircle, Package, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Bell, CheckCheck, Download, Heart, MessageCircle, Package, UserPlus, Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,13 +12,14 @@ const icons: Record<Notification["type"], typeof Bell> = { like: Heart, comment:
 export default function NotificationsPage() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const { notifications, fetchNotifications, markAsRead } = useNotifications();
+  const { notifications, unreadCount, isLoading, fetchNotifications, markAsRead, markAllAsRead } = useNotifications();
   useEffect(() => { if (user) void fetchNotifications(user.id); }, [fetchNotifications, user]);
 
   return (
     <main className="min-h-dvh bg-black text-white">
-      <header className="flex h-16 items-center gap-2 border-b border-zinc-800 px-4"><Button variant="ghost" size="icon" className="-ml-2 text-white hover:bg-zinc-900 hover:text-white" aria-label="Back" onClick={() => setLocation("/")}><ArrowLeft className="h-7 w-7" /></Button><h1 className="text-3xl font-bold">Notifications</h1></header>
+      <header className="flex min-h-16 items-center gap-2 border-b border-zinc-800 px-4"><Button variant="ghost" size="icon" className="-ml-2 text-white hover:bg-zinc-900 hover:text-white" aria-label="Back" onClick={() => setLocation("/")}><ArrowLeft className="h-7 w-7" /></Button><h1 className="flex-1 text-2xl font-bold sm:text-3xl">Notifications</h1>{user && unreadCount > 0 && <Button variant="ghost" size="sm" className="text-zinc-300 hover:bg-zinc-900 hover:text-white" onClick={() => void markAllAsRead(user.id)}><CheckCheck className="mr-2 h-4 w-4" />Mark all read</Button>}</header>
       <section className="divide-y divide-zinc-800">
+        {isLoading && notifications.length === 0 && <div className="flex min-h-[50dvh] flex-col items-center justify-center px-8 text-center"><span className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-white" aria-label="Loading notifications" /><p className="mt-4 text-sm text-zinc-500">Loading notifications…</p></div>}
         {notifications.map((notification) => {
           const Icon = icons[notification.type] ?? Bell;
           return <button key={notification.id} onClick={() => { void markAsRead(notification.id); if (notification.linkTo) setLocation(notification.linkTo); }} className={`flex w-full items-center gap-4 px-5 py-5 text-left hover:bg-zinc-950 ${notification.read ? "opacity-70" : ""}`}>
@@ -27,7 +28,7 @@ export default function NotificationsPage() {
             {notification.type === "purchase" && <Download className="h-5 w-5 text-zinc-400" />}
           </button>;
         })}
-        {notifications.length === 0 && <div className="flex min-h-[50dvh] flex-col items-center justify-center px-8 text-center"><span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900"><Bell className="h-8 w-8 text-zinc-400" /></span><h2 className="mt-5 text-lg font-bold">No notifications yet</h2><p className="mt-2 text-sm text-zinc-500">Community activity, purchases, and creator updates will appear here.</p></div>}
+        {!isLoading && notifications.length === 0 && <div className="flex min-h-[50dvh] flex-col items-center justify-center px-8 text-center"><span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900"><Bell className="h-8 w-8 text-zinc-400" /></span><h2 className="mt-5 text-lg font-bold">No notifications yet</h2><p className="mt-2 text-sm text-zinc-500">Community activity, purchases, and creator updates will appear here.</p></div>}
       </section>
     </main>
   );

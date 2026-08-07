@@ -15,6 +15,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [content, setContent] = useState("");
+  const [addToStory, setAddToStory] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -95,6 +96,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
     formData.append('content', content || 'Video post');
     formData.append('video', videoFile);
     formData.append('mediaType', 'video');
+    formData.append('addToStory', String(addToStory));
     
     createPostMutation.mutate(formData);
   };
@@ -177,6 +179,11 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           <PostOptionsPanel 
             content={content}
             onContentChange={setContent}
+            addToStory={addToStory}
+            onAddToStoryChange={setAddToStory}
+            onShare={handlePost}
+            isSharing={createPostMutation.isPending}
+            shareDisabled={!videoFile}
           />
         </div>
       </div>
@@ -190,7 +197,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
       
       {/* Top Controls */}
       <div className="absolute left-0 right-0 top-0 z-10 flex h-[58px] items-center justify-between border-b border-zinc-800 bg-black px-4">
-        <button className="text-foreground text-xl" onClick={onClose}>✕</button>
+        <button className="rounded-full p-2 text-xl text-white transition-colors hover:bg-white/10" onClick={onClose} aria-label="Cancel video post">✕</button>
         <span className="absolute left-1/2 -translate-x-1/2 text-lg font-semibold">New reel</span>
         <div className="flex space-x-2">
           <Button 

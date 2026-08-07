@@ -35,7 +35,7 @@ const FollowingPage = () => {
         if (!res.ok) throw new Error('Failed to fetch user');
         
         const users = await res.json();
-        const user = users.find((u: User) => u.username === params.username);
+        const user = users[0] as User | undefined;
         if (!user) throw new Error('User not found');
         
         return user;
@@ -96,6 +96,7 @@ const FollowingPage = () => {
             size="icon"
             className="mr-2"
             onClick={handleBackClick}
+            aria-label="Back to profile"
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>

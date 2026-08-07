@@ -26,7 +26,9 @@ export interface Post {
   imageUrl?: string;
   audioUrl?: string;
   videoUrl?: string;
+  location?: string | null;
   mediaType?: string;
+  repostOfId?: number | null;
   likes: number;
   comments: number;
   createdAt: string;
@@ -48,6 +50,9 @@ export interface Comment {
 export interface Product {
   id: number;
   userId: number;
+  businessId?: string | null;
+  payoutMode: 'platform' | 'creator';
+  status: 'draft' | 'published' | 'archived';
   title: string;
   description: string;
   price: number;
@@ -118,9 +123,11 @@ export interface ChannelMessage {
   id: number;
   channelId: number;
   userId: number;
+  parentMessageId: number | null;
   content: string;
   isPinned: boolean;
   likes: number;
+  likedByCurrentUser?: boolean;
   createdAt: string;
   user: User;
 }

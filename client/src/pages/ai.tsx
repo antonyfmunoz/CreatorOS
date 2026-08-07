@@ -14,6 +14,16 @@ import { useAppStore } from "@/lib/stores";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const iconOptions = [
   { value: "Pencil", label: "Pencil" },
@@ -37,6 +47,9 @@ const AI = () => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [bottomOpen, setBottomOpen] = useState(false);
+  const [agentToEdit, setAgentToEdit] = useState<AIAgent | null>(null);
+  const [agentToDelete, setAgentToDelete] = useState<AIAgent | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", systemPrompt: "" });
   
   const [formData, setFormData] = useState({
     name: "",
@@ -68,14 +81,12 @@ const AI = () => {
       if (!currentUser) throw new Error('User not authenticated');
       
       const agent = {
-        userId: currentUser.id,
         name: formData.name,
         description: formData.description,
         icon: formData.icon,
         iconColor: formData.iconColor,
         backgroundColor: formData.backgroundColor,
         systemPrompt: formData.systemPrompt,
-        isCustom: true,
       };
       
       const res = await apiRequest('POST', '/api/ai-agents', agent);
@@ -108,6 +119,41 @@ const AI = () => {
     },
   });
 
+  const deleteAgentMutation = useMutation({
+    mutationFn: async (agentId: number) => {
+      await apiRequest('DELETE', `/api/ai-agents/${agentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ai-agents/user', currentUser?.id] });
+      toast({ title: 'Agent deleted', description: 'The custom agent and its chats were removed.' });
+      setAgentToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Could not delete agent', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const openEditAgent = (agent: AIAgent) => {
+    setEditForm({ name: agent.name, description: agent.description, systemPrompt: agent.systemPrompt });
+    setAgentToEdit(agent);
+  };
+
+  const updateAgentMutation = useMutation({
+    mutationFn: async () => {
+      if (!agentToEdit) throw new Error('No agent selected');
+      const response = await apiRequest('PATCH', `/api/ai-agents/${agentToEdit.id}`, editForm);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ai-agents/user', currentUser?.id] });
+      toast({ title: 'Agent updated', description: 'Your custom agent is ready with its new instructions.' });
+      setAgentToEdit(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Could not update agent', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -134,16 +180,16 @@ const AI = () => {
   };
 
   return (
-    <div className="px-4 pt-4 pb-20">
+    <main className="min-h-dvh bg-black px-4 pb-20 pt-4 text-white">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">AI Agents</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="icon" className="rounded-full bg-primary text-white">
+            <Button size="icon" className="rounded-full bg-[#1d9bf0] text-white hover:bg-[#1a8cd8]" aria-label="Create AI agent">
               <Plus className="h-5 w-5" />
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="border-zinc-800 bg-zinc-950 text-white">
             <DialogHeader>
               <DialogTitle>Create New AI Agent</DialogTitle>
               <DialogDescription>
@@ -159,7 +205,7 @@ const AI = () => {
                     id="name" 
                     name="name"
                     placeholder="Content Writer" 
-                    className="col-span-3" 
+                    className="col-span-3 border-zinc-700 bg-black text-white"
                     value={formData.name}
                     onChange={handleChange}
                     required
@@ -172,7 +218,7 @@ const AI = () => {
                     id="description" 
                     name="description"
                     placeholder="Writes blog posts and marketing copy" 
-                    className="col-span-3" 
+                    className="col-span-3 border-zinc-700 bg-black text-white"
                     value={formData.description}
                     onChange={handleChange}
                     required
@@ -185,7 +231,7 @@ const AI = () => {
                     onValueChange={(value) => handleSelectChange('icon', value)}
                     defaultValue={formData.icon}
                   >
-                    <SelectTrigger className="col-span-3">
+                    <SelectTrigger id="icon" aria-label="Agent icon" className="col-span-3 border-zinc-700 bg-black text-white">
                       <SelectValue placeholder="Select icon" />
                     </SelectTrigger>
                     <SelectContent>
@@ -204,7 +250,7 @@ const AI = () => {
                     onValueChange={(value) => handleSelectChange('color', value)}
                     defaultValue={formData.iconColor}
                   >
-                    <SelectTrigger className="col-span-3">
+                    <SelectTrigger id="color" aria-label="Agent color" className="col-span-3 border-zinc-700 bg-black text-white">
                       <SelectValue placeholder="Select color" />
                     </SelectTrigger>
                     <SelectContent>
@@ -223,7 +269,7 @@ const AI = () => {
                     id="systemPrompt" 
                     name="systemPrompt"
                     placeholder="You are a helpful assistant specialized in..." 
-                    className="col-span-3" 
+                    className="col-span-3 border-zinc-700 bg-black text-white"
                     value={formData.systemPrompt}
                     onChange={handleChange}
                     required
@@ -245,7 +291,7 @@ const AI = () => {
       <div className="grid grid-cols-2 gap-4 mb-8">
         {isLoadingStandard ? (
           Array(4).fill(0).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div key={i} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
               <div className="p-4">
                 <Skeleton className="w-12 h-12 rounded-lg mb-3" />
                 <Skeleton className="h-5 w-2/3 mb-2" />
@@ -265,7 +311,7 @@ const AI = () => {
       
       <div className="grid grid-cols-1 gap-4 mb-8">
         {isLoadingCustom ? (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
             <div className="p-4 flex">
               <Skeleton className="w-12 h-12 rounded-lg mr-4" />
               <div className="flex-1">
@@ -280,22 +326,22 @@ const AI = () => {
           </div>
         ) : customAgents && customAgents.length > 0 ? (
           customAgents.map(agent => (
-            <AgentCard key={agent.id} agent={agent} layout="list" />
+            <AgentCard key={agent.id} agent={agent} layout="list" onEdit={openEditAgent} onDelete={setAgentToDelete} />
           ))
         ) : (
-          <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-            <p className="text-gray-500">No custom agents yet. Create your first agent!</p>
+          <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950 py-8 text-center">
+            <p className="text-zinc-500">No custom agents yet. Create your first agent!</p>
           </div>
         )}
       </div>
       
       <Dialog open={bottomOpen} onOpenChange={setBottomOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" className="w-full py-3 rounded-lg text-center text-sm font-medium">
+          <Button variant="outline" className="w-full rounded-xl border-zinc-700 bg-zinc-900 py-3 text-center text-sm font-medium text-white hover:bg-zinc-800 hover:text-white">
             Train New AI Agent
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white">
           <DialogHeader>
             <DialogTitle>Create New AI Agent</DialogTitle>
             <DialogDescription>
@@ -311,7 +357,7 @@ const AI = () => {
                   id="name-bottom" 
                   name="name"
                   placeholder="Content Writer" 
-                  className="col-span-3" 
+                  className="col-span-3 border-zinc-700 bg-black text-white"
                   value={formData.name}
                   onChange={handleChange}
                   required
@@ -324,7 +370,7 @@ const AI = () => {
                   id="description-bottom" 
                   name="description"
                   placeholder="Writes blog posts and marketing copy" 
-                  className="col-span-3" 
+                  className="col-span-3 border-zinc-700 bg-black text-white"
                   value={formData.description}
                   onChange={handleChange}
                   required
@@ -337,7 +383,7 @@ const AI = () => {
                   onValueChange={(value) => handleSelectChange('icon', value)}
                   defaultValue={formData.icon}
                 >
-                  <SelectTrigger className="col-span-3">
+                  <SelectTrigger id="icon-bottom" aria-label="Agent icon" className="col-span-3 border-zinc-700 bg-black text-white">
                     <SelectValue placeholder="Select icon" />
                   </SelectTrigger>
                   <SelectContent>
@@ -356,7 +402,7 @@ const AI = () => {
                   onValueChange={(value) => handleSelectChange('color', value)}
                   defaultValue={formData.iconColor}
                 >
-                  <SelectTrigger className="col-span-3">
+                  <SelectTrigger id="color-bottom" aria-label="Agent color" className="col-span-3 border-zinc-700 bg-black text-white">
                     <SelectValue placeholder="Select color" />
                   </SelectTrigger>
                   <SelectContent>
@@ -375,7 +421,7 @@ const AI = () => {
                   id="systemPrompt-bottom" 
                   name="systemPrompt"
                   placeholder="You are a helpful assistant specialized in..." 
-                  className="col-span-3" 
+                  className="col-span-3 border-zinc-700 bg-black text-white"
                   value={formData.systemPrompt}
                   onChange={handleChange}
                   required
@@ -391,7 +437,58 @@ const AI = () => {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <Dialog open={agentToEdit !== null} onOpenChange={(nextOpen) => !nextOpen && setAgentToEdit(null)}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit AI Agent</DialogTitle>
+            <DialogDescription>Update how this private agent appears and responds.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => { event.preventDefault(); updateAgentMutation.mutate(); }}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-agent-name">Name</Label>
+                <Input id="edit-agent-name" value={editForm.name} onChange={(event) => setEditForm((value) => ({ ...value, name: event.target.value }))} className="border-zinc-700 bg-black text-white" required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-agent-description">Description</Label>
+                <Textarea id="edit-agent-description" value={editForm.description} onChange={(event) => setEditForm((value) => ({ ...value, description: event.target.value }))} className="border-zinc-700 bg-black text-white" required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-agent-prompt">Instructions</Label>
+                <Textarea id="edit-agent-prompt" value={editForm.systemPrompt} onChange={(event) => setEditForm((value) => ({ ...value, systemPrompt: event.target.value }))} className="min-h-32 border-zinc-700 bg-black text-white" required />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={updateAgentMutation.isPending}>
+                {updateAgentMutation.isPending ? 'Saving...' : 'Save changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={agentToDelete !== null} onOpenChange={(nextOpen) => !nextOpen && setAgentToDelete(null)}>
+        <AlertDialogContent className="border-zinc-800 bg-zinc-950 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {agentToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400">
+              This permanently removes the custom agent and its saved chats.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-500"
+              disabled={deleteAgentMutation.isPending}
+              onClick={() => agentToDelete && deleteAgentMutation.mutate(agentToDelete.id)}
+            >
+              {deleteAgentMutation.isPending ? 'Deleting...' : 'Delete agent'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
   );
 };
 

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -6,16 +5,18 @@ import { Button } from "@/components/ui/button";
 interface PostOptionsPanelProps {
   content: string;
   onContentChange: (content: string) => void;
-  onShare?: () => void;
+  addToStory: boolean;
+  onAddToStoryChange: (value: boolean) => void;
+  onShare: () => void;
+  isSharing?: boolean;
+  shareDisabled?: boolean;
 }
 
 /**
  * Shared final step for photo, video, and voice posts. It intentionally exposes
  * only delivery choices supported by the current CreatorOS MVP.
  */
-export const PostOptionsPanel = ({ onShare }: PostOptionsPanelProps) => {
-  const [addToStory, setAddToStory] = useState(false);
-
+export const PostOptionsPanel = ({ addToStory, onAddToStoryChange, onShare, isSharing = false, shareDisabled = false }: PostOptionsPanelProps) => {
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex-grow space-y-4 px-4 py-5">
@@ -33,15 +34,15 @@ export const PostOptionsPanel = ({ onShare }: PostOptionsPanelProps) => {
           </div>
           <Switch
             checked={addToStory}
-            onCheckedChange={setAddToStory}
+            onCheckedChange={onAddToStoryChange}
             aria-label="Add to your story"
           />
         </div>
       </div>
 
       <div className="sticky bottom-0 border-t bg-background px-4 pb-4 pt-3">
-        <Button className="w-full" onClick={onShare}>
-          Share
+        <Button className="w-full" onClick={onShare} disabled={isSharing || shareDisabled}>
+          {isSharing ? 'Sharing…' : 'Share'}
         </Button>
       </div>
     </div>

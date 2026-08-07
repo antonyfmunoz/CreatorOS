@@ -38,11 +38,6 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   const { toast } = useToast();
   const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   
-  // Fetch all users
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-  });
-  
   // Fetch all stories with aggressive settings to ensure freshness
   const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
@@ -59,7 +54,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     console.log('Refreshing stories data on StoriesBar mount');
   }, [refetchStories]);
   
-  const isLoading = usersLoading || storiesLoading;
+  const isLoading = storiesLoading;
   
   // Group stories by user
   const storiesByUser = stories?.reduce((acc, story) => {
@@ -100,12 +95,9 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     );
   }
 
-  if (!users || users.length === 0) {
-    return null; // Don't show stories bar if there are no users
-  }
-
-  // Filter out the current user
-  const otherUsers = users.filter(u => u.id !== currentUser?.id);
+  const storyUsers = Object.values(storiesByUser).map((userStories) => userStories[0].user);
+  const otherUsers = storyUsers.filter((user) => user.id !== currentUser?.id);
+  if (!currentUser && otherUsers.length === 0) return null;
   
   // Check if current user has a story
   const hasCurrentUserStory = currentUser && storiesByUser[currentUser.id]?.length > 0;
@@ -161,9 +153,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
             )}
             
             {/* Other users' stories - only show users with active stories */}
-            {otherUsers
-              .filter(user => storiesByUser[user.id]?.length > 0)
-              .map((user) => (
+            {otherUsers.map((user) => (
                 <div 
                   key={user.id}
                   className="flex shrink-0 flex-col items-center cursor-pointer"
@@ -193,8 +183,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                     {user.displayName.split(' ')[0]}
                   </span>
                 </div>
-              ))
-            }
+              ))}
           </div>
         </HorizontalRail>
       </div>

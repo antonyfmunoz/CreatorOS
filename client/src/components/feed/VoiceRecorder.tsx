@@ -18,6 +18,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [content, setContent] = useState("");
+  const [addToStory, setAddToStory] = useState(false);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -34,12 +35,15 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   useEffect(() => {
     startRecording();
     return () => {
-      stopRecording();
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  useEffect(() => () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
 
   // Update timer when recording
   useEffect(() => {
@@ -194,6 +198,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
     formData.append('content', content || 'Voice message');
     formData.append('audio', audioBlob, 'recording.webm');
     formData.append('mediaType', 'audio');
+    formData.append('addToStory', String(addToStory));
     
     createPostMutation.mutate(formData);
   };
@@ -321,6 +326,11 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
           <PostOptionsPanel 
             content={content}
             onContentChange={setContent}
+            addToStory={addToStory}
+            onAddToStoryChange={setAddToStory}
+            onShare={handleSend}
+            isSharing={createPostMutation.isPending}
+            shareDisabled={!audioBlob}
           />
         )}
       </div>

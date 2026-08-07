@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useLocation as useWouterLocation } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useLocation as useWouterLocation, useSearch } from "wouter";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -10,23 +10,85 @@ import { PollCreator } from "@/components/feed/PollCreator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HorizontalRail } from "@/components/ui/horizontal-rail";
 
+type ContentDraft = {
+  id: string;
+  content: string;
+  kind: string;
+  audience: string;
+  platformVariants: Record<string, unknown>;
+};
+
 export default function NewTextPost() {
   const [content, setContent] = useState("");
   const [addToStory, setAddToStory] = useState(false);
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
   const [pollData, setPollData] = useState<any>(null);
   const [, setLocation] = useWouterLocation();
+  const search = useSearch();
+  const draftIdFromUrl = new URLSearchParams(search).get("draft");
+  const [draftId, setDraftId] = useState<string | null>(draftIdFromUrl);
+  const hydratedDraftId = useRef<string | null>(null);
   
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const draftQuery = useQuery<ContentDraft>({
+    queryKey: ["/api/content-drafts", draftIdFromUrl],
+    enabled: Boolean(user && draftIdFromUrl),
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/content-drafts/${draftIdFromUrl}`);
+      return response.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!draftQuery.data || hydratedDraftId.current === draftQuery.data.id) return;
+    hydratedDraftId.current = draftQuery.data.id;
+    setDraftId(draftQuery.data.id);
+    setContent(draftQuery.data.content);
+    setAddToStory(draftQuery.data.platformVariants.addToStory === true);
+    setPollData(draftQuery.data.platformVariants.pollData ?? null);
+  }, [draftQuery.data]);
+
+  const saveDraftMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        content,
+        kind: "post",
+        audience: "public",
+        platformVariants: { addToStory, ...(pollData ? { pollData } : {}) },
+      };
+      const response = draftId
+        ? await apiRequest("PATCH", `/api/content-drafts/${draftId}`, payload)
+        : await apiRequest("POST", "/api/content-drafts", payload);
+      return response.json() as Promise<ContentDraft>;
+    },
+    onSuccess: (draft) => {
+      setDraftId(draft.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/content-drafts"] });
+      toast({ title: "Draft saved", description: "You can safely return to it from Create." });
+    },
+    onError: () => {
+      toast({ title: "Draft not saved", description: "Check your connection and try again.", variant: "destructive" });
+    },
+  });
   
   const createPostMutation = useMutation({
     mutationFn: async (postData: any) => {
       const res = await apiRequest('POST', '/api/posts', postData);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (draftId) {
+        try {
+          await apiRequest("DELETE", `/api/content-drafts/${draftId}`);
+          queryClient.invalidateQueries({ queryKey: ["/api/content-drafts"] });
+        } catch {
+          // The published post is authoritative; leave a recoverable draft if
+          // cleanup was interrupted and let the user remove it later.
+        }
+      }
       toast({
         title: 'Post created!',
         description: 'Your post has been successfully shared.'
@@ -81,6 +143,14 @@ export default function NewTextPost() {
     createPostMutation.mutate(postData);
   };
 
+  const handleSaveDraft = () => {
+    if (!user) {
+      toast({ title: "Authentication Required", description: "Please log in to save a draft.", variant: "destructive" });
+      return;
+    }
+    saveDraftMutation.mutate();
+  };
+
   return (
     <main className="flex min-h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-black pb-20 text-white">
       {/* Header */}
@@ -93,7 +163,12 @@ export default function NewTextPost() {
           ✕
         </button>
         <span className="font-semibold">New post</span>
-        <button className="rounded-full bg-[#1d9bf0] px-3 py-1 text-xs font-bold text-white disabled:opacity-40" onClick={handleSubmit} disabled={!content.trim() || createPostMutation.isPending}>Share</button>
+        <div className="flex items-center gap-2">
+          <button className="rounded-full px-3 py-1 text-xs font-bold text-zinc-300 transition-colors hover:bg-zinc-900 disabled:opacity-40" onClick={handleSaveDraft} disabled={saveDraftMutation.isPending}>
+            {saveDraftMutation.isPending ? "Saving..." : "Save draft"}
+          </button>
+          <button className="rounded-full bg-[#1d9bf0] px-3 py-1 text-xs font-bold text-white disabled:opacity-40" onClick={handleSubmit} disabled={!content.trim() || createPostMutation.isPending}>Share</button>
+        </div>
       </header>
       
       {/* All content */}
@@ -162,7 +237,7 @@ export default function NewTextPost() {
         <button
           className="w-full rounded-lg bg-[#1d9bf0] py-2.5 text-[14px] font-bold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           onClick={handleSubmit}
-          disabled={!content.trim()}
+          disabled={!content.trim() || createPostMutation.isPending}
         >
           Share
         </button>

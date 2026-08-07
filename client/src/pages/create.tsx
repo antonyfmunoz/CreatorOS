@@ -1,6 +1,9 @@
-import { ArrowLeft, BookOpen, CalendarPlus, FileText, Image, Mic, PackagePlus, Video } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, CalendarPlus, FileText, Image, LayoutDashboard, Megaphone, Mic, PackagePlus, Send, Video } from "lucide-react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 
 type CreateOption = {
   title: string;
@@ -8,6 +11,13 @@ type CreateOption = {
   icon: typeof FileText;
   href: string;
   accent: string;
+};
+
+type ContentDraft = {
+  id: string;
+  content: string;
+  kind: string;
+  updatedAt: string;
 };
 
 const postOptions: CreateOption[] = [
@@ -19,6 +29,16 @@ const postOptions: CreateOption[] = [
 
 export default function CreatePage() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const draftsQuery = useQuery<ContentDraft[]>({
+    queryKey: ["/api/content-drafts"],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/content-drafts");
+      return response.json();
+    },
+  });
+  const drafts = draftsQuery.data?.slice(0, 3) ?? [];
 
   return (
     <main className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
@@ -45,8 +65,45 @@ export default function CreatePage() {
         </div>
       </section>
 
+      {drafts.length > 0 && (
+        <section className="px-4 pt-8">
+          <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Continue creating</p>
+          <div className="mt-3 space-y-2">
+            {drafts.map((draft) => (
+              <button
+                key={draft.id}
+                onClick={() => setLocation(`/new-text-post?draft=${draft.id}`)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-800"><FileText className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{draft.content.trim() || "Untitled draft"}</span>
+                  <span className="mt-1 block text-xs text-zinc-500">{draft.kind} draft · edited {new Date(draft.updatedAt).toLocaleDateString()}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="px-4 pt-8">
         <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Build your business</p>
+        <button onClick={() => setLocation("/business")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><LayoutDashboard className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open business dashboard</span><span className="mt-1 block text-xs leading-5 text-zinc-500">See offers, revenue, audience, and your next business action.</span></span>
+        </button>
+        <button onClick={() => setLocation("/studio")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Send className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open distribution studio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Compose once, schedule content, and manage your publishing queue.</span></span>
+        </button>
+        <button onClick={() => setLocation("/campaigns")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Megaphone className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Run a campaign</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Plan a launch, creator seeding, organic sprint, or paid-media brief.</span></span>
+        </button>
+        <button onClick={() => setLocation("/ai")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Bot className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open AI workspace</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Build specialized assistants for drafts, research, and creator operations.</span></span>
+        </button>
         <button onClick={() => setLocation("/create-product")} className="mt-3 flex w-full items-center gap-4 rounded-2xl bg-[#1d9bf0] p-4 text-left text-white transition-opacity hover:opacity-90">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-black/15"><PackagePlus className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Create an offer</span><span className="mt-1 block text-xs leading-5 text-white/80">Start a course, community, digital asset, coaching offer, or software product.</span></span>

@@ -1,13 +1,14 @@
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BarChart3, Bookmark, Heart, MessageSquare, Repeat2, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BarChart3, Bookmark, Eye, Heart, MessageSquare, Repeat2, type LucideIcon } from "lucide-react";
 import { useParams, useLocation } from "wouter";
 import { Post } from "@/types";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function PostAnalyticsPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const postId = Number(id);
   const { data: post, isLoading } = useQuery<Post>({
     queryKey: ["/api/posts", postId],
@@ -18,29 +19,15 @@ export default function PostAnalyticsPage() {
       return response.json();
     },
   });
-  const { data: commentData } = useQuery<{ count: number }>({
-    queryKey: ["/api/posts", postId, "comment-count"],
-    enabled: Number.isInteger(postId),
+  const { data: analytics } = useQuery<{ views: number; likes: number; comments: number; saves: number; reposts: number; interactions: number }>({
+    queryKey: ["/api/posts", postId, "analytics"],
+    enabled: Number.isInteger(postId) && post?.userId === user?.id,
     queryFn: async () => {
-      const response = await fetch(`/api/posts/${postId}/comment-count`);
-      if (!response.ok) throw new Error("Failed to load comments");
+      const response = await fetch(`/api/posts/${postId}/analytics`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load post analytics");
       return response.json();
     },
   });
-  const { data: allPosts = [] } = useQuery<Post[]>({
-    queryKey: ["/api/posts"],
-  });
-  const savedPostIds = useMemo(() => {
-    try {
-      return new Set<number>(JSON.parse(localStorage.getItem("savedPosts") ?? "[]"));
-    } catch {
-      return new Set<number>();
-    }
-  }, [postId]);
-
-  const repostCount = post ? allPosts.filter((candidate) => candidate.userId !== post.userId && candidate.content.startsWith(`Reposted @${post.user.username}: ${post.content}`)).length : 0;
-  const commentCount = commentData?.count ?? 0;
-  const interactions = post ? post.likes + commentCount + repostCount : 0;
 
   return (
     <main className="min-h-dvh bg-black text-white">
@@ -49,18 +36,19 @@ export default function PostAnalyticsPage() {
         <h1 className="text-lg font-bold">Post performance</h1>
       </header>
       <section className="px-4 py-7">
-        {isLoading ? <p className="text-sm text-zinc-500">Loading performance...</p> : post ? <>
+        {isLoading ? <p className="text-sm text-zinc-500">Loading performance...</p> : post?.userId !== user?.id ? <p className="text-sm text-zinc-500">Only the creator can view this post’s performance.</p> : post ? <>
           <div className="mb-7 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-900"><BarChart3 className="h-5 w-5" /></div><div><p className="text-sm font-bold">{post.user.displayName}</p><p className="text-xs text-zinc-500">This post's recorded engagement</p></div></div>
           <div className="grid grid-cols-2 gap-3">
-            <Metric icon={BarChart3} value={interactions} label="Interactions" emphasis />
-            <Metric icon={Heart} value={post.likes} label="Likes" />
-            <Metric icon={MessageSquare} value={commentCount} label="Comments" />
-            <Metric icon={Repeat2} value={repostCount} label="Reposts" />
-            <Metric icon={Bookmark} value={savedPostIds.has(post.id) ? 1 : 0} label="Saved by you" />
+            <Metric icon={BarChart3} value={analytics?.interactions ?? 0} label="Interactions" emphasis />
+            <Metric icon={Eye} value={analytics?.views ?? 0} label="Reach" />
+            <Metric icon={Heart} value={analytics?.likes ?? 0} label="Likes" />
+            <Metric icon={MessageSquare} value={analytics?.comments ?? 0} label="Comments" />
+            <Metric icon={Repeat2} value={analytics?.reposts ?? 0} label="Reposts" />
+            <Metric icon={Bookmark} value={analytics?.saves ?? 0} label="Saves" />
           </div>
           <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
             <h2 className="text-sm font-bold">Performance notes</h2>
-            <p className="mt-2 text-sm leading-6 text-zinc-500">Interactions combine likes, comments, and reposts. Saves reflect this account on this device. Reach, views, and retention require distribution tracking and are not presented as invented numbers.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">Reach is the number of signed-in accounts that recorded a view. Interactions combine likes, comments, saves, and reposts. Retention and cross-network delivery will join this view once those providers are connected.</p>
           </section>
         </> : <p className="text-sm text-zinc-500">This post is unavailable.</p>}
       </section>
