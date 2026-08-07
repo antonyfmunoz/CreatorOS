@@ -28,6 +28,7 @@ describe("CreativesOS release readiness", () => {
       blockers: [],
       authentication: { configured: true, mode: "production" },
       assetDelivery: { private: "configured" },
+      automations: { kernel: "configured", scheduler: "embedded", authority: "native" },
       federation: { installation: "bound", inboundCommands: true, outboundEvents: true, qualification: "pending_shared_round_trip" },
       communityRooms: {
         liveMedia: "configured",

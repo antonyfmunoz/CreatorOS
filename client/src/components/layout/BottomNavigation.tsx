@@ -17,7 +17,7 @@ const BottomNavigation = () => {
     ? "explore"
     : location.startsWith("/marketplace") || ["/cart", "/orders", "/checkout"].some((path) => location === path || location.startsWith(`${path}/`)) || location.startsWith("/learn") || location.startsWith("/courses/")
       ? "marketplace"
-      : location.startsWith("/create") || location === "/new-text-post" || ["/studio", "/distribution", "/business", "/campaigns", "/earnings", "/products", "/ai"].some((path) => location === path || location.startsWith(`${path}/`))
+      : location.startsWith("/create") || location === "/new-text-post" || ["/studio", "/distribution", "/business", "/campaigns", "/earnings", "/products", "/ai", "/automations"].some((path) => location === path || location.startsWith(`${path}/`))
         ? "create"
         : location.startsWith("/communities")
           ? "communities"

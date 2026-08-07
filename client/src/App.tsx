@@ -56,6 +56,7 @@ const CheckoutSuccessPage = lazy(() => import("@/pages/checkout-success"));
 const EarningsPage = lazy(() => import("@/pages/earnings"));
 const ModerationPage = lazy(() => import("@/pages/moderation"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
+const AutomationsPage = lazy(() => import("@/pages/automations"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
@@ -126,7 +127,7 @@ function Router() {
     if (path === '') return setActiveTab('explore');
     if (path === 'post') return setActiveTab('explore');
     if (['marketplace', 'cart', 'orders', 'checkout', 'learn', 'courses'].includes(path)) return setActiveTab('marketplace');
-    if (['create', 'studio', 'distribution', 'business', 'campaigns', 'earnings', 'products'].includes(path)) return setActiveTab('create');
+    if (['create', 'studio', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
     if (['communities', 'events'].includes(path)) return setActiveTab('communities');
     if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation'].includes(path)) return setActiveTab('profile');
     if (path === 'ai') return setActiveTab('create');
@@ -157,6 +158,7 @@ function Router() {
       <ProtectedRoute path="/moderation" component={ModerationPage} />
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
       <ProtectedRoute path="/ai" component={AI} />
+      <ProtectedRoute path="/automations" component={AutomationsPage} />
       <ProtectedRoute path="/communities/:communityId/rooms/:roomId" component={CommunityRoomPage} />
       <ProtectedRoute path="/communities/:id" component={Communities} />
       <ProtectedRoute path="/communities" component={Communities} />

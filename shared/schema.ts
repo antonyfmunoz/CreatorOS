@@ -810,6 +810,229 @@ export const insertAiChatSchema = createInsertSchema(aiChats).pick({
   messages: true,
 });
 
+// Provider-neutral conversational automation kernel. External providers can
+// supply actions later, while authority, approvals, budgets, and evidence stay
+// native to CreativesOS.
+export const automationDefinitions = pgTable(
+  "automation_definitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").default("").notNull(),
+    status: text("status").default("draft").notNull(),
+    version: integer("version").default(1).notNull(),
+    triggerType: text("trigger_type").default("manual").notNull(),
+    triggerConfig: json("trigger_config").$type<Record<string, unknown>>().default({}).notNull(),
+    maxRunsPerHour: integer("max_runs_per_hour").default(20).notNull(),
+    maxStepsPerRun: integer("max_steps_per_run").default(20).notNull(),
+    retentionDays: integer("retention_days").default(90).notNull(),
+    lastActivatedAt: timestamp("last_activated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerStatusIdx: index("automation_definitions_owner_status_idx").on(table.ownerUserId, table.status, table.updatedAt),
+    businessStatusIdx: index("automation_definitions_business_status_idx").on(table.businessId, table.status),
+  }),
+);
+
+export const automationSteps = pgTable(
+  "automation_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    definitionId: uuid("definition_id").references(() => automationDefinitions.id, { onDelete: "cascade" }).notNull(),
+    stepKey: text("step_key").notNull(),
+    name: text("name").notNull(),
+    actionType: text("action_type").notNull(),
+    config: json("config").$type<Record<string, unknown>>().default({}).notNull(),
+    position: integer("position").notNull(),
+    approvalPolicy: text("approval_policy").default("none").notNull(),
+    retryLimit: integer("retry_limit").default(2).notNull(),
+    timeoutMs: integer("timeout_ms").default(30_000).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    definitionStepKeyUnique: unique("automation_steps_definition_key_unique").on(table.definitionId, table.stepKey),
+    definitionPositionUnique: unique("automation_steps_definition_position_unique").on(table.definitionId, table.position),
+  }),
+);
+
+export const automationTriggerEvents = pgTable(
+  "automation_trigger_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().default({}).notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    status: text("status").default("pending").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+    errorMessage: text("error_message"),
+  },
+  (table) => ({
+    statusReceivedIdx: index("automation_trigger_events_status_received_idx").on(table.status, table.receivedAt),
+  }),
+);
+
+export const automationRuns = pgTable(
+  "automation_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    definitionId: uuid("definition_id").references(() => automationDefinitions.id, { onDelete: "restrict" }).notNull(),
+    definitionVersion: integer("definition_version").notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "set null" }),
+    initiatedByUserId: integer("initiated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    triggerType: text("trigger_type").notNull(),
+    triggerEventId: uuid("trigger_event_id").references(() => automationTriggerEvents.id, { onDelete: "set null" }),
+    threadId: uuid("thread_id").references((): AnyPgColumn => automationThreads.id, { onDelete: "set null" }),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    status: text("status").default("queued").notNull(),
+    input: json("input").$type<Record<string, unknown>>().default({}).notNull(),
+    output: json("output").$type<Record<string, unknown>>().default({}).notNull(),
+    currentStepKey: text("current_step_key"),
+    stepCount: integer("step_count").default(0).notNull(),
+    costUnits: integer("cost_units").default(0).notNull(),
+    maxCostUnits: integer("max_cost_units").default(100).notNull(),
+    queuedAt: timestamp("queued_at").defaultNow().notNull(),
+    startedAt: timestamp("started_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    payloadRedactedAt: timestamp("payload_redacted_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    statusAttemptIdx: index("automation_runs_status_attempt_idx").on(table.status, table.nextAttemptAt),
+    definitionCreatedIdx: index("automation_runs_definition_created_idx").on(table.definitionId, table.createdAt),
+  }),
+);
+
+export const automationStepRuns = pgTable(
+  "automation_step_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id").references(() => automationRuns.id, { onDelete: "cascade" }).notNull(),
+    stepId: uuid("step_id").references(() => automationSteps.id, { onDelete: "set null" }),
+    stepKey: text("step_key").notNull(),
+    actionType: text("action_type").notNull(),
+    attempt: integer("attempt").default(1).notNull(),
+    status: text("status").default("queued").notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    input: json("input").$type<Record<string, unknown>>().default({}).notNull(),
+    output: json("output").$type<Record<string, unknown>>().default({}).notNull(),
+    costUnits: integer("cost_units").default(0).notNull(),
+    startedAt: timestamp("started_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    nextAttemptAt: timestamp("next_attempt_at"),
+    finishedAt: timestamp("finished_at"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    runStepAttemptIdx: index("automation_step_runs_run_step_attempt_idx").on(table.runId, table.stepKey, table.attempt),
+  }),
+);
+
+export const automationApprovals = pgTable(
+  "automation_approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id").references(() => automationRuns.id, { onDelete: "cascade" }).notNull(),
+    stepRunId: uuid("step_run_id").references(() => automationStepRuns.id, { onDelete: "cascade" }).notNull().unique(),
+    requestedForUserId: integer("requested_for_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    status: text("status").default("pending").notNull(),
+    reason: text("reason").notNull(),
+    evidence: json("evidence").$type<Record<string, unknown>>().default({}).notNull(),
+    expiresAt: timestamp("expires_at"),
+    decidedByUserId: integer("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userStatusIdx: index("automation_approvals_user_status_idx").on(table.requestedForUserId, table.status, table.createdAt),
+  }),
+);
+
+// A receipt commits the native side effect and its replay result together.
+// Recovering the same step after a worker crash therefore returns the original
+// resource instead of creating it twice.
+export const automationActionReceipts = pgTable(
+  "automation_action_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stepRunId: uuid("step_run_id").references(() => automationStepRuns.id, { onDelete: "cascade" }).notNull().unique(),
+    actionType: text("action_type").notNull(),
+    output: json("output").$type<Record<string, unknown>>().default({}).notNull(),
+    summary: text("summary").notNull(),
+    costUnits: integer("cost_units").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);
+
+export const automationThreads = pgTable(
+  "automation_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }),
+    definitionId: uuid("definition_id").references(() => automationDefinitions.id, { onDelete: "set null" }),
+    runId: uuid("run_id").references(() => automationRuns.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    status: text("status").default("open").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerUpdatedIdx: index("automation_threads_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+  }),
+);
+
+export const automationMessages = pgTable(
+  "automation_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id").references(() => automationThreads.id, { onDelete: "cascade" }).notNull(),
+    authorType: text("author_type").notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").default("message").notNull(),
+    content: text("content").notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    threadCreatedIdx: index("automation_messages_thread_created_idx").on(table.threadId, table.createdAt),
+  }),
+);
+
+export const automationAuditEvents = pgTable(
+  "automation_audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "set null" }),
+    definitionId: uuid("definition_id").references(() => automationDefinitions.id, { onDelete: "set null" }),
+    runId: uuid("run_id").references(() => automationRuns.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    runCreatedIdx: index("automation_audit_events_run_created_idx").on(table.runId, table.createdAt),
+    actorCreatedIdx: index("automation_audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
+  }),
+);
+
 // Community schema
 export const communities = pgTable("communities", {
   id: serial("id").primaryKey(),
@@ -2703,6 +2926,17 @@ export type InsertAIAgent = z.infer<typeof insertAiAgentSchema>;
 
 export type AIChat = typeof aiChats.$inferSelect;
 export type InsertAIChat = z.infer<typeof insertAiChatSchema>;
+
+export type AutomationDefinition = typeof automationDefinitions.$inferSelect;
+export type AutomationStep = typeof automationSteps.$inferSelect;
+export type AutomationTriggerEvent = typeof automationTriggerEvents.$inferSelect;
+export type AutomationRun = typeof automationRuns.$inferSelect;
+export type AutomationStepRun = typeof automationStepRuns.$inferSelect;
+export type AutomationApproval = typeof automationApprovals.$inferSelect;
+export type AutomationActionReceipt = typeof automationActionReceipts.$inferSelect;
+export type AutomationThread = typeof automationThreads.$inferSelect;
+export type AutomationMessage = typeof automationMessages.$inferSelect;
+export type AutomationAuditEvent = typeof automationAuditEvents.$inferSelect;
 
 export type Community = typeof communities.$inferSelect;
 export type InsertCommunity = z.infer<typeof insertCommunitySchema>;

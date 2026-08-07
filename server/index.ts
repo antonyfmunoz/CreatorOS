@@ -6,6 +6,7 @@ import path from "path";
 import { scheduleCleanupTasks } from "./cleanup";
 import { scheduleDistributionProcessing } from "./distribution";
 import { scheduleUmhDelivery } from "./umh";
+import { scheduleAutomationProcessing } from "./automation-engine";
 import { apiRateLimiter, securityHeaders } from "./security";
 
 const app = express();
@@ -81,6 +82,7 @@ app.use((req, res, next) => {
     scheduleCleanupTasks();
     scheduleDistributionProcessing();
     scheduleUmhDelivery();
+    scheduleAutomationProcessing();
     log('Story cleanup tasks scheduled');
   });
 })();

@@ -1,19 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import {
-  LiveKitRoom,
-  RoomAudioRenderer,
-  VideoConference,
-} from "@livekit/components-react";
-import "@livekit/components-styles";
 import { ArrowLeft, Radio, ShieldCheck, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoomIntelligencePanel } from "@/components/community/RoomIntelligencePanel";
-import { RoomLiveTranscript } from "@/components/community/RoomLiveTranscript";
 import { RoomMediaPanel } from "@/components/community/RoomMediaPanel";
 import { RoomWorkspacePanel } from "@/components/community/RoomWorkspacePanel";
 import { apiRequest } from "@/lib/queryClient";
+
+const CommunityLiveSession = lazy(() => import("@/components/community/CommunityLiveSession"));
 
 type NativeRoom = {
   id: string;
@@ -75,53 +70,9 @@ export default function CommunityRoomPage() {
 
   if (session) {
     return (
-      <main className="min-h-dvh bg-black text-white">
-        <header className="flex h-14 items-center justify-between border-b border-zinc-800 px-4">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold">{room?.title ?? "Community room"}</p>
-            <p className="text-[11px] text-emerald-400">Live in CreativesOS</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-zinc-400 hover:bg-zinc-900 hover:text-white"
-            onClick={() => setSession(null)}
-          >
-            Leave room
-          </Button>
-        </header>
-        <section className="h-[calc(100dvh-3.5rem)] bg-zinc-950" data-lk-theme="default">
-          {mediaError && (
-            <div role="alert" className="absolute left-1/2 top-16 z-50 w-[min(90vw,32rem)] -translate-x-1/2 rounded-xl border border-red-900 bg-red-950 px-4 py-3 text-sm text-red-200 shadow-xl">
-              {mediaError}
-            </div>
-          )}
-          <LiveKitRoom
-            token={session.token}
-            serverUrl={session.serverUrl}
-            connect
-            audio={false}
-            video={false}
-            onDisconnected={() => setSession(null)}
-            onError={(liveKitError) => setMediaError(liveKitError.message)}
-          >
-            <div className="flex h-full min-h-0 flex-col lg:flex-row">
-              <div className="min-h-0 min-w-0 flex-1">
-                <VideoConference />
-                <RoomAudioRenderer />
-              </div>
-              <div className="flex max-h-[45dvh] w-full min-h-0 flex-col border-t border-zinc-800 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
-                <div className="max-h-72 overflow-y-auto border-b border-zinc-800 p-3">
-                  <RoomMediaPanel roomId={roomId!} compact />
-                </div>
-                <div className="min-h-0 flex-1">
-                  <RoomLiveTranscript />
-                </div>
-              </div>
-            </div>
-          </LiveKitRoom>
-        </section>
-      </main>
+      <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-black text-sm text-zinc-500">Preparing the conference room…</main>}>
+        <CommunityLiveSession roomId={roomId!} roomTitle={room?.title ?? "Community room"} token={session.token} serverUrl={session.serverUrl} mediaError={mediaError} onError={setMediaError} onLeave={() => setSession(null)} />
+      </Suspense>
     );
   }
 

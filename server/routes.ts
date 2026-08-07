@@ -95,6 +95,7 @@ import {
 } from "drizzle-orm";
 import { normalizeCartProductIds } from "../shared/cart";
 import { setupAuth, attachUser } from "./auth";
+import { registerAutomationRoutes } from "./automation-routes";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
@@ -517,6 +518,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "post_views",
       "projection_events",
       "shopping_cart_items",
+      "automation_definitions",
+      "automation_runs",
+      "automation_audit_events",
+      "automation_action_receipts",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -584,6 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Set up authentication routes and middleware
   setupAuth(app);
+  registerAutomationRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 

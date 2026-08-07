@@ -36,4 +36,7 @@ jobs:
       - run: npm run verify:migrations
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
+      - run: npm run verify:automations
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
       - run: npm run verify

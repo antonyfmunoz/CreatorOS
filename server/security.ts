@@ -71,6 +71,32 @@ export function assetUploadRateLimiter(options: { windowMs?: number; max?: numbe
   };
 }
 
+export function automationMutationRateLimiter(options: { windowMs?: number; max?: number } = {}) {
+  const windowMs = options.windowMs ?? ONE_MINUTE_MS;
+  const max = options.max ?? 60;
+  const windows = new Map<string, Window>();
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const key = `automation:${req.dbUser?.id ?? req.ip}`;
+    const current = windows.get(key);
+    const window = !current || now - current.startedAt >= windowMs ? { startedAt: now, count: 0 } : current;
+    window.count += 1;
+    windows.set(key, window);
+    if (window.count > max) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - window.startedAt)) / 1_000));
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      return res.status(429).json({ message: "Automation action limit reached. Please try again shortly." });
+    }
+    if (windows.size > 10_000) {
+      Array.from(windows.entries()).forEach(([candidate, value]) => {
+        if (now - value.startedAt >= windowMs) windows.delete(candidate);
+      });
+    }
+    next();
+  };
+}
+
 export function securityHeaders(_req: Request, res: Response, next: NextFunction) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");

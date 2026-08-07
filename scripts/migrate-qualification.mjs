@@ -26,6 +26,11 @@ const requiredTables = [
   "projection_events",
   "umh_commands",
   "umh_approvals",
+  "automation_definitions",
+  "automation_runs",
+  "automation_approvals",
+  "automation_action_receipts",
+  "automation_audit_events",
 ];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

@@ -50,6 +50,11 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
     blockers,
     authentication: { configured: clerkConfigured, mode: clerkProduction ? "production" : clerkConfigured ? "test" : "unconfigured" },
     assetDelivery: { private: privateAssetDelivery ? "configured" : "unconfigured" },
+    automations: {
+      kernel: "configured",
+      scheduler: "embedded",
+      authority: "native",
+    },
     federation: {
       installation: umhBound ? "bound" : "unbound",
       inboundCommands: umhInbound,
