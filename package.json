@@ -13,6 +13,7 @@
     "verify": "npm run test && npm run check && npm run build",
     "verify:migrations": "node scripts/migrate-qualification.mjs",
     "verify:automations": "tsx scripts/qualify-automation-kernel.ts",
+    "verify:social-automations": "tsx scripts/qualify-native-social-automations.ts",
     "test:watch": "vitest",
     "db:push": "drizzle-kit push"
   },

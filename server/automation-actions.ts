@@ -1,11 +1,25 @@
 import { db } from "./db";
-import { automationActionReceipts, campaigns, contentDrafts, notifications } from "../shared/schema";
-import { and, eq } from "drizzle-orm";
+import {
+  automationActionReceipts,
+  automationContactStates,
+  automationTriggerEvents,
+  campaigns,
+  comments,
+  contentDrafts,
+  conversationParticipants,
+  conversations,
+  directMessages,
+  notifications,
+  posts,
+} from "../shared/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { NATIVE_COMMENT_CREATED_EVENT, NATIVE_DM_RECEIVED_EVENT } from "./social-automation";
 
 export type AutomationActionContext = {
   runId: string;
   stepRunId: string;
+  triggerEventId: string | null;
   ownerUserId: number;
   businessId: string | null;
   input: Record<string, unknown>;
@@ -55,6 +69,57 @@ const campaignSchema = z.object({
   channel: z.string().max(120).default("organic"),
   description: z.string().max(2_000).default(""),
 });
+const nativeCommentReplySchema = z.object({
+  content: z.string().trim().min(1).max(2_000),
+});
+const nativeDmSchema = z.object({
+  content: z.string().trim().min(1).max(10_000),
+  cooldownMinutes: z.number().int().min(0).max(10_080).default(0),
+});
+
+function requiredInputInteger(input: Record<string, unknown>, key: string) {
+  const value = input[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`Native messaging action requires ${key}`);
+  }
+  return value;
+}
+
+async function requireNativeSocialEvent(context: AutomationActionContext, allowedEventTypes: string[]) {
+  if (!context.triggerEventId) throw new Error("Native social actions require a verified inbound event");
+  const [event] = await db.select().from(automationTriggerEvents).where(eq(automationTriggerEvents.id, context.triggerEventId)).limit(1);
+  if (!event || event.ownerUserId !== context.ownerUserId || !allowedEventTypes.includes(event.eventType)) {
+    throw new Error("Native social action event authority is invalid");
+  }
+  if (event.payload.actorUserId !== context.input.actorUserId) throw new Error("Native social action contact does not match its inbound event");
+  return event;
+}
+
+async function directConversationId(ownerUserId: number, contactUserId: number, requestedConversationId: unknown) {
+  if (typeof requestedConversationId === "number" && Number.isInteger(requestedConversationId)) {
+    const participants = await db.select({ userId: conversationParticipants.userId })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.conversationId, requestedConversationId));
+    const ids = new Set(participants.map((participant) => participant.userId));
+    if (!ids.has(ownerUserId) || !ids.has(contactUserId)) throw new Error("Automation cannot use a conversation outside its participants");
+    return requestedConversationId;
+  }
+
+  const ownerRows = await db.select({ conversationId: conversationParticipants.conversationId })
+    .from(conversationParticipants)
+    .where(eq(conversationParticipants.userId, ownerUserId));
+  if (ownerRows.length === 0) return null;
+  const ownerConversationIds = ownerRows.map((row) => row.conversationId);
+  const candidates = await db.select({ conversationId: conversationParticipants.conversationId })
+    .from(conversationParticipants)
+    .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
+    .where(and(
+      eq(conversationParticipants.userId, contactUserId),
+      inArray(conversationParticipants.conversationId, ownerConversationIds),
+      eq(conversations.isGroup, false),
+    ));
+  return candidates[0]?.conversationId ?? null;
+}
 
 const actions: AutomationActionDefinition[] = [
   {
@@ -150,6 +215,99 @@ const actions: AutomationActionDefinition[] = [
         const output = { campaignId: campaign.id, name: campaign.name };
         await tx.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "campaign.create", output, summary: "Campaign created", costUnits: 3 });
         return { output, costUnits: 3, summary: "Campaign created" };
+      });
+    },
+  },
+  {
+    type: "native.comment.reply",
+    label: "Reply to native comment",
+    description: "Reply from the post owner to the CreativesOS comment that triggered this run.",
+    consequential: true,
+    defaultCostUnits: 1,
+    async execute(context) {
+      const [receipt] = await db.select().from(automationActionReceipts).where(eq(automationActionReceipts.stepRunId, context.stepRunId)).limit(1);
+      if (receipt) return { output: receipt.output, costUnits: receipt.costUnits, summary: receipt.summary };
+      const config = nativeCommentReplySchema.parse(context.config);
+      await requireNativeSocialEvent(context, [NATIVE_COMMENT_CREATED_EVENT]);
+      const commentId = requiredInputInteger(context.input, "commentId");
+      const postId = requiredInputInteger(context.input, "postId");
+      const content = renderTemplate(config.content, { input: context.input, previous: context.previousOutput });
+      const [source] = await db.select({ commentId: comments.id, postId: comments.postId, postOwnerUserId: posts.userId })
+        .from(comments)
+        .innerJoin(posts, eq(posts.id, comments.postId))
+        .where(eq(comments.id, commentId))
+        .limit(1);
+      if (!source || source.postId !== postId || source.postOwnerUserId !== context.ownerUserId) {
+        throw new Error("Automation can only reply to comments on the owner's post");
+      }
+      return db.transaction(async (tx) => {
+        const [reply] = await tx.insert(comments).values({ postId, userId: context.ownerUserId, parentId: commentId, content }).returning();
+        const output = { commentId: reply.id, parentId: commentId, postId, content };
+        await tx.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "native.comment.reply", output, summary: "Comment reply sent", costUnits: 1 });
+        return { output, costUnits: 1, summary: "Comment reply sent" };
+      });
+    },
+  },
+  {
+    type: "native.dm.send",
+    label: "Send native direct message",
+    description: "Send a governed CreativesOS DM to the person who triggered this run.",
+    consequential: true,
+    defaultCostUnits: 1,
+    async execute(context) {
+      const [receipt] = await db.select().from(automationActionReceipts).where(eq(automationActionReceipts.stepRunId, context.stepRunId)).limit(1);
+      if (receipt) return { output: receipt.output, costUnits: receipt.costUnits, summary: receipt.summary };
+      const config = nativeDmSchema.parse(context.config);
+      await requireNativeSocialEvent(context, [NATIVE_COMMENT_CREATED_EVENT, NATIVE_DM_RECEIVED_EVENT]);
+      const contactUserId = requiredInputInteger(context.input, "actorUserId");
+      if (contactUserId === context.ownerUserId) throw new Error("Automation cannot direct-message its owner");
+      const content = renderTemplate(config.content, { input: context.input, previous: context.previousOutput });
+      let conversationId = await directConversationId(context.ownerUserId, contactUserId, context.input.conversationId);
+      const [state] = await db.select().from(automationContactStates).where(and(
+        eq(automationContactStates.ownerUserId, context.ownerUserId),
+        eq(automationContactStates.contactUserId, contactUserId),
+        eq(automationContactStates.channel, "native"),
+      )).limit(1);
+      if (state?.optedOut) {
+        const output = { sent: false, reason: "contact_opted_out", contactUserId };
+        await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "native.dm.send", output, summary: "DM skipped because contact opted out", costUnits: 0 });
+        return { output, costUnits: 0, summary: "DM skipped because contact opted out" };
+      }
+      if (state?.cooldownUntil && state.cooldownUntil > new Date()) {
+        const output = { sent: false, reason: "contact_cooldown", contactUserId, cooldownUntil: state.cooldownUntil.toISOString() };
+        await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "native.dm.send", output, summary: "DM skipped during contact cooldown", costUnits: 0 });
+        return { output, costUnits: 0, summary: "DM skipped during contact cooldown" };
+      }
+
+      return db.transaction(async (tx) => {
+        if (!conversationId) {
+          const [conversation] = await tx.insert(conversations).values({ isGroup: false }).returning();
+          conversationId = conversation.id;
+          await tx.insert(conversationParticipants).values([
+            { conversationId, userId: context.ownerUserId, isAdmin: false },
+            { conversationId, userId: contactUserId, isAdmin: false },
+          ]);
+        }
+        const [message] = await tx.insert(directMessages).values({ conversationId, senderId: context.ownerUserId, content }).returning();
+        const now = new Date();
+        const cooldownUntil = config.cooldownMinutes > 0 ? new Date(now.getTime() + config.cooldownMinutes * 60_000) : null;
+        await tx.update(conversations).set({ updatedAt: now }).where(eq(conversations.id, conversationId));
+        await tx.insert(automationContactStates).values({
+          ownerUserId: context.ownerUserId,
+          contactUserId,
+          channel: "native",
+          conversationId,
+          optedOut: false,
+          lastOutboundAt: now,
+          cooldownUntil,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: [automationContactStates.ownerUserId, automationContactStates.contactUserId, automationContactStates.channel],
+          set: { conversationId, lastOutboundAt: now, cooldownUntil, updatedAt: now },
+        });
+        const output = { sent: true, messageId: message.id, conversationId, contactUserId, content };
+        await tx.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "native.dm.send", output, summary: "Direct message sent", costUnits: 1 });
+        return { output, costUnits: 1, summary: "Direct message sent" };
       });
     },
   },

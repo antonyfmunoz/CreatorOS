@@ -48,10 +48,12 @@ describe("automation governance", () => {
   });
 
   it("ships templates that only reference registered native actions", () => {
-    expect(listAutomationActions().length).toBeGreaterThanOrEqual(4);
+    expect(listAutomationActions().length).toBeGreaterThanOrEqual(6);
     for (const template of automationTemplates) {
       for (const step of template.steps) expect(getAutomationAction(step.actionType), step.actionType).toBeDefined();
     }
     expect(getAutomationAction("campaign.create")?.consequential).toBe(true);
+    expect(getAutomationAction("native.comment.reply")?.consequential).toBe(true);
+    expect(getAutomationAction("native.dm.send")?.consequential).toBe(true);
   });
 });

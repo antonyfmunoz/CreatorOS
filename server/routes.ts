@@ -70,6 +70,10 @@ import {
   channelPolls,
   channelPollOptions,
   channelPollVotes,
+  automationContactStates,
+  automationTriggerEvents,
+  conversationParticipants,
+  conversations,
   directMessages,
   notifications,
   followers,
@@ -211,6 +215,11 @@ import {
   verifyRoomMediaIngest,
 } from "./room-media";
 import { reconcileRoomRecording } from "./room-media-reconciliation";
+import {
+  messagingConsentCommand,
+  NATIVE_COMMENT_CREATED_EVENT,
+  NATIVE_DM_RECEIVED_EVENT,
+} from "./social-automation";
 
 const communityRoomProviders = new Set([
   "manual_link",
@@ -2776,15 +2785,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/comments", attachUser, async (req, res) => {
     try {
-      // Use the authenticated user's ID instead of trusting the client
-      const commentData = {
+      const parsed = insertCommentSchema.safeParse({
         ...req.body,
         userId: req.dbUser!.id,
-      };
-
-      console.log("Creating comment with data:", commentData);
-      const comment = await storage.createComment(commentData);
-      const post = await storage.getPostById(comment.postId);
+      });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid comment", issues: parsed.error.issues });
+      const result = await db.transaction(async (tx) => {
+        const [post] = await tx.select().from(posts).where(eq(posts.id, parsed.data.postId)).limit(1);
+        if (!post) return null;
+        if (parsed.data.parentId != null) {
+          const [parent] = await tx.select({ postId: comments.postId }).from(comments).where(eq(comments.id, parsed.data.parentId)).limit(1);
+          if (!parent || parent.postId !== post.id) throw new Error("Comment reply does not belong to this post");
+        }
+        const [comment] = await tx.insert(comments).values(parsed.data).returning();
+        if (post.userId !== req.dbUser!.id) {
+          await tx.insert(automationTriggerEvents).values({
+            ownerUserId: post.userId,
+            eventType: NATIVE_COMMENT_CREATED_EVENT,
+            idempotencyKey: `native:comment:${comment.id}:owner:${post.userId}`,
+            payload: {
+              channel: "native",
+              automated: false,
+              actorUserId: req.dbUser!.id,
+              actorDisplayName: req.dbUser!.displayName,
+              commentId: comment.id,
+              postId: comment.postId,
+              parentId: comment.parentId,
+              content: comment.content,
+            },
+          }).onConflictDoNothing();
+        }
+        return { comment, post };
+      });
+      if (!result) return res.status(404).json({ message: "Post not found" });
+      const { comment, post } = result;
       if (post) {
         await createActivityNotification({
           recipientId: post.userId,
@@ -9220,9 +9254,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Send a message
   app.post("/api/messages", attachUser, async (req, res) => {
     try {
-      const conversation = await storage.getConversationById(
-        req.body.conversationId,
-      );
+      const conversationId = Number(req.body.conversationId);
+      const content = typeof req.body.content === "string" ? req.body.content.trim() : "";
+      if (!Number.isInteger(conversationId) || conversationId <= 0 || !content || content.length > 10_000) {
+        return res.status(400).json({ message: "A valid conversation and message are required" });
+      }
+      const replyToMessageId = req.body.replyToMessageId == null ? null : Number(req.body.replyToMessageId);
+      if (replyToMessageId != null && (!Number.isInteger(replyToMessageId) || replyToMessageId <= 0)) {
+        return res.status(400).json({ message: "Invalid reply target" });
+      }
+      const conversation = await storage.getConversationById(conversationId);
       if (
         !conversation?.participants.some(
           (participant) => participant.userId === req.dbUser!.id,
@@ -9232,9 +9273,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(403)
           .json({ message: "You are not a participant in this conversation" });
       }
-      const message = await storage.createDirectMessage({
-        ...req.body,
-        senderId: req.dbUser!.id,
+      if (replyToMessageId != null) {
+        const [replyTarget] = await db.select({ conversationId: directMessages.conversationId }).from(directMessages).where(eq(directMessages.id, replyToMessageId)).limit(1);
+        if (!replyTarget || replyTarget.conversationId !== conversationId) return res.status(400).json({ message: "Reply target is outside this conversation" });
+      }
+      const recipients = conversation.participants.filter((participant) => participant.userId !== req.dbUser!.id);
+      const message = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(directMessages).values({
+          conversationId,
+          senderId: req.dbUser!.id,
+          content,
+          replyToMessageId,
+        }).returning();
+        const now = new Date();
+        await tx.update(conversations).set({ updatedAt: now }).where(eq(conversations.id, conversationId));
+        const consentCommand = messagingConsentCommand(content);
+        for (const recipient of recipients) {
+          const [existingState] = await tx.select().from(automationContactStates).where(and(
+            eq(automationContactStates.ownerUserId, recipient.userId),
+            eq(automationContactStates.contactUserId, req.dbUser!.id),
+            eq(automationContactStates.channel, "native"),
+          )).limit(1);
+          await tx.insert(automationContactStates).values({
+            ownerUserId: recipient.userId,
+            contactUserId: req.dbUser!.id,
+            channel: "native",
+            conversationId,
+            optedOut: consentCommand === "opt_out",
+            optedOutAt: consentCommand === "opt_out" ? now : null,
+            lastInboundAt: now,
+            updatedAt: now,
+          }).onConflictDoUpdate({
+            target: [automationContactStates.ownerUserId, automationContactStates.contactUserId, automationContactStates.channel],
+            set: {
+              conversationId,
+              lastInboundAt: now,
+              updatedAt: now,
+              ...(consentCommand === "opt_out" ? { optedOut: true, optedOutAt: now } : {}),
+              ...(consentCommand === "opt_in" ? { optedOut: false, optedOutAt: null, cooldownUntil: null } : {}),
+            },
+          });
+          if (!consentCommand && !existingState?.optedOut) {
+            await tx.insert(automationTriggerEvents).values({
+              ownerUserId: recipient.userId,
+              eventType: NATIVE_DM_RECEIVED_EVENT,
+              idempotencyKey: `native:dm:${created.id}:owner:${recipient.userId}`,
+              payload: {
+                channel: "native",
+                automated: false,
+                actorUserId: req.dbUser!.id,
+                actorDisplayName: req.dbUser!.displayName,
+                messageId: created.id,
+                conversationId,
+                content: created.content,
+              },
+            }).onConflictDoNothing();
+          }
+        }
+        return created;
       });
       res.status(201).json(message);
     } catch (error) {

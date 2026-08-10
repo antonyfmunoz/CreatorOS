@@ -21,6 +21,7 @@ import {
   requiresAutomationApproval,
   sanitizeAutomationError,
 } from "./automation-policy";
+import { matchesNativeSocialTrigger } from "./social-automation";
 
 const RUN_BATCH_SIZE = 10;
 const STALE_RUN_MS = 2 * 60_000;
@@ -252,6 +253,7 @@ async function processStep(
     const result = await withTimeout(executeAutomationAction(step.actionType, {
       runId: run.id,
       stepRunId: stepRun.id,
+      triggerEventId: run.triggerEventId,
       ownerUserId: definition.ownerUserId,
       businessId: definition.businessId,
       input: run.input,
@@ -426,7 +428,7 @@ export async function processAutomationTriggerEvents() {
     const definitions = await db.select().from(automationDefinitions).where(and(eq(automationDefinitions.ownerUserId, event.ownerUserId), eq(automationDefinitions.status, "active"), eq(automationDefinitions.triggerType, "event")));
     for (const definition of definitions) {
       const config = definition.triggerConfig as Record<string, unknown>;
-      if (config.eventType !== event.eventType) continue;
+      if (!matchesNativeSocialTrigger(config, event.eventType, event.payload)) continue;
       await createAutomationRun({ definition, initiatedByUserId: event.ownerUserId, input: event.payload, idempotencyKey: `event:${event.id}:${definition.id}`, maxCostUnits: 100, triggerEventId: event.id });
     }
     await db.update(automationTriggerEvents).set({ status: "processed", processedAt: new Date() }).where(eq(automationTriggerEvents.id, event.id));

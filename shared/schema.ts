@@ -879,6 +879,32 @@ export const automationTriggerEvents = pgTable(
   }),
 );
 
+// Provider-neutral messaging consent and delivery state. Native CreativesOS
+// conversations use channel="native"; provider adapters can reuse the same
+// contract later without changing automation definitions.
+export const automationContactStates = pgTable(
+  "automation_contact_states",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    contactUserId: integer("contact_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    channel: text("channel").default("native").notNull(),
+    conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    optedOut: boolean("opted_out").default(false).notNull(),
+    optedOutAt: timestamp("opted_out_at"),
+    lastInboundAt: timestamp("last_inbound_at"),
+    lastOutboundAt: timestamp("last_outbound_at"),
+    cooldownUntil: timestamp("cooldown_until"),
+    metadata: json("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerContactChannelUnique: unique("automation_contact_states_owner_contact_channel_unique").on(table.ownerUserId, table.contactUserId, table.channel),
+    ownerUpdatedIdx: index("automation_contact_states_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+  }),
+);
+
 export const automationRuns = pgTable(
   "automation_runs",
   {

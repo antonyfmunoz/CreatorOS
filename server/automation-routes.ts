@@ -33,6 +33,7 @@ import {
 } from "./automation-policy";
 import { automationTemplates } from "./automation-templates";
 import { automationMutationRateLimiter } from "./security";
+import { validateNativeSocialTriggerConfig } from "./social-automation";
 
 function automationError(res: Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ message: "Invalid automation request", issues: error.issues });
@@ -81,6 +82,7 @@ function validateTrigger(triggerType: string, triggerConfig: Record<string, unkn
   if (triggerType === "event" && (typeof triggerConfig.eventType !== "string" || !/^[a-z][a-z0-9_.]*$/.test(triggerConfig.eventType))) {
     throw new Error("Event automations need a valid trigger eventType");
   }
+  if (triggerType === "event") validateNativeSocialTriggerConfig(triggerConfig);
 }
 
 async function writeDefinitionAudit(

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Check, CirclePause, Clock3, Download, Play, Plus, RefreshCw, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, CirclePause, Clock3, Download, MessageCircle, Play, Plus, RefreshCw, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -50,6 +50,13 @@ export default function AutomationsPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runInput, setRunInput] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [socialFlow, setSocialFlow] = useState<"comment" | "dm">("comment");
+  const [socialKeywords, setSocialKeywords] = useState("");
+  const [socialMatchMode, setSocialMatchMode] = useState<"exact" | "contains" | "starts_with">("exact");
+  const [socialReply, setSocialReply] = useState("");
+  const [socialPublicReply, setSocialPublicReply] = useState("I just sent it to you in a DM.");
+  const [socialPostId, setSocialPostId] = useState("");
+  const [socialCooldown, setSocialCooldown] = useState("0");
 
   const businessesQuery = useQuery<Business[]>({ queryKey: ["/api/businesses"] });
   const templatesQuery = useQuery<AutomationTemplate[]>({ queryKey: ["/api/automations/templates"] });
@@ -91,6 +98,49 @@ export default function AutomationsPage() {
       toast({ title: "Automation created", description: "Review it, then activate when you are ready." });
     },
     onError: (error: Error) => toast({ title: "Could not create automation", description: error.message, variant: "destructive" }),
+  });
+
+  const createSocialAutomation = useMutation({
+    mutationFn: async () => {
+      const keywords = socialKeywords.split(/[,\n]/).map((keyword) => keyword.trim()).filter(Boolean);
+      if (keywords.length === 0) throw new Error("Add at least one keyword");
+      if (!socialReply.trim()) throw new Error("Add the direct-message reply");
+      const parsedPostId = socialPostId.trim() ? Number(socialPostId) : null;
+      if (parsedPostId != null && (!Number.isInteger(parsedPostId) || parsedPostId <= 0)) throw new Error("Post ID must be a positive number");
+      const cooldownMinutes = Number(socialCooldown);
+      if (!Number.isInteger(cooldownMinutes) || cooldownMinutes < 0 || cooldownMinutes > 10_080) throw new Error("Cooldown must be between 0 and 10080 minutes");
+      const steps = socialFlow === "comment" && socialPublicReply.trim()
+        ? [
+            { stepKey: "public_reply", name: "Reply to comment", actionType: "native.comment.reply", position: 0, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialPublicReply.trim() } },
+            { stepKey: "direct_message", name: "Send direct message", actionType: "native.dm.send", position: 1, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialReply.trim(), cooldownMinutes } },
+          ]
+        : [{ stepKey: "direct_message", name: "Send direct message", actionType: "native.dm.send", position: 0, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialReply.trim(), cooldownMinutes } }];
+      return jsonRequest<AutomationDefinition>("POST", "/api/automations", {
+        name: `${socialFlow === "comment" ? "Comment" : "DM"}: ${keywords[0]}`,
+        description: `${socialFlow === "comment" ? "Comment" : "Direct-message"} keyword reply for ${keywords.join(", ")}.`,
+        businessId: defaultBusiness?.id ?? null,
+        triggerType: "event",
+        triggerConfig: {
+          eventType: socialFlow === "comment" ? "native.comment.created" : "native.dm.received",
+          keywords,
+          matchMode: socialMatchMode,
+          caseSensitive: false,
+          ...(socialFlow === "comment" ? { topLevelOnly: true, ...(parsedPostId ? { postId: parsedPostId } : {}) } : {}),
+        },
+        maxRunsPerHour: 100,
+        maxStepsPerRun: 5,
+        retentionDays: 90,
+        steps,
+      });
+    },
+    onSuccess: async (definition) => {
+      setSelectedId(definition.id);
+      setSocialKeywords("");
+      setSocialReply("");
+      await refresh();
+      toast({ title: "Keyword automation created", description: "Review the workflow below, then activate it when ready." });
+    },
+    onError: (error: Error) => toast({ title: "Could not create keyword automation", description: error.message, variant: "destructive" }),
   });
 
   const setStatus = useMutation({
@@ -181,6 +231,38 @@ export default function AutomationsPage() {
                   <button onClick={() => createTemplate.mutate(template.id)} disabled={createTemplate.isPending} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-black disabled:opacity-50"><Plus className="h-4 w-4" />Use playbook</button>
                 </article>
               ))}
+            </div>
+          </section>
+
+          <section className="px-4 pt-7">
+            <div className="rounded-2xl border border-[#1d9bf0]/30 bg-[#1d9bf0]/5 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1d9bf0]/15 text-[#1d9bf0]"><MessageCircle className="h-5 w-5" /></span>
+                <div><p className="text-xs font-bold uppercase tracking-wider text-[#1d9bf0]">Keyword replies</p><h2 className="mt-1 text-base font-bold">Turn comments and DMs into conversations</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Runs on native CreativesOS messages now. The same workflow can connect to social providers later.</p></div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {(["comment", "dm"] as const).map((flow) => <button key={flow} type="button" onClick={() => setSocialFlow(flow)} className={`rounded-xl border py-2.5 text-xs font-bold ${socialFlow === flow ? "border-[#1d9bf0] bg-[#1d9bf0] text-white" : "border-zinc-800 bg-black text-zinc-400"}`}>{flow === "comment" ? "Comment keyword" : "DM keyword"}</button>)}
+              </div>
+              <label className="mt-4 block text-[11px] font-bold text-zinc-400">Keywords</label>
+              <input value={socialKeywords} onChange={(event) => setSocialKeywords(event.target.value)} placeholder="GUIDE, LINK, DETAILS" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="text-[11px] font-bold text-zinc-400">Match
+                  <select value={socialMatchMode} onChange={(event) => setSocialMatchMode(event.target.value as typeof socialMatchMode)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-white outline-none focus:border-[#1d9bf0]"><option value="exact">Exact message</option><option value="contains">Contains keyword</option><option value="starts_with">Starts with</option></select>
+                </label>
+                <label className="text-[11px] font-bold text-zinc-400">Cooldown minutes
+                  <input inputMode="numeric" value={socialCooldown} onChange={(event) => setSocialCooldown(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-white outline-none focus:border-[#1d9bf0]" />
+                </label>
+              </div>
+              {socialFlow === "comment" && <>
+                <label className="mt-3 block text-[11px] font-bold text-zinc-400">Public reply <span className="font-normal text-zinc-600">(optional)</span></label>
+                <input value={socialPublicReply} onChange={(event) => setSocialPublicReply(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none focus:border-[#1d9bf0]" />
+                <label className="mt-3 block text-[11px] font-bold text-zinc-400">Post ID <span className="font-normal text-zinc-600">(optional; blank means all your posts)</span></label>
+                <input inputMode="numeric" value={socialPostId} onChange={(event) => setSocialPostId(event.target.value)} placeholder="All posts" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+              </>}
+              <label className="mt-3 block text-[11px] font-bold text-zinc-400">Direct-message reply</label>
+              <textarea value={socialReply} onChange={(event) => setSocialReply(event.target.value)} placeholder="Thanks for reaching out—here is the link you requested…" className="mt-1.5 min-h-24 w-full resize-none rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+              <p className="mt-2 text-[10px] leading-4 text-zinc-600">STOP opts a person out. START opts them back in. Automated replies never trigger another automation.</p>
+              <button type="button" onClick={() => createSocialAutomation.mutate()} disabled={createSocialAutomation.isPending} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-black disabled:opacity-50"><Plus className="h-4 w-4" />Create keyword automation</button>
             </div>
           </section>
 

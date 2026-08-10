@@ -31,6 +31,7 @@ const requiredTables = [
   "automation_approvals",
   "automation_action_receipts",
   "automation_audit_events",
+  "automation_contact_states",
 ];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
