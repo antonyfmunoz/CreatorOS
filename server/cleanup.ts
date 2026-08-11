@@ -4,6 +4,7 @@ import { eq, or, like, and, isNull, not } from "drizzle-orm";
 import { cleanupExpiredRoomMedia } from "./room-media-retention";
 import { reconcileRoomMediaRuntime } from "./room-media-reconciliation";
 import { redactExpiredAutomationPayloads } from "./automation-retention";
+import { cleanupRelationshipHubRetention } from "./relationship-retention";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -87,6 +88,9 @@ export function scheduleCleanupTasks() {
   redactExpiredAutomationPayloads()
     .then((result) => console.log("Initial automation retention completed:", result))
     .catch((error) => console.error("Initial automation retention failed:", error));
+  cleanupRelationshipHubRetention()
+    .then((result) => console.log("Initial relationship retention completed:", result))
+    .catch((error) => console.error("Initial relationship retention failed:", error));
   reconcileRoomMediaRuntime()
     .then((result) => console.log("Initial room media recovery completed:", result))
     .catch((error) => console.error("Initial room media recovery failed:", error));
@@ -132,6 +136,11 @@ export function scheduleCleanupTasks() {
         if (result.runsRedacted) console.log("Scheduled automation retention completed:", result);
       })
       .catch((error) => console.error("Scheduled automation retention failed:", error));
+    cleanupRelationshipHubRetention()
+      .then((result) => {
+        if (Object.values(result).some((value) => value > 0)) console.log("Scheduled relationship retention completed:", result);
+      })
+      .catch((error) => console.error("Scheduled relationship retention failed:", error));
   }, ONE_HOUR_MS);
   
   console.log("Automated story cleanup scheduled to run every 5 minutes");

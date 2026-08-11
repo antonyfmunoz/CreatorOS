@@ -324,6 +324,952 @@ export const socialOAuthStates = pgTable(
   }),
 );
 
+// Canonical provider connection used by the Relationship Hub. Publishing-only
+// socialConnections remain available during migration, but new messaging,
+// email, telephony, community, and native adapters all target this contract.
+export const relationshipChannelConnections = pgTable(
+  "relationship_channel_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    connectedByUserId: integer("connected_by_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerAccountName: text("provider_account_name").notNull(),
+    status: text("status").notNull().default("pending"),
+    scopes: json("scopes").$type<string[]>().notNull().default([]),
+    capabilities: json("capabilities")
+      .$type<Record<string, boolean>>()
+      .notNull()
+      .default({}),
+    accessTokenCiphertext: text("access_token_ciphertext"),
+    refreshTokenCiphertext: text("refresh_token_ciphertext"),
+    webhookSecretCiphertext: text("webhook_secret_ciphertext"),
+    tokenExpiresAt: timestamp("token_expires_at"),
+    lastValidatedAt: timestamp("last_validated_at"),
+    lastInboundAt: timestamp("last_inbound_at"),
+    lastOutboundAt: timestamp("last_outbound_at"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessProviderAccountUnique: unique(
+      "relationship_channel_connections_business_provider_account_unique",
+    ).on(table.businessId, table.provider, table.providerAccountId),
+    businessProviderIdx: index(
+      "relationship_channel_connections_business_provider_idx",
+    ).on(table.businessId, table.provider, table.status),
+  }),
+);
+
+// A relationship is the tenant-owned CRM subject. It can be backed by zero or
+// more verified external identities and never requires a CreativesOS account.
+export const relationships = pgTable(
+  "relationships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ownerUserId: integer("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    displayName: text("display_name").notNull(),
+    avatarUrl: text("avatar_url"),
+    relationshipType: text("relationship_type").notNull().default("person"),
+    lifecycleStage: text("lifecycle_stage").notNull().default("new"),
+    status: text("status").notNull().default("active"),
+    source: text("source").notNull().default("manual"),
+    locale: text("locale"),
+    timezone: text("timezone"),
+    aiSummary: text("ai_summary"),
+    customFields: json("custom_fields")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    lastInteractionAt: timestamp("last_interaction_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    archivedAt: timestamp("archived_at"),
+  },
+  (table) => ({
+    businessUpdatedIdx: index("relationships_business_updated_idx").on(
+      table.businessId,
+      table.updatedAt,
+    ),
+    businessOwnerIdx: index("relationships_business_owner_idx").on(
+      table.businessId,
+      table.ownerUserId,
+      table.status,
+    ),
+  }),
+);
+
+export const relationshipExternalIdentities = pgTable(
+  "relationship_external_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id").references(
+      () => relationshipChannelConnections.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider").notNull(),
+    providerSubjectId: text("provider_subject_id").notNull(),
+    address: text("address"),
+    username: text("username"),
+    displayName: text("display_name"),
+    avatarUrl: text("avatar_url"),
+    verificationStatus: text("verification_status").notNull().default("observed"),
+    verifiedAt: timestamp("verified_at"),
+    lastSeenAt: timestamp("last_seen_at"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessProviderSubjectUnique: unique(
+      "relationship_external_identities_business_provider_subject_unique",
+    ).on(table.businessId, table.provider, table.providerSubjectId),
+    relationshipIdx: index("relationship_external_identities_relationship_idx").on(
+      table.businessId,
+      table.relationshipId,
+    ),
+  }),
+);
+
+export const relationshipMergeCandidates = pgTable(
+  "relationship_merge_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    sourceRelationshipId: uuid("source_relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    targetRelationshipId: uuid("target_relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    reason: text("reason").notNull(),
+    confidence: doublePrecision("confidence").notNull(),
+    evidence: json("evidence").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    status: text("status").notNull().default("suggested"),
+    reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pairUnique: unique("relationship_merge_candidates_pair_unique").on(
+      table.businessId,
+      table.sourceRelationshipId,
+      table.targetRelationshipId,
+    ),
+  }),
+);
+
+export const relationshipConsents = pgTable(
+  "relationship_consents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    externalIdentityId: uuid("external_identity_id").references(
+      () => relationshipExternalIdentities.id,
+      { onDelete: "set null" },
+    ),
+    purpose: text("purpose").notNull(),
+    channel: text("channel").notNull(),
+    status: text("status").notNull().default("unknown"),
+    source: text("source").notNull().default("observed"),
+    disclosureVersion: text("disclosure_version"),
+    grantedAt: timestamp("granted_at"),
+    expiresAt: timestamp("expires_at"),
+    withdrawnAt: timestamp("withdrawn_at"),
+    evidence: json("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    relationshipPurposeIdx: index("relationship_consents_relationship_purpose_idx").on(
+      table.businessId,
+      table.relationshipId,
+      table.channel,
+      table.purpose,
+    ),
+  }),
+);
+
+export const relationshipTags = pgTable(
+  "relationship_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    color: text("color"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessNameUnique: unique("relationship_tags_business_name_unique").on(
+      table.businessId,
+      table.name,
+    ),
+  }),
+);
+
+export const relationshipTagAssignments = pgTable(
+  "relationship_tag_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    tagId: uuid("tag_id")
+      .references(() => relationshipTags.id, { onDelete: "cascade" })
+      .notNull(),
+    assignedByUserId: integer("assigned_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    relationshipTagUnique: unique("relationship_tag_assignments_unique").on(
+      table.relationshipId,
+      table.tagId,
+    ),
+  }),
+);
+
+export const relationshipNotes = pgTable(
+  "relationship_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    body: text("body").notNull(),
+    visibility: text("visibility").notNull().default("team"),
+    sourceType: text("source_type").notNull().default("human"),
+    sourceId: text("source_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    relationshipCreatedIdx: index("relationship_notes_relationship_created_idx").on(
+      table.businessId,
+      table.relationshipId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const relationshipTasks = pgTable(
+  "relationship_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assignedToUserId: integer("assigned_to_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    status: text("status").notNull().default("open"),
+    priority: text("priority").notNull().default("normal"),
+    dueAt: timestamp("due_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessAssigneeStatusIdx: index("relationship_tasks_assignee_status_idx").on(
+      table.businessId,
+      table.assignedToUserId,
+      table.status,
+      table.dueAt,
+    ),
+  }),
+);
+
+export const relationshipConversations = pgTable(
+  "relationship_conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id").references(() => relationships.id, {
+      onDelete: "set null",
+    }),
+    nativeConversationId: integer("native_conversation_id").references(
+      () => conversations.id,
+      { onDelete: "set null" },
+    ),
+    title: text("title").notNull(),
+    kind: text("kind").notNull().default("direct"),
+    status: text("status").notNull().default("open"),
+    priority: text("priority").notNull().default("normal"),
+    queue: text("queue").notNull().default("unassigned"),
+    assignedToUserId: integer("assigned_to_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    aiMode: text("ai_mode").notNull().default("observe"),
+    lastMessageAt: timestamp("last_message_at"),
+    snoozedUntil: timestamp("snoozed_until"),
+    closedAt: timestamp("closed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    nativeConversationUnique: unique("relationship_conversations_native_unique").on(
+      table.businessId,
+      table.nativeConversationId,
+    ),
+    businessQueueUpdatedIdx: index("relationship_conversations_queue_updated_idx").on(
+      table.businessId,
+      table.queue,
+      table.status,
+      table.updatedAt,
+    ),
+  }),
+);
+
+export const relationshipConversationBindings = pgTable(
+  "relationship_conversation_bindings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => relationshipConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id").references(
+      () => relationshipChannelConnections.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider").notNull(),
+    externalThreadId: text("external_thread_id").notNull(),
+    status: text("status").notNull().default("active"),
+    capabilities: json("capabilities")
+      .$type<Record<string, boolean>>()
+      .notNull()
+      .default({}),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    lastSyncedAt: timestamp("last_synced_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    externalThreadUnique: unique("relationship_conversation_bindings_thread_unique").on(
+      table.businessId,
+      table.provider,
+      table.connectionId,
+      table.externalThreadId,
+    ),
+  }),
+);
+
+export const relationshipConversationParticipants = pgTable(
+  "relationship_conversation_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => relationshipConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id").references(() => relationships.id, {
+      onDelete: "set null",
+    }),
+    externalIdentityId: uuid("external_identity_id").references(
+      () => relationshipExternalIdentities.id,
+      { onDelete: "set null" },
+    ),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    role: text("role").notNull().default("customer"),
+    joinedAt: timestamp("joined_at").defaultNow().notNull(),
+    leftAt: timestamp("left_at"),
+  },
+  (table) => ({
+    conversationParticipantIdx: index("relationship_conversation_participants_idx").on(
+      table.businessId,
+      table.conversationId,
+    ),
+  }),
+);
+
+export const relationshipMessages = pgTable(
+  "relationship_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => relationshipConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    bindingId: uuid("binding_id").references(
+      () => relationshipConversationBindings.id,
+      { onDelete: "set null" },
+    ),
+    authorUserId: integer("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    authorExternalIdentityId: uuid("author_external_identity_id").references(
+      () => relationshipExternalIdentities.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider").notNull(),
+    externalMessageId: text("external_message_id"),
+    direction: text("direction").notNull(),
+    authorType: text("author_type").notNull(),
+    messageType: text("message_type").notNull().default("text"),
+    body: text("body").notNull().default(""),
+    bodyFormat: text("body_format").notNull().default("plain"),
+    replyToMessageId: uuid("reply_to_message_id"),
+    status: text("status").notNull().default("received"),
+    syntheticMedia: boolean("synthetic_media").notNull().default(false),
+    disclosure: text("disclosure"),
+    occurredAt: timestamp("occurred_at").notNull(),
+    editedAt: timestamp("edited_at"),
+    deletedAt: timestamp("deleted_at"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    bindingExternalMessageUnique: unique(
+      "relationship_messages_binding_external_unique",
+    ).on(table.bindingId, table.externalMessageId),
+    conversationOccurredIdx: index("relationship_messages_conversation_occurred_idx").on(
+      table.businessId,
+      table.conversationId,
+      table.occurredAt,
+    ),
+  }),
+);
+
+export const relationshipMessageAttachments = pgTable(
+  "relationship_message_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    messageId: uuid("message_id")
+      .references(() => relationshipMessages.id, { onDelete: "cascade" })
+      .notNull(),
+    attachmentType: text("attachment_type").notNull(),
+    storageKey: text("storage_key"),
+    providerMediaId: text("provider_media_id"),
+    sourceUrl: text("source_url"),
+    filename: text("filename"),
+    mimeType: text("mime_type"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    durationMs: integer("duration_ms"),
+    checksum: text("checksum"),
+    scanStatus: text("scan_status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    messageIdx: index("relationship_message_attachments_message_idx").on(
+      table.businessId,
+      table.messageId,
+    ),
+  }),
+);
+
+export const relationshipMessageReceipts = pgTable(
+  "relationship_message_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    messageId: uuid("message_id")
+      .references(() => relationshipMessages.id, { onDelete: "cascade" })
+      .notNull(),
+    receiptType: text("receipt_type").notNull(),
+    providerReceiptId: text("provider_receipt_id"),
+    occurredAt: timestamp("occurred_at").notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    messageReceiptIdx: index("relationship_message_receipts_message_idx").on(
+      table.businessId,
+      table.messageId,
+      table.occurredAt,
+    ),
+  }),
+);
+
+export const relationshipConversationNotes = pgTable(
+  "relationship_conversation_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => relationshipConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    body: text("body").notNull(),
+    sourceType: text("source_type").notNull().default("human"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    conversationCreatedIdx: index("relationship_conversation_notes_created_idx").on(
+      table.businessId,
+      table.conversationId,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Provider events are normalized before automation or AI processing. The raw
+// payload belongs in short-retention private storage; rawStorageKey is a pointer
+// rather than a reason to retain personal webhook payloads indefinitely.
+export const relationshipProviderEvents = pgTable(
+  "relationship_provider_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => relationshipChannelConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: text("provider").notNull(),
+    externalEventId: text("external_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    normalizedPayload: json("normalized_payload")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    rawStorageKey: text("raw_storage_key"),
+    status: text("status").notNull().default("received"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    occurredAt: timestamp("occurred_at").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+  },
+  (table) => ({
+    connectionEventUnique: unique("relationship_provider_events_external_unique").on(
+      table.connectionId,
+      table.externalEventId,
+    ),
+    dueIdx: index("relationship_provider_events_due_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.receivedAt,
+    ),
+  }),
+);
+
+export const relationshipDeliveryJobs = pgTable(
+  "relationship_delivery_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => relationshipChannelConnections.id, { onDelete: "restrict" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => relationshipConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    messageId: uuid("message_id")
+      .references(() => relationshipMessages.id, { onDelete: "cascade" })
+      .notNull(),
+    actionType: text("action_type").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    status: text("status").notNull().default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),
+    claimedAt: timestamp("claimed_at"),
+    claimedBy: text("claimed_by"),
+    providerRequestId: text("provider_request_id"),
+    providerMessageId: text("provider_message_id"),
+    errorClass: text("error_class"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => ({
+    idempotencyUnique: unique("relationship_delivery_jobs_idempotency_unique").on(
+      table.businessId,
+      table.idempotencyKey,
+    ),
+    dueIdx: index("relationship_delivery_jobs_due_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Bridges canonical delivery idempotency to the legacy native DM row while the
+// native inbox is migrated onto relationshipMessages. It prevents a local DM
+// from being duplicated if the process crashes after insertion but before the
+// canonical delivery job is acknowledged.
+export const relationshipNativeDeliveryReceipts = pgTable(
+  "relationship_native_delivery_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    directMessageId: integer("direct_message_id")
+      .references(() => directMessages.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessKeyUnique: unique("relationship_native_delivery_business_key_unique").on(
+      table.businessId,
+      table.idempotencyKey,
+    ),
+  }),
+);
+
+export const relationshipSyncCursors = pgTable(
+  "relationship_sync_cursors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => relationshipChannelConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    stream: text("stream").notNull(),
+    cursor: text("cursor"),
+    status: text("status").notNull().default("active"),
+    lastSyncedAt: timestamp("last_synced_at"),
+    nextSyncAt: timestamp("next_sync_at"),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    connectionStreamUnique: unique("relationship_sync_cursors_stream_unique").on(
+      table.connectionId,
+      table.stream,
+    ),
+  }),
+);
+
+export const relationshipAgentAuthorityPolicies = pgTable(
+  "relationship_agent_authority_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    agentKey: text("agent_key").notNull(),
+    role: text("role").notNull(),
+    mode: text("mode").notNull().default("observe"),
+    allowedActions: json("allowed_actions").$type<string[]>().notNull().default([]),
+    approvalRequiredActions: json("approval_required_actions")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    blockedActions: json("blocked_actions").$type<string[]>().notNull().default([]),
+    channelAllowlist: json("channel_allowlist").$type<string[]>().notNull().default([]),
+    maxCostUnitsPerRun: integer("max_cost_units_per_run").notNull().default(100),
+    instructions: text("instructions").notNull().default(""),
+    status: text("status").notNull().default("active"),
+    createdByUserId: integer("created_by_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessAgentUnique: unique("relationship_agent_authority_business_agent_unique").on(
+      table.businessId,
+      table.agentKey,
+    ),
+  }),
+);
+
+export const relationshipMemoryFacts = pgTable(
+  "relationship_memory_facts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    factType: text("fact_type").notNull(),
+    value: json("value").$type<unknown>().notNull(),
+    epistemicStatus: text("epistemic_status").notNull().default("inferred"),
+    confidence: doublePrecision("confidence"),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    status: text("status").notNull().default("proposed"),
+    reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    relationshipStatusIdx: index("relationship_memory_facts_status_idx").on(
+      table.businessId,
+      table.relationshipId,
+      table.status,
+    ),
+  }),
+);
+
+export const relationshipAgentSuggestions = pgTable(
+  "relationship_agent_suggestions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id").references(
+      () => relationshipConversations.id,
+      { onDelete: "cascade" },
+    ),
+    relationshipId: uuid("relationship_id").references(() => relationships.id, {
+      onDelete: "cascade",
+    }),
+    agentKey: text("agent_key").notNull(),
+    suggestionType: text("suggestion_type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    evidence: json("evidence").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    confidence: doublePrecision("confidence"),
+    status: text("status").notNull().default("proposed"),
+    reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    conversationStatusIdx: index("relationship_agent_suggestions_status_idx").on(
+      table.businessId,
+      table.conversationId,
+      table.status,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Voice profiles contain provider references only. Training samples and output
+// media live in private object storage under explicit retention policies.
+export const relationshipVoiceProfiles = pgTable(
+  "relationship_voice_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: text("provider").notNull(),
+    providerVoiceIdCiphertext: text("provider_voice_id_ciphertext"),
+    displayName: text("display_name").notNull(),
+    cloneType: text("clone_type").notNull().default("professional"),
+    status: text("status").notNull().default("enrollment_required"),
+    ownershipVerificationStatus: text("ownership_verification_status")
+      .notNull()
+      .default("unverified"),
+    ownershipVerifiedAt: timestamp("ownership_verified_at"),
+    disclosureText: text("disclosure_text")
+      .notNull()
+      .default("AI-generated voice message sent with the voice owner's authorization."),
+    allowedUseCases: json("allowed_use_cases").$type<string[]>().notNull().default([]),
+    blockedUseCases: json("blocked_use_cases").$type<string[]>().notNull().default([]),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => ({
+    businessOwnerNameUnique: unique("relationship_voice_profiles_owner_name_unique").on(
+      table.businessId,
+      table.ownerUserId,
+      table.displayName,
+    ),
+  }),
+);
+
+export const relationshipVoiceConsents = pgTable(
+  "relationship_voice_consents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    voiceProfileId: uuid("voice_profile_id")
+      .references(() => relationshipVoiceProfiles.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    consentVersion: text("consent_version").notNull(),
+    consentTextHash: text("consent_text_hash").notNull(),
+    status: text("status").notNull().default("granted"),
+    verificationEvidence: json("verification_evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    grantedAt: timestamp("granted_at").defaultNow().notNull(),
+    withdrawnAt: timestamp("withdrawn_at"),
+  },
+  (table) => ({
+    profileVersionUnique: unique("relationship_voice_consents_profile_version_unique").on(
+      table.voiceProfileId,
+      table.consentVersion,
+    ),
+  }),
+);
+
+export const relationshipVoiceGenerationJobs = pgTable(
+  "relationship_voice_generation_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    voiceProfileId: uuid("voice_profile_id")
+      .references(() => relationshipVoiceProfiles.id, { onDelete: "restrict" })
+      .notNull(),
+    conversationId: uuid("conversation_id").references(
+      () => relationshipConversations.id,
+      { onDelete: "set null" },
+    ),
+    requestedByUserId: integer("requested_by_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    approvedByUserId: integer("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    sourceType: text("source_type").notNull().default("human"),
+    sourceId: text("source_id"),
+    scriptCiphertext: text("script_ciphertext").notNull(),
+    scriptHash: text("script_hash").notNull(),
+    status: text("status").notNull().default("awaiting_approval"),
+    providerRequestId: text("provider_request_id"),
+    storageKey: text("storage_key"),
+    mimeType: text("mime_type"),
+    durationMs: integer("duration_ms"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    provenance: json("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+    expiresAt: timestamp("expires_at"),
+  },
+  (table) => ({
+    businessStatusIdx: index("relationship_voice_generation_status_idx").on(
+      table.businessId,
+      table.status,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const relationshipAuditEvents = pgTable(
+  "relationship_audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    correlationId: uuid("correlation_id").defaultRandom().notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessCreatedIdx: index("relationship_audit_events_business_created_idx").on(
+      table.businessId,
+      table.createdAt,
+    ),
+    targetIdx: index("relationship_audit_events_target_idx").on(
+      table.businessId,
+      table.targetType,
+      table.targetId,
+    ),
+  }),
+);
+
 // One row per requested external destination. This makes a multi-channel job
 // auditable and retry-safe, without pretending that a native publish completed
 // on a third-party network.
@@ -2963,6 +3909,32 @@ export type AutomationActionReceipt = typeof automationActionReceipts.$inferSele
 export type AutomationThread = typeof automationThreads.$inferSelect;
 export type AutomationMessage = typeof automationMessages.$inferSelect;
 export type AutomationAuditEvent = typeof automationAuditEvents.$inferSelect;
+
+export type RelationshipChannelConnection =
+  typeof relationshipChannelConnections.$inferSelect;
+export type Relationship = typeof relationships.$inferSelect;
+export type RelationshipExternalIdentity =
+  typeof relationshipExternalIdentities.$inferSelect;
+export type RelationshipConsent = typeof relationshipConsents.$inferSelect;
+export type RelationshipConversation =
+  typeof relationshipConversations.$inferSelect;
+export type RelationshipConversationBinding =
+  typeof relationshipConversationBindings.$inferSelect;
+export type RelationshipMessage = typeof relationshipMessages.$inferSelect;
+export type RelationshipProviderEvent =
+  typeof relationshipProviderEvents.$inferSelect;
+export type RelationshipDeliveryJob =
+  typeof relationshipDeliveryJobs.$inferSelect;
+export type RelationshipNativeDeliveryReceipt =
+  typeof relationshipNativeDeliveryReceipts.$inferSelect;
+export type RelationshipAgentAuthorityPolicy =
+  typeof relationshipAgentAuthorityPolicies.$inferSelect;
+export type RelationshipMemoryFact = typeof relationshipMemoryFacts.$inferSelect;
+export type RelationshipVoiceProfile =
+  typeof relationshipVoiceProfiles.$inferSelect;
+export type RelationshipVoiceGenerationJob =
+  typeof relationshipVoiceGenerationJobs.$inferSelect;
+export type RelationshipAuditEvent = typeof relationshipAuditEvents.$inferSelect;
 
 export type Community = typeof communities.$inferSelect;
 export type InsertCommunity = z.infer<typeof insertCommunitySchema>;

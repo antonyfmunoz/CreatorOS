@@ -92,6 +92,35 @@ export async function removeStoredAsset(storageKey: string, visibility: AssetVis
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
 }
 
+export async function persistPrivateBuffer(input: {
+  body: Buffer;
+  ownerUserId: number;
+  kind: string;
+  filename: string;
+  mimeType: string;
+}) {
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "private");
+  if (provider === "local") {
+    if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
+    const localPath = path.resolve(process.cwd(), key);
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.writeFile(localPath, input.body, { flag: "wx" });
+    return { storageKey: key, sizeBytes: input.body.byteLength };
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket } = r2BucketFor("private");
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: input.body,
+    ContentType: input.mimeType,
+    CacheControl: "private, no-store",
+    Metadata: { owner: String(input.ownerUserId), kind: input.kind, visibility: "private" },
+  }));
+  return { storageKey: key, sizeBytes: input.body.byteLength };
+}
+
 export async function persistUpload(file: Express.Multer.File, ownerUserId: number, kind: string): Promise<StoredUpload> {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider === "local") return { storageKey: `uploads/${file.filename}`, publicUrl: `/uploads/${file.filename}` };

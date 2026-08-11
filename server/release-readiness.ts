@@ -40,6 +40,15 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
     && transcriptIngest,
   );
   const realtimeAi = Boolean(liveMedia && environment.LIVEKIT_ROOM_AGENT_NAME);
+  const relationshipAi = Boolean(environment.OPENAI_API_KEY);
+  const relationshipVoice = Boolean(environment.ELEVENLABS_API_KEY && privateAssetDelivery);
+  const relationshipInstagram = Boolean(
+    environment.INSTAGRAM_APP_ID
+    && environment.INSTAGRAM_APP_SECRET
+    && environment.META_GRAPH_API_VERSION
+    && (environment.RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN || environment.META_WEBHOOK_VERIFY_TOKEN)
+    && environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
+  );
 
   const blockers: string[] = [];
   if (!clerkProduction) blockers.push(clerkConfigured ? "clerk_test_mode" : "clerk_unconfigured");
@@ -54,6 +63,13 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
       kernel: "configured",
       scheduler: "embedded",
       authority: "native",
+    },
+    relationshipHub: {
+      kernel: "configured",
+      nativeInbox: "configured",
+      aiCopilot: relationshipAi ? "configured" : "provider_pending",
+      clonedVoice: relationshipVoice ? "configured" : "provider_pending",
+      instagram: relationshipInstagram ? "configured" : "provider_pending",
     },
     federation: {
       installation: umhBound ? "bound" : "unbound",

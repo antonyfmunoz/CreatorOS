@@ -379,6 +379,27 @@
       "when": 1786090800000,
       "tag": "0053_native_social_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1786405296155,
+      "tag": "0054_relationship_hub_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1786405673287,
+      "tag": "0055_relationship_native_delivery_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1786407744898,
+      "tag": "0056_relationship_audit_events",
+      "breakpoints": true
     }
   ]
 }

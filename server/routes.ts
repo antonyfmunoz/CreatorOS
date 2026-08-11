@@ -100,6 +100,8 @@ import {
 import { normalizeCartProductIds } from "../shared/cart";
 import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
+import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
+import { syncLegacyNativeConversation } from "./relationship-native-sync";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
@@ -531,6 +533,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "automation_runs",
       "automation_audit_events",
       "automation_action_receipts",
+      "relationship_channel_connections",
+      "relationships",
+      "relationship_external_identities",
+      "relationship_conversations",
+      "relationship_messages",
+      "relationship_delivery_jobs",
+      "relationship_audit_events",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -599,6 +608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
   setupAuth(app);
   registerAutomationRoutes(app);
+  registerRelationshipHubRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 
@@ -9214,6 +9224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.addParticipantToConversation(conversation.id, userId);
       }
 
+      const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
+      await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: conversation.id, currentUserId: req.dbUser!.id });
+
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -9332,6 +9345,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         return created;
       });
+      const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
+      await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: conversationId, currentUserId: req.dbUser!.id });
       res.status(201).json(message);
     } catch (error) {
       console.error("Error creating message:", error);

@@ -51,6 +51,7 @@ export default function AutomationsPage() {
   const [runInput, setRunInput] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [socialFlow, setSocialFlow] = useState<"comment" | "dm">("comment");
+  const [socialScope, setSocialScope] = useState<"native" | "connected">("connected");
   const [socialKeywords, setSocialKeywords] = useState("");
   const [socialMatchMode, setSocialMatchMode] = useState<"exact" | "contains" | "starts_with">("exact");
   const [socialReply, setSocialReply] = useState("");
@@ -109,7 +110,9 @@ export default function AutomationsPage() {
       if (parsedPostId != null && (!Number.isInteger(parsedPostId) || parsedPostId <= 0)) throw new Error("Post ID must be a positive number");
       const cooldownMinutes = Number(socialCooldown);
       if (!Number.isInteger(cooldownMinutes) || cooldownMinutes < 0 || cooldownMinutes > 10_080) throw new Error("Cooldown must be between 0 and 10080 minutes");
-      const steps = socialFlow === "comment" && socialPublicReply.trim()
+      const steps = socialScope === "connected"
+        ? [{ stepKey: "relationship_reply", name: socialFlow === "comment" ? "Send private comment reply" : "Reply in connected inbox", actionType: "relationship.message.send", position: 0, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialReply.trim(), cooldownMinutes } }]
+        : socialFlow === "comment" && socialPublicReply.trim()
         ? [
             { stepKey: "public_reply", name: "Reply to comment", actionType: "native.comment.reply", position: 0, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialPublicReply.trim() } },
             { stepKey: "direct_message", name: "Send direct message", actionType: "native.dm.send", position: 1, approvalPolicy: "none", retryLimit: 2, timeoutMs: 30_000, config: { content: socialReply.trim(), cooldownMinutes } },
@@ -121,11 +124,13 @@ export default function AutomationsPage() {
         businessId: defaultBusiness?.id ?? null,
         triggerType: "event",
         triggerConfig: {
-          eventType: socialFlow === "comment" ? "native.comment.created" : "native.dm.received",
+          eventType: socialScope === "connected"
+            ? (socialFlow === "comment" ? "relationship.comment.created" : "relationship.message.received")
+            : (socialFlow === "comment" ? "native.comment.created" : "native.dm.received"),
           keywords,
           matchMode: socialMatchMode,
           caseSensitive: false,
-          ...(socialFlow === "comment" ? { topLevelOnly: true, ...(parsedPostId ? { postId: parsedPostId } : {}) } : {}),
+          ...(socialFlow === "comment" ? { topLevelOnly: true, ...(socialScope === "native" && parsedPostId ? { postId: parsedPostId } : {}) } : {}),
         },
         maxRunsPerHour: 100,
         maxStepsPerRun: 5,
@@ -238,8 +243,9 @@ export default function AutomationsPage() {
             <div className="rounded-2xl border border-[#1d9bf0]/30 bg-[#1d9bf0]/5 p-4">
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1d9bf0]/15 text-[#1d9bf0]"><MessageCircle className="h-5 w-5" /></span>
-                <div><p className="text-xs font-bold uppercase tracking-wider text-[#1d9bf0]">Keyword replies</p><h2 className="mt-1 text-base font-bold">Turn comments and DMs into conversations</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Runs on native CreativesOS messages now. The same workflow can connect to social providers later.</p></div>
+                <div><p className="text-xs font-bold uppercase tracking-wider text-[#1d9bf0]">Keyword replies</p><h2 className="mt-1 text-base font-bold">Turn comments and DMs into conversations</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Use one governed workflow across connected inboxes, or limit it to native CreativesOS conversations.</p></div>
               </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">{(["connected", "native"] as const).map((scope) => <button key={scope} type="button" onClick={() => setSocialScope(scope)} className={`rounded-xl border py-2.5 text-xs font-bold ${socialScope === scope ? "border-violet-500 bg-violet-500/15 text-violet-200" : "border-zinc-800 bg-black text-zinc-500"}`}>{scope === "connected" ? "Any connected inbox" : "CreativesOS only"}</button>)}</div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 {(["comment", "dm"] as const).map((flow) => <button key={flow} type="button" onClick={() => setSocialFlow(flow)} className={`rounded-xl border py-2.5 text-xs font-bold ${socialFlow === flow ? "border-[#1d9bf0] bg-[#1d9bf0] text-white" : "border-zinc-800 bg-black text-zinc-400"}`}>{flow === "comment" ? "Comment keyword" : "DM keyword"}</button>)}
               </div>
@@ -253,13 +259,13 @@ export default function AutomationsPage() {
                   <input inputMode="numeric" value={socialCooldown} onChange={(event) => setSocialCooldown(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-white outline-none focus:border-[#1d9bf0]" />
                 </label>
               </div>
-              {socialFlow === "comment" && <>
+              {socialFlow === "comment" && socialScope === "native" && <>
                 <label className="mt-3 block text-[11px] font-bold text-zinc-400">Public reply <span className="font-normal text-zinc-600">(optional)</span></label>
                 <input value={socialPublicReply} onChange={(event) => setSocialPublicReply(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none focus:border-[#1d9bf0]" />
                 <label className="mt-3 block text-[11px] font-bold text-zinc-400">Post ID <span className="font-normal text-zinc-600">(optional; blank means all your posts)</span></label>
                 <input inputMode="numeric" value={socialPostId} onChange={(event) => setSocialPostId(event.target.value)} placeholder="All posts" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
               </>}
-              <label className="mt-3 block text-[11px] font-bold text-zinc-400">Direct-message reply</label>
+              <label className="mt-3 block text-[11px] font-bold text-zinc-400">{socialFlow === "comment" && socialScope === "connected" ? "Private reply" : "Direct-message reply"}</label>
               <textarea value={socialReply} onChange={(event) => setSocialReply(event.target.value)} placeholder="Thanks for reaching out—here is the link you requested…" className="mt-1.5 min-h-24 w-full resize-none rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
               <p className="mt-2 text-[10px] leading-4 text-zinc-600">STOP opts a person out. START opts them back in. Automated replies never trigger another automation.</p>
               <button type="button" onClick={() => createSocialAutomation.mutate()} disabled={createSocialAutomation.isPending} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-black disabled:opacity-50"><Plus className="h-4 w-4" />Create keyword automation</button>

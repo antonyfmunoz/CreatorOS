@@ -1,9 +1,13 @@
 export const NATIVE_COMMENT_CREATED_EVENT = "native.comment.created";
 export const NATIVE_DM_RECEIVED_EVENT = "native.dm.received";
+export const RELATIONSHIP_MESSAGE_RECEIVED_EVENT = "relationship.message.received";
+export const RELATIONSHIP_COMMENT_CREATED_EVENT = "relationship.comment.created";
 
 export const NATIVE_SOCIAL_EVENT_TYPES = [
   NATIVE_COMMENT_CREATED_EVENT,
   NATIVE_DM_RECEIVED_EVENT,
+  RELATIONSHIP_MESSAGE_RECEIVED_EVENT,
+  RELATIONSHIP_COMMENT_CREATED_EVENT,
 ] as const;
 
 export type NativeKeywordMatchMode = "exact" | "contains" | "starts_with";
@@ -50,7 +54,7 @@ export function matchesNativeSocialTrigger(
     .slice(0, 20);
   if (keywords.length === 0) return false;
 
-  if (eventType === NATIVE_COMMENT_CREATED_EVENT) {
+  if (eventType === NATIVE_COMMENT_CREATED_EVENT || eventType === RELATIONSHIP_COMMENT_CREATED_EVENT) {
     if (triggerConfig.topLevelOnly !== false && payload.parentId != null) return false;
     if (typeof triggerConfig.postId === "number" && payload.postId !== triggerConfig.postId) return false;
   }
@@ -74,10 +78,10 @@ export function validateNativeSocialTriggerConfig(triggerConfig: Record<string, 
   if (!NATIVE_SOCIAL_EVENT_TYPES.includes(eventType as (typeof NATIVE_SOCIAL_EVENT_TYPES)[number])) return;
   const keywords = Array.isArray(triggerConfig.keywords) ? triggerConfig.keywords : [];
   if (keywords.length < 1 || keywords.length > 20 || keywords.some((keyword) => typeof keyword !== "string" || keyword.trim().length < 1 || keyword.trim().length > 100)) {
-    throw new Error("Native social automations need between 1 and 20 keywords");
+    throw new Error("Social messaging automations need between 1 and 20 keywords");
   }
   if (triggerConfig.matchMode != null && !["exact", "contains", "starts_with"].includes(String(triggerConfig.matchMode))) {
-    throw new Error("Native social automations need exact, contains, or starts_with matching");
+    throw new Error("Social messaging automations need exact, contains, or starts_with matching");
   }
   if (triggerConfig.postId != null && (typeof triggerConfig.postId !== "number" || !Number.isInteger(triggerConfig.postId) || triggerConfig.postId <= 0)) {
     throw new Error("Native comment automation postId must be a positive integer");

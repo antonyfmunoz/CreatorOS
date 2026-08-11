@@ -4,6 +4,8 @@ import {
   messagingConsentCommand,
   NATIVE_COMMENT_CREATED_EVENT,
   NATIVE_DM_RECEIVED_EVENT,
+  RELATIONSHIP_COMMENT_CREATED_EVENT,
+  RELATIONSHIP_MESSAGE_RECEIVED_EVENT,
   validateNativeSocialTriggerConfig,
 } from "../server/social-automation";
 
@@ -23,6 +25,15 @@ describe("native social automations", () => {
     expect(matchesNativeSocialTrigger(config, NATIVE_DM_RECEIVED_EVENT, { content: "Details please", actorUserId: 2, optedOut: true })).toBe(false);
   });
 
+  it("uses the same keyword and safety semantics for connected channels", () => {
+    const dm = { eventType: RELATIONSHIP_MESSAGE_RECEIVED_EVENT, keywords: ["pricing"], matchMode: "contains" };
+    expect(matchesNativeSocialTrigger(dm, RELATIONSHIP_MESSAGE_RECEIVED_EVENT, { content: "Can I get pricing?", provider: "instagram" })).toBe(true);
+    expect(matchesNativeSocialTrigger(dm, RELATIONSHIP_MESSAGE_RECEIVED_EVENT, { content: "Can I get pricing?", provider: "instagram", optedOut: true })).toBe(false);
+    const comment = { eventType: RELATIONSHIP_COMMENT_CREATED_EVENT, keywords: ["guide"], matchMode: "exact" };
+    expect(matchesNativeSocialTrigger(comment, RELATIONSHIP_COMMENT_CREATED_EVENT, { content: "guide", provider: "instagram" })).toBe(true);
+    expect(matchesNativeSocialTrigger(comment, RELATIONSHIP_COMMENT_CREATED_EVENT, { content: "guide", provider: "instagram", parentId: "reply-1" })).toBe(false);
+  });
+
   it("recognizes only explicit consent commands", () => {
     expect(messagingConsentCommand("STOP! ")).toBe("opt_out");
     expect(messagingConsentCommand("start")).toBe("opt_in");
@@ -36,4 +47,3 @@ describe("native social automations", () => {
     expect(() => validateNativeSocialTriggerConfig({ eventType: NATIVE_DM_RECEIVED_EVENT, keywords: ["guide"], matchMode: "exact" })).not.toThrow();
   });
 });
-

@@ -19,6 +19,13 @@ const liveEnvironment = {
   LIVEKIT_TRANSCRIPTION_AGENT_NAME: "creativesos-transcription",
   LIVEKIT_ROOM_AGENT_NAME: "creativesos-room-ai",
   ROOM_MEDIA_INGEST_SECRET: "a-secure-room-media-ingest-secret-value",
+  OPENAI_API_KEY: "openai-key",
+  ELEVENLABS_API_KEY: "elevenlabs-key",
+  INSTAGRAM_APP_ID: "instagram-app",
+  INSTAGRAM_APP_SECRET: "instagram-secret",
+  META_GRAPH_API_VERSION: "v24.0",
+  RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN: "webhook-token",
+  SOCIAL_TOKEN_ENCRYPTION_KEY: "encryption-key",
 };
 
 describe("CreativesOS release readiness", () => {
@@ -29,6 +36,13 @@ describe("CreativesOS release readiness", () => {
       authentication: { configured: true, mode: "production" },
       assetDelivery: { private: "configured" },
       automations: { kernel: "configured", scheduler: "embedded", authority: "native" },
+      relationshipHub: {
+        kernel: "configured",
+        nativeInbox: "configured",
+        aiCopilot: "configured",
+        clonedVoice: "configured",
+        instagram: "configured",
+      },
       federation: { installation: "bound", inboundCommands: true, outboundEvents: true, qualification: "pending_shared_round_trip" },
       communityRooms: {
         liveMedia: "configured",
@@ -50,6 +64,13 @@ describe("CreativesOS release readiness", () => {
     expect(result.blockers).toEqual(["clerk_test_mode", "private_asset_delivery_unconfigured"]);
     expect(result.authentication.mode).toBe("test");
     expect(result.federation.qualification).toBe("not_configured");
+    expect(result.relationshipHub).toEqual({
+      kernel: "configured",
+      nativeInbox: "configured",
+      aiCopilot: "provider_pending",
+      clonedVoice: "provider_pending",
+      instagram: "provider_pending",
+    });
     expect(result.communityRooms).toEqual({
       liveMedia: "unconfigured",
       recording: "unconfigured",

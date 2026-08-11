@@ -11,10 +11,20 @@ import {
   directMessages,
   notifications,
   posts,
+  relationshipConsents,
+  relationshipConversationBindings,
+  relationshipConversations,
+  relationshipMessages,
 } from "../shared/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { NATIVE_COMMENT_CREATED_EVENT, NATIVE_DM_RECEIVED_EVENT } from "./social-automation";
+import {
+  NATIVE_COMMENT_CREATED_EVENT,
+  NATIVE_DM_RECEIVED_EVENT,
+  RELATIONSHIP_COMMENT_CREATED_EVENT,
+  RELATIONSHIP_MESSAGE_RECEIVED_EVENT,
+} from "./social-automation";
+import { processRelationshipDeliveryJob, queueRelationshipMessage } from "./relationship-hub";
 
 export type AutomationActionContext = {
   runId: string;
@@ -92,6 +102,18 @@ async function requireNativeSocialEvent(context: AutomationActionContext, allowe
     throw new Error("Native social action event authority is invalid");
   }
   if (event.payload.actorUserId !== context.input.actorUserId) throw new Error("Native social action contact does not match its inbound event");
+  return event;
+}
+
+async function requireRelationshipSocialEvent(context: AutomationActionContext) {
+  if (!context.triggerEventId || !context.businessId) throw new Error("Relationship messaging actions require a verified inbound event and business");
+  const [event] = await db.select().from(automationTriggerEvents).where(eq(automationTriggerEvents.id, context.triggerEventId)).limit(1);
+  if (!event || event.ownerUserId !== context.ownerUserId || event.businessId !== context.businessId || ![RELATIONSHIP_MESSAGE_RECEIVED_EVENT, RELATIONSHIP_COMMENT_CREATED_EVENT].includes(event.eventType)) {
+    throw new Error("Relationship messaging action event authority is invalid");
+  }
+  if (event.payload.conversationId !== context.input.conversationId || event.payload.connectionId !== context.input.connectionId) {
+    throw new Error("Relationship messaging action destination does not match its inbound event");
+  }
   return event;
 }
 
@@ -216,6 +238,64 @@ const actions: AutomationActionDefinition[] = [
         await tx.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "campaign.create", output, summary: "Campaign created", costUnits: 3 });
         return { output, costUnits: 3, summary: "Campaign created" };
       });
+    },
+  },
+  {
+    type: "relationship.message.send",
+    label: "Reply in the Relationship Hub",
+    description: "Send an approved reply through the same verified channel and thread that triggered this run.",
+    consequential: true,
+    defaultCostUnits: 1,
+    async execute(context) {
+      const [receipt] = await db.select().from(automationActionReceipts).where(eq(automationActionReceipts.stepRunId, context.stepRunId)).limit(1);
+      if (receipt) return { output: receipt.output, costUnits: receipt.costUnits, summary: receipt.summary };
+      const config = nativeDmSchema.parse(context.config);
+      const event = await requireRelationshipSocialEvent(context);
+      const conversationId = z.string().uuid().parse(context.input.conversationId);
+      const connectionId = z.string().uuid().parse(context.input.connectionId);
+      const [conversation] = await db.select().from(relationshipConversations).where(and(eq(relationshipConversations.id, conversationId), eq(relationshipConversations.businessId, context.businessId!))).limit(1);
+      if (!conversation) throw new Error("Relationship automation conversation not found");
+      const [binding] = await db.select().from(relationshipConversationBindings).where(and(eq(relationshipConversationBindings.conversationId, conversation.id), eq(relationshipConversationBindings.connectionId, connectionId), eq(relationshipConversationBindings.status, "active"))).limit(1);
+      if (!binding?.connectionId) throw new Error("Relationship automation channel binding is not active");
+      if (conversation.relationshipId) {
+        const [consent] = await db.select().from(relationshipConsents).where(and(eq(relationshipConsents.relationshipId, conversation.relationshipId), eq(relationshipConsents.channel, binding.provider), eq(relationshipConsents.purpose, "messaging"))).limit(1);
+        if (consent?.status === "withdrawn" || consent?.status === "denied") {
+          const output = { sent: false, reason: "contact_opted_out", relationshipId: conversation.relationshipId };
+          await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "relationship.message.send", output, summary: "Reply skipped because the contact opted out", costUnits: 0 });
+          return { output, costUnits: 0, summary: "Reply skipped because the contact opted out" };
+        }
+      }
+      if (config.cooldownMinutes > 0) {
+        const [latest] = await db.select({ occurredAt: relationshipMessages.occurredAt }).from(relationshipMessages).where(and(eq(relationshipMessages.conversationId, conversation.id), eq(relationshipMessages.direction, "outbound"))).orderBy(desc(relationshipMessages.occurredAt)).limit(1);
+        if (latest && latest.occurredAt.getTime() + config.cooldownMinutes * 60_000 > Date.now()) {
+          const output = { sent: false, reason: "conversation_cooldown", cooldownMinutes: config.cooldownMinutes };
+          await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "relationship.message.send", output, summary: "Reply skipped during conversation cooldown", costUnits: 0 });
+          return { output, costUnits: 0, summary: "Reply skipped during conversation cooldown" };
+        }
+      }
+      const content = renderTemplate(config.content, { input: context.input, previous: context.previousOutput });
+      const queued = await queueRelationshipMessage({
+        businessId: context.businessId!,
+        conversationId: conversation.id,
+        connectionId: binding.connectionId,
+        authorUserId: context.ownerUserId,
+        authorType: "automation",
+        action: {
+          version: "relationship.action.v1",
+          actionType: event.eventType === RELATIONSHIP_COMMENT_CREATED_EVENT ? "comment.private_reply" : "message.send",
+          idempotencyKey: `automation-step:${context.stepRunId}`,
+          externalThreadId: binding.externalThreadId,
+          body: content,
+          bodyFormat: "plain",
+          replyToExternalMessageId: typeof event.payload.externalMessageId === "string" ? event.payload.externalMessageId : undefined,
+          attachments: [],
+          metadata: { automationRunId: context.runId, automationStepRunId: context.stepRunId },
+        },
+      });
+      if (!queued.duplicate) void processRelationshipDeliveryJob(queued.job.id).catch(() => undefined);
+      const output = { sent: true, relationshipMessageId: queued.message.id, deliveryJobId: queued.job.id, conversationId, provider: binding.provider, content };
+      await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "relationship.message.send", output, summary: "Relationship reply queued", costUnits: 1 });
+      return { output, costUnits: 1, summary: "Relationship reply queued" };
     },
   },
   {

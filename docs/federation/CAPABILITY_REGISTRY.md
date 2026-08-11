@@ -20,6 +20,12 @@ shared registry contract is qualified.
 | `commerce.cart` | native projection | authenticated buyer | account-backed persistence implemented and production-verified; checkout routing groups implemented | no | CreativesOS DB | server-authoritative catalog snapshot, guest merge, reload persistence, buyer-scoped mutation, payment-route grouping |
 | `commerce.checkout` | provider-backed | buyer/seller/payment policy | implemented sandbox path | payment confirmation | Stripe | order, entitlement, webhook evidence |
 | `asset.private_delivery` | native projection + storage | asset owner/product entitlement | implemented and production-verified | no | R2 private bucket | signed access record + entitlement-gated delivery |
+| `relationship.inbox.native` | native projection | business owner/operator | implemented and locally qualified | no | CreativesOS DB | normalized message + delivery receipt + audit record |
+| `relationship.inbox.instagram` | provider-backed native capability | connected professional-account owner | adapter implemented; production activation pending Meta credentials and review | OAuth connection + provider policy | Instagram API with Instagram Login | signed webhook event + normalized message + provider receipt |
+| `relationship.automation.keyword` | native projection | business owner/operator | implemented and locally qualified across native and normalized provider events | configured rule authority; outbound channel consent | CreativesOS automation kernel | trigger event + run + action receipt + delivery job |
+| `relationship.ai.suggest` | provider-backed native capability | business owner/operator | implemented; provider-configured environments can qualify it | human review for external effects | OpenAI | evidence-linked proposal + reviewer + audit record |
+| `relationship.voice_message` | provider-backed native capability | verified voice owner | consent, generation, approval, private storage, and native delivery implemented; production provider activation pending | explicit owner attestation and approval for AI-authored scripts | ElevenLabs + private R2 | consent + provenance + generation job + delivery receipt |
+| `relationship.identity.merge` | native projection | business owner/operator | implemented and locally qualified | explicit human review | CreativesOS DB | merge candidate + transaction + audit record |
 
 ## Selection rule
 

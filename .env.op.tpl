@@ -33,6 +33,18 @@ ASSET_STORAGE_PROVIDER=local
 # YOUTUBE_CLIENT_ID=op://CreativesOS/Development/YOUTUBE_CLIENT_ID
 # YOUTUBE_CLIENT_SECRET=op://CreativesOS/Development/YOUTUBE_CLIENT_SECRET
 # SOCIAL_TOKEN_ENCRYPTION_KEY=op://CreativesOS/Development/SOCIAL_TOKEN_ENCRYPTION_KEY
+# Unified Relationship Hub providers. The native inbox works without these.
+# Instagram remains fail-closed until every setting is present and the Meta app
+# has the approved messaging/comment permissions.
+# INSTAGRAM_APP_ID=op://CreativesOS/Development/INSTAGRAM_APP_ID
+# INSTAGRAM_APP_SECRET=op://CreativesOS/Development/INSTAGRAM_APP_SECRET
+# META_GRAPH_API_VERSION=v24.0
+# RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN=op://CreativesOS/Development/RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+# ELEVENLABS_API_KEY=op://CreativesOS/Development/ELEVENLABS_API_KEY
+# Relationship payloads are minimized after 30 days by default; durable audit
+# evidence is retained for one year unless policy overrides these values.
+# RELATIONSHIP_PROVIDER_PAYLOAD_RETENTION_DAYS=30
+# RELATIONSHIP_AUDIT_RETENTION_DAYS=365
 
 # Native community conferencing. Tokens are minted only by the authenticated
 # CreativesOS server and are scoped to one community room for 15 minutes.

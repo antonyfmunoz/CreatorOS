@@ -7,6 +7,8 @@ import { scheduleCleanupTasks } from "./cleanup";
 import { scheduleDistributionProcessing } from "./distribution";
 import { scheduleUmhDelivery } from "./umh";
 import { scheduleAutomationProcessing } from "./automation-engine";
+import { scheduleRelationshipHubProcessing } from "./relationship-hub";
+import { scheduleInstagramRelationshipTokenRefresh } from "./relationship-instagram-oauth";
 import { apiRateLimiter, securityHeaders } from "./security";
 
 const app = express();
@@ -83,6 +85,8 @@ app.use((req, res, next) => {
     scheduleDistributionProcessing();
     scheduleUmhDelivery();
     scheduleAutomationProcessing();
+    scheduleRelationshipHubProcessing();
+    scheduleInstagramRelationshipTokenRefresh();
     log('Story cleanup tasks scheduled');
   });
 })();
