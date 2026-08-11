@@ -15,7 +15,7 @@ export const relationshipAiResultSchema = z.object({
     title: z.string().trim().min(1).max(200),
     body: z.string().trim().min(1).max(10_000),
     confidence: z.number().min(0).max(1),
-    evidenceMessageIds: z.array(z.string().uuid()).max(20).default([]),
+    evidenceMessageIds: z.array(z.string().uuid()).min(1).max(20),
   }).strict()).max(5),
   memoryCandidates: z.array(z.object({
     factType: z.enum(["preference", "goal", "constraint", "commitment", "context"]),
@@ -34,6 +34,8 @@ const actionBySuggestion: Record<(typeof relationshipSuggestionTypes)[number], s
   internal_note: "relationship.note.propose",
   escalation: "relationship.escalate.propose",
 };
+
+export const defaultRelationshipAgentActions = Object.values(actionBySuggestion);
 
 export function relationshipSuggestionAction(type: keyof typeof actionBySuggestion) {
   return actionBySuggestion[type];

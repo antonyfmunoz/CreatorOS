@@ -167,11 +167,17 @@ export function relationshipDeliveryBackoffMs(attempt: number, retryAfterMs?: nu
   return Math.min(1_000 * 2 ** Math.max(0, attempt - 1), 60 * 60_000);
 }
 
-export function sanitizeRelationshipProviderError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message
+export function redactRelationshipSensitiveText(value: string) {
+  return value
     .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [redacted]")
     .replace(/(?:token|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_-]+\b/g, "[redacted credential]")
+    .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, "[redacted private key]");
+}
+
+export function sanitizeRelationshipProviderError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return redactRelationshipSensitiveText(message)
     .slice(0, 1_000);
 }
 

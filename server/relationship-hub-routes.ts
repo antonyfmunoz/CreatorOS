@@ -5,7 +5,7 @@ import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm"
 import { ZodError, z } from "zod";
 import { attachUser } from "./auth";
 import { db } from "./db";
-import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
+import { ensureDefaultBusiness, userCanAdminBusiness, userCanManageBusiness } from "./businesses";
 import {
   relationshipAgentAuthorityPolicies,
   relationshipAgentSuggestions,
@@ -25,6 +25,8 @@ import {
   relationshipMessages,
   relationshipNotes,
   relationshipOperationalAlerts,
+  relationshipUsageLedger,
+  relationshipUsageReservations,
   relationshipRoomBindings,
   relationshipTagAssignments,
   relationshipTags,
@@ -47,6 +49,7 @@ import {
 import { initializeRelationshipProviderRegistry } from "./relationship-provider-registry";
 import { syncAllLegacyNativeConversations } from "./relationship-native-sync";
 import { generateRelationshipSuggestions, relationshipAiProviderStatus } from "./relationship-ai";
+import { defaultRelationshipAgentActions, relationshipAgentDecision, relationshipSuggestionAction } from "./relationship-ai-policy";
 import {
   createRelationshipVoiceJob,
   processRelationshipVoiceJob,
@@ -54,7 +57,7 @@ import {
   relationshipVoiceReadUrl,
   verifyRelationshipVoiceProfile,
 } from "./relationship-voice";
-import { voiceUseCases } from "./relationship-hub-policy";
+import { redactRelationshipSensitiveText, voiceUseCases } from "./relationship-hub-policy";
 import {
   assertRelationshipConnectionAvailable,
   relationshipOperationsSnapshot,
@@ -79,6 +82,12 @@ import {
   metaWebhookChallenge,
   whatsappRelationshipConfiguration,
 } from "./relationship-meta-connections";
+import {
+  recordRelationshipConsent,
+  recordRelationshipConsentSchema,
+  reviewRelationshipMemorySchema,
+} from "./relationship-governance";
+import { automationConfigContainsSecret } from "./automation-policy";
 
 const businessIdSchema = z.string().uuid();
 
@@ -176,6 +185,8 @@ const agentPolicySchema = z.object({
   channelAllowlist: z.array(z.string().trim().min(1).max(100)).max(50).default([]),
   maxCostUnitsPerRun: z.number().int().positive().max(100_000).default(100),
   instructions: z.string().max(20_000).default(""),
+}).strict().superRefine((value, context) => {
+  if (automationConfigContainsSecret(value.instructions)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["instructions"], message: "Credentials cannot be stored in relationship agent instructions" });
 });
 
 const voiceProfileSchema = z.object({
@@ -246,6 +257,13 @@ async function managedBusiness(req: Request, requested?: unknown) {
   const fallback = await ensureDefaultBusiness(req.dbUser!);
   const businessId = requested == null || requested === "" ? fallback.id : businessIdSchema.parse(requested);
   if (!(await userCanManageBusiness(req.dbUser!.id, businessId))) throw new Error("Not authorized to manage this business inbox");
+  return businessId;
+}
+
+async function administeredBusiness(req: Request, requested?: unknown) {
+  const fallback = await ensureDefaultBusiness(req.dbUser!);
+  const businessId = requested == null || requested === "" ? fallback.id : businessIdSchema.parse(requested);
+  if (!(await userCanAdminBusiness(req.dbUser!.id, businessId))) throw new Error("Owner or administrator authority is required for this Relationship Hub control");
   return businessId;
 }
 
@@ -433,7 +451,7 @@ export function registerRelationshipHubRoutes(app: Express) {
         lastValidatedAt: relationshipChannelConnections.lastValidatedAt,
         lastErrorCode: relationshipChannelConnections.lastErrorCode,
       }).from(relationshipChannelConnections).where(eq(relationshipChannelConnections.businessId, businessId));
-      res.json({ adapters, connections, configuration: { instagram: instagramRelationshipConfiguration(), messenger: messengerRelationshipConfiguration(), whatsapp: whatsappRelationshipConfiguration(), x: xRelationshipConfiguration() } });
+      res.json({ adapters, connections, permissions: { canAdminister: await userCanAdminBusiness(req.dbUser!.id, businessId) }, configuration: { instagram: instagramRelationshipConfiguration(), messenger: messengerRelationshipConfiguration(), whatsapp: whatsappRelationshipConfiguration(), x: xRelationshipConfiguration() } });
     } catch (error) {
       return relationshipHubError(res, error);
     }
@@ -441,7 +459,7 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.post("/api/relationship-hub/connections/instagram/authorize", attachUser, async (req, res) => {
     try {
-      const businessId = await managedBusiness(req, req.body?.businessId);
+      const businessId = await administeredBusiness(req, req.body?.businessId);
       if (!instagramRelationshipConfiguration().configured) throw new Error("Instagram relationship messaging is not configured");
       await assertRelationshipConnectionAvailable(businessId);
       const url = await createInstagramRelationshipAuthorization({ userId: req.dbUser!.id, businessId });
@@ -465,7 +483,7 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.post("/api/relationship-hub/connections/x/authorize", attachUser, async (req, res) => {
     try {
-      const businessId = await managedBusiness(req, req.body?.businessId);
+      const businessId = await administeredBusiness(req, req.body?.businessId);
       if (!xRelationshipConfiguration().configured) throw new Error("X relationship messaging is not configured");
       await assertRelationshipConnectionAvailable(businessId);
       res.json({ url: await createXRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
@@ -488,7 +506,7 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.post("/api/relationship-hub/connections/messenger/authorize", attachUser, async (req, res) => {
     try {
-      const businessId = await managedBusiness(req, req.body?.businessId);
+      const businessId = await administeredBusiness(req, req.body?.businessId);
       if (!messengerRelationshipConfiguration().configured) throw new Error("Messenger relationship messaging is not configured");
       await assertRelationshipConnectionAvailable(businessId);
       res.json({ url: await createMessengerRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
@@ -509,7 +527,7 @@ export function registerRelationshipHubRoutes(app: Express) {
   app.post("/api/relationship-hub/connections/whatsapp", attachUser, async (req, res) => {
     try {
       const input = z.object({ businessId: businessIdSchema.optional(), phoneNumberId: z.string().trim().min(1).max(200), wabaId: z.string().trim().min(1).max(200).optional(), accessToken: z.string().trim().min(20).max(4_000), accountName: z.string().trim().min(1).max(200).optional() }).parse(req.body);
-      const businessId = await managedBusiness(req, input.businessId);
+      const businessId = await administeredBusiness(req, input.businessId);
       if (!whatsappRelationshipConfiguration().configured) throw new Error("WhatsApp relationship messaging is not configured");
       await assertRelationshipConnectionAvailable(businessId);
       const connection = await connectWhatsAppRelationshipAccount({ ...input, businessId, userId: req.dbUser!.id });
@@ -521,7 +539,7 @@ export function registerRelationshipHubRoutes(app: Express) {
   app.delete("/api/relationship-hub/connections/:connectionId", attachUser, async (req, res) => {
     try {
       const [connection] = await db.select().from(relationshipChannelConnections).where(eq(relationshipChannelConnections.id, req.params.connectionId)).limit(1);
-      if (!connection || !(await userCanManageBusiness(req.dbUser!.id, connection.businessId))) throw new Error("Relationship channel connection not found");
+      if (!connection || !(await userCanAdminBusiness(req.dbUser!.id, connection.businessId))) throw new Error("Relationship channel connection not found");
       await db.update(relationshipChannelConnections).set({ status: "disconnected", accessTokenCiphertext: null, refreshTokenCiphertext: null, webhookSecretCiphertext: null, updatedAt: new Date() }).where(eq(relationshipChannelConnections.id, connection.id));
       await auditRelationshipAction({ businessId: connection.businessId, actorUserId: req.dbUser!.id, action: "connection.disconnected", targetType: "channel_connection", targetId: connection.id, metadata: { provider: connection.provider } });
       res.status(204).end();
@@ -564,7 +582,7 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.patch("/api/relationship-hub/operations/policy", attachUser, async (req, res) => {
     try {
-      const businessId = await managedBusiness(req, req.body?.businessId);
+      const businessId = await administeredBusiness(req, req.body?.businessId);
       const input = relationshipTenantPolicySchema.parse(req.body?.policy ?? req.body);
       const [policy] = await db.insert(relationshipTenantPolicies).values({ businessId, ...input, updatedByUserId: req.dbUser!.id }).onConflictDoUpdate({
         target: relationshipTenantPolicies.businessId,
@@ -652,23 +670,34 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.get("/api/relationship-hub/export", attachUser, async (req, res) => {
     try {
-      const businessId = await managedBusiness(req, req.query.businessId);
-      const [relationshipRows, identityRows, consentRows, conversationRows, messageRows, noteRows, taskRows, tagRows, tagAssignmentRows, auditRows, connectionRows] = await Promise.all([
+      const businessId = await administeredBusiness(req, req.query.businessId);
+      const [relationshipRows, identityRows, consentRows, conversationRows, messageRows, attachmentRows, receiptRows, relationshipNoteRows, conversationNoteRows, taskRows, tagRows, tagAssignmentRows, memoryRows, suggestionRows, mergeRows, policyRows, usageRows, reservationRows, alertRows, roomBindingRows, auditRows, connectionRows] = await Promise.all([
         db.select().from(relationships).where(eq(relationships.businessId, businessId)),
         db.select().from(relationshipExternalIdentities).where(eq(relationshipExternalIdentities.businessId, businessId)),
         db.select().from(relationshipConsents).where(eq(relationshipConsents.businessId, businessId)),
         db.select().from(relationshipConversations).where(eq(relationshipConversations.businessId, businessId)),
         db.select().from(relationshipMessages).where(eq(relationshipMessages.businessId, businessId)).limit(100_000),
+        db.select().from(relationshipMessageAttachments).where(eq(relationshipMessageAttachments.businessId, businessId)).limit(100_000),
+        db.select().from(relationshipMessageReceipts).where(eq(relationshipMessageReceipts.businessId, businessId)).limit(100_000),
         db.select().from(relationshipNotes).where(eq(relationshipNotes.businessId, businessId)),
+        db.select().from(relationshipConversationNotes).where(eq(relationshipConversationNotes.businessId, businessId)),
         db.select().from(relationshipTasks).where(eq(relationshipTasks.businessId, businessId)),
         db.select().from(relationshipTags).where(eq(relationshipTags.businessId, businessId)),
         db.select().from(relationshipTagAssignments).where(eq(relationshipTagAssignments.businessId, businessId)),
+        db.select().from(relationshipMemoryFacts).where(eq(relationshipMemoryFacts.businessId, businessId)),
+        db.select().from(relationshipAgentSuggestions).where(eq(relationshipAgentSuggestions.businessId, businessId)),
+        db.select().from(relationshipMergeCandidates).where(eq(relationshipMergeCandidates.businessId, businessId)),
+        db.select().from(relationshipAgentAuthorityPolicies).where(eq(relationshipAgentAuthorityPolicies.businessId, businessId)),
+        db.select().from(relationshipUsageLedger).where(eq(relationshipUsageLedger.businessId, businessId)),
+        db.select().from(relationshipUsageReservations).where(eq(relationshipUsageReservations.businessId, businessId)),
+        db.select().from(relationshipOperationalAlerts).where(eq(relationshipOperationalAlerts.businessId, businessId)),
+        db.select().from(relationshipRoomBindings).where(eq(relationshipRoomBindings.businessId, businessId)),
         db.select().from(relationshipAuditEvents).where(eq(relationshipAuditEvents.businessId, businessId)).limit(100_000),
         db.select({ id: relationshipChannelConnections.id, provider: relationshipChannelConnections.provider, providerAccountId: relationshipChannelConnections.providerAccountId, providerAccountName: relationshipChannelConnections.providerAccountName, status: relationshipChannelConnections.status, scopes: relationshipChannelConnections.scopes, capabilities: relationshipChannelConnections.capabilities, createdAt: relationshipChannelConnections.createdAt, updatedAt: relationshipChannelConnections.updatedAt }).from(relationshipChannelConnections).where(eq(relationshipChannelConnections.businessId, businessId)),
       ]);
       await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "relationship_data.exported", targetType: "business", targetId: businessId, metadata: { relationships: relationshipRows.length, conversations: conversationRows.length, messages: messageRows.length } });
       res.setHeader("Content-Disposition", `attachment; filename="creativesos-relationships-${new Date().toISOString().slice(0, 10)}.json"`);
-      res.json({ schemaVersion: "creativesos.relationship-export.v1", exportedAt: new Date().toISOString(), businessId, connections: connectionRows, relationships: relationshipRows, externalIdentities: identityRows, consents: consentRows, conversations: conversationRows, messages: messageRows, notes: noteRows, tasks: taskRows, tags: tagRows, tagAssignments: tagAssignmentRows, auditEvents: auditRows });
+      res.json({ schemaVersion: "creativesos.relationship-export.v2", exportedAt: new Date().toISOString(), businessId, connections: connectionRows, relationships: relationshipRows, externalIdentities: identityRows, consents: consentRows, conversations: conversationRows, messages: messageRows, messageAttachments: attachmentRows, messageReceipts: receiptRows, relationshipNotes: relationshipNoteRows, conversationNotes: conversationNoteRows, tasks: taskRows, tags: tagRows, tagAssignments: tagAssignmentRows, memories: memoryRows, agentSuggestions: suggestionRows, mergeCandidates: mergeRows, agentPolicies: policyRows.map((policy) => ({ ...policy, instructions: redactRelationshipSensitiveText(policy.instructions) })), usageLedger: usageRows, usageReservations: reservationRows, operationalAlerts: alertRows, roomBindings: roomBindingRows, auditEvents: auditRows, limits: { messages: 100_000, messageAttachments: 100_000, messageReceipts: 100_000, auditEvents: 100_000 } });
     } catch (error) {
       return relationshipHubError(res, error);
     }
@@ -743,6 +772,34 @@ export function registerRelationshipHubRoutes(app: Express) {
     }
   });
 
+  app.get("/api/relationship-hub/relationships/:relationshipId/timeline", attachUser, async (req, res) => {
+    try {
+      const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
+      const limit = z.coerce.number().int().min(20).max(500).default(200).parse(req.query.limit);
+      const conversationRows = await db.select({ id: relationshipConversations.id }).from(relationshipConversations).where(and(eq(relationshipConversations.businessId, relationship.businessId), eq(relationshipConversations.relationshipId, relationship.id)));
+      const conversationIds = conversationRows.map((conversation) => conversation.id);
+      const [messageRows, noteRows, conversationNoteRows, taskRows, consentRows, auditRows] = await Promise.all([
+        conversationIds.length ? db.select().from(relationshipMessages).where(and(eq(relationshipMessages.businessId, relationship.businessId), inArray(relationshipMessages.conversationId, conversationIds))).orderBy(desc(relationshipMessages.occurredAt)).limit(limit) : Promise.resolve([]),
+        db.select().from(relationshipNotes).where(and(eq(relationshipNotes.businessId, relationship.businessId), eq(relationshipNotes.relationshipId, relationship.id))).orderBy(desc(relationshipNotes.createdAt)).limit(limit),
+        conversationIds.length ? db.select().from(relationshipConversationNotes).where(and(eq(relationshipConversationNotes.businessId, relationship.businessId), inArray(relationshipConversationNotes.conversationId, conversationIds))).orderBy(desc(relationshipConversationNotes.createdAt)).limit(limit) : Promise.resolve([]),
+        db.select().from(relationshipTasks).where(and(eq(relationshipTasks.businessId, relationship.businessId), eq(relationshipTasks.relationshipId, relationship.id))).orderBy(desc(relationshipTasks.updatedAt)).limit(limit),
+        db.select().from(relationshipConsents).where(and(eq(relationshipConsents.businessId, relationship.businessId), eq(relationshipConsents.relationshipId, relationship.id))).orderBy(desc(relationshipConsents.updatedAt)).limit(limit),
+        db.select().from(relationshipAuditEvents).where(and(eq(relationshipAuditEvents.businessId, relationship.businessId), eq(relationshipAuditEvents.targetType, "relationship"), eq(relationshipAuditEvents.targetId, relationship.id))).orderBy(desc(relationshipAuditEvents.createdAt)).limit(limit),
+      ]);
+      const timeline = [
+        ...messageRows.map((message) => ({ id: `message:${message.id}`, type: "message", occurredAt: message.occurredAt, title: `${message.direction === "inbound" ? "Received" : "Sent"} via ${message.provider}`, body: message.body, metadata: { conversationId: message.conversationId, direction: message.direction, provider: message.provider, status: message.status, syntheticMedia: message.syntheticMedia } })),
+        ...noteRows.map((note) => ({ id: `note:${note.id}`, type: "note", occurredAt: note.createdAt, title: `${note.visibility === "private" ? "Private" : "Team"} note`, body: note.body, metadata: { visibility: note.visibility, sourceType: note.sourceType } })),
+        ...conversationNoteRows.map((note) => ({ id: `conversation-note:${note.id}`, type: "note", occurredAt: note.createdAt, title: "Conversation note", body: note.body, metadata: { conversationId: note.conversationId } })),
+        ...taskRows.map((task) => ({ id: `task:${task.id}`, type: "task", occurredAt: task.updatedAt, title: `Task ${task.status}: ${task.title}`, body: task.body, metadata: { status: task.status, priority: task.priority, dueAt: task.dueAt } })),
+        ...consentRows.map((consent) => ({ id: `consent:${consent.id}`, type: "consent", occurredAt: consent.updatedAt, title: `${consent.channel} ${consent.purpose} consent: ${consent.status}`, body: "", metadata: { channel: consent.channel, purpose: consent.purpose, status: consent.status, source: consent.source } })),
+        ...auditRows.map((event) => ({ id: `audit:${event.id}`, type: "audit", occurredAt: event.createdAt, title: event.action.replaceAll("_", " ").replaceAll(".", " "), body: "", metadata: event.metadata })),
+      ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime()).slice(0, limit);
+      res.json({ relationshipId: relationship.id, items: timeline });
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
   app.patch("/api/relationship-hub/relationships/:relationshipId", attachUser, async (req, res) => {
     try {
       const existing = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
@@ -755,11 +812,52 @@ export function registerRelationshipHubRoutes(app: Express) {
     }
   });
 
+  app.post("/api/relationship-hub/relationships/:relationshipId/consents", attachUser, async (req, res) => {
+    try {
+      const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
+      const input = recordRelationshipConsentSchema.parse(req.body);
+      const occurredAt = input.occurredAt ?? new Date();
+      const consent = await recordRelationshipConsent({
+        businessId: relationship.businessId,
+        relationshipId: relationship.id,
+        channel: input.channel.toLowerCase(),
+        purpose: input.purpose.toLowerCase(),
+        status: input.status,
+        source: "operator_evidence",
+        disclosureVersion: input.disclosureVersion,
+        occurredAt,
+        evidence: { note: input.evidenceNote, recordedByUserId: req.dbUser!.id, occurredAt: occurredAt.toISOString() },
+      });
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_consent.recorded", targetType: "relationship_consent", targetId: consent.id, metadata: { relationshipId: relationship.id, channel: consent.channel, purpose: consent.purpose, status: consent.status } });
+      res.status(201).json(consent);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.post("/api/relationship-hub/memories/:memoryId/review", attachUser, async (req, res) => {
+    try {
+      const input = reviewRelationshipMemorySchema.parse(req.body);
+      const [memory] = await db.select().from(relationshipMemoryFacts).where(eq(relationshipMemoryFacts.id, z.string().uuid().parse(req.params.memoryId))).limit(1);
+      if (!memory || !(await userCanManageBusiness(req.dbUser!.id, memory.businessId))) throw new Error("Relationship memory not found");
+      if (memory.status !== "proposed") throw new Error("Relationship memory was already reviewed");
+      const [reviewed] = await db.update(relationshipMemoryFacts).set({ status: input.decision === "accept" ? "accepted" : "rejected", reviewedByUserId: req.dbUser!.id, reviewedAt: new Date(), updatedAt: new Date() }).where(and(eq(relationshipMemoryFacts.id, memory.id), eq(relationshipMemoryFacts.status, "proposed"))).returning();
+      if (!reviewed) throw new Error("Relationship memory was already reviewed");
+      await auditRelationshipAction({ businessId: memory.businessId, actorUserId: req.dbUser!.id, action: `relationship_memory.${reviewed.status}`, targetType: "relationship_memory", targetId: memory.id, metadata: { relationshipId: memory.relationshipId, factType: memory.factType } });
+      res.json(reviewed);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
   app.get("/api/relationship-hub/merge-candidates", attachUser, async (req, res) => {
     try {
       const businessId = await managedBusiness(req, req.query.businessId);
-      const rows = await db.select().from(relationshipMergeCandidates).where(and(eq(relationshipMergeCandidates.businessId, businessId), eq(relationshipMergeCandidates.status, "suggested"))).orderBy(desc(relationshipMergeCandidates.confidence));
-      res.json(rows);
+      const rows = await db.select().from(relationshipMergeCandidates).where(and(eq(relationshipMergeCandidates.businessId, businessId), eq(relationshipMergeCandidates.status, "suggested"))).orderBy(desc(relationshipMergeCandidates.confidence)).limit(200);
+      const relationshipIds = Array.from(new Set(rows.flatMap((row) => [row.sourceRelationshipId, row.targetRelationshipId])));
+      const candidates = relationshipIds.length ? await db.select({ id: relationships.id, displayName: relationships.displayName, avatarUrl: relationships.avatarUrl, status: relationships.status }).from(relationships).where(and(eq(relationships.businessId, businessId), inArray(relationships.id, relationshipIds))) : [];
+      const byId = new Map(candidates.map((relationship) => [relationship.id, relationship]));
+      res.json(rows.map((row) => ({ ...row, sourceRelationship: byId.get(row.sourceRelationshipId) ?? null, targetRelationship: byId.get(row.targetRelationshipId) ?? null })));
     } catch (error) {
       return relationshipHubError(res, error);
     }
@@ -772,6 +870,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const target = await ownedRelationship(req.dbUser!.id, input.targetRelationshipId);
       if (source.id === target.id || source.businessId !== target.businessId) throw new Error("Relationships must be distinct and belong to the same business");
       const [candidate] = await db.insert(relationshipMergeCandidates).values({ businessId: source.businessId, sourceRelationshipId: source.id, targetRelationshipId: target.id, reason: input.reason, confidence: input.confidence, evidence: [{ source: "manual_review" }] }).onConflictDoUpdate({ target: [relationshipMergeCandidates.businessId, relationshipMergeCandidates.sourceRelationshipId, relationshipMergeCandidates.targetRelationshipId], set: { reason: input.reason, confidence: input.confidence, status: "suggested", reviewedByUserId: null, reviewedAt: null } }).returning();
+      await auditRelationshipAction({ businessId: source.businessId, actorUserId: req.dbUser!.id, action: "relationship_merge.proposed", targetType: "merge_candidate", targetId: candidate.id, metadata: { sourceRelationshipId: source.id, targetRelationshipId: target.id, confidence: candidate.confidence } });
       res.status(201).json(candidate);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -831,6 +930,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
       const input = createNoteSchema.parse(req.body);
       const [note] = await db.insert(relationshipNotes).values({ businessId: relationship.businessId, relationshipId: relationship.id, authorUserId: req.dbUser!.id, body: input.body, visibility: input.visibility }).returning();
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_note.created", targetType: "relationship_note", targetId: note.id, metadata: { relationshipId: relationship.id, visibility: note.visibility } });
       res.status(201).json(note);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -842,6 +942,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
       const input = createTaskSchema.parse(req.body);
       const [task] = await db.insert(relationshipTasks).values({ businessId: relationship.businessId, relationshipId: relationship.id, createdByUserId: req.dbUser!.id, assignedToUserId: input.assignedToUserId ?? req.dbUser!.id, title: input.title, body: input.body, priority: input.priority, dueAt: input.dueAt ?? null }).returning();
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_task.created", targetType: "relationship_task", targetId: task.id, metadata: { relationshipId: relationship.id, assignedToUserId: task.assignedToUserId, priority: task.priority } });
       res.status(201).json(task);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -854,6 +955,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const [task] = await db.select().from(relationshipTasks).where(eq(relationshipTasks.id, req.params.taskId)).limit(1);
       if (!task || !(await userCanManageBusiness(req.dbUser!.id, task.businessId))) throw new Error("Relationship task not found");
       const [updated] = await db.update(relationshipTasks).set({ status: input.status, completedAt: input.status === "completed" ? new Date() : null, updatedAt: new Date() }).where(eq(relationshipTasks.id, task.id)).returning();
+      await auditRelationshipAction({ businessId: task.businessId, actorUserId: req.dbUser!.id, action: "relationship_task.updated", targetType: "relationship_task", targetId: task.id, metadata: { relationshipId: task.relationshipId, status: updated.status } });
       res.json(updated);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -871,6 +973,7 @@ export function registerRelationshipHubRoutes(app: Express) {
         await tx.insert(relationshipTagAssignments).values({ businessId: relationship.businessId, relationshipId: relationship.id, tagId: existing.id, assignedByUserId: req.dbUser!.id }).onConflictDoNothing();
         return existing;
       });
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_tag.assigned", targetType: "relationship_tag", targetId: tag.id, metadata: { relationshipId: relationship.id, name: tag.name } });
       res.status(201).json(tag);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -881,6 +984,7 @@ export function registerRelationshipHubRoutes(app: Express) {
     try {
       const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
       await db.delete(relationshipTagAssignments).where(and(eq(relationshipTagAssignments.businessId, relationship.businessId), eq(relationshipTagAssignments.relationshipId, relationship.id), eq(relationshipTagAssignments.tagId, req.params.tagId)));
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_tag.removed", targetType: "relationship_tag", targetId: req.params.tagId, metadata: { relationshipId: relationship.id } });
       res.status(204).end();
     } catch (error) {
       return relationshipHubError(res, error);
@@ -968,6 +1072,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const conversation = await ownedConversation(req.dbUser!.id, req.params.conversationId);
       const input = createNoteSchema.parse(req.body);
       const [note] = await db.insert(relationshipConversationNotes).values({ businessId: conversation.businessId, conversationId: conversation.id, authorUserId: req.dbUser!.id, body: input.body }).returning();
+      await auditRelationshipAction({ businessId: conversation.businessId, actorUserId: req.dbUser!.id, action: "conversation_note.created", targetType: "conversation_note", targetId: note.id, metadata: { conversationId: conversation.id } });
       res.status(201).json(note);
     } catch (error) {
       return relationshipHubError(res, error);
@@ -1009,8 +1114,23 @@ export function registerRelationshipHubRoutes(app: Express) {
       if (suggestion.status !== "proposed") throw new Error("Relationship suggestion was already reviewed");
       if (input.data.decision === "reject") {
         const [rejected] = await db.update(relationshipAgentSuggestions).set({ status: "rejected", reviewedByUserId: req.dbUser!.id, reviewedAt: new Date() }).where(and(eq(relationshipAgentSuggestions.id, suggestion.id), eq(relationshipAgentSuggestions.status, "proposed"))).returning();
+        if (!rejected) throw new Error("Relationship suggestion was already reviewed");
+        await auditRelationshipAction({ businessId: suggestion.businessId, actorUserId: req.dbUser!.id, action: "ai_suggestion.rejected", targetType: "agent_suggestion", targetId: suggestion.id, metadata: { suggestionType: suggestion.suggestionType } });
         return res.json(rejected);
       }
+      const authorityConversation = suggestion.conversationId ? await ownedConversation(req.dbUser!.id, suggestion.conversationId) : null;
+      const [authorityPolicy] = await db.select().from(relationshipAgentAuthorityPolicies).where(and(eq(relationshipAgentAuthorityPolicies.businessId, suggestion.businessId), eq(relationshipAgentAuthorityPolicies.agentKey, suggestion.agentKey), eq(relationshipAgentAuthorityPolicies.status, "active"))).limit(1);
+      const [authorityBinding] = authorityConversation ? await db.select().from(relationshipConversationBindings).where(and(eq(relationshipConversationBindings.conversationId, authorityConversation.id), eq(relationshipConversationBindings.status, "active"))).limit(1) : [];
+      const authorityDecision = relationshipAgentDecision({
+        mode: authorityPolicy?.mode ?? "approval",
+        action: relationshipSuggestionAction(suggestion.suggestionType as Parameters<typeof relationshipSuggestionAction>[0]),
+        allowedActions: authorityPolicy?.allowedActions ?? defaultRelationshipAgentActions,
+        approvalRequiredActions: authorityPolicy?.approvalRequiredActions ?? defaultRelationshipAgentActions,
+        blockedActions: authorityPolicy?.blockedActions ?? [],
+        provider: authorityBinding?.provider ?? "native",
+        channelAllowlist: authorityPolicy?.channelAllowlist ?? [],
+      });
+      if (authorityDecision === "blocked") throw new Error("Current agent authority policy blocks this suggestion");
       [claimed] = await db.update(relationshipAgentSuggestions).set({ status: "executing", reviewedByUserId: req.dbUser!.id, reviewedAt: new Date() }).where(and(eq(relationshipAgentSuggestions.id, suggestion.id), eq(relationshipAgentSuggestions.status, "proposed"))).returning();
       if (!claimed) throw new Error("Relationship suggestion was already reviewed");
       const conversation = claimed.conversationId ? await ownedConversation(req.dbUser!.id, claimed.conversationId) : null;
@@ -1067,11 +1187,12 @@ export function registerRelationshipHubRoutes(app: Express) {
   app.post("/api/relationship-hub/agent-policies", attachUser, async (req, res) => {
     try {
       const input = agentPolicySchema.parse(req.body);
-      const businessId = await managedBusiness(req, input.businessId);
+      const businessId = await administeredBusiness(req, input.businessId);
       const [policy] = await db.insert(relationshipAgentAuthorityPolicies).values({ ...input, businessId, createdByUserId: req.dbUser!.id }).onConflictDoUpdate({
         target: [relationshipAgentAuthorityPolicies.businessId, relationshipAgentAuthorityPolicies.agentKey],
         set: { role: input.role, mode: input.mode, allowedActions: input.allowedActions, approvalRequiredActions: input.approvalRequiredActions, blockedActions: input.blockedActions, channelAllowlist: input.channelAllowlist, maxCostUnitsPerRun: input.maxCostUnitsPerRun, instructions: input.instructions, updatedAt: new Date() },
       }).returning();
+      await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "agent_policy.updated", targetType: "agent_policy", targetId: policy.id, metadata: { agentKey: policy.agentKey, mode: policy.mode, allowedActions: policy.allowedActions, approvalRequiredActions: policy.approvalRequiredActions } });
       res.status(201).json(policy);
     } catch (error) {
       return relationshipHubError(res, error);

@@ -55,14 +55,27 @@ export async function ensureDefaultBusiness(user: User): Promise<Business> {
 }
 
 export async function userCanManageBusiness(userId: number, businessId: string) {
+  const role = await userBusinessRole(userId, businessId);
+  return businessRoleCanManage(role);
+}
+
+export function businessRoleCanManage(role: string | null | undefined) {
+  return role === "owner" || role === "admin" || role === "operator";
+}
+
+export function businessRoleCanAdminister(role: string | null | undefined) {
+  return role === "owner" || role === "admin";
+}
+
+export async function userBusinessRole(userId: number, businessId: string) {
   const [business] = await db
     .select({ ownerUserId: businesses.ownerUserId })
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
 
-  if (!business) return false;
-  if (business.ownerUserId === userId) return true;
+  if (!business) return null;
+  if (business.ownerUserId === userId) return "owner" as const;
 
   const [membership] = await db
     .select({ role: businessMembers.role })
@@ -70,5 +83,10 @@ export async function userCanManageBusiness(userId: number, businessId: string) 
     .where(and(eq(businessMembers.businessId, businessId), eq(businessMembers.userId, userId)))
     .limit(1);
 
-  return membership?.role === "owner" || membership?.role === "admin" || membership?.role === "operator";
+  return membership?.role ?? null;
+}
+
+export async function userCanAdminBusiness(userId: number, businessId: string) {
+  const role = await userBusinessRole(userId, businessId);
+  return businessRoleCanAdminister(role);
 }

@@ -6,7 +6,6 @@ import {
   automationTriggerEvents,
   relationshipAuditEvents,
   relationshipChannelConnections,
-  relationshipConsents,
   relationshipConversationBindings,
   relationshipConversationParticipants,
   relationshipConversations,
@@ -44,6 +43,7 @@ import {
   releaseRelationshipUsage,
   reserveRelationshipUsage,
 } from "./relationship-operations";
+import { recordRelationshipConsent } from "./relationship-governance";
 import {
   messagingConsentCommand,
   RELATIONSHIP_COMMENT_CREATED_EVENT,
@@ -73,17 +73,16 @@ async function recordRelationshipAutomationTrigger(input: {
   const command = messagingConsentCommand(input.event.message.body);
   if (command) {
     const status = command === "opt_out" ? "withdrawn" : "granted";
-    const [existing] = await db.select().from(relationshipConsents).where(and(
-      eq(relationshipConsents.businessId, input.connection.businessId),
-      eq(relationshipConsents.relationshipId, input.relationshipId),
-      eq(relationshipConsents.channel, input.event.provider),
-      eq(relationshipConsents.purpose, "messaging"),
-    )).limit(1);
-    if (existing) {
-      await db.update(relationshipConsents).set({ status, source: "inbound_command", grantedAt: command === "opt_in" ? input.event.occurredAt : existing.grantedAt, withdrawnAt: command === "opt_out" ? input.event.occurredAt : null, updatedAt: new Date(), evidence: { providerEventId: input.providerEventId, command } }).where(eq(relationshipConsents.id, existing.id));
-    } else {
-      await db.insert(relationshipConsents).values({ businessId: input.connection.businessId, relationshipId: input.relationshipId, purpose: "messaging", channel: input.event.provider, status, source: "inbound_command", grantedAt: command === "opt_in" ? input.event.occurredAt : null, withdrawnAt: command === "opt_out" ? input.event.occurredAt : null, evidence: { providerEventId: input.providerEventId, command } });
-    }
+    await recordRelationshipConsent({
+      businessId: input.connection.businessId,
+      relationshipId: input.relationshipId,
+      channel: input.event.provider,
+      purpose: "messaging",
+      status,
+      source: "inbound_command",
+      occurredAt: input.event.occurredAt,
+      evidence: { providerEventId: input.providerEventId, command },
+    });
   }
   const eventType = input.event.eventType === "social.comment.created"
     ? RELATIONSHIP_COMMENT_CREATED_EVENT
@@ -693,7 +692,13 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
         occurredAt: result.occurredAt,
         metadata: result.metadata ?? {},
       });
-      await tx.update(relationshipChannelConnections).set({ lastOutboundAt: result.occurredAt, updatedAt: new Date() }).where(eq(relationshipChannelConnections.id, connection.id));
+      await tx.update(relationshipChannelConnections).set({ status: "active", lastOutboundAt: result.occurredAt, lastErrorCode: null, lastErrorMessage: null, updatedAt: new Date() }).where(eq(relationshipChannelConnections.id, connection.id));
+      await tx.update(relationshipOperationalAlerts).set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() }).where(and(
+        eq(relationshipOperationalAlerts.businessId, claimed.businessId),
+        eq(relationshipOperationalAlerts.category, "delivery"),
+        inArray(relationshipOperationalAlerts.status, ["open", "acknowledged"]),
+        sql`${relationshipOperationalAlerts.fingerprint} like ${`delivery:${connection.id}:%`}`,
+      ));
       await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: "message.delivered", targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status } });
       return [updatedJob];
     });

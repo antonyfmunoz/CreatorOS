@@ -25,6 +25,7 @@ import {
   RELATIONSHIP_MESSAGE_RECEIVED_EVENT,
 } from "./social-automation";
 import { processRelationshipDeliveryJob, queueRelationshipMessage } from "./relationship-hub";
+import { effectiveRelationshipConsent, relationshipConsentAllowsMessaging } from "./relationship-governance";
 
 export type AutomationActionContext = {
   runId: string;
@@ -258,8 +259,9 @@ const actions: AutomationActionDefinition[] = [
       const [binding] = await db.select().from(relationshipConversationBindings).where(and(eq(relationshipConversationBindings.conversationId, conversation.id), eq(relationshipConversationBindings.connectionId, connectionId), eq(relationshipConversationBindings.status, "active"))).limit(1);
       if (!binding?.connectionId) throw new Error("Relationship automation channel binding is not active");
       if (conversation.relationshipId) {
-        const [consent] = await db.select().from(relationshipConsents).where(and(eq(relationshipConsents.relationshipId, conversation.relationshipId), eq(relationshipConsents.channel, binding.provider), eq(relationshipConsents.purpose, "messaging"))).limit(1);
-        if (consent?.status === "withdrawn" || consent?.status === "denied") {
+        const consents = await db.select().from(relationshipConsents).where(and(eq(relationshipConsents.relationshipId, conversation.relationshipId), eq(relationshipConsents.channel, binding.provider), eq(relationshipConsents.purpose, "messaging"))).orderBy(desc(relationshipConsents.updatedAt), desc(relationshipConsents.createdAt));
+        const consent = effectiveRelationshipConsent(consents);
+        if (!relationshipConsentAllowsMessaging(consent?.status)) {
           const output = { sent: false, reason: "contact_opted_out", relationshipId: conversation.relationshipId };
           await db.insert(automationActionReceipts).values({ stepRunId: context.stepRunId, actionType: "relationship.message.send", output, summary: "Reply skipped because the contact opted out", costUnits: 0 });
           return { output, costUnits: 0, summary: "Reply skipped because the contact opted out" };

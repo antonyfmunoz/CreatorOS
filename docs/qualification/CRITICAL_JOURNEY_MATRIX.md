@@ -18,6 +18,7 @@ workflow, its evidence, or its recovery path.
 | Business | Create campaign, offer, course, inspect performance | owner, operator | business authority and persisted planning/metrics |
 | Distribution | Draft, connect channel, queue, dispatch, inspect attempt | creator, operator | provider-neutral job and immutable delivery attempts |
 | Automations | Create from template, activate, run/message/event/schedule, approve, retry/cancel | creator, owner, operator | definition version, run/step ledger, approval, audit, conversation |
+| Relationship Hub | Initialize native inbox, send, manage CRM, review consent/memory/identity, automate, export, inspect health | owner, operator, approved AI role | canonical timeline, delivery receipt, human review, usage reservation, audit |
 | Moderation | Report content, review queue, enforce membership/content action | member, moderator | scoped authority and audit evidence |
 | Privacy | Export/delete owned data; expire retained automation/media records | account owner | bounded export and verified cleanup result |
 | UMH bridge | Receive signed scoped command, require approval, emit evidence/outbox | paired installation | signature, replay, tenancy and correlation evidence |

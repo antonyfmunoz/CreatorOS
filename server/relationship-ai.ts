@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   relationshipAgentAuthorityPolicies,
@@ -14,6 +14,7 @@ import {
   relationshipAiResultSchema,
   relationshipAiSystemPrompt,
   relationshipSuggestionAction,
+  defaultRelationshipAgentActions,
   type RelationshipAiResult,
 } from "./relationship-ai-policy";
 import {
@@ -21,6 +22,7 @@ import {
   releaseRelationshipUsage,
   reserveRelationshipUsage,
 } from "./relationship-operations";
+import { automationConfigContainsSecret } from "./automation-policy";
 
 let relationshipOpenAiClient: OpenAI | null = null;
 
@@ -42,6 +44,7 @@ function relationshipAiClient() {
 function compactConversationPayload(input: {
   relationship: typeof relationships.$inferSelect | null;
   messages: Array<typeof relationshipMessages.$inferSelect>;
+  memories: Array<typeof relationshipMemoryFacts.$inferSelect>;
 }) {
   let remaining = 40_000;
   const messages = input.messages.flatMap((message) => {
@@ -65,6 +68,14 @@ function compactConversationPayload(input: {
       locale: input.relationship.locale,
       timezone: input.relationship.timezone,
     } : null,
+    reviewedMemories: input.memories.map((memory) => ({
+      id: memory.id,
+      factType: memory.factType,
+      value: memory.value,
+      epistemicStatus: memory.epistemicStatus,
+      confidence: memory.confidence,
+      sourceType: memory.sourceType,
+    })),
     messages,
   };
 }
@@ -103,7 +114,7 @@ export async function generateRelationshipSuggestions(input: {
   if (!conversation) throw new Error("Relationship conversation not found");
   if (conversation.aiMode === "observe") throw new Error("Enable suggestion mode before asking the relationship copilot");
 
-  const [relationshipRows, messageRows, policyRows] = await Promise.all([
+  const [relationshipRows, messageRows, policyRows, memoryRows] = await Promise.all([
     conversation.relationshipId
       ? db.select().from(relationships).where(eq(relationships.id, conversation.relationshipId)).limit(1)
       : Promise.resolve([]),
@@ -113,9 +124,19 @@ export async function generateRelationshipSuggestions(input: {
       eq(relationshipAgentAuthorityPolicies.agentKey, input.agentKey),
       eq(relationshipAgentAuthorityPolicies.status, "active"),
     )).limit(1),
+    conversation.relationshipId
+      ? db.select().from(relationshipMemoryFacts).where(and(
+        eq(relationshipMemoryFacts.businessId, input.businessId),
+        eq(relationshipMemoryFacts.relationshipId, conversation.relationshipId),
+        eq(relationshipMemoryFacts.status, "accepted"),
+        or(isNull(relationshipMemoryFacts.expiresAt), gt(relationshipMemoryFacts.expiresAt, new Date())),
+      )).orderBy(desc(relationshipMemoryFacts.updatedAt)).limit(50)
+      : Promise.resolve([]),
   ]);
   const relationship = relationshipRows[0] ?? null;
   const policy = policyRows[0] ?? null;
+  if (policy?.mode === "observe") throw new Error("The relationship copilot policy is observe-only");
+  if (policy && policy.allowedActions.length === 0) throw new Error("The relationship copilot policy has no allowed suggestion actions");
   const usageKey = `ai.run:${crypto.randomUUID()}`;
   await reserveRelationshipUsage({
     businessId: input.businessId,
@@ -125,7 +146,7 @@ export async function generateRelationshipSuggestions(input: {
     sourceId: conversation.id,
     idempotencyKey: usageKey,
   });
-  const aiPayload = compactConversationPayload({ relationship, messages: messageRows.reverse() });
+  const aiPayload = compactConversationPayload({ relationship, messages: messageRows.reverse(), memories: memoryRows });
   let result: RelationshipAiResult;
   try {
     result = await requestRelationshipAiResult({
@@ -144,19 +165,13 @@ export async function generateRelationshipSuggestions(input: {
     provider: "openai",
   });
   const validMessageIds = new Set(messageRows.map((message) => message.id));
-  const allowedActions = policy?.allowedActions ?? [
-    "message.send",
-    "relationship.summary.propose",
-    "relationship.task.propose",
-    "relationship.note.propose",
-    "relationship.escalate.propose",
-  ];
-  const filteredSuggestions = result.suggestions.filter((suggestion) =>
-    allowedActions.includes(relationshipSuggestionAction(suggestion.type)),
-  ).map((suggestion) => ({
-    ...suggestion,
-    evidenceMessageIds: suggestion.evidenceMessageIds.filter((id) => validMessageIds.has(id)),
-  }));
+  const allowedActions = policy?.allowedActions ?? defaultRelationshipAgentActions;
+  const filteredSuggestions = result.suggestions.flatMap((suggestion) => {
+    if (!allowedActions.includes(relationshipSuggestionAction(suggestion.type))) return [];
+    if (automationConfigContainsSecret(suggestion.title) || automationConfigContainsSecret(suggestion.body)) return [];
+    const evidenceMessageIds = suggestion.evidenceMessageIds.filter((id) => validMessageIds.has(id));
+    return evidenceMessageIds.length ? [{ ...suggestion, evidenceMessageIds }] : [];
+  });
 
   const created = await db.transaction(async (tx) => {
     await tx.update(relationshipAgentSuggestions).set({ status: "superseded", reviewedAt: new Date() }).where(and(
@@ -184,6 +199,7 @@ export async function generateRelationshipSuggestions(input: {
       : [];
     if (relationship) {
       const memories = result.memoryCandidates.flatMap((candidate) => {
+        if (automationConfigContainsSecret(candidate.value)) return [];
         const evidenceMessageIds = candidate.evidenceMessageIds.filter((id) => validMessageIds.has(id));
         if (!evidenceMessageIds.length) return [];
         return [{

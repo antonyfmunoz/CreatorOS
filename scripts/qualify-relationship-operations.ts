@@ -7,6 +7,7 @@ import {
   relationshipChannelConnections,
   relationshipConversations,
   relationshipMessages,
+  relationshipMemoryFacts,
   relationshipNotes,
   relationshipRoomBindings,
   relationships,
@@ -27,17 +28,22 @@ import { relationshipRoomContext } from "../server/relationship-room-context";
 import { cleanupRelationshipHubRetention } from "../server/relationship-retention";
 
 async function qualify() {
+  if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
+    throw new Error("Relationship operations qualification requires QUALIFICATION_ISOLATED_DATABASE=true and an isolated disposable database");
+  }
   const suffix = Date.now().toString(36);
-  const [existingUser] = await db.select().from(users).limit(1);
-  const user = existingUser ?? (await db.insert(users).values({ clerkId: `qualification-${suffix}`, username: `qualification_${suffix}`, displayName: "Relationship qualification" }).returning())[0];
-  const [existingBusiness] = await db.select().from(businesses).where(eq(businesses.ownerUserId, user.id)).limit(1);
-  const business = existingBusiness ?? (await db.insert(businesses).values({ ownerUserId: user.id, name: "Relationship qualification", handle: `relationship-${suffix}`, isDefault: true }).returning())[0];
+  const [user] = await db.insert(users).values({ clerkId: `qualification-${suffix}`, username: `qualification_${suffix}`, displayName: "Relationship qualification" }).returning();
+  let communityId: number | null = null;
+  try {
+  const [business] = await db.insert(businesses).values({ ownerUserId: user.id, name: "Relationship qualification", handle: `relationship-${suffix}`, isDefault: true }).returning();
   const [community] = await db.insert(communities).values({ name: "Qualification community", description: "Ephemeral qualification", iconColor: "#000000" }).returning();
+  communityId = community.id;
   const [room] = await db.insert(communityRooms).values({ communityId: community.id, hostUserId: user.id, title: "Relationship qualification room", startsAt: new Date(), provider: "livekit" }).returning();
   const [relationship] = await db.insert(relationships).values({ businessId: business.id, createdByUserId: user.id, displayName: "Qualification customer", lifecycleStage: "lead", aiSummary: "Customer asked for a documented implementation plan." }).returning();
   const [conversation] = await db.insert(relationshipConversations).values({ businessId: business.id, relationshipId: relationship.id, title: "Qualification conversation", aiMode: "suggest" }).returning();
   await db.insert(relationshipMessages).values({ businessId: business.id, conversationId: conversation.id, provider: "native", direction: "inbound", authorType: "customer", body: "Please show the delivery evidence.", occurredAt: new Date() });
   await db.insert(relationshipNotes).values({ businessId: business.id, relationshipId: relationship.id, authorUserId: user.id, body: "Private qualification note", visibility: "private" });
+  await db.insert(relationshipMemoryFacts).values({ businessId: business.id, relationshipId: relationship.id, factType: "goal", value: { text: "Receive documented delivery evidence", evidenceMessageIds: [] }, epistemicStatus: "stated", confidence: 1, sourceType: "operator_review", sourceId: "qualification", status: "accepted", reviewedByUserId: user.id, reviewedAt: new Date(), expiresAt: new Date(Date.now() + 24 * 60 * 60_000) });
   await db.insert(relationshipRoomBindings).values({ businessId: business.id, roomId: room.id, relationshipId: relationship.id, conversationId: conversation.id, createdByUserId: user.id, contextPolicy: { includeTimeline: true, includePrivateNotes: false } });
 
   const policy = await ensureRelationshipTenantPolicy(business.id);
@@ -89,7 +95,7 @@ async function qualify() {
   if (connectionAttempts.filter((result) => result.status === "fulfilled").length !== 1 || connectionAttempts.filter((result) => result.status === "rejected").length !== 1) throw new Error("Concurrent connection capacity serialization qualification failed");
 
   const context = await relationshipRoomContext(room.id);
-  if (!context || context.relationship.id !== relationship.id || context.recentMessages.length !== 1) throw new Error("Relationship room context qualification failed");
+  if (!context || context.relationship.id !== relationship.id || context.recentMessages.length !== 1 || context.relationship.reviewedMemories.length !== 1) throw new Error("Relationship room context qualification failed");
   if (context.privateNotes.length !== 0 || JSON.stringify(context).includes("Private qualification note")) throw new Error("Private note was exposed without explicit context permission");
 
   await db.update(relationshipTenantPolicies).set({ monthlyAiRuns: 0 }).where(eq(relationshipTenantPolicies.businessId, business.id));
@@ -102,7 +108,12 @@ async function qualify() {
   if (!quotaBlocked) throw new Error("Enforced quota qualification failed");
   const retention = await cleanupRelationshipHubRetention();
 
-  console.log(JSON.stringify({ status: "qualified", usageIdempotency: true, concurrentReservationsSerialized: true, reservationFinalizationIdempotent: true, mismatchedFinalizationBlocked: true, reservationReleaseVerified: true, tenantIsolationVerified: true, concurrentConnectionsSerialized: true, privateNotesExcluded: true, quotaEnforced: true, retentionQuery: Boolean(retention), relationshipContext: context.protocol }));
+  console.log(JSON.stringify({ status: "qualified", usageIdempotency: true, concurrentReservationsSerialized: true, reservationFinalizationIdempotent: true, mismatchedFinalizationBlocked: true, reservationReleaseVerified: true, tenantIsolationVerified: true, concurrentConnectionsSerialized: true, privateNotesExcluded: true, reviewedMemoryIncluded: true, quotaEnforced: true, retentionQuery: Boolean(retention), relationshipContext: context.protocol }));
+  } finally {
+    if (communityId != null) await db.delete(communities).where(eq(communities.id, communityId)).catch(() => undefined);
+    await db.delete(businesses).where(eq(businesses.ownerUserId, user.id)).catch(() => undefined);
+    await db.delete(users).where(eq(users.id, user.id)).catch(() => undefined);
+  }
 }
 
 qualify().then(() => process.exit(0)).catch((error) => {

@@ -104,6 +104,7 @@ import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
+  relationshipOperationsSnapshot,
   releaseRelationshipUsage,
   reserveRelationshipUsage,
   RelationshipQuotaError,
@@ -7004,6 +7005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       let sessionId: string | null = null;
       let relationshipUsageBusinessId: string | null = null;
+      let relationshipReservedMinutes = 0;
       try {
         const access = await roomAccess(req.params.id, req.dbUser!.id);
         if (!access.ok)
@@ -7101,15 +7103,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (existing)
           return res.status(409).json({ message: "That room service is already active" });
         sessionId = crypto.randomUUID();
-        if (relationshipUsageBusinessId) await reserveRelationshipUsage({
-          businessId: relationshipUsageBusinessId,
-          metric: "realtime.minute",
-          quantity: 1,
-          sourceType: "community_room_agent_session",
-          sourceId: sessionId,
-          idempotencyKey: `realtime.minute:${sessionId}`,
-          expiresInMs: 24 * 60 * 60_000,
-        });
+        if (relationshipUsageBusinessId) {
+          const operations = await relationshipOperationsSnapshot(relationshipUsageBusinessId);
+          const realtime = operations.capacity["realtime.minute"];
+          const remaining = realtime.limit < 0 ? 60 : realtime.limit - realtime.used - realtime.reserved;
+          relationshipReservedMinutes = Math.max(1, Math.min(60, remaining));
+          await reserveRelationshipUsage({
+            businessId: relationshipUsageBusinessId,
+            metric: "realtime.minute",
+            quantity: relationshipReservedMinutes,
+            sourceType: "community_room_agent_session",
+            sourceId: sessionId,
+            idempotencyKey: `realtime.minute:${sessionId}`,
+            expiresInMs: 24 * 60 * 60_000,
+          });
+        }
         const [session] = await db
           .insert(communityRoomAgentSessions)
           .values({
@@ -7145,6 +7153,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               : null,
             relationshipContext: boundRelationshipContext,
+            relationshipUsage: relationshipUsageBusinessId ? {
+              reservationKey: `realtime.minute:${sessionId}`,
+              maxMinutes: relationshipReservedMinutes,
+              enforcement: "stop_before_limit",
+            } : null,
           },
         });
         const [activeSession] = await db

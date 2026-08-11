@@ -1,8 +1,9 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   relationshipConversations,
   relationshipMessages,
+  relationshipMemoryFacts,
   relationshipNotes,
   relationshipRoomBindings,
   relationships,
@@ -15,7 +16,7 @@ export async function relationshipRoomContext(roomId: string) {
   if (!relationship) return null;
   const includeTimeline = binding.contextPolicy.includeTimeline !== false;
   const includePrivateNotes = binding.contextPolicy.includePrivateNotes === true;
-  const [conversationRows, messageRows, noteRows] = await Promise.all([
+  const [conversationRows, messageRows, noteRows, memoryRows] = await Promise.all([
     binding.conversationId
       ? db.select().from(relationshipConversations).where(and(eq(relationshipConversations.id, binding.conversationId), eq(relationshipConversations.businessId, binding.businessId))).limit(1)
       : Promise.resolve([]),
@@ -25,6 +26,12 @@ export async function relationshipRoomContext(roomId: string) {
     includePrivateNotes
       ? db.select({ id: relationshipNotes.id, body: relationshipNotes.body, createdAt: relationshipNotes.createdAt }).from(relationshipNotes).where(and(eq(relationshipNotes.relationshipId, binding.relationshipId), eq(relationshipNotes.businessId, binding.businessId))).orderBy(desc(relationshipNotes.createdAt)).limit(20)
       : Promise.resolve([]),
+    db.select({ id: relationshipMemoryFacts.id, factType: relationshipMemoryFacts.factType, value: relationshipMemoryFacts.value, epistemicStatus: relationshipMemoryFacts.epistemicStatus, confidence: relationshipMemoryFacts.confidence }).from(relationshipMemoryFacts).where(and(
+      eq(relationshipMemoryFacts.businessId, binding.businessId),
+      eq(relationshipMemoryFacts.relationshipId, binding.relationshipId),
+      eq(relationshipMemoryFacts.status, "accepted"),
+      or(isNull(relationshipMemoryFacts.expiresAt), gt(relationshipMemoryFacts.expiresAt, new Date())),
+    )).orderBy(desc(relationshipMemoryFacts.updatedAt)).limit(30),
   ]);
   let remaining = 24_000;
   const clip = (value: string, max = 2_000) => {
@@ -46,6 +53,7 @@ export async function relationshipRoomContext(roomId: string) {
       locale: relationship.locale,
       timezone: relationship.timezone,
       summary: relationship.aiSummary ? clip(relationship.aiSummary, 4_000) : null,
+      reviewedMemories: memoryRows.map((memory) => ({ ...memory, value: typeof memory.value === "object" && memory.value && "text" in memory.value ? clip(String((memory.value as { text: unknown }).text), 1_000) : memory.value })),
     },
     conversation: conversationRows[0] ? { id: conversationRows[0].id, title: conversationRows[0].title, status: conversationRows[0].status, priority: conversationRows[0].priority } : null,
     recentMessages: messageRows.reverse().map((message) => ({ id: message.id, direction: message.direction, body: clip(message.body), occurredAt: message.occurredAt.toISOString() })).filter((message) => message.body),

@@ -61,6 +61,27 @@ hidden psychoanalysis remain prohibited. Actual realtime minutes are metered
 when the agent session stops and retained room artifacts continue to follow the
 room intelligence policy.
 
+The Relationship Hub reserves up to 60 realtime minutes before dispatch and
+includes `relationshipUsage.maxMinutes` with the agent job. A production agent
+worker must stop before that boundary, and must also stop if consent is lost.
+The worker is not considered activated until both behaviors are proven live.
+
+## Human governance and data portability
+
+The product exposes reviewed controls for communication consent, AI memory,
+agent authority, duplicate-identity merges, operational alerts, and a canonical
+cross-channel relationship timeline. Granted consent requires a specific
+evidence note; denied or withdrawn states block automation. Accepted AI memory
+is reused only as explicitly reviewed evidence and remains labeled with its
+epistemic status.
+
+The `creativesos.relationship-export.v2` export includes identities, consent,
+conversations, messages, attachments, receipts, relationship and conversation
+notes, tasks, tags, reviewed memory, AI suggestions, merge decisions, agent
+policies, usage evidence, alerts, room bindings, and audit records. Provider
+token ciphertext, webhook secrets, private voice scripts, and storage keys are
+not exported.
+
 ## Provider activation
 
 ### Instagram

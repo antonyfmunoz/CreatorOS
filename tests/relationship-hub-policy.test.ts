@@ -151,6 +151,8 @@ describe("relationship hub provider contracts", () => {
     expect(relationshipDeliveryBackoffMs(20)).toBe(60 * 60_000);
     expect(relationshipDeliveryBackoffMs(2, 5_000)).toBe(5_000);
     expect(sanitizeRelationshipProviderError(new Error("Bearer abc.secret token=super-secret"))).not.toContain("super-secret");
+    expect(sanitizeRelationshipProviderError(new Error("key sk_test_exampleCredential123"))).not.toContain("sk_test_exampleCredential123");
+    expect(sanitizeRelationshipProviderError(new Error("-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----"))).not.toContain("secret");
     expect(() => assertRelationshipCapability({ "message.send": false }, "message.send")).toThrow(/does not support/i);
   });
 });

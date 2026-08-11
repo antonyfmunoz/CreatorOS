@@ -32,5 +32,6 @@ describe("Relationship AI governance", () => {
   it("rejects uncited memory candidates and unbounded output", () => {
     expect(() => relationshipAiResultSchema.parse({ relationshipSummary: "", suggestions: [], memoryCandidates: [{ factType: "goal", value: "Grow", confidence: 0.9, evidenceMessageIds: [] }] })).toThrow();
     expect(relationshipAiResultSchema.parse({ relationshipSummary: "Known from the thread.", suggestions: [], memoryCandidates: [] }).relationshipSummary).toContain("Known");
+    expect(() => relationshipAiResultSchema.parse({ relationshipSummary: "", suggestions: [{ type: "reply", title: "Reply", body: "Hello", confidence: 0.8, evidenceMessageIds: [] }], memoryCandidates: [] })).toThrow();
   });
 });

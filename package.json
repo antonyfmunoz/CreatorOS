@@ -15,6 +15,7 @@
     "verify:automations": "tsx scripts/qualify-automation-kernel.ts",
     "verify:social-automations": "tsx scripts/qualify-native-social-automations.ts",
     "verify:relationship-operations": "tsx scripts/qualify-relationship-operations.ts",
+    "verify:relationship-release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-relationship-release.ps1",
     "test:watch": "vitest",
     "db:push": "drizzle-kit push"
   },
