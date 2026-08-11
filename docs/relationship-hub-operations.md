@@ -33,9 +33,13 @@ and metered so a billing limit cannot silently discard customer contact.
 Outbound, AI, voice, and realtime starts fail closed when an enforced allowance
 is exhausted. `monitor` mode records the same evidence without blocking.
 
-Usage is written to an idempotent monthly ledger. Provider delivery failures
+Paid/provider work first takes an idempotent capacity reservation under a
+PostgreSQL transaction-scoped advisory lock. This serializes simultaneous
+requests across every app machine so two actions cannot both spend the same
+remaining allowance. Successful work finalizes into the immutable monthly
+ledger; failed and expired work releases its reservation. Provider delivery failures
 create deduplicated operational alerts, while `/api/relationship-hub/operations`
-returns only business-scoped counts, capacity, and public-safe alert details.
+returns only business-scoped used/reserved capacity, counts, and public-safe alert details.
 The Relationship Hub screen exposes this as **Usage & health**. Stripe or a
 future billing service may translate plans into this policy, but cannot become
 the product's source of truth.

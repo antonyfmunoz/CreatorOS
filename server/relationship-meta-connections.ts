@@ -3,6 +3,7 @@ import { db } from "./db";
 import { relationshipChannelConnections, socialOAuthStates } from "../shared/schema";
 import { createSocialOAuthState, encryptSocialToken, hashSocialOAuthState } from "./social-oauth";
 import { messengerRelationshipAdapter, whatsappRelationshipAdapter, verifyMetaWebhookChallenge } from "./relationship-meta-adapters";
+import { withRelationshipConnectionCapacity } from "./relationship-operations";
 
 export const messengerRelationshipScopes = ["public_profile", "pages_show_list", "pages_messaging", "pages_manage_metadata"] as const;
 
@@ -101,7 +102,10 @@ export async function completeMessengerRelationshipAuthorization(input: { code: 
     await metaJson(await fetch(subscribeUrl, { method: "POST" }));
     const now = new Date();
     const values = { businessId, connectedByUserId: input.userId, provider: "messenger", providerAccountId: page.id!, providerAccountName: page.name || `Facebook Page ${page.id}`, status: "active", scopes: [...messengerRelationshipScopes], capabilities: messengerRelationshipAdapter.capabilities, accessTokenCiphertext: encryptSocialToken(page.access_token!), webhookSecretCiphertext: encryptSocialToken(appSecret()), lastValidatedAt: now, metadata: { pageTasks: page.tasks ?? [], webhookCallbackUrl: new URL("/api/relationship-hub/webhooks/messenger", process.env.PUBLIC_APP_URL!).toString() }, updatedAt: now };
-    const [connection] = await db.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({ target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId], set: values }).returning();
+    const connection = await withRelationshipConnectionCapacity({ businessId, provider: "messenger", providerAccountId: page.id! }, async (tx) => {
+      const [stored] = await tx.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({ target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId], set: values }).returning();
+      return stored;
+    });
     connections.push(connection);
   }
   return connections;
@@ -115,6 +119,8 @@ export async function connectWhatsAppRelationshipAccount(input: { businessId: st
   if (!profile.id || profile.id !== input.phoneNumberId) throw new Error("WhatsApp phone number authorization could not be verified");
   const now = new Date();
   const values = { businessId: input.businessId, connectedByUserId: input.userId, provider: "whatsapp", providerAccountId: profile.id, providerAccountName: input.accountName || profile.verified_name || profile.display_phone_number || `WhatsApp ${profile.id}`, status: "active", scopes: ["whatsapp_business_messaging", "whatsapp_business_management"], capabilities: whatsappRelationshipAdapter.capabilities, accessTokenCiphertext: encryptSocialToken(input.accessToken), webhookSecretCiphertext: encryptSocialToken(appSecret()), lastValidatedAt: now, metadata: { wabaId: input.wabaId ?? null, displayPhoneNumber: profile.display_phone_number ?? null, qualityRating: profile.quality_rating ?? null, webhookCallbackUrl: new URL("/api/relationship-hub/webhooks/whatsapp", process.env.PUBLIC_APP_URL!).toString() }, updatedAt: now };
-  const [connection] = await db.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({ target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId], set: values }).returning();
-  return connection;
+  return withRelationshipConnectionCapacity({ businessId: input.businessId, provider: "whatsapp", providerAccountId: profile.id }, async (tx) => {
+    const [connection] = await tx.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({ target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId], set: values }).returning();
+    return connection;
+  });
 }

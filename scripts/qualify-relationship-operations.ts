@@ -4,6 +4,7 @@ import {
   businesses,
   communities,
   communityRooms,
+  relationshipChannelConnections,
   relationshipConversations,
   relationshipMessages,
   relationshipNotes,
@@ -15,8 +16,12 @@ import {
 import {
   assertRelationshipUsageAvailable,
   ensureRelationshipTenantPolicy,
+  finalizeRelationshipUsage,
   recordRelationshipUsage,
+  releaseRelationshipUsage,
+  reserveRelationshipUsage,
   relationshipOperationsSnapshot,
+  withRelationshipConnectionCapacity,
 } from "../server/relationship-operations";
 import { relationshipRoomContext } from "../server/relationship-room-context";
 import { cleanupRelationshipHubRetention } from "../server/relationship-retention";
@@ -42,6 +47,47 @@ async function qualify() {
   const snapshot = await relationshipOperationsSnapshot(business.id);
   if (snapshot.capacity["message.outbound"].used !== 1) throw new Error("Usage idempotency qualification failed");
 
+  await db.update(relationshipTenantPolicies).set({ monthlyAiRuns: 1 }).where(eq(relationshipTenantPolicies.businessId, business.id));
+  const reservationKeys = [`qualification:ai:${suffix}:a`, `qualification:ai:${suffix}:b`];
+  const reservationAttempts = await Promise.allSettled(reservationKeys.map((idempotencyKey) => reserveRelationshipUsage({
+    businessId: business.id,
+    metric: "ai.run",
+    sourceType: "qualification",
+    sourceId: idempotencyKey,
+    idempotencyKey,
+  })));
+  const acceptedReservations = reservationAttempts.flatMap((result, index) => result.status === "fulfilled" ? [reservationKeys[index]] : []);
+  const rejectedReservations = reservationAttempts.filter((result) => result.status === "rejected" && result.reason instanceof Error && result.reason.name === "RelationshipQuotaError");
+  if (acceptedReservations.length !== 1 || rejectedReservations.length !== 1) throw new Error("Concurrent reservation serialization qualification failed");
+  const reservedSnapshot = await relationshipOperationsSnapshot(business.id);
+  if (reservedSnapshot.capacity["ai.run"].reserved !== 1 || reservedSnapshot.capacity["ai.run"].used !== 0) throw new Error("Reserved capacity snapshot qualification failed");
+  await finalizeRelationshipUsage({ businessId: business.id, idempotencyKey: acceptedReservations[0], quantity: 1, provider: "qualification" });
+  await finalizeRelationshipUsage({ businessId: business.id, idempotencyKey: acceptedReservations[0], quantity: 1, provider: "qualification" });
+  let mismatchedFinalizationBlocked = false;
+  try {
+    await finalizeRelationshipUsage({ businessId: business.id, idempotencyKey: acceptedReservations[0], quantity: 2, provider: "qualification" });
+  } catch (error) {
+    mismatchedFinalizationBlocked = error instanceof Error && /different data/i.test(error.message);
+  }
+  if (!mismatchedFinalizationBlocked) throw new Error("Mismatched reservation finalization was not rejected");
+  const finalizedSnapshot = await relationshipOperationsSnapshot(business.id);
+  if (finalizedSnapshot.capacity["ai.run"].reserved !== 0 || finalizedSnapshot.capacity["ai.run"].used !== 1) throw new Error("Reservation finalization idempotency qualification failed");
+  const [otherBusiness] = await db.insert(businesses).values({ ownerUserId: user.id, name: "Relationship isolation qualification", handle: `relationship-isolation-${suffix}`, isDefault: false }).returning();
+  await db.insert(relationshipTenantPolicies).values({ businessId: otherBusiness.id, monthlyAiRuns: 1, maxActiveConnections: 1 });
+  const sharedTenantKey = `qualification:tenant-isolation:${suffix}`;
+  await reserveRelationshipUsage({ businessId: otherBusiness.id, metric: "ai.run", sourceType: "qualification", sourceId: sharedTenantKey, idempotencyKey: sharedTenantKey });
+  const isolatedSnapshot = await relationshipOperationsSnapshot(otherBusiness.id);
+  if (isolatedSnapshot.capacity["ai.run"].reserved !== 1 || isolatedSnapshot.capacity["ai.run"].used !== 0) throw new Error("Tenant-scoped reservation qualification failed");
+  await releaseRelationshipUsage({ businessId: otherBusiness.id, idempotencyKey: sharedTenantKey });
+  const releasedSnapshot = await relationshipOperationsSnapshot(otherBusiness.id);
+  if (releasedSnapshot.capacity["ai.run"].reserved !== 0) throw new Error("Failed-work reservation release qualification failed");
+  const connectionAccounts = [`qualification-${suffix}-a`, `qualification-${suffix}-b`];
+  const connectionAttempts = await Promise.allSettled(connectionAccounts.map((providerAccountId) => withRelationshipConnectionCapacity({ businessId: otherBusiness.id, provider: "qualification", providerAccountId }, async (tx) => {
+    const [connection] = await tx.insert(relationshipChannelConnections).values({ businessId: otherBusiness.id, connectedByUserId: user.id, provider: "qualification", providerAccountId, providerAccountName: providerAccountId, status: "active", scopes: [], capabilities: {}, metadata: {} }).returning();
+    return connection;
+  })));
+  if (connectionAttempts.filter((result) => result.status === "fulfilled").length !== 1 || connectionAttempts.filter((result) => result.status === "rejected").length !== 1) throw new Error("Concurrent connection capacity serialization qualification failed");
+
   const context = await relationshipRoomContext(room.id);
   if (!context || context.relationship.id !== relationship.id || context.recentMessages.length !== 1) throw new Error("Relationship room context qualification failed");
   if (context.privateNotes.length !== 0 || JSON.stringify(context).includes("Private qualification note")) throw new Error("Private note was exposed without explicit context permission");
@@ -56,7 +102,7 @@ async function qualify() {
   if (!quotaBlocked) throw new Error("Enforced quota qualification failed");
   const retention = await cleanupRelationshipHubRetention();
 
-  console.log(JSON.stringify({ status: "qualified", usageIdempotency: true, privateNotesExcluded: true, quotaEnforced: true, retentionQuery: Boolean(retention), relationshipContext: context.protocol }));
+  console.log(JSON.stringify({ status: "qualified", usageIdempotency: true, concurrentReservationsSerialized: true, reservationFinalizationIdempotent: true, mismatchedFinalizationBlocked: true, reservationReleaseVerified: true, tenantIsolationVerified: true, concurrentConnectionsSerialized: true, privateNotesExcluded: true, quotaEnforced: true, retentionQuery: Boolean(retention), relationshipContext: context.protocol }));
 }
 
 qualify().then(() => process.exit(0)).catch((error) => {

@@ -16,7 +16,11 @@ import {
   relationshipSuggestionAction,
   type RelationshipAiResult,
 } from "./relationship-ai-policy";
-import { assertRelationshipUsageAvailable, recordRelationshipUsage } from "./relationship-operations";
+import {
+  finalizeRelationshipUsage,
+  releaseRelationshipUsage,
+  reserveRelationshipUsage,
+} from "./relationship-operations";
 
 let relationshipOpenAiClient: OpenAI | null = null;
 
@@ -92,7 +96,6 @@ export async function generateRelationshipSuggestions(input: {
   agentKey: string;
   requestedByUserId: number;
 }) {
-  await assertRelationshipUsageAvailable({ businessId: input.businessId, metric: "ai.run" });
   const [conversation] = await db.select().from(relationshipConversations).where(and(
     eq(relationshipConversations.id, input.conversationId),
     eq(relationshipConversations.businessId, input.businessId),
@@ -113,20 +116,33 @@ export async function generateRelationshipSuggestions(input: {
   ]);
   const relationship = relationshipRows[0] ?? null;
   const policy = policyRows[0] ?? null;
-  const result = await requestRelationshipAiResult({
-    systemPrompt: relationshipAiSystemPrompt(policy?.instructions ?? ""),
-    payload: compactConversationPayload({ relationship, messages: messageRows.reverse() }),
-  });
-  await recordRelationshipUsage({
+  const usageKey = `ai.run:${crypto.randomUUID()}`;
+  await reserveRelationshipUsage({
     businessId: input.businessId,
     metric: "ai.run",
     quantity: 1,
-    costUnits: Math.max(1, Math.ceil(JSON.stringify(compactConversationPayload({ relationship, messages: messageRows })).length / 4_000)),
-    provider: "openai",
     sourceType: "conversation",
     sourceId: conversation.id,
-    idempotencyKey: `ai.run:${conversation.id}:${Date.now()}`,
-  }).catch((error) => console.error("Could not meter relationship AI run", { errorType: error instanceof Error ? error.name : typeof error }));
+    idempotencyKey: usageKey,
+  });
+  const aiPayload = compactConversationPayload({ relationship, messages: messageRows.reverse() });
+  let result: RelationshipAiResult;
+  try {
+    result = await requestRelationshipAiResult({
+      systemPrompt: relationshipAiSystemPrompt(policy?.instructions ?? ""),
+      payload: aiPayload,
+    });
+  } catch (error) {
+    await releaseRelationshipUsage({ businessId: input.businessId, idempotencyKey: usageKey }).catch(() => undefined);
+    throw error;
+  }
+  await finalizeRelationshipUsage({
+    businessId: input.businessId,
+    idempotencyKey: usageKey,
+    quantity: 1,
+    costUnits: Math.max(1, Math.ceil(JSON.stringify(aiPayload).length / 4_000)),
+    provider: "openai",
+  });
   const validMessageIds = new Set(messageRows.map((message) => message.id));
   const allowedActions = policy?.allowedActions ?? [
     "message.send",

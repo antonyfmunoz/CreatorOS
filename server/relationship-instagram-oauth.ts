@@ -4,6 +4,7 @@ import { db } from "./db";
 import { relationshipChannelConnections, socialOAuthStates } from "../shared/schema";
 import { createSocialOAuthState, decryptSocialToken, encryptSocialToken, hashSocialOAuthState } from "./social-oauth";
 import { instagramRelationshipAdapter } from "./relationship-instagram-adapter";
+import { withRelationshipConnectionCapacity } from "./relationship-operations";
 
 export const instagramRelationshipScopes = [
   "instagram_business_basic",
@@ -107,11 +108,13 @@ export async function completeInstagramRelationshipAuthorization(input: { code: 
     metadata: { apiVersion: graphVersion(), webhookCallbackUrl: new URL("/api/relationship-hub/webhooks/instagram", process.env.PUBLIC_APP_URL!).toString(), tokenKind: "long_lived_user" },
     updatedAt: now,
   };
-  const [connection] = await db.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({
-    target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId],
-    set: values,
-  }).returning();
-  return connection;
+  return withRelationshipConnectionCapacity({ businessId, provider: "instagram", providerAccountId: accountId }, async (tx) => {
+    const [connection] = await tx.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({
+      target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId],
+      set: values,
+    }).returning();
+    return connection;
+  });
 }
 
 export function verifyInstagramWebhookChallenge(input: { mode?: string; token?: string; challenge?: string }) {

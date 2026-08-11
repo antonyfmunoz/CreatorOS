@@ -4,6 +4,7 @@ import { db } from "./db";
 import { relationshipChannelConnections, socialOAuthStates } from "../shared/schema";
 import { createSocialOAuthState, decryptSocialToken, encryptSocialToken, hashSocialOAuthState } from "./social-oauth";
 import { xRelationshipAdapter, xRelationshipCapabilities } from "./relationship-x-adapter";
+import { withRelationshipConnectionCapacity } from "./relationship-operations";
 
 export const xRelationshipScopes = ["dm.read", "dm.write", "tweet.read", "users.read", "offline.access"] as const;
 
@@ -122,11 +123,13 @@ export async function completeXRelationshipAuthorization(input: { code: string; 
     metadata: { username: account.username ?? null, webhookMode: "reconciliation_with_optional_account_activity" },
     updatedAt: now,
   };
-  const [connection] = await db.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({
-    target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId],
-    set: values,
-  }).returning();
-  return connection;
+  return withRelationshipConnectionCapacity({ businessId, provider: "x", providerAccountId: account.id }, async (tx) => {
+    const [connection] = await tx.insert(relationshipChannelConnections).values(values).onConflictDoUpdate({
+      target: [relationshipChannelConnections.businessId, relationshipChannelConnections.provider, relationshipChannelConnections.providerAccountId],
+      set: values,
+    }).returning();
+    return connection;
+  });
 }
 
 export async function refreshExpiringXRelationshipTokens() {

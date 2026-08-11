@@ -38,7 +38,12 @@ import {
   type RelationshipAdapterContext,
 } from "./relationship-channel-adapters";
 import { nativeRelationshipCapabilities } from "./relationship-native-adapter";
-import { assertRelationshipUsageAvailable, recordRelationshipUsage } from "./relationship-operations";
+import {
+  finalizeRelationshipUsage,
+  recordRelationshipUsage,
+  releaseRelationshipUsage,
+  reserveRelationshipUsage,
+} from "./relationship-operations";
 import {
   messagingConsentCommand,
   RELATIONSHIP_COMMENT_CREATED_EVENT,
@@ -519,8 +524,17 @@ export async function queueRelationshipMessage(input: {
   disclosure?: string;
 }) {
   const action = relationshipOutboundActionSchema.parse(input.action);
-  await assertRelationshipUsageAvailable({ businessId: input.businessId, metric: "message.outbound" });
-  return db.transaction(async (tx) => {
+  const usageKey = `message.outbound:${action.idempotencyKey}`;
+  const usageReservation = await reserveRelationshipUsage({
+    businessId: input.businessId,
+    metric: "message.outbound",
+    sourceType: "delivery_request",
+    sourceId: action.idempotencyKey,
+    idempotencyKey: usageKey,
+    expiresInMs: 30 * 24 * 60 * 60_000,
+  });
+  try {
+    const queued = await db.transaction(async (tx) => {
     const [connection] = await tx.select().from(relationshipChannelConnections).where(and(
       eq(relationshipChannelConnections.id, input.connectionId),
       eq(relationshipChannelConnections.businessId, input.businessId),
@@ -614,8 +628,18 @@ export async function queueRelationshipMessage(input: {
       metadata: { conversationId: input.conversationId, connectionId: connection.id, provider: connection.provider, authorType: input.authorType ?? "human", syntheticMedia: input.syntheticMedia ?? false },
     });
     await tx.update(relationshipConversations).set({ updatedAt: now }).where(eq(relationshipConversations.id, input.conversationId));
-    return { duplicate: false, job, message };
-  });
+      return { duplicate: false, job, message };
+    });
+    if (queued.duplicate && !usageReservation.duplicate) {
+      await releaseRelationshipUsage({ businessId: input.businessId, idempotencyKey: usageKey });
+    }
+    return queued;
+  } catch (error) {
+    if (!usageReservation.duplicate) {
+      await releaseRelationshipUsage({ businessId: input.businessId, idempotencyKey: usageKey }).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 export async function processRelationshipDeliveryJob(jobOrId: RelationshipDeliveryJob | string) {
@@ -673,15 +697,26 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: "message.delivered", targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status } });
       return [updatedJob];
     });
-    await recordRelationshipUsage({
+    await finalizeRelationshipUsage({
       businessId: claimed.businessId,
-      metric: "message.outbound",
+      idempotencyKey: `message.outbound:${action.idempotencyKey}`,
+      quantity: 1,
       provider: connection.provider,
-      sourceType: "delivery_job",
-      sourceId: claimed.id,
-      idempotencyKey: `message.outbound:${claimed.id}`,
       occurredAt: result.occurredAt,
-    }).catch((error) => console.error("Could not meter outbound relationship message", { errorType: error instanceof Error ? error.name : typeof error }));
+      metadata: { deliveryJobId: claimed.id },
+    }).catch(async (error) => {
+      // Jobs created before reservation support still need durable metering.
+      await recordRelationshipUsage({
+        businessId: claimed.businessId,
+        metric: "message.outbound",
+        provider: connection.provider,
+        sourceType: "delivery_job",
+        sourceId: claimed.id,
+        idempotencyKey: `message.outbound:${claimed.id}`,
+        occurredAt: result.occurredAt,
+      }).catch(() => undefined);
+      console.error("Could not finalize outbound relationship usage reservation", { errorType: error instanceof Error ? error.name : typeof error });
+    });
     return completed;
   } catch (error) {
     const classified = adapter.classifyError(error);
@@ -720,6 +755,7 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       });
       return [updatedJob];
     });
+    if (!retryable) await releaseRelationshipUsage({ businessId: claimed.businessId, idempotencyKey: `message.outbound:${action.idempotencyKey}` }).catch(() => undefined);
     return failed;
   }
 }

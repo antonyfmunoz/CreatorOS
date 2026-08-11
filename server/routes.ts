@@ -102,7 +102,12 @@ import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { relationshipRoomContext } from "./relationship-room-context";
-import { assertRelationshipUsageAvailable, recordRelationshipUsage, RelationshipQuotaError } from "./relationship-operations";
+import {
+  finalizeRelationshipUsage,
+  releaseRelationshipUsage,
+  reserveRelationshipUsage,
+  RelationshipQuotaError,
+} from "./relationship-operations";
 import { syncLegacyNativeConversation } from "./relationship-native-sync";
 import upload from "./upload";
 import path from "path";
@@ -6998,6 +7003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     attachUser,
     async (req, res) => {
       let sessionId: string | null = null;
+      let relationshipUsageBusinessId: string | null = null;
       try {
         const access = await roomAccess(req.params.id, req.dbUser!.id);
         if (!access.ok)
@@ -7062,11 +7068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: "That AI mode is not enabled by the room policy",
             });
           boundRelationshipContext = await relationshipRoomContext(access.room.id);
-          if (boundRelationshipContext) await assertRelationshipUsageAvailable({
-            businessId: boundRelationshipContext.businessId,
-            metric: "realtime.minute",
-            quantity: 1,
-          });
+          relationshipUsageBusinessId = boundRelationshipContext?.businessId ?? null;
         }
         const coverage = await participantConsentCoverage(
           access.room,
@@ -7099,6 +7101,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (existing)
           return res.status(409).json({ message: "That room service is already active" });
         sessionId = crypto.randomUUID();
+        if (relationshipUsageBusinessId) await reserveRelationshipUsage({
+          businessId: relationshipUsageBusinessId,
+          metric: "realtime.minute",
+          quantity: 1,
+          sourceType: "community_room_agent_session",
+          sourceId: sessionId,
+          idempotencyKey: `realtime.minute:${sessionId}`,
+          expiresInMs: 24 * 60 * 60_000,
+        });
         const [session] = await db
           .insert(communityRoomAgentSessions)
           .values({
@@ -7172,6 +7183,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(activeSession);
       } catch (error) {
         console.error("Could not start room agent:", error);
+        if (sessionId && relationshipUsageBusinessId)
+          await releaseRelationshipUsage({ businessId: relationshipUsageBusinessId, idempotencyKey: `realtime.minute:${sessionId}` }).catch(() => undefined);
         if (sessionId)
           await db
             .update(communityRoomAgentSessions)
@@ -7235,17 +7248,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .returning();
         if (session.kind === "realtime_ai" && session.startedAt) {
           const context = await relationshipRoomContext(access.room.id);
-          if (context) await recordRelationshipUsage({
+          if (context) await finalizeRelationshipUsage({
             businessId: context.businessId,
-            metric: "realtime.minute",
             quantity: Math.max(1, Math.ceil((now.getTime() - session.startedAt.getTime()) / 60_000)),
             provider: "livekit_agents",
-            sourceType: "community_room_agent_session",
-            sourceId: session.id,
             idempotencyKey: `realtime.minute:${session.id}`,
             occurredAt: now,
             metadata: { roomId: access.room.id, relationshipId: context.relationship.id, profileId: session.agentProfileId },
-          }).catch((error) => console.error("Could not meter relationship realtime session", { errorType: error instanceof Error ? error.name : typeof error }));
+          }).catch((error) => console.error("Could not finalize relationship realtime usage", { errorType: error instanceof Error ? error.name : typeof error }));
         }
         const [otherActive] = await db
           .select({ count: count(communityRoomAgentSessions.id) })

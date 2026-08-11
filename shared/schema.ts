@@ -1330,6 +1330,44 @@ export const relationshipUsageLedger = pgTable(
   }),
 );
 
+// Short-lived quota reservations close the gap between checking capacity and
+// completing provider work. Active reservations count against the tenant's
+// allowance; they are finalized into the immutable usage ledger or released
+// after a failed/expired operation.
+export const relationshipUsageReservations = pgTable(
+  "relationship_usage_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    metric: text("metric").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    status: text("status").notNull().default("reserved"),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    finalizedAt: timestamp("finalized_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessKeyUnique: unique("relationship_usage_reservation_business_key_unique").on(
+      table.businessId,
+      table.idempotencyKey,
+    ),
+    activeCapacityIdx: index("relationship_usage_reservation_capacity_idx").on(
+      table.businessId,
+      table.periodStart,
+      table.metric,
+      table.status,
+      table.expiresAt,
+    ),
+  }),
+);
+
 export const relationshipOperationalAlerts = pgTable(
   "relationship_operational_alerts",
   {
@@ -4071,6 +4109,7 @@ export type RelationshipVoiceGenerationJob =
 export type RelationshipAuditEvent = typeof relationshipAuditEvents.$inferSelect;
 export type RelationshipTenantPolicy = typeof relationshipTenantPolicies.$inferSelect;
 export type RelationshipUsageLedgerEntry = typeof relationshipUsageLedger.$inferSelect;
+export type RelationshipUsageReservation = typeof relationshipUsageReservations.$inferSelect;
 export type RelationshipOperationalAlert = typeof relationshipOperationalAlerts.$inferSelect;
 export type RelationshipRoomBinding = typeof relationshipRoomBindings.$inferSelect;
 

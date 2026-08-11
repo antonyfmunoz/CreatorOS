@@ -53,6 +53,7 @@ const requiredTables = [
   "relationship_audit_events",
   "relationship_tenant_policies",
   "relationship_usage_ledger",
+  "relationship_usage_reservations",
   "relationship_operational_alerts",
   "relationship_room_bindings",
 ];

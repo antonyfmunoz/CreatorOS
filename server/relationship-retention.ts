@@ -8,6 +8,7 @@ import {
   relationshipProviderEvents,
   relationshipTenantPolicies,
   relationshipUsageLedger,
+  relationshipUsageReservations,
   relationshipVoiceGenerationJobs,
 } from "../shared/schema";
 import { removeStoredAsset } from "./asset-storage";
@@ -38,6 +39,7 @@ export async function cleanupRelationshipHubRetention() {
   )).returning({ id: relationshipProviderEvents.id });
   const removedAudits = await db.delete(relationshipAuditEvents).where(sql`${relationshipAuditEvents.createdAt} < now() - (coalesce((select ${relationshipTenantPolicies.auditRetentionDays} from ${relationshipTenantPolicies} where ${relationshipTenantPolicies.businessId} = ${relationshipAuditEvents.businessId}), ${auditDays}) * interval '1 day')`).returning({ id: relationshipAuditEvents.id });
   const removedUsage = await db.delete(relationshipUsageLedger).where(lt(relationshipUsageLedger.createdAt, daysAgo(2_555))).returning({ id: relationshipUsageLedger.id });
+  const releasedReservations = await db.update(relationshipUsageReservations).set({ status: "released", finalizedAt: now, updatedAt: now }).where(and(eq(relationshipUsageReservations.status, "reserved"), lt(relationshipUsageReservations.expiresAt, now))).returning({ id: relationshipUsageReservations.id });
   const removedAlerts = await db.delete(relationshipOperationalAlerts).where(and(eq(relationshipOperationalAlerts.status, "resolved"), lt(relationshipOperationalAlerts.resolvedAt, daysAgo(365)))).returning({ id: relationshipOperationalAlerts.id });
-  return { voiceAssetsRemoved, expiredSuggestions: expiredSuggestions.length, expiredMemories: expiredMemories.length, redactedProviderEvents: redactedEvents.length, removedAuditEvents: removedAudits.length, removedUsageEntries: removedUsage.length, removedOperationalAlerts: removedAlerts.length };
+  return { voiceAssetsRemoved, expiredSuggestions: expiredSuggestions.length, expiredMemories: expiredMemories.length, redactedProviderEvents: redactedEvents.length, removedAuditEvents: removedAudits.length, removedUsageEntries: removedUsage.length, releasedUsageReservations: releasedReservations.length, removedOperationalAlerts: removedAlerts.length };
 }
