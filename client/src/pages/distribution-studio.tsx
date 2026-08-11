@@ -124,6 +124,16 @@ export default function DistributionStudio() {
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
     },
   });
+  const changeQueueJob = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "retry" | "cancel" }) =>
+      (await apiRequest("POST", `/api/distribution-jobs/${id}/${action}`)).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/distribution-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Queue update failed", description: error.message, variant: "destructive" }),
+  });
 
   const uploadLibraryAsset = async (file: File | undefined) => {
     if (!file) return;
@@ -636,6 +646,15 @@ export default function DistributionStudio() {
                         ),
                       )}
                     </div>
+                  )}
+                  {new Set(["needs_connection", "needs_provider", "failed", "canceled"]).has(job.status) && (
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" variant="outline" className="border-zinc-700 bg-black text-white hover:bg-zinc-900 hover:text-white" disabled={changeQueueJob.isPending} onClick={() => changeQueueJob.mutate({ id: job.id, action: "retry" })}>Retry</Button>
+                      {job.status !== "canceled" && <Button size="sm" variant="ghost" className="text-zinc-400 hover:bg-zinc-900 hover:text-white" disabled={changeQueueJob.isPending} onClick={() => changeQueueJob.mutate({ id: job.id, action: "cancel" })}>Cancel</Button>}
+                    </div>
+                  )}
+                  {job.status === "scheduled" && (
+                    <Button size="sm" variant="ghost" className="mt-3 text-zinc-400 hover:bg-zinc-900 hover:text-white" disabled={changeQueueJob.isPending} onClick={() => changeQueueJob.mutate({ id: job.id, action: "cancel" })}>Cancel scheduled post</Button>
                   )}
                 </article>
               ))}

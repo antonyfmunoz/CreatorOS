@@ -1,5 +1,6 @@
 param(
-  [string[]]$PlaywrightArgs = @()
+  [string[]]$PlaywrightArgs = @(),
+  [string]$Grep = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,7 @@ $qualificationLog = Join-Path $qualificationPath "postgres.log"
 $qualificationPort = Get-Random -Minimum 56000 -Maximum 56999
 $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
+$priorUploadDirectory = $env:CREATOROS_UPLOAD_DIR
 $postgresStarted = $false
 
 if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -30,14 +32,20 @@ try {
 
   $env:DATABASE_URL = "postgresql://postgres@127.0.0.1:$qualificationPort/creativesos_browser"
   $env:QUALIFICATION_ISOLATED_DATABASE = "true"
+  $env:CREATOROS_UPLOAD_DIR = Join-Path $qualificationPath "uploads"
   & node scripts/migrate-qualification.mjs
   if ($LASTEXITCODE -ne 0) { throw "Browser database migration failed" }
-  & npx.cmd playwright test @PlaywrightArgs
+  & npx.cmd tsx scripts/seed-browser-qualification.ts
+  if ($LASTEXITCODE -ne 0) { throw "Browser qualification fixture setup failed" }
+  $playwrightArguments = @($PlaywrightArgs)
+  if ($Grep) { $playwrightArguments += @("--grep", $Grep) }
+  & npx.cmd playwright test @playwrightArguments
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification failed" }
 } finally {
   if ($postgresStarted) { & pg_ctl -D $qualificationPath -m fast -w stop }
   $env:DATABASE_URL = $priorDatabaseUrl
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
+  $env:CREATOROS_UPLOAD_DIR = $priorUploadDirectory
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {

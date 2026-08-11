@@ -160,24 +160,40 @@ export async function processDueDistributionJobs(
         : [];
       let publishedPostId: number | undefined;
       if (platforms.includes("CreativesOS")) {
-        const imageUrl =
-          selectedAssets.find((asset) => asset.kind === "image")?.publicUrl ??
-          "";
-        const videoUrl =
-          selectedAssets.find((asset) => asset.kind === "video")?.publicUrl ??
-          "";
-        const audioUrl =
-          selectedAssets.find((asset) => asset.kind === "audio")?.publicUrl ??
-          "";
-        const publishedPost = await storage.createPost({
-          userId: job.userId,
-          content: job.content,
-          mediaType: nativeMediaType(job.format),
-          imageUrl,
-          videoUrl,
-          audioUrl,
-        });
-        publishedPostId = publishedPost.id;
+        const [existingNativeDelivery] = await db
+          .select({ providerContentId: distributionDeliveryAttempts.providerContentId })
+          .from(distributionDeliveryAttempts)
+          .where(and(
+            eq(distributionDeliveryAttempts.distributionJobId, job.id),
+            eq(distributionDeliveryAttempts.provider, "creativesos"),
+            eq(distributionDeliveryAttempts.status, "published"),
+          ))
+          .limit(1);
+        if (existingNativeDelivery) {
+          const existingPostId = Number(existingNativeDelivery.providerContentId);
+          publishedPostId = Number.isInteger(existingPostId) ? existingPostId : undefined;
+        } else {
+          const imageUrl = selectedAssets.find((asset) => asset.kind === "image")?.publicUrl ?? "";
+          const videoUrl = selectedAssets.find((asset) => asset.kind === "video")?.publicUrl ?? "";
+          const audioUrl = selectedAssets.find((asset) => asset.kind === "audio")?.publicUrl ?? "";
+          const publishedPost = await storage.createPost({
+            userId: job.userId,
+            content: job.content,
+            mediaType: nativeMediaType(job.format),
+            imageUrl,
+            videoUrl,
+            audioUrl,
+          });
+          publishedPostId = publishedPost.id;
+          await persistDeliveryAttempt({
+            distributionJobId: job.id,
+            provider: "creativesos",
+            connectionId: null,
+            status: "published",
+            providerContentId: String(publishedPost.id),
+            incrementAttempt: true,
+          });
+        }
       }
       const connectedAccounts = externalProviders.length
         ? await db

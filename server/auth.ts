@@ -121,7 +121,7 @@ export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
  * Replaces Passport.js local strategy and session middleware.
  */
 export function setupAuth(app: Express) {
-  if (process.env.CREATOROS_DEMO_MODE === "true") {
+  if (usesLocalQualificationIdentity()) {
     app.get("/api/user", attachUser, (req: Request, res: Response) => {
       res.json(req.dbUser);
     });
@@ -179,7 +179,7 @@ export async function attachUser(
   next: NextFunction,
 ) {
   try {
-    if (process.env.CREATOROS_DEMO_MODE === "true") {
+    if (usesLocalQualificationIdentity()) {
       const requestedDemoUser = Number(req.get("x-creativesos-demo-user") ?? 1);
       const demoUserId = Number.isInteger(requestedDemoUser) && requestedDemoUser > 0
         ? requestedDemoUser
@@ -213,4 +213,10 @@ export async function attachUser(
     console.error("Failed to resolve authenticated user:", error);
     res.status(500).json({ message: "Failed to resolve user" });
   }
+}
+
+function usesLocalQualificationIdentity(): boolean {
+  if (process.env.CREATOROS_DEMO_MODE === "true") return true;
+  return process.env.CREATOROS_QUALIFICATION_MODE === "true"
+    && process.env.QUALIFICATION_ISOLATED_DATABASE === "true";
 }

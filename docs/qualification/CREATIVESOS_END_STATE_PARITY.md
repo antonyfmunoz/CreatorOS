@@ -42,25 +42,25 @@ current architecture.
 | Capability | Native implementation target | Current state | Evidence still required |
 | --- | --- | --- | --- |
 | Identity and tenancy | Separate registration/login, Clerk identity binding, business authority, intended-route return | `implemented_unqualified` | Role-based production browser proof for visitor, creator, owner, operator, moderator, buyer and learner |
-| Feed and stories | Every supported text/image/video/story format; mention navigation; reaction/comment/save/repost rules | `implemented_unqualified` | Mutation-and-refresh browser proof, media upload proof, owner/non-owner permission proof |
-| Profiles | Public profile, edit profile, follow graph, clickable/slidable six-tab viewport, private owner data outside public tabs | `implemented_unqualified` | Mobile/desktop interaction, keyboard, overflow and non-owner browser proof |
-| Marketplace discovery | Search/filter, stable product links, save/cart state, creator storefront | `implemented_unqualified` | Search result assertions, product identity regression, persistence and empty/error states |
+| Feed and stories | Every supported text/image/video/story format; mention navigation; reaction/comment/save/repost rules | `verified_complete` | PostgreSQL API lifecycle plus desktop/mobile post, story-media, following and reload journeys pass; external social publishing is tracked under Distribution |
+| Profiles | Public profile, edit profile, follow graph, clickable/slidable six-tab viewport, private owner data outside public tabs | `verified_complete` | Desktop/mobile six-tab navigation, profile-link reload, follow graph and owner/non-owner mutation denial pass |
+| Marketplace discovery | Search/filter, stable product links, save/cart state, creator storefront | `verified_complete` | Desktop/mobile search and empty states plus account-scoped save/cart persistence and stable dynamic-route handling pass |
 | Platform commerce | Order lifecycle, verified payment event, platform fees/revenue, refund/dispute-safe transitions | `provider_pending` | Stripe test-mode checkout/webhook/refund end-to-end evidence |
 | Creator proceeds | Creator-owned Connect onboarding, allocation ledger, payout readiness, separation from platform revenue | `provider_pending` | Connected-account charge/allocation/refund and payout-status production test |
-| Communities | Discover, join gate, free/paid membership, channels, posts, replies, polls, events, owner/moderator controls | `implemented_unqualified` | Full member/moderator/owner browser journey and paid entitlement proof |
+| Communities | Discover, join gate, free/paid membership, channels, posts, replies, polls, events, owner/moderator controls | `verified_complete` | Join gate, member/owner/moderator authorization, channel access, search/context actions and course-entitlement auto-membership pass |
 | Realtime conference rooms | Join/leave, attendance, consent, recording, transcript lineage, notes/actions, participant intelligence | `provider_pending` | LiveKit worker and live room recording/transcription/realtime-agent proof |
 | Role-scoped meeting AI | Explicit role admission, bounded guest context, reviewable suggestions, stop budgets, live AI participation | `provider_pending` | Realtime AI and model-provider round trip; role/consent enforcement browser proof |
-| Learning | Course creation, entitlement, lesson progress, assessment, completion and unlock rules | `implemented_unqualified` | Creator/learner end-to-end browser proof and entitlement denial proof |
-| Business workspace | Campaigns, offers, courses, contacts, documents, revenue and performance | `implemented_unqualified` | Owner/operator create-edit-refresh journeys and cross-tenant denial tests |
-| Distribution | Provider-neutral drafts, scheduling/queueing, attempts, retry/cancel, immutable delivery evidence | `implemented_unqualified` | Native queue lifecycle browser proof; each external channel remains separately gated |
-| Relationship Hub | Canonical unified inbox, native DM bridge, CRM timeline, consent, assignment, tasks, notes, tags and merge review | `implemented_unqualified` | Authenticated native field test across every operation and tenant-boundary denial |
-| ManyChat-style automation | Comment/DM keyword triggers, matching modes, cooldown, opt-out, approval, retry and receipts | `implemented_unqualified` | UI authoring/activation/run/retry browser proof across native comment and DM events |
+| Learning | Course creation, entitlement, lesson progress, assessment, completion and unlock rules | `verified_complete` | Owner/learner curriculum, answer redaction, failed/passed assessment, progress, denial and community unlock pass on both qualification actors |
+| Business workspace | Campaigns, offers, courses, contacts, documents, revenue and performance | `verified_complete` | Campaign, deliverable, metric, draft, contact and document create/edit/read lifecycles plus cross-tenant denial pass |
+| Distribution | Provider-neutral drafts, scheduling/queueing, attempts, retry/cancel, immutable delivery evidence | `verified_complete` (native); `provider_pending` (external) | Native scheduling, cancellation, retry and exactly-once receipts pass; mixed jobs remain honestly `needs_connection`; each external channel still needs its own live round trip |
+| Relationship Hub | Canonical unified inbox, native DM bridge, CRM timeline, consent, assignment, tasks, notes, tags and merge review | `verified_complete` (native) | Native direct/group UI reload, tenant isolation, every CRM operation, quotas, retention and privacy context pass; external channel adapters remain provider gates |
+| ManyChat-style automation | Comment/DM keyword triggers, matching modes, cooldown, opt-out, approval, retry and receipts | `verified_complete` (native) | UI authoring/activation/execution/activity and native comment/DM triggers, public reply, cooldown/idempotency, opt-out, approval, retry and receipts pass |
 | AI relationship copilot | Governed suggestions, evidence citations, injection boundary, human review and execution re-check | `provider_pending` | Native review/state proof plus model-provider inference round trip |
 | Cloned voice | Attestation, consent, exact-script approval, disclosure, private artifact lifecycle and revocation | `provider_pending` | Voice-provider enrollment/generation/delivery/revocation/deletion proof |
-| Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `implemented_unqualified` | Reporter/moderator/owner browser journeys and unauthorized denial assertions |
-| Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `implemented_unqualified` | Browser export/delete journey, artifact inspection and scheduled-expiry proof |
+| Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
+| Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
 | Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v209 production readiness, security and capacity probes pass; repeat after every release |
-| Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `implemented_unqualified` | Projection-side browser/API approval proof and paired round trip |
+| Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
 
@@ -90,12 +90,12 @@ styling:
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
 - [x] Empty PostgreSQL migration and v209 production migration/release-command parity pass.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
-- [ ] Browser journeys cover every capability and every material role transition above.
-- [ ] Browser assertions prove mutations persisted after a reload, not only that controls were clickable.
+- [x] The 60-journey isolated PostgreSQL browser matrix covers every provider-independent capability and material local role transition above on mobile and desktop.
+- [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
 - [x] Production field tests repeat the safe signed-in settings, profile, marketplace/product, community and Relationship Hub journeys against v209; role-changing and provider journeys remain explicitly gated below.
-- [ ] Provider-disabled states are honest and cannot create inconsistent native data.
+- [x] Provider-disabled states are honest: mixed native/external distribution remains `needs_connection`, retries preserve one native receipt, and unconfigured realtime/AI/channel surfaces fail closed.
 - [ ] Provider credentials, legal publication, UMH-side pairing and irreversible production actions remain explicit handoff gates.
 
 ## External activation register

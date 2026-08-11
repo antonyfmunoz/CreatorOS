@@ -2296,6 +2296,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.dbUser!.id,
       };
 
+      if (postData.repostOfId !== undefined && postData.repostOfId !== null) {
+        const sourceId = Number(postData.repostOfId);
+        if (!Number.isInteger(sourceId) || sourceId <= 0) {
+          return res.status(400).json({ message: "A valid original post is required" });
+        }
+        const source = await storage.getPostById(sourceId);
+        if (!source) return res.status(404).json({ message: "Original post not found" });
+        if (source.repostOfId !== null && source.repostOfId !== undefined) {
+          return res.status(409).json({ message: "A repost cannot be reposted again" });
+        }
+        const existingRepost = (await storage.getPostsByUserId(req.dbUser!.id))
+          .some((candidate) => candidate.repostOfId === sourceId);
+        if (existingRepost) {
+          return res.status(409).json({ message: "You already reposted this post" });
+        }
+      }
+
       const post = await storage.createPost(postData);
       if (poll && process.env.CREATOROS_DEMO_MODE !== "true") {
         try {
@@ -2870,6 +2887,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!parent || parent.postId !== post.id) throw new Error("Comment reply does not belong to this post");
         }
         const [comment] = await tx.insert(comments).values(parsed.data).returning();
+        await tx
+          .update(posts)
+          .set({ comments: sql`${posts.comments} + 1` })
+          .where(eq(posts.id, post.id));
         if (post.userId !== req.dbUser!.id) {
           await tx.insert(automationTriggerEvents).values({
             ownerUserId: post.userId,
@@ -5122,6 +5143,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Failed to create distribution job:", error);
       res.status(500).json({ message: "Failed to create distribution job" });
     }
+  });
+
+  app.post("/api/distribution-jobs/:id/cancel", attachUser, async (req, res) => {
+    const [job] = await db.select().from(distributionJobs).where(and(
+      eq(distributionJobs.id, req.params.id),
+      eq(distributionJobs.userId, req.dbUser!.id),
+    )).limit(1);
+    if (!job) return res.status(404).json({ message: "Distribution job not found" });
+    if (!new Set(["scheduled", "needs_connection", "needs_provider", "failed"]).has(job.status))
+      return res.status(409).json({ message: "This distribution job can no longer be canceled" });
+    const [canceled] = await db.update(distributionJobs)
+      .set({ status: "canceled", updatedAt: new Date() })
+      .where(and(eq(distributionJobs.id, job.id), eq(distributionJobs.status, job.status)))
+      .returning();
+    if (!canceled) return res.status(409).json({ message: "Distribution job changed before it could be canceled" });
+    res.json(canceled);
+  });
+
+  app.post("/api/distribution-jobs/:id/retry", attachUser, async (req, res) => {
+    const [job] = await db.select().from(distributionJobs).where(and(
+      eq(distributionJobs.id, req.params.id),
+      eq(distributionJobs.userId, req.dbUser!.id),
+    )).limit(1);
+    if (!job) return res.status(404).json({ message: "Distribution job not found" });
+    if (!new Set(["needs_connection", "needs_provider", "failed", "canceled"]).has(job.status))
+      return res.status(409).json({ message: "This distribution job is not retryable" });
+    const [queued] = await db.update(distributionJobs)
+      .set({ status: "scheduled", scheduledFor: new Date(), updatedAt: new Date() })
+      .where(and(eq(distributionJobs.id, job.id), eq(distributionJobs.status, job.status)))
+      .returning();
+    if (!queued) return res.status(409).json({ message: "Distribution job changed before it could be retried" });
+    await processDueDistributionJobs();
+    const [processed] = await db.select().from(distributionJobs).where(eq(distributionJobs.id, job.id)).limit(1);
+    res.json(processed ?? queued);
   });
 
   app.get("/api/cart", attachUser, async (req, res) => {
@@ -9272,40 +9327,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "All user IDs must be numbers" });
       }
 
-      // If this is a direct message (only 2 users and no name), check if conversation already exists
+      // Direct-message creation is serialized by the participant pair. Without
+      // the database lock, two devices opening the same chat at once can both
+      // pass the read-before-write check and create duplicate inbox threads.
       if (userIds.length === 2 && !name && !isGroup) {
-        // Get all conversations for the first user
-        const userConversations = await storage.getConversationsByUserId(
-          userIds[0],
-        );
-
-        // Find any direct (non-group) conversation that contains both users
-        let existingConversation = null;
-
-        // We can't use .find() with async functions directly, so we need to loop
-        for (const conv of userConversations) {
-          if (conv.isGroup) continue;
-
-          // Get all participants for this conversation - this is an async call
-          const participants = await storage.getParticipantsByConversationId(
-            conv.id,
-          );
-          const participantIds = participants.map((p) => p.userId);
-
-          // Check if both users are participants
-          if (
-            participantIds.includes(userIds[0]) &&
-            participantIds.includes(userIds[1])
-          ) {
-            existingConversation = conv;
-            break;
+        const pair = Array.from(new Set<number>(userIds)).sort((a, b) => a - b);
+        if (pair.length !== 2) return res.status(400).json({ message: "A direct message requires two different users" });
+        const result = await db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`native-dm:${pair[0]}:${pair[1]}`}, 0))`);
+          const userConversations = await storage.getConversationsByUserId(pair[0]);
+          for (const conversation of userConversations) {
+            if (conversation.isGroup) continue;
+            const participants = await storage.getParticipantsByConversationId(conversation.id);
+            const participantIds = participants.map((participant) => participant.userId).sort((a, b) => a - b);
+            if (participantIds.length === 2 && participantIds[0] === pair[0] && participantIds[1] === pair[1]) {
+              return { conversation, created: false };
+            }
           }
-        }
-
-        if (existingConversation) {
-          console.log("Found existing conversation:", existingConversation.id);
-          return res.status(200).json(existingConversation);
-        }
+          const conversation = await storage.createConversation(pair, undefined, false);
+          for (const userId of pair) await storage.addParticipantToConversation(conversation.id, userId);
+          return { conversation, created: true };
+        });
+        const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
+        await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: result.conversation.id, currentUserId: req.dbUser!.id });
+        return res.status(result.created ? 201 : 200).json(result.conversation);
       }
 
       // If no existing conversation or this is a group chat, create a new one

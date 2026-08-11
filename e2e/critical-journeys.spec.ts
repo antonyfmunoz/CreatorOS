@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { resolve } from "node:path";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 function watchRuntime(page: Page) {
   const errors: string[] = [];
@@ -167,6 +168,126 @@ test("a text post persists after publishing and reload", async ({ page }, testIn
   await page.reload();
   await expect(page.getByText(content, { exact: true })).toBeVisible();
   expect(failures).toEqual([]);
+});
+
+test("the empty story affordance creates a media story that survives reload", async ({ page }, testInfo) => {
+  const failures = watchServerFailures(page);
+  const owner = testInfo.project.name.startsWith("mobile") ? 1 : 2;
+  const existingStories = await page.request.get(`/api/users/${owner}/stories`, { headers: { "x-creativesos-demo-user": String(owner) } });
+  for (const story of await existingStories.json() as Array<{ id: number }>) {
+    const removed = await page.request.delete(`/api/stories/${story.id}`, { headers: { "x-creativesos-demo-user": String(owner) } });
+    expect(removed.ok()).toBeTruthy();
+  }
+  const caption = `Story field test ${testInfo.project.name} ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create a story" }).click();
+  await expect(page.getByRole("heading", { name: "Add to Your Story" })).toBeVisible();
+  await page.locator('input[type="file"][accept="image/*,video/*"]').setInputFiles(
+    resolve(process.cwd(), "attached_assets/stitch_creatoros/stitch_creatoros/community_chat_context_menu_cleaned/screen.png"),
+  );
+  await page.getByPlaceholder("Write a caption...").fill(caption);
+  const created = page.waitForResponse((response) => response.url().endsWith("/api/stories") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  expect((await created).status()).toBe(201);
+  await expect(page.getByRole("button", { name: "View your story" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "View your story" })).toBeVisible();
+  const stories = await page.request.get("/api/stories");
+  expect(stories.ok()).toBeTruthy();
+  expect((await stories.json()).some((story: { caption?: string }) => story.caption === caption)).toBeTruthy();
+  expect(failures).toEqual([]);
+});
+
+test("Following feed selection reflects follow and unfollow after refresh", async ({ page }, testInfo: TestInfo) => {
+  const owner = testInfo.project.name.startsWith("mobile") ? 1 : 2;
+  const peer = owner === 1 ? 2 : 1;
+  const marker = `Following field test ${testInfo.project.name} ${Date.now()}`;
+  const peerPost = await page.request.post("/api/posts", { data: { content: marker, mediaType: "text" }, headers: { "x-creativesos-demo-user": String(peer) } });
+  expect(peerPost.ok()).toBeTruthy();
+  const followed = await page.request.post(`/api/users/${peer}/follow`, { headers: { "x-creativesos-demo-user": String(owner) } });
+  expect(followed.ok()).toBeTruthy();
+  await page.goto("/");
+  const following = page.getByRole("button", { name: "Following", exact: true });
+  await following.click();
+  await expect(page.getByText(marker, { exact: true })).toBeVisible();
+  const unfollowed = await page.request.post(`/api/users/${peer}/unfollow`, { headers: { "x-creativesos-demo-user": String(owner) } });
+  expect(unfollowed.ok()).toBeTruthy();
+  await page.reload();
+  await page.getByRole("button", { name: "Following", exact: true }).click();
+  await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Start following creators to see posts in your feed")).toBeVisible();
+});
+
+test("automation authoring, activation, execution and activity persist through the UI", async ({ page }) => {
+  const failures = watchServerFailures(page);
+  await page.goto("/automations");
+  const template = page.locator("article").filter({ hasText: "Content brief to draft" });
+  await expect(template).toBeVisible();
+  const created = page.waitForResponse((response) => response.url().includes("/api/automations/from-template/content-brief-to-draft") && response.request().method() === "POST");
+  await template.getByRole("button", { name: "Use playbook" }).click();
+  const definition = await (await created).json();
+  const activated = page.waitForResponse((response) => response.url().endsWith(`/api/automations/${definition.id}`) && response.request().method() === "PATCH");
+  await page.getByRole("button", { name: "Activate", exact: true }).click();
+  expect((await activated).ok()).toBeTruthy();
+  await page.getByPlaceholder(/Give this run a brief/).fill("Qualified launch update");
+  const started = page.waitForResponse((response) => response.url().endsWith(`/api/automations/${definition.id}/run`) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Run automation" }).click();
+  const run = await (await started).json();
+  await expect.poll(async () => {
+    const response = await page.request.get(`/api/automations/runs/${run.id}`);
+    return (await response.json()).status;
+  }, { timeout: 20_000 }).toBe("succeeded");
+  await page.reload();
+  await page.getByRole("button", { name: "activity", exact: true }).click();
+  await expect(page.getByText("Content brief to draft", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("succeeded", { exact: true }).last()).toBeVisible();
+  expect(failures).toEqual([]);
+});
+
+test("native group chat can be assembled, messaged and reopened from the UI", async ({ page }, testInfo) => {
+  const peerUsername = testInfo.project.name.startsWith("mobile") ? "sarahmitchell" : "owner";
+  const peerName = testInfo.project.name.startsWith("mobile") ? "Sarah Mitchell" : "Owner Creative";
+  const groupName = `Field group ${testInfo.project.name} ${Date.now()}`;
+  const message = `Persisted group message ${Date.now()}`;
+  await page.goto("/messages");
+  await page.getByRole("button", { name: "Start or manage native chats" }).click();
+  await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
+  await page.getByRole("button", { name: "Create group chat" }).click();
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByPlaceholder("Search by username").fill(peerUsername);
+  await expect(page.getByText(peerName, { exact: true })).toBeVisible();
+  await page.getByText(`@${peerUsername}`, { exact: true }).click();
+  await page.getByRole("button", { name: "Create Group Chat", exact: true }).click();
+  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+  await page.getByPlaceholder("Type a message...").fill(message);
+  await page.getByPlaceholder("Type a message...").press("Enter");
+  await expect(page.getByText(message, { exact: true })).toBeVisible();
+  await page.reload();
+  if (testInfo.project.name.startsWith("mobile")) {
+    const back = page.getByRole("button", { name: "Back to conversations" });
+    if (await back.isVisible()) await back.click();
+  }
+  await page.getByRole("button", { name: "Start or manage native chats" }).click();
+  await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
+  await expect(page.getByText(groupName, { exact: true })).toBeVisible();
+  await page.getByText(groupName, { exact: true }).click();
+  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+  await expect(page.getByText(message, { exact: true })).toBeVisible();
+});
+
+test("notification mark-all state persists after reload", async ({ page }, testInfo) => {
+  const owner = testInfo.project.name.startsWith("mobile") ? 1 : 2;
+  const marker = `Unread field notification ${testInfo.project.name} ${Date.now()}`;
+  const created = await page.request.post("/api/notifications", { data: { type: "system", message: marker }, headers: { "x-creativesos-demo-user": String(owner) } });
+  expect(created.ok()).toBeTruthy();
+  await page.goto("/notifications");
+  await expect(page.getByRole("button", { name: new RegExp(marker) }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Mark all read" }).click();
+  await expect(page.getByRole("button", { name: "Mark all read" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mark all read" })).toHaveCount(0);
+  const notifications = await page.request.get(`/api/users/${owner}/notifications`);
+  expect((await notifications.json()).find((item: { message: string }) => item.message === marker)?.read).toBe(true);
 });
 
 test("profile links can be edited and persist after reload", async ({ page }, testInfo) => {

@@ -65,6 +65,8 @@ const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
+const QUALIFICATION_MODE = import.meta.env.VITE_CREATOROS_QUALIFICATION_MODE === "true";
+const LOCAL_IDENTITY_MODE = DEMO_MODE || QUALIFICATION_MODE;
 
 function recoverFromStaleBuild(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -98,7 +100,7 @@ window.addEventListener("vite:preloadError", (event) => {
   if (recoverFromStaleBuild(preloadEvent.payload)) preloadEvent.preventDefault();
 });
 
-if (!DEMO_MODE && !CLERK_PUBLISHABLE_KEY) {
+if (!LOCAL_IDENTITY_MODE && !CLERK_PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
 }
 
@@ -145,7 +147,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/login" component={LoginRoute} />
       <Route path="/register" component={LegacyRegisterRoute} />
-      <Route path="/logout" component={DEMO_MODE ? DemoLogoutRoute : LogoutRoute} />
+      <Route path="/logout" component={LOCAL_IDENTITY_MODE ? DemoLogoutRoute : LogoutRoute} />
       <Route path="/trust" component={TrustCenterPage} />
       <Route path="/legal/data-deletion" component={TrustPolicyPage} />
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
@@ -237,7 +239,7 @@ function AppContent() {
 }
 
 function App() {
-  if (DEMO_MODE) {
+  if (LOCAL_IDENTITY_MODE) {
     return (
       <QueryClientProvider client={queryClient}>
         <DemoAuthProvider>

@@ -48,25 +48,29 @@ const Toast: React.FC<ToastProps> = ({ notification, onClose }) => {
   
   return (
     <div 
-      className="p-4 bg-white dark:bg-gray-900 rounded-lg shadow-md"
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
+      className="rounded-lg bg-[#09090b] p-4 text-white shadow-md"
+      role="status"
     >
       <div className="flex items-start justify-between">
-        <div className="flex gap-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d9bf0]"
+          onClick={handleClick}
+          aria-label={`Open notification: ${notification.message}`}
+        >
           <div className="mt-0.5">
             {getIconByType(notification.type)}
           </div>
           <div>
             <p className="text-sm font-medium">{notification.message}</p>
-            <p className="text-xs text-muted-foreground mt-1">{formattedDate}</p>
+            <p className="mt-1 text-xs text-zinc-400">{formattedDate}</p>
           </div>
-        </div>
+        </button>
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7 -mt-1 -mr-1"
+          aria-label="Dismiss notification"
           onClick={(e) => {
             e.stopPropagation();
             onClose();

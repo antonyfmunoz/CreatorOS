@@ -13,6 +13,9 @@ import { scheduleXRelationshipTokenRefresh } from "./relationship-x-oauth";
 import { apiRateLimiter, sameOriginMutationGuard, securityHeaders } from "./security";
 
 const app = express();
+if (process.env.CREATOROS_QUALIFICATION_MODE === "true" && process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
+  throw new Error("CREATOROS_QUALIFICATION_MODE requires QUALIFICATION_ISOLATED_DATABASE=true");
+}
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(securityHeaders);
@@ -27,7 +30,10 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+const uploadDirectory = process.env.CREATOROS_UPLOAD_DIR
+  ? path.resolve(process.env.CREATOROS_UPLOAD_DIR)
+  : path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadDirectory, {
   fallthrough: false,
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -85,8 +91,8 @@ app.use((req, res, next) => {
     // Demo mode is intentionally self-contained. Starting any database- or
     // provider-backed worker here makes local browser qualification depend on
     // ambient credentials and can mutate a developer's real environment.
-    if (process.env.CREATOROS_DEMO_MODE === "true") {
-      log("demo mode: background workers disabled");
+    if (process.env.CREATOROS_DEMO_MODE === "true" || process.env.CREATOROS_QUALIFICATION_MODE === "true") {
+      log("local qualification mode: background workers disabled");
       return;
     }
 

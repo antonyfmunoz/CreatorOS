@@ -13,7 +13,8 @@ export type DistributionJob = {
     | "published"
     | "needs_connection"
     | "needs_provider"
-    | "failed";
+    | "failed"
+    | "canceled";
   createdAt: string;
   deliveries?: DistributionDelivery[];
 };

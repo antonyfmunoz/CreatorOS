@@ -4,7 +4,9 @@ import fs from 'fs';
 import { Request } from 'express';
 
 // Ensure uploads directory exists
-const uploadDir = path.join(process.cwd(), 'uploads');
+const uploadDir = process.env.CREATOROS_UPLOAD_DIR
+  ? path.resolve(process.env.CREATOROS_UPLOAD_DIR)
+  : path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
