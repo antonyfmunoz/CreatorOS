@@ -14,6 +14,7 @@ primary_region = "iad"
   NODE_ENV = "production"
   PORT = "3000"
   PUBLIC_APP_URL = "https://creativesos.net"
+  META_GRAPH_API_VERSION = "v25.0"
   # Clerk runtime keys are managed as Fly secrets. The public key is supplied
   # to Vite as an ephemeral deployment build argument, never committed here.
 

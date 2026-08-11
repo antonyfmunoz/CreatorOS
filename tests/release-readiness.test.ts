@@ -23,7 +23,7 @@ const liveEnvironment = {
   ELEVENLABS_API_KEY: "elevenlabs-key",
   INSTAGRAM_APP_ID: "instagram-app",
   INSTAGRAM_APP_SECRET: "instagram-secret",
-  META_GRAPH_API_VERSION: "v24.0",
+  META_GRAPH_API_VERSION: "v25.0",
   RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN: "webhook-token",
   SOCIAL_TOKEN_ENCRYPTION_KEY: "encryption-key",
 };

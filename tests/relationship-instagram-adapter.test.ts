@@ -24,7 +24,7 @@ describe("Instagram Relationship Hub configuration", () => {
     Object.assign(process.env, {
       INSTAGRAM_APP_ID: "app",
       INSTAGRAM_APP_SECRET: "secret",
-      META_GRAPH_API_VERSION: "v24.0",
+      META_GRAPH_API_VERSION: "v25.0",
       RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN: "relationship-webhook-token",
       SOCIAL_TOKEN_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
       PUBLIC_APP_URL: "https://creativesos.net",

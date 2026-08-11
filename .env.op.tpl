@@ -38,7 +38,7 @@ ASSET_STORAGE_PROVIDER=local
 # has the approved messaging/comment permissions.
 # INSTAGRAM_APP_ID=op://CreativesOS/Development/INSTAGRAM_APP_ID
 # INSTAGRAM_APP_SECRET=op://CreativesOS/Development/INSTAGRAM_APP_SECRET
-# META_GRAPH_API_VERSION=v24.0
+# META_GRAPH_API_VERSION=v25.0
 # RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN=op://CreativesOS/Development/RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN
 # ELEVENLABS_API_KEY=op://CreativesOS/Development/ELEVENLABS_API_KEY
 # Relationship payloads are minimized after 30 days by default; durable audit
