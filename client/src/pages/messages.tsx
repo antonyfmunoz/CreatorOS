@@ -312,6 +312,10 @@ export default function MessagesPage() {
     queryKey: [`/api/relationship-hub/relationships/${detail.data?.relationship?.id}/timeline`],
     enabled: Boolean(detail.data?.relationship?.id && timelineOpen),
   });
+  const invalidateRelationshipTimeline = () => {
+    const relationshipId = detail.data?.relationship?.id;
+    if (relationshipId) void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/relationships/${relationshipId}/timeline`] });
+  };
 
   const sendMessage = useMutation({
     mutationFn: async () => {
@@ -323,6 +327,7 @@ export default function MessagesPage() {
       setComposer("");
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations/${selectedId}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations${businessQuery}`] });
+      invalidateRelationshipTimeline();
     },
     onError: (error) => toast({ title: "Message not sent", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
@@ -346,6 +351,7 @@ export default function MessagesPage() {
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations/${selectedId}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations${businessQuery}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/summary${businessQuery}`] });
+      invalidateRelationshipTimeline();
       toast({ title: "Suggestions ready", description: "Every recommendation remains reviewable before it changes anything." });
     },
     onError: (error) => toast({ title: "AI assistant unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
@@ -357,6 +363,7 @@ export default function MessagesPage() {
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations/${selectedId}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations${businessQuery}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/summary${businessQuery}`] });
+      invalidateRelationshipTimeline();
     },
     onError: (error) => toast({ title: "Suggestion not applied", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
@@ -402,27 +409,28 @@ export default function MessagesPage() {
       void relationshipDetail.refetch();
       void detail.refetch();
       void conversations.refetch();
+      invalidateRelationshipTimeline();
     },
   });
 
   const addRelationshipTag = useMutation({
     mutationFn: () => jsonRequest("POST", `/api/relationship-hub/relationships/${detail.data?.relationship?.id}/tags`, { name: tagName }),
-    onSuccess: () => { setTagName(""); void relationshipDetail.refetch(); },
+    onSuccess: () => { setTagName(""); void relationshipDetail.refetch(); invalidateRelationshipTimeline(); },
   });
 
   const removeRelationshipTag = useMutation({
     mutationFn: (tagId: string) => apiRequest("DELETE", `/api/relationship-hub/relationships/${detail.data?.relationship?.id}/tags/${tagId}`),
-    onSuccess: () => void relationshipDetail.refetch(),
+    onSuccess: () => { void relationshipDetail.refetch(); invalidateRelationshipTimeline(); },
   });
 
   const addRelationshipTask = useMutation({
     mutationFn: () => jsonRequest("POST", `/api/relationship-hub/relationships/${detail.data?.relationship?.id}/tasks`, { title: taskTitle, body: "", priority: "normal" }),
-    onSuccess: () => { setTaskTitle(""); void relationshipDetail.refetch(); },
+    onSuccess: () => { setTaskTitle(""); void relationshipDetail.refetch(); invalidateRelationshipTimeline(); },
   });
 
   const completeRelationshipTask = useMutation({
     mutationFn: (taskId: string) => jsonRequest("PATCH", `/api/relationship-hub/tasks/${taskId}`, { status: "completed" }),
-    onSuccess: () => void relationshipDetail.refetch(),
+    onSuccess: () => { void relationshipDetail.refetch(); invalidateRelationshipTimeline(); },
   });
 
   const recordConsent = useMutation({
@@ -435,6 +443,7 @@ export default function MessagesPage() {
       setConsentOpen(false);
       setConsentEvidence("");
       void relationshipDetail.refetch();
+      invalidateRelationshipTimeline();
       toast({ title: "Consent evidence recorded", description: "Automations will use the latest reviewed communication state." });
     },
     onError: (error) => toast({ title: "Consent not recorded", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
@@ -442,7 +451,7 @@ export default function MessagesPage() {
 
   const reviewMemory = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "accept" | "reject" }) => jsonRequest("POST", `/api/relationship-hub/memories/${id}/review`, { decision }),
-    onSuccess: () => void relationshipDetail.refetch(),
+    onSuccess: () => { void relationshipDetail.refetch(); invalidateRelationshipTimeline(); },
     onError: (error) => toast({ title: "Memory not reviewed", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
 
@@ -452,6 +461,7 @@ export default function MessagesPage() {
       void mergeCandidates.refetch();
       void conversations.refetch();
       void relationshipDetail.refetch();
+      invalidateRelationshipTimeline();
     },
     onError: (error) => toast({ title: "Identity review not completed", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
@@ -510,6 +520,7 @@ export default function MessagesPage() {
       setMeetingOpen(false);
       setMeetingRoomId("");
       void relationshipRooms.refetch();
+      invalidateRelationshipTimeline();
       toast({ title: "Meeting linked", description: "The governed room AI can use this relationship timeline as untrusted evidence, subject to room consent and role policy." });
     },
     onError: (error) => toast({ title: "Meeting not linked", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
