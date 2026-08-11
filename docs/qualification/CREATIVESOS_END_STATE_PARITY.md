@@ -59,7 +59,7 @@ current architecture.
 | Cloned voice | Attestation, consent, exact-script approval, disclosure, private artifact lifecycle and revocation | `provider_pending` | Voice-provider enrollment/generation/delivery/revocation/deletion proof |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
-| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v209 production readiness, security and capacity probes pass; repeat after every release |
+| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v211 production readiness, security and capacity probes pass; repeat after every release |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
@@ -88,13 +88,13 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] Empty PostgreSQL migration and v209 production migration/release-command parity pass.
+- [x] Empty PostgreSQL migration and v211 production migration/release-command parity pass.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
-- [x] The 60-journey isolated PostgreSQL browser matrix covers every provider-independent capability and material local role transition above on mobile and desktop.
+- [x] The 62-execution isolated PostgreSQL browser matrix (31 journeys on mobile and desktop) covers every provider-independent capability and material local role transition above.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
-- [x] Production field tests repeat the safe signed-in settings, profile, marketplace/product, community and Relationship Hub journeys against v209; role-changing and provider journeys remain explicitly gated below.
+- [x] Production field tests repeat the safe signed-in feed, profile, marketplace/product, community, Relationship Hub, automation, campaign, distribution, business, earnings, learning, content, settings, privacy, moderation-gate and trust/legal surfaces against v211; role-changing and provider-owned journeys remain explicitly gated below.
 - [x] Provider-disabled states are honest: mixed native/external distribution remains `needs_connection`, retries preserve one native receipt, and unconfigured realtime/AI/channel surfaces fail closed.
 - [ ] Provider credentials, legal publication, UMH-side pairing and irreversible production actions remain explicit handoff gates.
 
