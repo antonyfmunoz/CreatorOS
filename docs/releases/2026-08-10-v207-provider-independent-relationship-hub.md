@@ -43,8 +43,10 @@ round trips remain explicit activation gates at the end of the roadmap.
 - Source commits:
   - `22c94a6` - provider-independent Relationship Hub completion
   - `b8c3bd5` - production-discovered timeline refresh correction
-- Production deployment: Fly release v207, both machines healthy, `/api/ready`
-  reports `release_ready`.
+- Production deployment: Fly release v207 passed health checks on both machines.
+  The final status shows one machine serving with its check passing and one in
+  the app's configured automatic suspend state; `/api/ready` reports
+  `release_ready`.
 - Database: all 59 migrations applied through `1786414200000`; all 45 required
   Relationship Hub tables present.
 - Automated qualification: 52 test files and 159 tests passed; TypeScript and
