@@ -51,6 +51,10 @@ const requiredTables = [
   "relationship_voice_consents",
   "relationship_voice_generation_jobs",
   "relationship_audit_events",
+  "relationship_tenant_policies",
+  "relationship_usage_ledger",
+  "relationship_operational_alerts",
+  "relationship_room_bindings",
 ];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

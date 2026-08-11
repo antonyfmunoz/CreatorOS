@@ -80,6 +80,9 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
     relationshipHub: {
       kernel: "configured",
       nativeInbox: "configured",
+      usageControls: "configured",
+      operationsTelemetry: "configured",
+      realtimeRelationshipContext: realtimeAi ? "configured" : "provider_pending",
       aiCopilot: relationshipAi ? "configured" : "provider_pending",
       clonedVoice: relationshipVoice ? "configured" : "provider_pending",
       instagram: relationshipInstagram ? "configured" : "provider_pending",

@@ -23,6 +23,40 @@ payloads are redacted after `RELATIONSHIP_PROVIDER_PAYLOAD_RETENTION_DAYS`
 (default 30), voice assets expire with their generation jobs, and audit records
 use `RELATIONSHIP_AUDIT_RETENTION_DAYS` (default 365).
 
+## Tenant usage, health, and billing boundary
+
+Every business receives a durable Relationship Hub policy independent of its
+payment processor. The policy controls active connections, monthly outbound
+messages, AI runs, generated voice seconds, realtime relationship-agent
+minutes, and tenant-specific retention. Inbound messages are always accepted
+and metered so a billing limit cannot silently discard customer contact.
+Outbound, AI, voice, and realtime starts fail closed when an enforced allowance
+is exhausted. `monitor` mode records the same evidence without blocking.
+
+Usage is written to an idempotent monthly ledger. Provider delivery failures
+create deduplicated operational alerts, while `/api/relationship-hub/operations`
+returns only business-scoped counts, capacity, and public-safe alert details.
+The Relationship Hub screen exposes this as **Usage & health**. Stripe or a
+future billing service may translate plans into this policy, but cannot become
+the product's source of truth.
+
+## Relationship-aware meetings
+
+A business operator can link a community room they manage to one CRM
+relationship and, optionally, its current conversation. This does not bypass
+the community-room policy. Recording, transcription, and realtime AI still
+require the room to be native/live, the capability to be enabled in advance,
+and every active participant to grant the relevant consent.
+
+When a role-scoped realtime AI participant starts, it receives a bounded
+`creativesos.relationship-room-context.v1` brief: relationship stage and
+summary, plus recent messages only when the binding allows timeline context.
+Private notes are excluded by default. Every customer-authored field is marked
+as untrusted evidence rather than an instruction; protected-trait inference and
+hidden psychoanalysis remain prohibited. Actual realtime minutes are metered
+when the agent session stops and retained room artifacts continue to follow the
+room intelligence policy.
+
 ## Provider activation
 
 ### Instagram
@@ -134,7 +168,8 @@ Before deployment, run the complete test/type/build verification and apply the
 entire migration ledger to an empty PostgreSQL database. Then field-test native
 sync, inbound rendering, outbound exactly-once delivery, notes, tasks, tags,
 assignment, lifecycle state, agent policy, identity merge, secret-safe export,
-anonymous authorization failures, and `/api/ready`.
+usage limits, operations telemetry, relationship-room binding, consent-gated
+context dispatch, anonymous authorization failures, and `/api/ready`.
 
 After deployment, repeat the native and authorization tests against production.
 Provider-specific status remains `provider_pending` until its credentials,

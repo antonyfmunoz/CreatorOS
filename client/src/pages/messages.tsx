@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  AlertTriangle,
   AtSign,
+  BarChart3,
   Bot,
   CheckCheck,
   ChevronDown,
@@ -19,6 +21,7 @@ import {
   Sparkles,
   UserRound,
   Users,
+  Video,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "wouter";
@@ -103,6 +106,16 @@ type RelationshipDetail = Relationship & {
   tasks: Array<{ id: string; title: string; body: string; status: string; priority: string; dueAt?: string | null }>;
   memories: Array<{ id: string; factType: string; value: unknown; status: string; confidence?: number | null }>;
 };
+type OperationsSnapshot = {
+  periodStart: string;
+  capacity: Record<string, { used: number; limit: number }>;
+  connections: Record<string, number>;
+  deliveries: Record<string, number>;
+  providerEvents: Record<string, number>;
+  alerts: Array<{ id: string; severity: string; title: string; detail: string; status: string }>;
+};
+type CommunityRoom = { id: string; communityId: number; title: string; status: string; startsAt: string; provider: string };
+type RelationshipRoomBinding = { id: string; roomId: string; room: CommunityRoom };
 
 const voiceConsentText = "I attest that I own this voice or am the person represented by it, I authorize CreativesOS to generate disclosed voice messages using this profile, and I understand that I can revoke this authorization at any time.";
 
@@ -157,6 +170,9 @@ export default function MessagesPage() {
   const [voiceUseCase, setVoiceUseCase] = useState("relationship_follow_up");
   const [tagName, setTagName] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
+  const [operationsOpen, setOperationsOpen] = useState(false);
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [meetingRoomId, setMeetingRoomId] = useState("");
 
   const businesses = useQuery<Business[]>({ queryKey: ["/api/businesses"] });
   const currentUser = useQuery<CurrentUser>({ queryKey: ["/api/user"] });
@@ -210,6 +226,11 @@ export default function MessagesPage() {
     queryKey: [`/api/relationship-hub/voice-providers${businessQuery}`],
     enabled: Boolean(business),
   });
+  const operations = useQuery<OperationsSnapshot>({
+    queryKey: [`/api/relationship-hub/operations${businessQuery}`],
+    enabled: Boolean(business),
+    refetchInterval: operationsOpen ? 10_000 : 60_000,
+  });
 
   const filteredConversations = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -235,6 +256,14 @@ export default function MessagesPage() {
   const relationshipDetail = useQuery<RelationshipDetail>({
     queryKey: [`/api/relationship-hub/relationships/${detail.data?.relationship?.id}`],
     enabled: Boolean(detail.data?.relationship?.id),
+  });
+  const relationshipRooms = useQuery<RelationshipRoomBinding[]>({
+    queryKey: [`/api/relationship-hub/relationships/${detail.data?.relationship?.id}/rooms`],
+    enabled: Boolean(detail.data?.relationship?.id),
+  });
+  const eligibleRooms = useQuery<CommunityRoom[]>({
+    queryKey: [`/api/relationship-hub/relationships/${detail.data?.relationship?.id}/eligible-rooms`],
+    enabled: Boolean(detail.data?.relationship?.id && meetingOpen),
   });
 
   const sendMessage = useMutation({
@@ -349,6 +378,20 @@ export default function MessagesPage() {
     onSuccess: () => void relationshipDetail.refetch(),
   });
 
+  const bindRelationshipRoom = useMutation({
+    mutationFn: () => {
+      if (!detail.data?.relationship?.id || !meetingRoomId) throw new Error("Choose a meeting room");
+      return jsonRequest("POST", `/api/relationship-hub/relationships/${detail.data.relationship.id}/rooms`, { roomId: meetingRoomId, conversationId: selectedId, purpose: "relationship_meeting", contextPolicy: { includeTimeline: true, includePrivateNotes: false } });
+    },
+    onSuccess: () => {
+      setMeetingOpen(false);
+      setMeetingRoomId("");
+      void relationshipRooms.refetch();
+      toast({ title: "Meeting linked", description: "The governed room AI can use this relationship timeline as untrusted evidence, subject to room consent and role policy." });
+    },
+    onError: (error) => toast({ title: "Meeting not linked", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
+  });
+
   const connectInstagram = useMutation({
     mutationFn: () => jsonRequest<{ url: string }>("POST", "/api/relationship-hub/connections/instagram/authorize", { businessId: business?.id }),
     onSuccess: ({ url }) => { window.location.assign(url); },
@@ -419,7 +462,7 @@ export default function MessagesPage() {
         <div className="mt-auto rounded-2xl border border-zinc-900 bg-zinc-950 p-3">
           <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-400" /><p className="text-xs font-bold">Governed AI</p></div>
           <p className="mt-2 text-[10px] leading-4 text-zinc-600">Agent actions follow the authority and approval policy for this business.</p>
-          <button onClick={() => setLocation("/automations")} className="mt-3 text-[10px] font-bold text-[#1d9bf0]">Manage automations</button>
+          <div className="mt-3 flex gap-3"><button onClick={() => setLocation("/automations")} className="text-[10px] font-bold text-[#1d9bf0]">Automations</button><button onClick={() => setOperationsOpen(true)} className="text-[10px] font-bold text-[#1d9bf0]">Usage & health</button></div>
         </div>
       </aside>
 
@@ -488,11 +531,26 @@ export default function MessagesPage() {
           <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Known identities</p><div className="mt-3 space-y-2">{relationshipDetail.data.identities.map((identity) => <div key={identity.id} className="rounded-xl bg-zinc-950 px-3 py-2 text-[10px]"><span className="font-bold capitalize text-zinc-300">{identity.provider}</span><span className="ml-2 text-zinc-600">{identity.username || identity.address || "Verified identity"}</span></div>)}</div></div>
           <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Tags</p><div className="mt-3 flex flex-wrap gap-1.5">{relationshipDetail.data.tags.map((tag) => <button key={tag.id} onClick={() => removeRelationshipTag.mutate(tag.id)} title="Remove tag" className="rounded-full bg-zinc-900 px-2.5 py-1 text-[9px] font-bold text-zinc-400 hover:text-red-300">{tag.name} ×</button>)}</div><div className="mt-2 flex gap-2"><Input value={tagName} onChange={(event) => setTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && tagName.trim()) addRelationshipTag.mutate(); }} placeholder="Add tag" className="h-8 border-zinc-800 bg-zinc-950 text-xs" /><Button onClick={() => addRelationshipTag.mutate()} disabled={!tagName.trim() || addRelationshipTag.isPending} size="sm" variant="outline" className="h-8 border-zinc-800 bg-black"><Plus className="h-3.5 w-3.5" /></Button></div></div>
           <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Follow-up tasks</p><div className="mt-3 space-y-2">{relationshipDetail.data.tasks.filter((task) => task.status === "open").map((task) => <button key={task.id} onClick={() => completeRelationshipTask.mutate(task.id)} className="flex w-full items-start gap-2 rounded-xl bg-zinc-950 px-3 py-2 text-left text-[10px] text-zinc-400"><span className="mt-0.5 h-3 w-3 shrink-0 rounded-full border border-zinc-600" /><span>{task.title}</span></button>)}</div><div className="mt-2 flex gap-2"><Input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && taskTitle.trim()) addRelationshipTask.mutate(); }} placeholder="Add follow-up" className="h-8 border-zinc-800 bg-zinc-950 text-xs" /><Button onClick={() => addRelationshipTask.mutate()} disabled={!taskTitle.trim() || addRelationshipTask.isPending} size="sm" variant="outline" className="h-8 border-zinc-800 bg-black"><Plus className="h-3.5 w-3.5" /></Button></div></div>
+          <div className="mt-6"><div className="flex items-center"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Relationship meetings</p><button onClick={() => setMeetingOpen(true)} className="ml-auto text-[10px] font-bold text-[#1d9bf0]">Link room</button></div><div className="mt-3 space-y-2">{relationshipRooms.data?.map((binding) => <button key={binding.id} onClick={() => setLocation(`/communities/${binding.room.communityId}/rooms/${binding.room.id}`)} className="flex w-full items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2 text-left"><Video className="h-4 w-4 text-violet-300" /><span className="truncate text-[10px] text-zinc-300">{binding.room.title}</span><span className="ml-auto text-[9px] capitalize text-zinc-600">{binding.room.status}</span></button>)}{!relationshipRooms.data?.length && <p className="text-[10px] leading-4 text-zinc-600">Link a native community room to give consent-gated meeting AI this relationship context.</p>}</div></div>
         </>}
         <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Channels</p><div className="mt-3 space-y-2">{detail.data.bindings.map((binding) => { const Icon = providerIcons[binding.provider] ?? MessageCircle; return <div key={binding.id} className="flex items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2"><Icon className="h-4 w-4 text-zinc-500" /><span className="text-xs capitalize">{binding.provider}</span><span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" /></div>; })}</div></div>
         <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Conversation controls</p><div className="mt-3 space-y-2"><button onClick={() => updateConversation.mutate({ assignedToUserId: detail.data.assignedToUserId === currentUser.data?.id ? null : currentUser.data?.id, queue: detail.data.assignedToUserId === currentUser.data?.id ? "unassigned" : "mine" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><UserRound className="mr-2 h-4 w-4 text-[#1d9bf0]" />{detail.data.assignedToUserId === currentUser.data?.id ? "Unassign from me" : "Assign to me"}</button><button onClick={() => updateConversation.mutate({ aiMode: detail.data.aiMode === "observe" ? "suggest" : "observe" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><Bot className="mr-2 h-4 w-4 text-violet-300" />AI mode: <span className="ml-1 capitalize text-zinc-400">{detail.data.aiMode}</span><ChevronDown className="ml-auto h-3.5 w-3.5 text-zinc-700" /></button><button onClick={() => updateConversation.mutate({ status: "snoozed", snoozedUntil: new Date(Date.now() + 24 * 60 * 60_000).toISOString() })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><Clock3 className="mr-2 h-4 w-4 text-zinc-500" />Snooze 24 hours</button><button onClick={() => updateConversation.mutate({ status: detail.data.status === "closed" ? "open" : "closed" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><CheckCheck className="mr-2 h-4 w-4 text-emerald-400" />{detail.data.status === "closed" ? "Reopen conversation" : "Close conversation"}</button></div></div>
       </aside>}
 
+      <Dialog open={operationsOpen} onOpenChange={setOperationsOpen}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-xl">
+          <DialogHeader><DialogTitle>Relationship Hub usage & health</DialogTitle><DialogDescription className="text-zinc-500">Current billing-period capacity and durable delivery signals for {business?.name ?? "this business"}.</DialogDescription></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">{Object.entries(operations.data?.capacity ?? {}).map(([metric, value]) => { const unlimited = value.limit < 0; const ratio = unlimited || value.limit === 0 ? 0 : Math.min(100, Math.round((value.used / value.limit) * 100)); return <div key={metric} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center gap-2"><BarChart3 className="h-3.5 w-3.5 text-[#1d9bf0]" /><p className="text-[10px] font-bold capitalize text-zinc-400">{metric.replaceAll(".", " ")}</p></div><p className="mt-2 text-lg font-black">{value.used.toLocaleString()}<span className="ml-1 text-[10px] font-normal text-zinc-600">/ {unlimited ? "unlimited" : value.limit.toLocaleString()}</span></p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full rounded-full ${ratio >= 90 ? "bg-red-400" : ratio >= 75 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${ratio}%` }} /></div></div>; })}</div>
+          <div className="rounded-xl border border-zinc-800 bg-black p-3 text-xs text-zinc-400"><div className="flex justify-between"><span>Active connections</span><strong className="text-white">{operations.data?.connections.active ?? 0}</strong></div><div className="mt-2 flex justify-between"><span>Queued or retrying deliveries</span><strong className="text-white">{(operations.data?.deliveries.queued ?? 0) + (operations.data?.deliveries.retrying ?? 0)}</strong></div><div className="mt-2 flex justify-between"><span>Dead-letter deliveries</span><strong className={(operations.data?.deliveries.dead_letter ?? 0) > 0 ? "text-red-300" : "text-white"}>{operations.data?.deliveries.dead_letter ?? 0}</strong></div></div>
+          {(operations.data?.alerts.length ?? 0) > 0 ? <div className="space-y-2">{operations.data?.alerts.map((alert) => <div key={alert.id} className="flex gap-3 rounded-xl border border-amber-900/50 bg-amber-950/20 p-3"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /><div><p className="text-xs font-bold text-amber-100">{alert.title}</p><p className="mt-1 text-[10px] leading-4 text-amber-200/60">{alert.detail}</p></div></div>)}</div> : <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-3 text-xs text-emerald-200">No unresolved Relationship Hub operational alerts.</div>}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={meetingOpen} onOpenChange={(open) => { setMeetingOpen(open); if (!open) setMeetingRoomId(""); }}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-lg">
+          <DialogHeader><DialogTitle>Link a relationship meeting</DialogTitle><DialogDescription className="text-zinc-500">Choose a room you manage. Its existing recording, transcription, and AI consent rules remain authoritative.</DialogDescription></DialogHeader>
+          <div className="space-y-4"><select value={meetingRoomId} onChange={(event) => setMeetingRoomId(event.target.value)} className="h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white"><option value="">Choose a community room</option>{eligibleRooms.data?.map((room) => <option key={room.id} value={room.id}>{room.title} · {new Date(room.startsAt).toLocaleString()} · {room.status}</option>)}</select><div className="rounded-xl border border-zinc-800 bg-black p-3 text-[11px] leading-5 text-zinc-400">The AI runtime receives a bounded relationship summary and recent timeline as untrusted evidence. Private notes stay excluded. Participants must still grant active room consent before recording, transcription, or AI analysis begins.</div>{eligibleRooms.data && eligibleRooms.data.length === 0 && <button onClick={() => setLocation("/communities")} className="text-xs font-bold text-[#1d9bf0]">Create or manage a community room</button>}<Button onClick={() => bindRelationshipRoom.mutate()} disabled={!meetingRoomId || bindRelationshipRoom.isPending} className="w-full bg-white text-black hover:bg-zinc-200"><Video className="mr-2 h-4 w-4" />{bindRelationshipRoom.isPending ? "Linking securely…" : "Link room to relationship"}</Button></div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={voiceOpen} onOpenChange={setVoiceOpen}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-lg">
           <DialogHeader><DialogTitle>Verified voice message</DialogTitle><DialogDescription className="text-zinc-500">Only the voice owner can enroll, approve, generate, or revoke this profile. Every generated message is disclosed as synthetic media.</DialogDescription></DialogHeader>

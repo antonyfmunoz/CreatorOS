@@ -24,13 +24,18 @@ import {
   relationshipMessageReceipts,
   relationshipMessages,
   relationshipNotes,
+  relationshipOperationalAlerts,
+  relationshipRoomBindings,
   relationshipTagAssignments,
   relationshipTags,
   relationshipTasks,
+  relationshipTenantPolicies,
   relationshipVoiceConsents,
   relationshipVoiceGenerationJobs,
   relationshipVoiceProfiles,
   relationships,
+  communityMemberships,
+  communityRooms,
 } from "../shared/schema";
 import { listRelationshipAdapters } from "./relationship-channel-adapters";
 import {
@@ -50,6 +55,10 @@ import {
   verifyRelationshipVoiceProfile,
 } from "./relationship-voice";
 import { voiceUseCases } from "./relationship-hub-policy";
+import {
+  assertRelationshipConnectionAvailable,
+  relationshipOperationsSnapshot,
+} from "./relationship-operations";
 import {
   completeInstagramRelationshipAuthorization,
   createInstagramRelationshipAuthorization,
@@ -199,12 +208,35 @@ const createVoiceMessageSchema = z.object({
   sourceType: z.enum(["human", "agent"]).default("human"),
 }).strict();
 
+const relationshipRoomBindingSchema = z.object({
+  roomId: z.string().uuid(),
+  conversationId: z.string().uuid().nullable().optional(),
+  purpose: z.string().trim().min(1).max(200).default("relationship_meeting"),
+  contextPolicy: z.object({
+    includeTimeline: z.boolean().default(true),
+    includePrivateNotes: z.boolean().default(false),
+  }).strict().default({ includeTimeline: true, includePrivateNotes: false }),
+}).strict();
+
+const relationshipTenantPolicySchema = z.object({
+  planKey: z.string().trim().min(1).max(100).optional(),
+  enforcementMode: z.enum(["enforce", "monitor"]).optional(),
+  monthlyOutboundMessages: z.number().int().min(-1).max(100_000_000).optional(),
+  monthlyAiRuns: z.number().int().min(-1).max(10_000_000).optional(),
+  monthlyVoiceSeconds: z.number().int().min(-1).max(100_000_000).optional(),
+  monthlyRealtimeMinutes: z.number().int().min(-1).max(10_000_000).optional(),
+  maxActiveConnections: z.number().int().min(-1).max(100_000).optional(),
+  providerPayloadRetentionDays: z.number().int().min(1).max(90).optional(),
+  auditRetentionDays: z.number().int().min(30).max(2_555).optional(),
+  realtimeArtifactRetentionDays: z.number().int().min(1).max(365).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "Provide at least one policy change");
+
 function relationshipHubError(res: Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ message: "Invalid Relationship Hub request", issues: error.issues });
   const message = error instanceof Error ? error.message : "Relationship Hub request failed";
   const status = /not found/i.test(message) ? 404
     : /not authorized|permission|authority|signature/i.test(message) ? 403
-      : /not active|not activated|not configured|does not support|idempotency|conflict|enable suggestion/i.test(message) ? 409
+      : /not active|not activated|not configured|does not support|idempotency|conflict|enable suggestion|allowance reached/i.test(message) ? 409
         : 500;
   if (status === 500) console.error("Relationship Hub route failed", { errorType: error instanceof Error ? error.name : typeof error });
   return res.status(status).json({ message: status === 500 ? "Relationship Hub request failed" : message });
@@ -229,6 +261,19 @@ async function ownedConversation(userId: number, conversationId: string) {
   if (!conversation) throw new Error("Relationship conversation not found");
   if (!(await userCanManageBusiness(userId, conversation.businessId))) throw new Error("Not authorized to manage this conversation");
   return conversation;
+}
+
+async function userCanManageRoom(userId: number, roomId: string) {
+  const [room] = await db.select().from(communityRooms).where(eq(communityRooms.id, roomId)).limit(1);
+  if (!room) return null;
+  if (room.hostUserId === userId) return room;
+  const [membership] = await db.select().from(communityMemberships).where(and(
+    eq(communityMemberships.communityId, room.communityId),
+    eq(communityMemberships.userId, userId),
+    eq(communityMemberships.status, "active"),
+    inArray(communityMemberships.role, ["owner", "admin"]),
+  )).limit(1);
+  return membership ? room : null;
 }
 
 async function canAccessConversationAudio(userId: number, conversationId: string, businessId: string) {
@@ -398,6 +443,7 @@ export function registerRelationshipHubRoutes(app: Express) {
     try {
       const businessId = await managedBusiness(req, req.body?.businessId);
       if (!instagramRelationshipConfiguration().configured) throw new Error("Instagram relationship messaging is not configured");
+      await assertRelationshipConnectionAvailable(businessId);
       const url = await createInstagramRelationshipAuthorization({ userId: req.dbUser!.id, businessId });
       res.json({ url });
     } catch (error) {
@@ -421,6 +467,7 @@ export function registerRelationshipHubRoutes(app: Express) {
     try {
       const businessId = await managedBusiness(req, req.body?.businessId);
       if (!xRelationshipConfiguration().configured) throw new Error("X relationship messaging is not configured");
+      await assertRelationshipConnectionAvailable(businessId);
       res.json({ url: await createXRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
     } catch (error) {
       return relationshipHubError(res, error);
@@ -443,6 +490,7 @@ export function registerRelationshipHubRoutes(app: Express) {
     try {
       const businessId = await managedBusiness(req, req.body?.businessId);
       if (!messengerRelationshipConfiguration().configured) throw new Error("Messenger relationship messaging is not configured");
+      await assertRelationshipConnectionAvailable(businessId);
       res.json({ url: await createMessengerRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
     } catch (error) { return relationshipHubError(res, error); }
   });
@@ -463,6 +511,7 @@ export function registerRelationshipHubRoutes(app: Express) {
       const input = z.object({ businessId: businessIdSchema.optional(), phoneNumberId: z.string().trim().min(1).max(200), wabaId: z.string().trim().min(1).max(200).optional(), accessToken: z.string().trim().min(20).max(4_000), accountName: z.string().trim().min(1).max(200).optional() }).parse(req.body);
       const businessId = await managedBusiness(req, input.businessId);
       if (!whatsappRelationshipConfiguration().configured) throw new Error("WhatsApp relationship messaging is not configured");
+      await assertRelationshipConnectionAvailable(businessId);
       const connection = await connectWhatsAppRelationshipAccount({ ...input, businessId, userId: req.dbUser!.id });
       await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "connection.created", targetType: "channel_connection", targetId: connection.id, metadata: { provider: "whatsapp" } });
       res.status(201).json({ id: connection.id, provider: connection.provider, providerAccountName: connection.providerAccountName, status: connection.status });
@@ -499,6 +548,103 @@ export function registerRelationshipHubRoutes(app: Express) {
         queuedDeliveries: queuedCount[0].count,
         pendingAiSuggestions: approvalCount[0].count,
       });
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.get("/api/relationship-hub/operations", attachUser, async (req, res) => {
+    try {
+      const businessId = await managedBusiness(req, req.query.businessId);
+      res.json(await relationshipOperationsSnapshot(businessId));
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.patch("/api/relationship-hub/operations/policy", attachUser, async (req, res) => {
+    try {
+      const businessId = await managedBusiness(req, req.body?.businessId);
+      const input = relationshipTenantPolicySchema.parse(req.body?.policy ?? req.body);
+      const [policy] = await db.insert(relationshipTenantPolicies).values({ businessId, ...input, updatedByUserId: req.dbUser!.id }).onConflictDoUpdate({
+        target: relationshipTenantPolicies.businessId,
+        set: { ...input, updatedByUserId: req.dbUser!.id, updatedAt: new Date() },
+      }).returning();
+      await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "operations.policy_updated", targetType: "business", targetId: businessId, metadata: { fields: Object.keys(input) } });
+      res.json(policy);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.post("/api/relationship-hub/operations/alerts/:alertId/acknowledge", attachUser, async (req, res) => {
+    try {
+      const businessId = await managedBusiness(req, req.body?.businessId);
+      const [alert] = await db.update(relationshipOperationalAlerts).set({ status: "acknowledged", updatedAt: new Date() }).where(and(eq(relationshipOperationalAlerts.id, z.string().uuid().parse(req.params.alertId)), eq(relationshipOperationalAlerts.businessId, businessId), eq(relationshipOperationalAlerts.status, "open"))).returning();
+      if (!alert) throw new Error("Relationship operation alert not found");
+      res.json(alert);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.get("/api/relationship-hub/relationships/:relationshipId/rooms", attachUser, async (req, res) => {
+    try {
+      const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
+      const bindings = await db.select({ binding: relationshipRoomBindings, room: communityRooms }).from(relationshipRoomBindings).innerJoin(communityRooms, eq(communityRooms.id, relationshipRoomBindings.roomId)).where(and(eq(relationshipRoomBindings.businessId, relationship.businessId), eq(relationshipRoomBindings.relationshipId, relationship.id))).orderBy(desc(relationshipRoomBindings.createdAt));
+      res.json(bindings.map(({ binding, room }) => ({ ...binding, room })));
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.get("/api/relationship-hub/relationships/:relationshipId/eligible-rooms", attachUser, async (req, res) => {
+    try {
+      await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
+      const memberships = await db.select({ communityId: communityMemberships.communityId }).from(communityMemberships).where(and(
+        eq(communityMemberships.userId, req.dbUser!.id),
+        eq(communityMemberships.status, "active"),
+        inArray(communityMemberships.role, ["owner", "admin"]),
+      ));
+      const managedCommunityIds = memberships.map((membership) => membership.communityId);
+      const rooms = await db.select().from(communityRooms).where(or(
+        eq(communityRooms.hostUserId, req.dbUser!.id),
+        ...(managedCommunityIds.length ? [inArray(communityRooms.communityId, managedCommunityIds)] : []),
+      )).orderBy(desc(communityRooms.startsAt)).limit(100);
+      res.json(rooms);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.post("/api/relationship-hub/relationships/:relationshipId/rooms", attachUser, async (req, res) => {
+    try {
+      const relationship = await ownedRelationship(req.dbUser!.id, req.params.relationshipId);
+      const input = relationshipRoomBindingSchema.parse(req.body);
+      const room = await userCanManageRoom(req.dbUser!.id, input.roomId);
+      if (!room) throw new Error("Not authorized to bind this community room");
+      if (input.conversationId) {
+        const conversation = await ownedConversation(req.dbUser!.id, input.conversationId);
+        if (conversation.businessId !== relationship.businessId || conversation.relationshipId !== relationship.id) throw new Error("Room conversation does not belong to this relationship");
+      }
+      const [existingBinding] = await db.select().from(relationshipRoomBindings).where(eq(relationshipRoomBindings.roomId, room.id)).limit(1);
+      if (existingBinding && (existingBinding.businessId !== relationship.businessId || existingBinding.relationshipId !== relationship.id)) {
+        throw new Error("This room is already linked to another relationship");
+      }
+      const [binding] = await db.insert(relationshipRoomBindings).values({
+        businessId: relationship.businessId,
+        roomId: room.id,
+        relationshipId: relationship.id,
+        conversationId: input.conversationId ?? null,
+        purpose: input.purpose,
+        contextPolicy: input.contextPolicy,
+        createdByUserId: req.dbUser!.id,
+      }).onConflictDoUpdate({
+        target: relationshipRoomBindings.roomId,
+        set: { businessId: relationship.businessId, relationshipId: relationship.id, conversationId: input.conversationId ?? null, purpose: input.purpose, contextPolicy: input.contextPolicy, createdByUserId: req.dbUser!.id, updatedAt: new Date() },
+      }).returning();
+      await auditRelationshipAction({ businessId: relationship.businessId, actorUserId: req.dbUser!.id, action: "relationship_room.bound", targetType: "community_room", targetId: room.id, metadata: { relationshipId: relationship.id, conversationId: input.conversationId ?? null } });
+      res.status(201).json({ ...binding, room });
     } catch (error) {
       return relationshipHubError(res, error);
     }

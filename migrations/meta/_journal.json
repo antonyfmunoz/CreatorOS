@@ -400,6 +400,13 @@
       "when": 1786407744898,
       "tag": "0056_relationship_audit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1786409000000,
+      "tag": "0057_relationship_operations_and_realtime_bridge",
+      "breakpoints": true
     }
   ]
 }

@@ -1270,6 +1270,140 @@ export const relationshipAuditEvents = pgTable(
   }),
 );
 
+// Business-scoped controls keep Relationship Hub cost and data handling
+// predictable without blocking inbound customer contact. Limits are metered
+// independently from Stripe so billing providers can change without changing
+// product authority.
+export const relationshipTenantPolicies = pgTable(
+  "relationship_tenant_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(),
+    planKey: text("plan_key").notNull().default("foundation"),
+    enforcementMode: text("enforcement_mode").notNull().default("enforce"),
+    monthlyOutboundMessages: integer("monthly_outbound_messages").notNull().default(10_000),
+    monthlyAiRuns: integer("monthly_ai_runs").notNull().default(1_000),
+    monthlyVoiceSeconds: integer("monthly_voice_seconds").notNull().default(3_600),
+    monthlyRealtimeMinutes: integer("monthly_realtime_minutes").notNull().default(600),
+    maxActiveConnections: integer("max_active_connections").notNull().default(10),
+    providerPayloadRetentionDays: integer("provider_payload_retention_days").notNull().default(30),
+    auditRetentionDays: integer("audit_retention_days").notNull().default(365),
+    realtimeArtifactRetentionDays: integer("realtime_artifact_retention_days").notNull().default(30),
+    updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+export const relationshipUsageLedger = pgTable(
+  "relationship_usage_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    metric: text("metric").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    costUnits: integer("cost_units").notNull().default(0),
+    provider: text("provider"),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessKeyUnique: unique("relationship_usage_business_key_unique").on(
+      table.businessId,
+      table.idempotencyKey,
+    ),
+    businessPeriodMetricIdx: index("relationship_usage_period_metric_idx").on(
+      table.businessId,
+      table.periodStart,
+      table.metric,
+    ),
+  }),
+);
+
+export const relationshipOperationalAlerts = pgTable(
+  "relationship_operational_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    severity: text("severity").notNull().default("warning"),
+    category: text("category").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    status: text("status").notNull().default("open"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessFingerprintUnique: unique("relationship_alert_business_fingerprint_unique").on(
+      table.businessId,
+      table.fingerprint,
+    ),
+    businessStatusIdx: index("relationship_alert_business_status_idx").on(
+      table.businessId,
+      table.status,
+      table.severity,
+    ),
+  }),
+);
+
+// This is the narrow bridge between the governed community-room runtime and
+// CRM context. The room still owns media/consent/session state; Relationship
+// Hub owns who the meeting is with and which conversation it advances.
+export const relationshipRoomBindings = pgTable(
+  "relationship_room_bindings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    roomId: uuid("room_id")
+      .references(() => communityRooms.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(),
+    relationshipId: uuid("relationship_id")
+      .references(() => relationships.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id").references(
+      () => relationshipConversations.id,
+      { onDelete: "set null" },
+    ),
+    purpose: text("purpose").notNull().default("relationship_meeting"),
+    contextPolicy: json("context_policy")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({ includeTimeline: true, includePrivateNotes: false }),
+    createdByUserId: integer("created_by_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    relationshipRoomIdx: index("relationship_room_binding_relationship_idx").on(
+      table.businessId,
+      table.relationshipId,
+      table.createdAt,
+    ),
+  }),
+);
+
 // One row per requested external destination. This makes a multi-channel job
 // auditable and retry-safe, without pretending that a native publish completed
 // on a third-party network.
@@ -3935,6 +4069,10 @@ export type RelationshipVoiceProfile =
 export type RelationshipVoiceGenerationJob =
   typeof relationshipVoiceGenerationJobs.$inferSelect;
 export type RelationshipAuditEvent = typeof relationshipAuditEvents.$inferSelect;
+export type RelationshipTenantPolicy = typeof relationshipTenantPolicies.$inferSelect;
+export type RelationshipUsageLedgerEntry = typeof relationshipUsageLedger.$inferSelect;
+export type RelationshipOperationalAlert = typeof relationshipOperationalAlerts.$inferSelect;
+export type RelationshipRoomBinding = typeof relationshipRoomBindings.$inferSelect;
 
 export type Community = typeof communities.$inferSelect;
 export type InsertCommunity = z.infer<typeof insertCommunitySchema>;

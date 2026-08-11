@@ -44,6 +44,9 @@ describe("CreativesOS release readiness", () => {
       relationshipHub: {
         kernel: "configured",
         nativeInbox: "configured",
+        usageControls: "configured",
+        operationsTelemetry: "configured",
+        realtimeRelationshipContext: "configured",
         aiCopilot: "configured",
         clonedVoice: "configured",
         instagram: "configured",
@@ -75,6 +78,9 @@ describe("CreativesOS release readiness", () => {
     expect(result.relationshipHub).toEqual({
       kernel: "configured",
       nativeInbox: "configured",
+      usageControls: "configured",
+      operationsTelemetry: "configured",
+      realtimeRelationshipContext: "provider_pending",
       aiCopilot: "provider_pending",
       clonedVoice: "provider_pending",
       instagram: "provider_pending",

@@ -10,6 +10,7 @@ import {
 import { createPrivateAssetReadUrl, persistPrivateBuffer } from "./asset-storage";
 import { decryptSocialToken, encryptSocialToken } from "./social-oauth";
 import { assertVoiceGenerationAllowed } from "./relationship-hub-policy";
+import { assertRelationshipUsageAvailable, recordRelationshipUsage } from "./relationship-operations";
 
 type VoiceGeneration = {
   audio: Buffer;
@@ -119,6 +120,7 @@ export async function createRelationshipVoiceJob(input: {
   useCase: string;
   sourceType: "human" | "agent";
 }) {
+  const estimatedSeconds = Math.max(1, Math.ceil(input.script.trim().split(/\s+/).length / 2.5));
   const [profile] = await db.select().from(relationshipVoiceProfiles).where(and(
     eq(relationshipVoiceProfiles.id, input.profileId),
     eq(relationshipVoiceProfiles.ownerUserId, input.requestedByUserId),
@@ -129,6 +131,7 @@ export async function createRelationshipVoiceJob(input: {
     eq(relationshipConversations.businessId, profile.businessId),
   )).limit(1);
   if (!conversation) throw new Error("Relationship conversation not found");
+  await assertRelationshipUsageAvailable({ businessId: profile.businessId, metric: "voice.second", quantity: estimatedSeconds });
   const [consent] = await db.select().from(relationshipVoiceConsents).where(and(
     eq(relationshipVoiceConsents.voiceProfileId, profile.id),
     eq(relationshipVoiceConsents.status, "granted"),
@@ -170,7 +173,8 @@ export async function processRelationshipVoiceJob(jobId: string) {
     const [consent] = await db.select().from(relationshipVoiceConsents).where(and(eq(relationshipVoiceConsents.voiceProfileId, profile.id), eq(relationshipVoiceConsents.status, "granted"))).limit(1);
     const useCase = typeof job.provenance.useCase === "string" ? job.provenance.useCase : "relationship_follow_up";
     assertVoiceGenerationAllowed({ ownershipVerified: profile.ownershipVerificationStatus !== "unverified", consentActive: Boolean(consent), revoked: profile.status === "revoked", useCase, approvedByUserId: job.approvedByUserId, sourceType: job.sourceType });
-    const generated = await voiceProvider(profile.provider).generate({ voiceId: decryptSocialToken(profile.providerVoiceIdCiphertext), script: decryptSocialToken(job.scriptCiphertext) });
+    const script = decryptSocialToken(job.scriptCiphertext);
+    const generated = await voiceProvider(profile.provider).generate({ voiceId: decryptSocialToken(profile.providerVoiceIdCiphertext), script });
     const stored = await persistPrivateBuffer({ body: generated.audio, ownerUserId: job.requestedByUserId, kind: "voice-note", filename: `${job.id}.mp3`, mimeType: generated.mimeType });
     const [completed] = await db.update(relationshipVoiceGenerationJobs).set({
       status: "completed",
@@ -183,6 +187,16 @@ export async function processRelationshipVoiceJob(jobId: string) {
       completedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(relationshipVoiceGenerationJobs.id, job.id)).returning();
+    const estimatedSeconds = Math.max(1, Math.ceil(script.trim().split(/\s+/).length / 2.5));
+    await recordRelationshipUsage({
+      businessId: job.businessId,
+      metric: "voice.second",
+      quantity: Math.max(1, Math.ceil((generated.durationMs ?? estimatedSeconds * 1_000) / 1_000)),
+      provider: profile.provider,
+      sourceType: "voice_generation_job",
+      sourceId: job.id,
+      idempotencyKey: `voice.second:${job.id}`,
+    }).catch((error) => console.error("Could not meter relationship voice generation", { errorType: error instanceof Error ? error.name : typeof error }));
     return completed;
   } catch (error) {
     await db.update(relationshipVoiceGenerationJobs).set({ status: "failed", errorCode: error instanceof Error ? error.name : "voice_error", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Voice generation failed", updatedAt: new Date() }).where(eq(relationshipVoiceGenerationJobs.id, job.id));

@@ -101,6 +101,8 @@ import { normalizeCartProductIds } from "../shared/cart";
 import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
+import { relationshipRoomContext } from "./relationship-room-context";
+import { assertRelationshipUsageAvailable, recordRelationshipUsage, RelationshipQuotaError } from "./relationship-operations";
 import { syncLegacyNativeConversation } from "./relationship-native-sync";
 import upload from "./upload";
 import path from "path";
@@ -7034,6 +7036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: "Enable this capability in the room policy before the room starts",
           });
         let profile: typeof communityRoomAiProfiles.$inferSelect | null = null;
+        let boundRelationshipContext: Awaited<ReturnType<typeof relationshipRoomContext>> = null;
         if (kind === "realtime_ai") {
           const profileId =
             typeof req.body?.profileId === "string" ? req.body.profileId : "";
@@ -7058,6 +7061,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(409).json({
               message: "That AI mode is not enabled by the room policy",
             });
+          boundRelationshipContext = await relationshipRoomContext(access.room.id);
+          if (boundRelationshipContext) await assertRelationshipUsageAvailable({
+            businessId: boundRelationshipContext.businessId,
+            metric: "realtime.minute",
+            quantity: 1,
+          });
         }
         const coverage = await participantConsentCoverage(
           access.room,
@@ -7124,6 +7133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   instructions: profile.instructions,
                 }
               : null,
+            relationshipContext: boundRelationshipContext,
           },
         });
         const [activeSession] = await db
@@ -7173,6 +7183,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             })
             .where(eq(communityRoomAgentSessions.id, sessionId))
             .catch(() => undefined);
+        if (error instanceof RelationshipQuotaError)
+          return res.status(409).json({ code: error.code, message: error.message });
         res.status(502).json({ message: "The room agent runtime could not start" });
       }
     },
@@ -7221,6 +7233,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ status: "stopped", stoppedAt: now, updatedAt: now })
           .where(eq(communityRoomAgentSessions.id, session.id))
           .returning();
+        if (session.kind === "realtime_ai" && session.startedAt) {
+          const context = await relationshipRoomContext(access.room.id);
+          if (context) await recordRelationshipUsage({
+            businessId: context.businessId,
+            metric: "realtime.minute",
+            quantity: Math.max(1, Math.ceil((now.getTime() - session.startedAt.getTime()) / 60_000)),
+            provider: "livekit_agents",
+            sourceType: "community_room_agent_session",
+            sourceId: session.id,
+            idempotencyKey: `realtime.minute:${session.id}`,
+            occurredAt: now,
+            metadata: { roomId: access.room.id, relationshipId: context.relationship.id, profileId: session.agentProfileId },
+          }).catch((error) => console.error("Could not meter relationship realtime session", { errorType: error instanceof Error ? error.name : typeof error }));
+        }
         const [otherActive] = await db
           .select({ count: count(communityRoomAgentSessions.id) })
           .from(communityRoomAgentSessions)

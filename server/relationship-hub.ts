@@ -15,6 +15,7 @@ import {
   relationshipMessageAttachments,
   relationshipMessageReceipts,
   relationshipMessages,
+  relationshipOperationalAlerts,
   relationshipProviderEvents,
   relationshipSyncCursors,
   relationships,
@@ -37,6 +38,7 @@ import {
   type RelationshipAdapterContext,
 } from "./relationship-channel-adapters";
 import { nativeRelationshipCapabilities } from "./relationship-native-adapter";
+import { assertRelationshipUsageAvailable, recordRelationshipUsage } from "./relationship-operations";
 import {
   messagingConsentCommand,
   RELATIONSHIP_COMMENT_CREATED_EVENT,
@@ -416,6 +418,15 @@ async function processStoredProviderEvent(eventId: string) {
       .set({ lastInboundAt: event.occurredAt, updatedAt: new Date() })
       .where(eq(relationshipChannelConnections.id, connection.id));
     await recordRelationshipAutomationTrigger({ connection, providerEventId: stored.id, event, relationshipId: result.relationship.id, conversationId: result.conversation.id });
+    if (result.message) await recordRelationshipUsage({
+      businessId: connection.businessId,
+      metric: "message.inbound",
+      provider: connection.provider,
+      sourceType: "provider_event",
+      sourceId: stored.id,
+      idempotencyKey: `message.inbound:${stored.id}`,
+      occurredAt: event.occurredAt,
+    }).catch((error) => console.error("Could not meter inbound relationship message", { errorType: error instanceof Error ? error.name : typeof error }));
     return { duplicate: false, providerEvent, ...result };
   } catch (error) {
     await db
@@ -508,6 +519,7 @@ export async function queueRelationshipMessage(input: {
   disclosure?: string;
 }) {
   const action = relationshipOutboundActionSchema.parse(input.action);
+  await assertRelationshipUsageAvailable({ businessId: input.businessId, metric: "message.outbound" });
   return db.transaction(async (tx) => {
     const [connection] = await tx.select().from(relationshipChannelConnections).where(and(
       eq(relationshipChannelConnections.id, input.connectionId),
@@ -661,6 +673,15 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: "message.delivered", targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status } });
       return [updatedJob];
     });
+    await recordRelationshipUsage({
+      businessId: claimed.businessId,
+      metric: "message.outbound",
+      provider: connection.provider,
+      sourceType: "delivery_job",
+      sourceId: claimed.id,
+      idempotencyKey: `message.outbound:${claimed.id}`,
+      occurredAt: result.occurredAt,
+    }).catch((error) => console.error("Could not meter outbound relationship message", { errorType: error instanceof Error ? error.name : typeof error }));
     return completed;
   } catch (error) {
     const classified = adapter.classifyError(error);
@@ -685,6 +706,18 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
         lastErrorMessage: sanitizeRelationshipProviderError(error),
         updatedAt: new Date(),
       }).where(eq(relationshipChannelConnections.id, connection.id));
+      if (!retryable) await tx.insert(relationshipOperationalAlerts).values({
+        businessId: claimed.businessId,
+        severity: classified.errorClass === "authentication" ? "critical" : "warning",
+        category: "delivery",
+        fingerprint: `delivery:${connection.id}:${classified.code ?? classified.errorClass}`,
+        title: `${connection.provider} message delivery needs attention`,
+        detail: sanitizeRelationshipProviderError(error),
+        metadata: { connectionId: connection.id, deliveryJobId: claimed.id, errorClass: classified.errorClass, errorCode: classified.code ?? null },
+      }).onConflictDoUpdate({
+        target: [relationshipOperationalAlerts.businessId, relationshipOperationalAlerts.fingerprint],
+        set: { status: "open", severity: classified.errorClass === "authentication" ? "critical" : "warning", detail: sanitizeRelationshipProviderError(error), lastSeenAt: new Date(), resolvedAt: null, updatedAt: new Date() },
+      });
       return [updatedJob];
     });
     return failed;

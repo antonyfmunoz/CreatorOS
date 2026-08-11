@@ -16,6 +16,7 @@ import {
   relationshipSuggestionAction,
   type RelationshipAiResult,
 } from "./relationship-ai-policy";
+import { assertRelationshipUsageAvailable, recordRelationshipUsage } from "./relationship-operations";
 
 let relationshipOpenAiClient: OpenAI | null = null;
 
@@ -91,6 +92,7 @@ export async function generateRelationshipSuggestions(input: {
   agentKey: string;
   requestedByUserId: number;
 }) {
+  await assertRelationshipUsageAvailable({ businessId: input.businessId, metric: "ai.run" });
   const [conversation] = await db.select().from(relationshipConversations).where(and(
     eq(relationshipConversations.id, input.conversationId),
     eq(relationshipConversations.businessId, input.businessId),
@@ -115,6 +117,16 @@ export async function generateRelationshipSuggestions(input: {
     systemPrompt: relationshipAiSystemPrompt(policy?.instructions ?? ""),
     payload: compactConversationPayload({ relationship, messages: messageRows.reverse() }),
   });
+  await recordRelationshipUsage({
+    businessId: input.businessId,
+    metric: "ai.run",
+    quantity: 1,
+    costUnits: Math.max(1, Math.ceil(JSON.stringify(compactConversationPayload({ relationship, messages: messageRows })).length / 4_000)),
+    provider: "openai",
+    sourceType: "conversation",
+    sourceId: conversation.id,
+    idempotencyKey: `ai.run:${conversation.id}:${Date.now()}`,
+  }).catch((error) => console.error("Could not meter relationship AI run", { errorType: error instanceof Error ? error.name : typeof error }));
   const validMessageIds = new Set(messageRows.map((message) => message.id));
   const allowedActions = policy?.allowedActions ?? [
     "message.send",
