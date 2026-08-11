@@ -85,7 +85,12 @@ type ConversationDetail = Conversation & {
 type ProviderStatus = {
   adapters: Array<{ provider: string; capabilities: Record<string, boolean> }>;
   connections: Array<{ id: string; provider: string; providerAccountName: string; status: string; lastErrorCode?: string | null }>;
-  configuration?: { instagram?: { configured: boolean; requiredScopes: string[]; webhookPath: string } };
+  configuration?: {
+    instagram?: { configured: boolean; requiredScopes: string[]; webhookPath: string };
+    messenger?: { configured: boolean; requiredScopes: string[]; webhookPath: string };
+    whatsapp?: { configured: boolean; connectionMode: string; webhookPath: string };
+    x?: { configured: boolean; requiredScopes: string[]; webhookPathTemplate: string; pollingFallback: boolean };
+  };
 };
 type HubSummary = { relationships: number; conversations: number; openConversations: number; queuedDeliveries: number; pendingAiSuggestions: number };
 type AiStatus = { provider: string; configured: boolean; model: string; mode: string };
@@ -109,6 +114,9 @@ async function jsonRequest<T>(method: string, url: string, body?: unknown) {
 const providerIcons: Record<string, typeof MessageCircle> = {
   native: MessageCircle,
   instagram: AtSign,
+  messenger: MessageCircle,
+  whatsapp: MessageCircle,
+  x: AtSign,
   email: Mail,
 };
 
@@ -136,6 +144,11 @@ export default function MessagesPage() {
   const [composer, setComposer] = useState("");
   const [noteMode, setNoteMode] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [whatsappPhoneNumberId, setWhatsappPhoneNumberId] = useState("");
+  const [whatsappWabaId, setWhatsappWabaId] = useState("");
+  const [whatsappAccessToken, setWhatsappAccessToken] = useState("");
+  const [whatsappAccountName, setWhatsappAccountName] = useState("");
   const [voiceDisplayName, setVoiceDisplayName] = useState("My verified voice");
   const [providerVoiceId, setProviderVoiceId] = useState("");
   const [voiceAttested, setVoiceAttested] = useState(false);
@@ -342,6 +355,28 @@ export default function MessagesPage() {
     onError: (error) => toast({ title: "Instagram connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
 
+  const connectX = useMutation({
+    mutationFn: () => jsonRequest<{ url: string }>("POST", "/api/relationship-hub/connections/x/authorize", { businessId: business?.id }),
+    onSuccess: ({ url }) => { window.location.assign(url); },
+    onError: (error) => toast({ title: "X connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
+  });
+
+  const connectMessenger = useMutation({
+    mutationFn: () => jsonRequest<{ url: string }>("POST", "/api/relationship-hub/connections/messenger/authorize", { businessId: business?.id }),
+    onSuccess: ({ url }) => { window.location.assign(url); },
+    onError: (error) => toast({ title: "Messenger connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
+  });
+
+  const connectWhatsApp = useMutation({
+    mutationFn: () => jsonRequest("POST", "/api/relationship-hub/connections/whatsapp", { businessId: business?.id, phoneNumberId: whatsappPhoneNumberId, wabaId: whatsappWabaId || undefined, accessToken: whatsappAccessToken, accountName: whatsappAccountName || undefined }),
+    onSuccess: () => {
+      setWhatsappOpen(false); setWhatsappPhoneNumberId(""); setWhatsappWabaId(""); setWhatsappAccessToken(""); setWhatsappAccountName("");
+      void providers.refetch();
+      toast({ title: "WhatsApp connected", description: "Messages can now enter the unified inbox after the Meta webhook is subscribed." });
+    },
+    onError: (error) => toast({ title: "WhatsApp connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
+  });
+
   if (legacyMode) {
     return <main className="h-dvh bg-black text-white"><MessagePanel onClose={() => { setLegacyMode(false); void conversations.refetch(); }} /></main>;
   }
@@ -377,6 +412,9 @@ export default function MessagesPage() {
           })}
           {!activeProviders.length && <p className="text-xs leading-5 text-zinc-600">Connecting the native inbox…</p>}
           {!activeProviders.some((connection) => connection.provider === "instagram") && <button onClick={() => connectInstagram.mutate()} disabled={connectInstagram.isPending || !providers.data?.configuration?.instagram?.configured} className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-2 py-2 text-left text-[10px] text-zinc-500 disabled:opacity-50"><span className="grid h-7 w-7 place-items-center rounded-full bg-zinc-900"><AtSign className="h-3.5 w-3.5" /></span><span>{providers.data?.configuration?.instagram?.configured ? "Connect Instagram" : "Instagram setup pending"}</span></button>}
+          {!activeProviders.some((connection) => connection.provider === "messenger") && <button onClick={() => connectMessenger.mutate()} disabled={connectMessenger.isPending || !providers.data?.configuration?.messenger?.configured} className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-2 py-2 text-left text-[10px] text-zinc-500 disabled:opacity-50"><span className="grid h-7 w-7 place-items-center rounded-full bg-zinc-900"><MessageCircle className="h-3.5 w-3.5" /></span><span>{providers.data?.configuration?.messenger?.configured ? "Connect Messenger" : "Messenger setup pending"}</span></button>}
+          {!activeProviders.some((connection) => connection.provider === "whatsapp") && <button onClick={() => setWhatsappOpen(true)} disabled={!providers.data?.configuration?.whatsapp?.configured} className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-2 py-2 text-left text-[10px] text-zinc-500 disabled:opacity-50"><span className="grid h-7 w-7 place-items-center rounded-full bg-zinc-900"><MessageCircle className="h-3.5 w-3.5" /></span><span>{providers.data?.configuration?.whatsapp?.configured ? "Connect WhatsApp" : "WhatsApp setup pending"}</span></button>}
+          {!activeProviders.some((connection) => connection.provider === "x") && <button onClick={() => connectX.mutate()} disabled={connectX.isPending || !providers.data?.configuration?.x?.configured} className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-2 py-2 text-left text-[10px] text-zinc-500 disabled:opacity-50"><span className="grid h-7 w-7 place-items-center rounded-full bg-zinc-900"><AtSign className="h-3.5 w-3.5" /></span><span>{providers.data?.configuration?.x?.configured ? "Connect X" : "X setup pending"}</span></button>}
         </div>
         <div className="mt-auto rounded-2xl border border-zinc-900 bg-zinc-950 p-3">
           <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-400" /><p className="text-xs font-bold">Governed AI</p></div>
@@ -471,6 +509,19 @@ export default function MessagesPage() {
             <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-black p-3 text-xs leading-5 text-zinc-400"><input type="checkbox" checked={voiceAttested} onChange={(event) => setVoiceAttested(event.target.checked)} className="mt-1" /><span>{voiceConsentText}</span></label>
             <Button onClick={() => enrollVoice.mutate()} disabled={!voiceDisplayName.trim() || !providerVoiceId.trim() || !voiceAttested || enrollVoice.isPending || !voiceProviders.data?.find((provider) => provider.provider === "elevenlabs")?.configured} className="w-full bg-white text-black hover:bg-zinc-200">{enrollVoice.isPending ? "Validating ownership…" : "Verify and activate voice"}</Button>
           </div>}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={whatsappOpen} onOpenChange={(open) => { setWhatsappOpen(open); if (!open) setWhatsappAccessToken(""); }}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-lg">
+          <DialogHeader><DialogTitle>Connect WhatsApp Business</DialogTitle><DialogDescription className="text-zinc-500">Use a Meta system-user token with WhatsApp Business Messaging access. The token is encrypted immediately and never returned by the API.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <label className="block text-xs font-bold text-zinc-400">Phone number ID<Input value={whatsappPhoneNumberId} onChange={(event) => setWhatsappPhoneNumberId(event.target.value)} autoComplete="off" className="mt-2 border-zinc-800 bg-black text-white" /></label>
+            <label className="block text-xs font-bold text-zinc-400">WhatsApp Business Account ID (optional)<Input value={whatsappWabaId} onChange={(event) => setWhatsappWabaId(event.target.value)} autoComplete="off" className="mt-2 border-zinc-800 bg-black text-white" /></label>
+            <label className="block text-xs font-bold text-zinc-400">Display name (optional)<Input value={whatsappAccountName} onChange={(event) => setWhatsappAccountName(event.target.value)} className="mt-2 border-zinc-800 bg-black text-white" /></label>
+            <label className="block text-xs font-bold text-zinc-400">System-user access token<Input value={whatsappAccessToken} onChange={(event) => setWhatsappAccessToken(event.target.value)} type="password" autoComplete="new-password" className="mt-2 border-zinc-800 bg-black text-white" /></label>
+            <div className="rounded-xl border border-zinc-800 bg-black p-3 text-[11px] leading-5 text-zinc-400">After connection, subscribe the WhatsApp app to the callback shown in the provider operations guide. Replies obey Meta's customer-service window; proactive outreach requires approved templates and is intentionally not automated here.</div>
+            <Button onClick={() => connectWhatsApp.mutate()} disabled={!whatsappPhoneNumberId.trim() || whatsappAccessToken.trim().length < 20 || connectWhatsApp.isPending} className="w-full bg-white text-black hover:bg-zinc-200">{connectWhatsApp.isPending ? "Verifying securely…" : "Verify and connect"}</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </main>

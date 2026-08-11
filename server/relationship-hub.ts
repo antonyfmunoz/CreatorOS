@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import { decryptSocialToken } from "./social-oauth";
 import {
@@ -16,6 +16,7 @@ import {
   relationshipMessageReceipts,
   relationshipMessages,
   relationshipProviderEvents,
+  relationshipSyncCursors,
   relationships,
   type RelationshipChannelConnection,
   type RelationshipDeliveryJob,
@@ -735,6 +736,70 @@ export async function retryDueRelationshipProviderEvents(limit = 25) {
   return results;
 }
 
+export async function reconcileDueRelationshipConnections(limit = 10) {
+  await db.update(relationshipSyncCursors).set({ status: "retrying", updatedAt: new Date() }).where(and(
+    eq(relationshipSyncCursors.status, "syncing"),
+    lte(relationshipSyncCursors.nextSyncAt, new Date()),
+  ));
+  const connections = await db
+    .select()
+    .from(relationshipChannelConnections)
+    .where(inArray(relationshipChannelConnections.status, ["active", "testing"]))
+    .orderBy(asc(relationshipChannelConnections.updatedAt))
+    .limit(Math.max(limit * 4, limit));
+  const results: Array<{ connectionId: string; eventCount: number; hasMore: boolean }> = [];
+  for (const connection of connections) {
+    if (results.length >= limit) break;
+    if (connection.provider === "native") continue;
+    const adapter = requireRelationshipAdapter(connection.provider);
+    if (!adapter.reconcile || adapter.capabilities["reconcile.history"] !== true) continue;
+    await db.insert(relationshipSyncCursors).values({
+      businessId: connection.businessId,
+      connectionId: connection.id,
+      stream: "history",
+      nextSyncAt: new Date(),
+    }).onConflictDoNothing();
+    const [claimed] = await db.update(relationshipSyncCursors).set({
+      status: "syncing",
+      nextSyncAt: new Date(Date.now() + 5 * 60_000),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(relationshipSyncCursors.connectionId, connection.id),
+      eq(relationshipSyncCursors.stream, "history"),
+      inArray(relationshipSyncCursors.status, ["active", "retrying"]),
+      or(isNull(relationshipSyncCursors.nextSyncAt), lte(relationshipSyncCursors.nextSyncAt, new Date())),
+    )).returning();
+    if (!claimed) continue;
+    try {
+      const reconciled = await adapter.reconcile({
+        cursor: claimed.cursor ?? undefined,
+        context: connectionContext(connection),
+        limit: 100,
+      });
+      for (const event of reconciled.events) {
+        await ingestRelationshipProviderEvent({ connectionId: connection.id, event });
+      }
+      await db.update(relationshipSyncCursors).set({
+        cursor: reconciled.hasMore ? (reconciled.nextCursor ?? claimed.cursor) : null,
+        status: "active",
+        lastSyncedAt: new Date(),
+        nextSyncAt: new Date(Date.now() + (reconciled.hasMore ? 1_000 : 30_000)),
+        errorCode: null,
+        updatedAt: new Date(),
+      }).where(eq(relationshipSyncCursors.id, claimed.id));
+      results.push({ connectionId: connection.id, eventCount: reconciled.events.length, hasMore: reconciled.hasMore });
+    } catch (error) {
+      await db.update(relationshipSyncCursors).set({
+        status: "retrying",
+        nextSyncAt: new Date(Date.now() + 60_000),
+        errorCode: error instanceof Error ? error.name : "reconciliation_failed",
+        updatedAt: new Date(),
+      }).where(eq(relationshipSyncCursors.id, claimed.id));
+    }
+  }
+  return results;
+}
+
 let relationshipHubTimer: NodeJS.Timeout | undefined;
 
 export function scheduleRelationshipHubProcessing() {
@@ -744,6 +809,7 @@ export function scheduleRelationshipHubProcessing() {
       await recoverStaleRelationshipDeliveries();
       await retryDueRelationshipProviderEvents();
       await processDueRelationshipDeliveries();
+      await reconcileDueRelationshipConnections();
     } catch (error) {
       console.error("Relationship Hub processing failed:", sanitizeRelationshipProviderError(error));
     }

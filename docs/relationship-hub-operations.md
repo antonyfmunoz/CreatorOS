@@ -57,6 +57,58 @@ comment reply, comment-to-DM private reply, receipt reconciliation, token expiry
 revocation, rate-limit retry, duplicate webhook, and unauthorized-signature
 tests all pass. The adapter does not claim Instagram audio upload support.
 
+### Facebook Messenger
+
+Use the same Meta application or a separately reviewed production Meta app.
+Set `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION=v25.0`, and
+`RELATIONSHIP_META_WEBHOOK_VERIFY_TOKEN`. Configure this OAuth redirect URI:
+
+`https://creativesos.net/api/relationship-hub/connections/messenger/callback`
+
+Configure and subscribe the Page webhook callback:
+
+`https://creativesos.net/api/relationship-hub/webhooks/messenger`
+
+The app requests `public_profile`, `pages_show_list`, `pages_messaging`, and
+`pages_manage_metadata`, enumerates only Pages on which the user has a relevant
+task, stores each Page token encrypted, and subscribes message/delivery/read
+events. Provider review and a live Page DM round trip remain mandatory.
+
+### WhatsApp Business
+
+Configure the WhatsApp product on the Meta app and use this callback:
+
+`https://creativesos.net/api/relationship-hub/webhooks/whatsapp`
+
+The owner connects a phone-number ID with a Meta system-user token through the
+Relationship Hub. The server verifies the phone number, encrypts the token, and
+never returns it. Text and hosted media, including disclosed synthetic audio,
+use the Cloud API. Free-form replies remain constrained to Meta's customer
+service window. Proactive outreach requires approved templates and is not
+silently treated as an ordinary reply.
+
+### X
+
+Set `X_CLIENT_ID`, `X_CLIENT_SECRET`, and `X_API_SECRET`, then configure this
+OAuth 2.0 PKCE redirect URI:
+
+`https://creativesos.net/api/relationship-hub/connections/x/callback`
+
+The implementation requests only `dm.read`, `dm.write`, `tweet.read`,
+`users.read`, and `offline.access` (X requires `tweet.read` with DM scopes). It
+supports signed Account Activity webhooks when the X plan
+allows them and also reconciles DM history with a durable cursor so brief
+webhook interruptions do not lose messages. X API access and pricing remain a
+provider-owned activation gate.
+
+### Intentionally unavailable channels
+
+TikTok and LinkedIn do not currently expose a generally available creator-DM
+API suitable for this product. CreativesOS does not scrape private sessions or
+pretend a deep-link is a unified inbox connection. Their publishing features
+remain separate; inbox activation waits for an approved official API or formal
+partner access.
+
 ### AI suggestions
 
 `OPENAI_API_KEY` activates evidence-linked suggestions. The model sees only the

@@ -25,7 +25,12 @@ const liveEnvironment = {
   INSTAGRAM_APP_SECRET: "instagram-secret",
   META_GRAPH_API_VERSION: "v25.0",
   RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN: "webhook-token",
+  META_APP_ID: "meta-app",
+  META_APP_SECRET: "meta-secret",
   SOCIAL_TOKEN_ENCRYPTION_KEY: "encryption-key",
+  X_CLIENT_ID: "x-client",
+  X_CLIENT_SECRET: "x-client-secret",
+  X_API_SECRET: "x-api-secret",
 };
 
 describe("CreativesOS release readiness", () => {
@@ -42,6 +47,9 @@ describe("CreativesOS release readiness", () => {
         aiCopilot: "configured",
         clonedVoice: "configured",
         instagram: "configured",
+        messenger: "configured",
+        whatsapp: "configured",
+        x: "configured",
       },
       federation: { installation: "bound", inboundCommands: true, outboundEvents: true, qualification: "pending_shared_round_trip" },
       communityRooms: {
@@ -70,6 +78,9 @@ describe("CreativesOS release readiness", () => {
       aiCopilot: "provider_pending",
       clonedVoice: "provider_pending",
       instagram: "provider_pending",
+      messenger: "provider_pending",
+      whatsapp: "provider_pending",
+      x: "provider_pending",
     });
     expect(result.communityRooms).toEqual({
       liveMedia: "unconfigured",

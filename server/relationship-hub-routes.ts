@@ -56,6 +56,20 @@ import {
   instagramRelationshipConfiguration,
   verifyInstagramWebhookChallenge,
 } from "./relationship-instagram-oauth";
+import { createXWebhookCrcResponse } from "./relationship-x-adapter";
+import {
+  completeXRelationshipAuthorization,
+  createXRelationshipAuthorization,
+  xRelationshipConfiguration,
+} from "./relationship-x-oauth";
+import {
+  completeMessengerRelationshipAuthorization,
+  connectWhatsAppRelationshipAccount,
+  createMessengerRelationshipAuthorization,
+  messengerRelationshipConfiguration,
+  metaWebhookChallenge,
+  whatsappRelationshipConfiguration,
+} from "./relationship-meta-connections";
 
 const businessIdSchema = z.string().uuid();
 
@@ -294,6 +308,59 @@ export function registerRelationshipHubRoutes(app: Express) {
     }
   });
 
+  app.get(["/api/relationship-hub/webhooks/messenger", "/api/relationship-hub/webhooks/whatsapp"], (req, res) => {
+    const challenge = metaWebhookChallenge({ mode: typeof req.query["hub.mode"] === "string" ? req.query["hub.mode"] : undefined, token: typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : undefined, challenge: typeof req.query["hub.challenge"] === "string" ? req.query["hub.challenge"] : undefined });
+    if (!challenge) return res.status(403).send("Webhook verification failed");
+    res.status(200).send(challenge);
+  });
+
+  app.post("/api/relationship-hub/webhooks/messenger", async (req, res) => {
+    try {
+      const body = req.body as { entry?: Array<{ id?: string }> };
+      const accountIds = Array.from(new Set((body.entry ?? []).map((entry) => entry.id).filter((id): id is string => Boolean(id))));
+      if (!accountIds.length) return res.status(202).json({ accepted: 0 });
+      const connections = await db.select({ id: relationshipChannelConnections.id }).from(relationshipChannelConnections).where(and(eq(relationshipChannelConnections.provider, "messenger"), inArray(relationshipChannelConnections.providerAccountId, accountIds), inArray(relationshipChannelConnections.status, ["active", "testing"])));
+      let accepted = 0;
+      for (const connection of connections) accepted += (await ingestRelationshipWebhook({ connectionId: connection.id, rawBody: req.rawBody ?? Buffer.alloc(0), body: req.body, headers: req.headers })).length;
+      res.status(202).json({ accepted });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.post("/api/relationship-hub/webhooks/whatsapp", async (req, res) => {
+    try {
+      const body = req.body as { entry?: Array<{ changes?: Array<{ value?: { metadata?: { phone_number_id?: string } } }> }> };
+      const accountIds = Array.from(new Set((body.entry ?? []).flatMap((entry) => entry.changes ?? []).map((change) => change.value?.metadata?.phone_number_id).filter((id): id is string => Boolean(id))));
+      if (!accountIds.length) return res.status(202).json({ accepted: 0 });
+      const connections = await db.select({ id: relationshipChannelConnections.id }).from(relationshipChannelConnections).where(and(eq(relationshipChannelConnections.provider, "whatsapp"), inArray(relationshipChannelConnections.providerAccountId, accountIds), inArray(relationshipChannelConnections.status, ["active", "testing"])));
+      let accepted = 0;
+      for (const connection of connections) accepted += (await ingestRelationshipWebhook({ connectionId: connection.id, rawBody: req.rawBody ?? Buffer.alloc(0), body: req.body, headers: req.headers })).length;
+      res.status(202).json({ accepted });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.get("/api/relationship-hub/webhooks/x/:connectionId", async (req, res) => {
+    try {
+      const connectionId = z.string().uuid().parse(req.params.connectionId);
+      const crcToken = z.string().min(1).parse(req.query.crc_token);
+      const [connection] = await db.select({ id: relationshipChannelConnections.id }).from(relationshipChannelConnections).where(and(
+        eq(relationshipChannelConnections.id, connectionId),
+        eq(relationshipChannelConnections.provider, "x"),
+        inArray(relationshipChannelConnections.status, ["active", "testing"]),
+      )).limit(1);
+      if (!connection || !process.env.X_API_SECRET) return res.status(404).json({ message: "X webhook is not configured" });
+      res.json({ response_token: createXWebhookCrcResponse(crcToken, process.env.X_API_SECRET) });
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.post("/api/relationship-hub/webhooks/x/:connectionId", async (req, res) => {
+    try {
+      const results = await ingestRelationshipWebhook({ connectionId: z.string().uuid().parse(req.params.connectionId), rawBody: req.rawBody ?? Buffer.alloc(0), body: req.body, headers: req.headers });
+      res.status(202).json({ accepted: results.length });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
   app.post("/api/relationship-hub/webhooks/:connectionId", async (req, res) => {
     try {
       const results = await ingestRelationshipWebhook({
@@ -321,7 +388,7 @@ export function registerRelationshipHubRoutes(app: Express) {
         lastValidatedAt: relationshipChannelConnections.lastValidatedAt,
         lastErrorCode: relationshipChannelConnections.lastErrorCode,
       }).from(relationshipChannelConnections).where(eq(relationshipChannelConnections.businessId, businessId));
-      res.json({ adapters, connections, configuration: { instagram: instagramRelationshipConfiguration() } });
+      res.json({ adapters, connections, configuration: { instagram: instagramRelationshipConfiguration(), messenger: messengerRelationshipConfiguration(), whatsapp: whatsappRelationshipConfiguration(), x: xRelationshipConfiguration() } });
     } catch (error) {
       return relationshipHubError(res, error);
     }
@@ -348,6 +415,58 @@ export function registerRelationshipHubRoutes(app: Express) {
       console.error("Instagram Relationship Hub authorization failed", { errorType: error instanceof Error ? error.name : typeof error });
       res.redirect(302, "/messages?instagram=error");
     }
+  });
+
+  app.post("/api/relationship-hub/connections/x/authorize", attachUser, async (req, res) => {
+    try {
+      const businessId = await managedBusiness(req, req.body?.businessId);
+      if (!xRelationshipConfiguration().configured) throw new Error("X relationship messaging is not configured");
+      res.json({ url: await createXRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.get("/api/relationship-hub/connections/x/callback", attachUser, async (req, res) => {
+    try {
+      const code = z.string().min(1).parse(req.query.code);
+      const state = z.string().min(1).parse(req.query.state);
+      await completeXRelationshipAuthorization({ code, state, userId: req.dbUser!.id });
+      res.redirect(302, "/messages?x=connected");
+    } catch (error) {
+      console.error("X Relationship Hub authorization failed", { errorType: error instanceof Error ? error.name : typeof error });
+      res.redirect(302, "/messages?x=error");
+    }
+  });
+
+  app.post("/api/relationship-hub/connections/messenger/authorize", attachUser, async (req, res) => {
+    try {
+      const businessId = await managedBusiness(req, req.body?.businessId);
+      if (!messengerRelationshipConfiguration().configured) throw new Error("Messenger relationship messaging is not configured");
+      res.json({ url: await createMessengerRelationshipAuthorization({ userId: req.dbUser!.id, businessId }) });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.get("/api/relationship-hub/connections/messenger/callback", attachUser, async (req, res) => {
+    try {
+      const code = z.string().min(1).parse(req.query.code); const state = z.string().min(1).parse(req.query.state);
+      await completeMessengerRelationshipAuthorization({ code, state, userId: req.dbUser!.id });
+      res.redirect(302, "/messages?messenger=connected");
+    } catch (error) {
+      console.error("Messenger Relationship Hub authorization failed", { errorType: error instanceof Error ? error.name : typeof error });
+      res.redirect(302, "/messages?messenger=error");
+    }
+  });
+
+  app.post("/api/relationship-hub/connections/whatsapp", attachUser, async (req, res) => {
+    try {
+      const input = z.object({ businessId: businessIdSchema.optional(), phoneNumberId: z.string().trim().min(1).max(200), wabaId: z.string().trim().min(1).max(200).optional(), accessToken: z.string().trim().min(20).max(4_000), accountName: z.string().trim().min(1).max(200).optional() }).parse(req.body);
+      const businessId = await managedBusiness(req, input.businessId);
+      if (!whatsappRelationshipConfiguration().configured) throw new Error("WhatsApp relationship messaging is not configured");
+      const connection = await connectWhatsAppRelationshipAccount({ ...input, businessId, userId: req.dbUser!.id });
+      await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "connection.created", targetType: "channel_connection", targetId: connection.id, metadata: { provider: "whatsapp" } });
+      res.status(201).json({ id: connection.id, provider: connection.provider, providerAccountName: connection.providerAccountName, status: connection.status });
+    } catch (error) { return relationshipHubError(res, error); }
   });
 
   app.delete("/api/relationship-hub/connections/:connectionId", attachUser, async (req, res) => {

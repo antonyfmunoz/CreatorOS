@@ -49,6 +49,19 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
     && (environment.RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN || environment.META_WEBHOOK_VERIFY_TOKEN)
     && environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
   );
+  const relationshipX = Boolean(
+    environment.X_CLIENT_ID
+    && environment.X_CLIENT_SECRET
+    && environment.X_API_SECRET
+    && environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
+  );
+  const relationshipMetaBase = Boolean(
+    (environment.META_APP_SECRET || environment.INSTAGRAM_APP_SECRET)
+    && environment.META_GRAPH_API_VERSION
+    && (environment.RELATIONSHIP_META_WEBHOOK_VERIFY_TOKEN || environment.META_WEBHOOK_VERIFY_TOKEN || environment.RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN)
+    && environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
+  );
+  const relationshipMessenger = Boolean(relationshipMetaBase && (environment.META_APP_ID || environment.INSTAGRAM_APP_ID));
 
   const blockers: string[] = [];
   if (!clerkProduction) blockers.push(clerkConfigured ? "clerk_test_mode" : "clerk_unconfigured");
@@ -70,6 +83,9 @@ export function getReleaseReadiness(environment: RuntimeEnvironment = process.en
       aiCopilot: relationshipAi ? "configured" : "provider_pending",
       clonedVoice: relationshipVoice ? "configured" : "provider_pending",
       instagram: relationshipInstagram ? "configured" : "provider_pending",
+      messenger: relationshipMessenger ? "configured" : "provider_pending",
+      whatsapp: relationshipMetaBase ? "configured" : "provider_pending",
+      x: relationshipX ? "configured" : "provider_pending",
     },
     federation: {
       installation: umhBound ? "bound" : "unbound",
