@@ -24,4 +24,10 @@ Qualified scope: roadmap items 1-6, excluding external provider activation and p
 
 ## Production evidence
 
-To be completed against the deployed release after publication.
+- Runtime commit: `6dfc3f6`.
+- Fly release: `v208`; both production machines converged on the release with passing health checks during qualification.
+- `GET /api/health`: HTTP 200 with `status: ok`.
+- `GET /api/ready`: HTTP 200 with `status: ready`, database ready, R2 configured, federation evidence storage ready, and no release blockers.
+- Capacity probe: 100 requests at concurrency 10, zero failures, 69.5 requests/second, p50 110.1 ms, p95 273.3 ms, p99 351.6 ms.
+- Security probes: HSTS, frame denial, content-type sniffing protection, and origin isolation present; anonymous privacy access returned 401; a hostile-origin privacy mutation returned 403.
+- Signed-in browser field test: mobile profile showed three tabs at once, the tab rail was horizontally scrollable with its scrollbar hidden, the Likes tab remained clickable and selected, Marketplace search filtered to the expected offer, Marketplace and Communities navigation reported the active route, Privacy exposed export and safe disabled deletion controls, and the public Trust Center rendered without application navigation.
