@@ -30,6 +30,12 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   displayName: text("display_name").notNull(),
   bio: text("bio"),
+  profileLinks: json("profile_links")
+    .$type<Array<{ label: string; url: string }>>()
+    .notNull()
+    .default([]),
+  pushNotificationsEnabled: boolean("push_notifications_enabled").notNull().default(true),
+  colorMode: text("color_mode").notNull().default("dark"),
   profileImageUrl: text("profile_image_url"),
   role: text("role").default("creator").notNull(),
   status: text("status").default("active").notNull(),

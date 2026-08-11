@@ -649,8 +649,12 @@ export class MemStorage implements IStorage {
     }
     
     // Only update allowed fields
+    if (userData.username !== undefined) user.username = userData.username;
     if (userData.displayName !== undefined) user.displayName = userData.displayName;
     if (userData.bio !== undefined) user.bio = userData.bio;
+    if (userData.profileLinks !== undefined) user.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined) user.pushNotificationsEnabled = userData.pushNotificationsEnabled;
+    if (userData.colorMode !== undefined) user.colorMode = userData.colorMode;
     if (userData.profileImageUrl !== undefined) user.profileImageUrl = userData.profileImageUrl;
     
     this.users.set(id, user);
@@ -692,6 +696,9 @@ export class MemStorage implements IStorage {
       // Ensure required fields have default values
       authEmail: insertUser.authEmail ?? null,
       bio: insertUser.bio ?? null,
+      profileLinks: [],
+      pushNotificationsEnabled: true,
+      colorMode: 'dark',
       profileImageUrl: insertUser.profileImageUrl ?? null,
       role: insertUser.role ?? 'user',
       status: 'active',
@@ -1902,11 +1909,16 @@ export class DatabaseStorage implements IStorage {
   }
   
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
-    // Make sure we don't update sensitive fields like clerkId or username
+    // Keep identity and authorization fields immutable while allowing the
+    // public username and profile presentation to be edited by their owner.
     const allowedFields: Partial<User> = {};
     
+    if (userData.username !== undefined) allowedFields.username = userData.username;
     if (userData.displayName !== undefined) allowedFields.displayName = userData.displayName;
     if (userData.bio !== undefined) allowedFields.bio = userData.bio;
+    if (userData.profileLinks !== undefined) allowedFields.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined) allowedFields.pushNotificationsEnabled = userData.pushNotificationsEnabled;
+    if (userData.colorMode !== undefined) allowedFields.colorMode = userData.colorMode;
     if (userData.profileImageUrl !== undefined) allowedFields.profileImageUrl = userData.profileImageUrl;
     
     // Update the user record

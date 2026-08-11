@@ -22,6 +22,7 @@ const criticalClientRoutes = [
   "/earnings",
   "/moderation",
   "/automations",
+  "/settings",
 ];
 
 const criticalApiContracts = [
@@ -34,6 +35,7 @@ const criticalApiContracts = [
   "/api/distribution",
   "/api/campaigns",
   "/api/automations",
+  "/api/user/settings",
 ];
 
 describe("critical journey route contracts", () => {

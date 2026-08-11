@@ -29,6 +29,10 @@ const campaignPayloadSchema = z.object({ name: z.string().min(1).max(160), objec
 const postPublishPayloadSchema = z.object({ content: z.string().min(1).max(20_000), mediaType: z.enum(["text", "photo", "audio", "video"]).default("text"), imageUrl: z.string().url().optional(), audioUrl: z.string().url().optional(), videoUrl: z.string().url().optional() });
 
 export async function emitProjectionEvent(input: { aggregateType: string; aggregateId: string | number; eventType: string; actorUserId?: number | null; payload?: Record<string, unknown>; idempotencyKey: string; correlationId?: string | null; traceId?: string | null }, executor: DbExecutor = db) {
+  // The disposable demo identity lives in MemStorage and deliberately has no
+  // row in PostgreSQL. A demo mutation must therefore remain fully local and
+  // must never attempt to enqueue a production integration event.
+  if (process.env.CREATOROS_DEMO_MODE === "true") return null;
   const [event] = await executor.insert(projectionEvents).values({ projection: "creativesos", aggregateType: input.aggregateType, aggregateId: String(input.aggregateId), eventType: input.eventType, actorUserId: input.actorUserId ?? null, payload: input.payload ?? {}, idempotencyKey: input.idempotencyKey, correlationId: input.correlationId ?? null, traceId: input.traceId ?? null }).onConflictDoNothing().returning();
   return event ?? null;
 }

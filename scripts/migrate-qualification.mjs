@@ -59,6 +59,10 @@ const requiredTables = [
   "account_privacy_requests",
 ];
 
+const requiredColumns = {
+  users: ["profile_links", "push_notifications_enabled", "color_mode"],
+};
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(scriptDirectory, "../migrations");
 const migrationFiles = readMigrationFiles({ migrationsFolder });
@@ -83,6 +87,13 @@ try {
   );
   const present = new Set(tables.map((row) => row.table_name));
   const missing = requiredTables.filter((table) => !present.has(table));
+  const columnRows = await client.unsafe(
+    `select table_name, column_name from information_schema.columns where table_schema = 'public'`,
+  );
+  const presentColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
+  const missingColumns = Object.entries(requiredColumns).flatMap(([table, columns]) =>
+    columns.filter((column) => !presentColumns.has(`${table}.${column}`)).map((column) => `${table}.${column}`),
+  );
   const expectedLatest = migrationFiles.at(-1)?.folderMillis ?? null;
   const actualLatest = migrationRows[0]?.latest == null ? null : Number(migrationRows[0].latest);
 
@@ -97,12 +108,16 @@ try {
   if (missing.length > 0) {
     throw new Error(`Required tables are missing after migration: ${missing.join(", ")}`);
   }
+  if (missingColumns.length > 0) {
+    throw new Error(`Required columns are missing after migration: ${missingColumns.join(", ")}`);
+  }
 
   console.log(JSON.stringify({
     status: "qualified",
     migrationCount: migrationFiles.length,
     latestMigration: expectedLatest,
     requiredTableCount: requiredTables.length,
+    requiredColumnCount: Object.values(requiredColumns).flat().length,
   }));
 } finally {
   await client.end({ timeout: 5 });

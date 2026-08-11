@@ -5,7 +5,7 @@ import {
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
   FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft,
   CalendarDays, LayoutDashboard, Menu, MessageSquare, Share2, Copy, Camera, AtSign,
-  MoreHorizontal, Send, Plus, Trash2, ShieldCheck
+  MoreHorizontal, Send, Plus, Trash2, ShieldCheck, ExternalLink
 } from "lucide-react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
@@ -427,6 +427,9 @@ const Profile = () => {
               <DropdownMenuItem onClick={() => setIsEditProfileOpen(true)}>
                 <Settings className="mr-2 h-4 w-4" /> Edit Profile
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation("/settings")}>
+                <Settings className="mr-2 h-4 w-4" /> Settings
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocation("/saved-posts")}>
                 <BookmarkIcon className="mr-2 h-4 w-4" /> Saved
               </DropdownMenuItem>
@@ -468,7 +471,7 @@ const Profile = () => {
                 {user?.displayName?.charAt(0) || "U"}
               </AvatarFallback>
             </Avatar>
-            {isViewingCurrentUser && <span className="absolute bottom-0 right-0 h-6 w-6 rounded-full border-[3px] border-black bg-emerald-500" aria-label="Online" />}
+            {isViewingCurrentUser && <span role="status" className="absolute bottom-0 right-0 h-6 w-6 rounded-full border-[3px] border-black bg-emerald-500" aria-label="Online" />}
           </div>
           
           <div className="min-w-0 flex-1">
@@ -515,6 +518,15 @@ const Profile = () => {
         {/* Name and Bio */}
         <div className="mb-4">
           {user?.bio && <div className="text-lg font-medium leading-6">{user.bio}</div>}
+          {user?.profileLinks?.length ? (
+            <div className="mt-3 flex flex-wrap gap-2" aria-label="Profile links">
+              {user.profileLinks.map((profileLink) => (
+                <a key={`${profileLink.label}:${profileLink.url}`} href={profileLink.url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center rounded-full border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm font-bold text-[#1d9bf0] hover:border-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d9bf0]">
+                  <span className="truncate">{profileLink.label}</span><ExternalLink className="ml-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-2 flex items-center gap-2 text-sm text-zinc-500"><CalendarDays className="h-4 w-4" />{joinedLabel}</div>
         </div>
         

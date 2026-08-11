@@ -3,6 +3,9 @@ export interface User {
   username: string;
   displayName: string;
   bio?: string | null;
+  profileLinks?: Array<{ label: string; url: string }>;
+  pushNotificationsEnabled?: boolean;
+  colorMode?: string;
   profileImageUrl?: string | null;
   role: string;
   xpPoints: number;

@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Camera, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,6 @@ import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Upload } from "lucide-react";
 
 // Define the form schema
 const profileSchema = z.object({
@@ -50,6 +49,8 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.profileImageUrl || undefined);
+  const initialLinks = user.profileLinks ?? [];
+  const [profileLinks, setProfileLinks] = useState<Array<{ label: string; url: string }>>(initialLinks);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -64,7 +65,16 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   });
 
   // Track if form is dirty (has changes)
-  const isDirty = form.formState.isDirty || selectedImage !== null;
+  const linksChanged = JSON.stringify(profileLinks) !== JSON.stringify(initialLinks);
+  const linksValid = profileLinks.every((link) => {
+    try {
+      const url = new URL(link.url);
+      return Boolean(link.label.trim()) && (url.protocol === "https:" || url.protocol === "http:");
+    } catch {
+      return false;
+    }
+  });
+  const isDirty = form.formState.isDirty || selectedImage !== null || linksChanged;
   
   // Handle image file selection 
   const handleImageUpload = (file: File) => {
@@ -95,6 +105,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
       username: lowercaseUsername,
       displayName: values.displayName,
       bio: values.bio || null,
+      profileLinks: profileLinks.map((link) => ({ label: link.label.trim(), url: link.url.trim() })),
     }, {
       onSuccess: () => {
         // If there's an image selected, upload it after updating profile
@@ -156,7 +167,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
         </button>
         <h1 className="text-base font-semibold">Edit Profile</h1>
         <Button
-          disabled={!isDirty || isSaving}
+          disabled={!isDirty || isSaving || !linksValid}
           onClick={form.handleSubmit(onSubmit)}
           className="h-auto bg-transparent px-0 py-0 font-semibold text-[#1d9bf0] hover:bg-transparent hover:text-[#1d9bf0]/80 disabled:text-zinc-600"
           variant="ghost"
@@ -290,6 +301,60 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
                 </FormItem>
               )}
             />
+
+            <section aria-labelledby="profile-links-heading" className="space-y-3 pb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 id="profile-links-heading" className="text-base font-normal text-white">Links</h2>
+                  <p className="mt-1 text-xs text-zinc-500">Add up to five public destinations.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={profileLinks.length >= 5}
+                  onClick={() => setProfileLinks((links) => [...links, { label: "", url: "https://" }])}
+                  className="text-[#1d9bf0] hover:bg-zinc-900 hover:text-[#1d9bf0]"
+                >
+                  <Plus className="mr-1 h-4 w-4" /> Add link
+                </Button>
+              </div>
+              {profileLinks.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setProfileLinks([{ label: "", url: "https://" }])}
+                  className="flex w-full items-center rounded-xl border border-dashed border-zinc-800 px-4 py-4 text-left text-sm text-zinc-400 hover:border-zinc-600 hover:text-white"
+                >
+                  <Link2 className="mr-3 h-5 w-5" /> Add your website, storefront, or social profile
+                </button>
+              )}
+              {profileLinks.map((link, index) => (
+                <div key={index} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex gap-2">
+                    <Input
+                      aria-label={`Link ${index + 1} label`}
+                      value={link.label}
+                      maxLength={40}
+                      placeholder="Label"
+                      onChange={(event) => setProfileLinks((links) => links.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))}
+                      className="border-zinc-800 bg-zinc-900 text-white"
+                    />
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove link ${index + 1}`} onClick={() => setProfileLinks((links) => links.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 text-zinc-400 hover:bg-zinc-900 hover:text-red-300">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Input
+                    aria-label={`Link ${index + 1} URL`}
+                    type="url"
+                    value={link.url}
+                    maxLength={2000}
+                    placeholder="https://example.com"
+                    onChange={(event) => setProfileLinks((links) => links.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))}
+                    className="mt-2 border-zinc-800 bg-zinc-900 text-white"
+                  />
+                </div>
+              ))}
+              {!linksValid && profileLinks.length > 0 && <p role="alert" className="text-xs text-red-300">Every link needs a label and a complete http or https URL.</p>}
+            </section>
           </form>
         </Form>
       </div>

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { z } from "zod";
 import { storage } from "./storage";
 import OpenAI from "openai";
 import {
@@ -249,6 +250,7 @@ const publicUserFields = {
   username: users.username,
   displayName: users.displayName,
   bio: users.bio,
+  profileLinks: users.profileLinks,
   profileImageUrl: users.profileImageUrl,
   role: users.role,
   xpPoints: users.xpPoints,
@@ -686,6 +688,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/user/settings", attachUser, async (req, res) => {
+    res.json({
+      pushNotificationsEnabled: req.dbUser!.pushNotificationsEnabled,
+      colorMode: req.dbUser!.colorMode,
+    });
+  });
+
+  app.patch("/api/user/settings", attachUser, async (req, res) => {
+    const result = z.object({
+      pushNotificationsEnabled: z.boolean().optional(),
+      colorMode: z.enum(["dark", "high_contrast"]).optional(),
+    }).strict().refine(
+      (value) => value.pushNotificationsEnabled !== undefined || value.colorMode !== undefined,
+      "Provide at least one setting",
+    ).safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ message: "Provide valid settings", issues: result.error.issues });
+    }
+    try {
+      const updated = await storage.updateUser(req.dbUser!.id, result.data);
+      res.json({
+        pushNotificationsEnabled: updated.pushNotificationsEnabled,
+        colorMode: updated.colorMode,
+      });
+    } catch (error) {
+      console.error("Error updating user settings:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
   // Public profile storefronts need only that creator's offers, never the
   // global marketplace catalog. Keep the response deliberately bounded.
   app.get("/api/users/:id/products", async (req, res) => {
@@ -726,13 +758,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "You can only update your own profile" });
       }
 
-      const { username, displayName, bio, profileImageUrl } = req.body;
+      const profilePatch = z.object({
+        username: z.string().trim().min(3).max(20).regex(/^[a-z0-9_.]+$/).optional(),
+        displayName: z.string().trim().min(2).max(30).optional(),
+        bio: z.string().max(150).nullable().optional(),
+        profileImageUrl: z.string().max(2_000).nullable().optional(),
+        profileLinks: z.array(z.object({
+          label: z.string().trim().min(1).max(40),
+          url: z.string().url().max(2_000).refine((value) => {
+            const protocol = new URL(value).protocol;
+            return protocol === "https:" || protocol === "http:";
+          }, "Profile links must use http or https"),
+        })).max(5).optional(),
+      }).strict().safeParse(req.body);
+      if (!profilePatch.success) {
+        return res.status(400).json({ message: "Provide valid profile fields", issues: profilePatch.error.issues });
+      }
+      const { username, displayName, bio, profileImageUrl, profileLinks } = profilePatch.data;
 
       // Only allow updating specific fields
       const userData: Partial<any> = {};
       if (username !== undefined) userData.username = username.toLowerCase();
       if (displayName !== undefined) userData.displayName = displayName;
       if (bio !== undefined) userData.bio = bio;
+      if (profileLinks !== undefined) userData.profileLinks = profileLinks;
       if (profileImageUrl !== undefined)
         userData.profileImageUrl = profileImageUrl;
 
@@ -740,6 +789,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedUser);
     } catch (error) {
       console.error("Error updating user:", error);
+      if ((error as { code?: string }).code === "23505") {
+        return res.status(409).json({ message: "That username is already in use" });
+      }
       res.status(500).json({ message: "Failed to update user profile" });
     }
   });
@@ -4348,10 +4400,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/events/:id", attachUser, async (req, res) => {
     try {
+      const parsedEventId = z.string().uuid().safeParse(req.params.id);
+      if (!parsedEventId.success)
+        return res.status(404).json({ message: "Event not found" });
       const [event] = await db
         .select()
         .from(events)
-        .where(eq(events.id, req.params.id))
+        .where(eq(events.id, parsedEventId.data))
         .limit(1);
       if (!event) return res.status(404).json({ message: "Event not found" });
       const [membership] = await db

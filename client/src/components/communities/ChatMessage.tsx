@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 
 interface ChatMessageProps {
   message: ChannelMessageType;
@@ -78,7 +79,9 @@ const ChatMessage = ({ message, isPinned = false, isReply = false, canPin = fals
   }
   
   return (
-    <div className={`flex ${isReply ? "mb-4 border-l border-zinc-800 pl-4" : "mb-6"}`}>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+    <div className={`flex rounded-lg ${isReply ? "mb-4 border-l border-zinc-800 pl-4" : "mb-6"}`}>
       <Avatar className="w-10 h-10 rounded-full mr-3">
         <AvatarImage src={message.user.profileImageUrl ?? undefined} alt={message.user.displayName} />
         <AvatarFallback>{message.user.displayName.charAt(0)}</AvatarFallback>
@@ -99,6 +102,7 @@ const ChatMessage = ({ message, isPinned = false, isReply = false, canPin = fals
             className={`flex h-auto items-center rounded px-2 py-1 text-xs hover:bg-zinc-900 hover:text-white ${isLiked ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
             onClick={handleLike}
             disabled={likeMessageMutation.isPending}
+            aria-label={isLiked ? "Unlike message" : "Like message"}
           >
             <ThumbsUp className="h-4 w-4 mr-1" />
             {message.likes}
@@ -127,6 +131,13 @@ const ChatMessage = ({ message, isPinned = false, isReply = false, canPin = fals
         </div>
       </div>
     </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="border-zinc-800 bg-zinc-950 text-white">
+        <ContextMenuItem disabled={likeMessageMutation.isPending} onSelect={handleLike}>{isLiked ? "Unlike" : "Like"}</ContextMenuItem>
+        {!isReply && onReply && <ContextMenuItem onSelect={() => onReply(message)}>Reply</ContextMenuItem>}
+        {canPin && <><ContextMenuSeparator className="bg-zinc-800" /><ContextMenuItem disabled={pinMessageMutation.isPending} onSelect={handlePin}>{message.isPinned ? "Unpin message" : "Pin message"}</ContextMenuItem></>}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 };
 

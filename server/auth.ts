@@ -180,7 +180,11 @@ export async function attachUser(
 ) {
   try {
     if (process.env.CREATOROS_DEMO_MODE === "true") {
-      const demoUser = await storage.getUser(1);
+      const requestedDemoUser = Number(req.get("x-creativesos-demo-user") ?? 1);
+      const demoUserId = Number.isInteger(requestedDemoUser) && requestedDemoUser > 0
+        ? requestedDemoUser
+        : 1;
+      const demoUser = await storage.getUser(demoUserId);
       if (!demoUser) {
         return res.status(500).json({ message: "Demo user is unavailable" });
       }

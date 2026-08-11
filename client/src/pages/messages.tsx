@@ -567,7 +567,7 @@ export default function MessagesPage() {
     <main className="flex h-dvh overflow-hidden bg-black text-white">
       <aside className="hidden w-56 shrink-0 border-r border-zinc-900 bg-[#050505] px-3 py-4 lg:flex lg:flex-col">
         <div className="flex items-center gap-3 px-2">
-          <Button variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/")}><ArrowLeft className="h-5 w-5" /></Button>
+          <Button aria-label="Back to Explore" variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation("/")}><ArrowLeft className="h-5 w-5" /></Button>
           <div><p className="text-sm font-black">Relationship Hub</p><p className="text-[10px] text-zinc-600">{business?.name ?? "CreativesOS"}</p></div>
         </div>
         <nav className="mt-6 space-y-1">
@@ -603,7 +603,7 @@ export default function MessagesPage() {
 
       <section className={`${selectedId ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r border-zinc-900 md:w-[340px] xl:w-[380px]`}>
         <header className="border-b border-zinc-900 px-4 pb-3 pt-4">
-          <div className="flex items-center gap-2"><Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setLocation("/")}><ArrowLeft className="h-5 w-5" /></Button><h1 className="flex-1 text-xl font-black">Inbox</h1><Button variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900" onClick={() => setLegacyMode(true)} title="Start or manage native chats"><Plus className="h-5 w-5" /></Button></div>
+          <div className="flex items-center gap-2"><Button aria-label="Back to Explore" variant="ghost" size="icon" className="lg:hidden" onClick={() => setLocation("/")}><ArrowLeft className="h-5 w-5" /></Button><h1 className="flex-1 text-xl font-black">Inbox</h1><Button aria-label="Start or manage native chats" variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900" onClick={() => setLegacyMode(true)}><Plus className="h-5 w-5" /></Button></div>
           <div className="relative mt-3"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people and conversations" className="h-10 rounded-xl border-zinc-900 bg-zinc-950 pl-9 text-sm" /></div>
           <div className="mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none]">
             {["open", "mine", "unassigned", "ai"].map((item) => <button key={item} onClick={() => setQueue(item)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold capitalize ${queue === item ? "bg-white text-black" : "bg-zinc-950 text-zinc-500"}`}>{item}</button>)}
@@ -622,7 +622,7 @@ export default function MessagesPage() {
       <section className={`${selectedId ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col`}>
         {detail.data ? <>
           <header className="flex h-16 items-center gap-3 border-b border-zinc-900 px-4">
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedId(null)}><ArrowLeft className="h-5 w-5" /></Button>
+            <Button aria-label="Back to conversations" variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedId(null)}><ArrowLeft className="h-5 w-5" /></Button>
             <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-[#1d9bf0] to-violet-500 text-[10px] font-black">{initials(detail.data.relationship?.displayName ?? detail.data.title)}</div>
             <div className="min-w-0"><p className="truncate text-sm font-bold">{detail.data.relationship?.displayName ?? detail.data.title}</p><div className="flex items-center gap-1 text-[10px] text-zinc-600"><ActiveProviderIcon className="h-3 w-3" /><span className="capitalize">{activeBinding?.provider ?? "native"}</span><span>·</span><span className="capitalize">{detail.data.status}</span></div></div>
             <div className="ml-auto flex items-center gap-1"><Button onClick={() => setTimelineOpen(true)} variant="ghost" size="icon" className="text-zinc-500" title="Relationship timeline"><Clock3 className="h-4 w-4" /></Button><Button variant="ghost" size="sm" className="hidden rounded-full text-xs text-zinc-400 sm:flex" onClick={() => updateConversation.mutate({ status: detail.data.status === "closed" ? "open" : "closed" })}>{detail.data.status === "closed" ? "Reopen" : "Close"}</Button><Button onClick={() => setOperationsOpen(true)} variant="ghost" size="icon" className="text-zinc-500" title="Relationship Hub controls"><MoreHorizontal className="h-5 w-5" /></Button></div>

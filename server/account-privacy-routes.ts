@@ -18,9 +18,26 @@ import {
 } from "./privacy-policy";
 
 const scheduleSchema = z.object({ confirmation: z.string().min(1).max(160) });
+const isDemoMode = () => process.env.CREATOROS_DEMO_MODE === "true";
 
 export function registerAccountPrivacyRoutes(app: Express) {
   app.get("/api/privacy/summary", attachUser, async (req, res) => {
+    if (isDemoMode()) {
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json({
+        accountStatus: req.dbUser!.status,
+        exportSchemaVersion: "creativesos.account-export.v1",
+        deletionGraceDays: 7,
+        confirmation: accountDeletionConfirmation(req.dbUser!.username),
+        blockers: [{
+          kind: "demo_mode",
+          id: "local-demo",
+          name: "Local demonstration account",
+          message: "Account deletion is disabled in the disposable local demo.",
+        }],
+        pendingRequest: null,
+      });
+    }
     const blockers = await accountDeletionBlockers(req.dbUser!.id);
     const pendingRequest = await latestAccountDeletionRequest(req.dbUser!.id);
     res.setHeader("Cache-Control", "private, no-store");
@@ -36,6 +53,17 @@ export function registerAccountPrivacyRoutes(app: Express) {
 
   app.get("/api/privacy/export", attachUser, async (req, res) => {
     const exportedAt = new Date();
+    if (isDemoMode()) {
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Content-Disposition", `attachment; filename="creativesos-account-${exportedAt.toISOString().slice(0, 10)}.json"`);
+      return res.json({
+        schemaVersion: "creativesos.account-export.v1",
+        exportedAt: exportedAt.toISOString(),
+        account: req.dbUser,
+        demo: true,
+        privacyRequestId: "local-demo-export",
+      });
+    }
     const [request] = await db.insert(accountPrivacyRequests).values({
       userId: req.dbUser!.id,
       kind: "export",
@@ -50,6 +78,9 @@ export function registerAccountPrivacyRoutes(app: Express) {
   });
 
   app.post("/api/privacy/deletion-requests", attachUser, async (req, res) => {
+    if (isDemoMode()) {
+      return res.status(409).json({ message: "Account deletion is disabled in the disposable local demo." });
+    }
     const input = scheduleSchema.parse(req.body);
     if (!validAccountDeletionConfirmation(req.dbUser!.username, input.confirmation)) {
       return res.status(400).json({ message: `Type ${accountDeletionConfirmation(req.dbUser!.username)} exactly to continue.` });
@@ -73,6 +104,9 @@ export function registerAccountPrivacyRoutes(app: Express) {
   });
 
   app.delete("/api/privacy/deletion-requests/:requestId", attachUser, async (req, res) => {
+    if (isDemoMode()) {
+      return res.status(404).json({ message: "Cancelable deletion request not found" });
+    }
     const [request] = await db.select().from(accountPrivacyRequests).where(and(
       eq(accountPrivacyRequests.id, req.params.requestId),
       eq(accountPrivacyRequests.userId, req.dbUser!.id),

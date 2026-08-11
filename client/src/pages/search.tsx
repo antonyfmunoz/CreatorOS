@@ -100,7 +100,7 @@ export default function SearchPage() {
         </section>
       ) : (
         <div>
-          {isSearching && <div role="status" className="border-b border-zinc-800 px-4 py-3 text-sm text-zinc-500">Searching CreativesOS...</div>}
+          {isSearching && <div role="status" className="border-b border-zinc-800 px-4 py-3 text-sm text-zinc-500">Searching CreativesOS…</div>}
           {searchFailed && <div role="alert" className="border-b border-red-950 bg-red-950/30 px-4 py-3 text-sm text-red-300">Search is temporarily unavailable. Try again in a moment.</div>}
         <div className={`divide-y divide-zinc-800 ${isSearching ? "opacity-60" : ""}`}>
           <section className="px-4 py-5">

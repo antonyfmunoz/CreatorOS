@@ -108,10 +108,10 @@ export default function CreatePage() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Repeat2 className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Build an automation</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Run repeatable creator workflows with approvals, recovery, and a complete activity record.</span></span>
         </button>
-        <button onClick={() => setLocation("/create-product")} className="mt-3 flex w-full items-center gap-4 rounded-2xl bg-[#1d9bf0] p-4 text-left text-white transition-opacity hover:opacity-90">
+        <button onClick={() => setLocation("/create-product")} className="mt-3 flex w-full items-center gap-4 rounded-2xl bg-[#1d9bf0] p-4 text-left text-black transition-opacity hover:opacity-90">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-black/15"><PackagePlus className="h-5 w-5" /></span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Create an offer</span><span className="mt-1 block text-xs leading-5 text-white/80">Start a course, community, digital asset, coaching offer, or software product.</span></span>
-          <BookOpen className="h-5 w-5 text-zinc-300" />
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Create an offer</span><span className="mt-1 block text-xs leading-5 text-black/75">Start a course, community, digital asset, coaching offer, or software product.</span></span>
+          <BookOpen className="h-5 w-5 text-black/75" />
         </button>
       </section>
 

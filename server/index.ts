@@ -81,8 +81,15 @@ app.use((req, res, next) => {
   host: "0.0.0.0",
 }, () => {
     log(`serving on port ${port}`);
-    
-    // Start the scheduled cleanup tasks
+
+    // Demo mode is intentionally self-contained. Starting any database- or
+    // provider-backed worker here makes local browser qualification depend on
+    // ambient credentials and can mutate a developer's real environment.
+    if (process.env.CREATOROS_DEMO_MODE === "true") {
+      log("demo mode: background workers disabled");
+      return;
+    }
+
     scheduleCleanupTasks();
     scheduleDistributionProcessing();
     scheduleUmhDelivery();
@@ -90,6 +97,6 @@ app.use((req, res, next) => {
     scheduleRelationshipHubProcessing();
     scheduleInstagramRelationshipTokenRefresh();
     scheduleXRelationshipTokenRefresh();
-    log('Story cleanup tasks scheduled');
+    log("background workers scheduled");
   });
 })();

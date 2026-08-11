@@ -1,3 +1,7 @@
+param(
+  [string[]]$PlaywrightArgs = @()
+)
+
 $ErrorActionPreference = "Stop"
 
 $qualificationRoot = "C:\tmp"
@@ -28,7 +32,7 @@ try {
   $env:QUALIFICATION_ISOLATED_DATABASE = "true"
   & node scripts/migrate-qualification.mjs
   if ($LASTEXITCODE -ne 0) { throw "Browser database migration failed" }
-  & npx.cmd playwright test
+  & npx.cmd playwright test @PlaywrightArgs
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification failed" }
 } finally {
   if ($postgresStarted) { & pg_ctl -D $qualificationPath -m fast -w stop }

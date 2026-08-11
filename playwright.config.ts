@@ -18,8 +18,8 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chromium", use: { ...devices["Pixel 7"], extraHTTPHeaders: { "x-creativesos-demo-user": "1" } } },
+    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], extraHTTPHeaders: { "x-creativesos-demo-user": "2" } } },
   ],
   webServer: {
     command: "npm run dev:demo",

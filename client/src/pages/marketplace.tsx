@@ -344,7 +344,7 @@ export default function Marketplace() {
                       setCategory(item);
                       setPage(1);
                     }}
-                    className={`shrink-0 rounded-full px-5 py-1.5 text-xs font-bold ${category === item ? "bg-[#1d9bf0] text-white" : "bg-zinc-900 text-zinc-300"}`}
+                    className={`shrink-0 rounded-full px-5 py-1.5 text-xs font-bold ${category === item ? "bg-[#1d9bf0] text-black" : "bg-zinc-900 text-zinc-300"}`}
                   >
                     {item}
                   </button>

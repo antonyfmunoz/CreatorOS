@@ -15,6 +15,7 @@ type UpdateProfileData = {
   username?: string;
   displayName?: string;
   bio?: string | null;
+  profileLinks?: Array<{ label: string; url: string }>;
   profileImageUrl?: string | null;
 };
 

@@ -35,6 +35,12 @@ try {
   & npx.cmd tsx scripts/qualify-relationship-operations.ts
   if ($LASTEXITCODE -ne 0) { throw "Relationship operations qualification failed" }
 
+  & npx.cmd tsx scripts/qualify-automation-kernel.ts
+  if ($LASTEXITCODE -ne 0) { throw "Automation kernel qualification failed" }
+
+  & npx.cmd tsx scripts/qualify-native-social-automations.ts
+  if ($LASTEXITCODE -ne 0) { throw "Native social automation qualification failed" }
+
   & npx.cmd tsx scripts/qualify-account-privacy.ts
   if ($LASTEXITCODE -ne 0) { throw "Account privacy qualification failed" }
 } finally {

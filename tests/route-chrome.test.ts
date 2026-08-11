@@ -7,12 +7,12 @@ describe("application chrome routing", () => {
     (path) => expect(routeChrome(path)).toEqual({ isAuth: true, showBottomNavigation: false }),
   );
 
-  it.each(["/trust", "/legal/data-deletion", "/communities/8/rooms/room-1"])(
+  it.each(["/trust", "/legal/data-deletion", "/communities/8/rooms/room-1", "/search"])(
     "keeps focused public and conference surfaces free of global navigation on %s",
     (path) => expect(routeChrome(path).showBottomNavigation).toBe(false),
   );
 
-  it.each(["/", "/marketplace", "/communities", "/profile", "/settings/privacy"])(
+  it.each(["/", "/marketplace", "/communities", "/profile", "/settings", "/settings/privacy"])(
     "retains application navigation on %s",
     (path) => expect(routeChrome(path).showBottomNavigation).toBe(true),
   );

@@ -52,6 +52,7 @@ const Communities = () => {
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [communitySearchOpen, setCommunitySearchOpen] = useState(false);
   const [communitySearch, setCommunitySearch] = useState("");
+  const [selectedSearchMessageId, setSelectedSearchMessageId] = useState<number | null>(null);
   const [roomComposerOpen, setRoomComposerOpen] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
   const [roomTitle, setRoomTitle] = useState("");
@@ -366,6 +367,9 @@ const Communities = () => {
   
   // Find pinned messages
   const visibleMessages = messages?.filter((message) => message.content.toLowerCase().includes(communitySearch.trim().toLowerCase())) || [];
+  const searchMessages = (communitySearch.trim() ? visibleMessages : (messages ?? []))
+    .filter((message) => message.parentMessageId === null)
+    .slice(0, 6);
   const pinnedMessages = visibleMessages.filter(message => message.isPinned && message.parentMessageId === null);
   const rootMessages = visibleMessages.filter((message) => message.parentMessageId === null);
   const repliesByParent = new Map<number, ChannelMessageType[]>();
@@ -541,7 +545,14 @@ const Communities = () => {
             </Button>
           </div>
         </div>
-        {communitySearchOpen && <div className="border-b border-zinc-800 px-4 py-3"><Input autoFocus value={communitySearch} onChange={(event) => setCommunitySearch(event.target.value)} placeholder="Search this channel" className="border-0 bg-zinc-900 text-white placeholder:text-zinc-500" /></div>}
+        {communitySearchOpen && <section aria-label="Community search" className="border-b border-zinc-800 bg-black px-4 py-3">
+          <div className="flex items-center gap-2"><Input aria-label="Search this channel" autoFocus value={communitySearch} onChange={(event) => { setCommunitySearch(event.target.value); setSelectedSearchMessageId(null); }} placeholder="Search this channel" className="border-0 bg-zinc-900 text-white placeholder:text-zinc-500" /><Button type="button" variant="ghost" size="icon" aria-label="Close community search" className="shrink-0 text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => { setCommunitySearchOpen(false); setCommunitySearch(""); }}><X className="h-4 w-4" /></Button></div>
+          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-400">{communitySearch.trim() ? "Messages" : "Recent messages"}</p>
+          <div className="mt-2 grid gap-1">
+            {searchMessages.map((message) => <button key={message.id} type="button" aria-pressed={selectedSearchMessageId === message.id} onClick={() => { setSelectedSearchMessageId(message.id); requestAnimationFrame(() => document.getElementById(`community-message-${message.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })); }} className={`rounded-xl px-3 py-2 text-left transition-colors ${selectedSearchMessageId === message.id ? "ring-2 ring-white bg-zinc-900" : "hover:bg-zinc-950"}`}><span className="block text-xs font-bold text-white">{message.user.displayName}</span><span className="mt-0.5 block truncate text-xs text-zinc-400">{message.content}</span></button>)}
+            {searchMessages.length === 0 && <p className="rounded-xl border border-dashed border-zinc-800 px-3 py-4 text-xs text-zinc-400">No messages match this search.</p>}
+          </div>
+        </section>}
         
         {/* Channel List */}
         {channels && channels.length > 0 && (
@@ -654,7 +665,7 @@ const Communities = () => {
             ))
           ) : (
             rootMessages.map(message => (
-              <div key={message.id}>
+              <div id={`community-message-${message.id}`} key={message.id} className={`rounded-xl transition-shadow ${selectedSearchMessageId === message.id ? "ring-2 ring-white ring-offset-4 ring-offset-black" : ""}`}>
                 <ChatMessage message={message} canPin={canPinMessages} onReply={(target) => { setReplyingTo(target); setMessageInput(""); }} />
                 {(repliesByParent.get(message.id) ?? []).map((reply) => <ChatMessage key={reply.id} message={reply} isReply />)}
               </div>

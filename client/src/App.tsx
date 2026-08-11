@@ -59,6 +59,7 @@ const ModerationPage = lazy(() => import("@/pages/moderation"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
 const PrivacySettingsPage = lazy(() => import("@/pages/privacy-settings"));
+const SettingsPage = lazy(() => import("@/pages/settings"));
 const TrustCenterPage = lazy(() => import("@/pages/trust-center"));
 const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
 
@@ -167,6 +168,7 @@ function Router() {
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
+      <ProtectedRoute path="/settings" component={SettingsPage} />
       <ProtectedRoute path="/settings/privacy" component={PrivacySettingsPage} />
       <ProtectedRoute path="/communities/:communityId/rooms/:roomId" component={CommunityRoomPage} />
       <ProtectedRoute path="/communities/:id" component={Communities} />
@@ -204,10 +206,14 @@ function Router() {
 
 function AppContent() {
   const { isOpen } = useAIChatStore();
-  const { currentUser, setCurrentUser } = useAppStore();
+  const { currentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   const [location] = useLocation();
   const chrome = routeChrome(location);
+
+  useEffect(() => {
+    document.documentElement.dataset.colorMode = currentUser?.colorMode === "high_contrast" ? "high_contrast" : "dark";
+  }, [currentUser?.colorMode]);
 
   return (
     <>
