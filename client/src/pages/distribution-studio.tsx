@@ -17,7 +17,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { DistributionJob, DistributionPlatform } from "@/lib/distribution";
+import {
+  DistributionConnectionsResponse,
+  DistributionJob,
+  DistributionPlatform,
+} from "@/lib/distribution";
 
 const platforms: DistributionPlatform[] = [
   "CreativesOS",
@@ -103,6 +107,10 @@ export default function DistributionStudio() {
     enabled: Boolean(user),
     queryFn: async () =>
       (await apiRequest("GET", "/api/assets?visibility=public")).json(),
+  });
+  const { data: connectionData } = useQuery<DistributionConnectionsResponse>({
+    queryKey: ["/api/distribution/connections"],
+    enabled: Boolean(user),
   });
   const { data: campaignContext } = useQuery<CampaignContext>({
     queryKey: ["/api/campaigns", campaignId],
@@ -513,6 +521,12 @@ export default function DistributionStudio() {
               {platforms.map((platform) => {
                 const selected = selectedPlatforms.includes(platform);
                 const external = platform !== "CreativesOS";
+                const provider = connectionData?.providers.find(
+                  (candidate) => candidate.label === platform,
+                );
+                const connected = provider?.connections.some(
+                  (connection) => connection.status === "active",
+                );
                 return (
                   <button
                     key={platform}
@@ -530,7 +544,7 @@ export default function DistributionStudio() {
                       <span
                         className={`text-[10px] font-semibold ${selected ? "text-black/60" : "text-zinc-600"}`}
                       >
-                        Connect
+                        {connected ? "Connected" : "Connect"}
                       </span>
                     )}
                     {selected && <CheckCircle2 className="h-4 w-4" />}

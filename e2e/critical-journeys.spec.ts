@@ -97,6 +97,44 @@ test("core provider-independent workspaces render without route failures", async
   }
 });
 
+test("distribution composer reflects an active channel connection", async ({ page }) => {
+  await page.route("**/api/distribution/connections", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "youtube",
+            label: "YouTube",
+            connectionConfigured: true,
+            connectionAvailable: true,
+            connections: [
+              {
+                id: "qualification-youtube",
+                provider: "youtube",
+                providerAccountName: "Qualification Channel",
+                status: "active",
+                scopes: ["youtube.readonly", "youtube.upload"],
+                tokenExpiresAt: null,
+                lastValidatedAt: new Date().toISOString(),
+                lastErrorCode: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/studio");
+  const youtube = page.getByRole("button", { name: /YouTube Connected/ });
+  await expect(youtube).toBeVisible();
+  await youtube.click();
+  await expect(youtube).toHaveClass(/border-white/);
+});
+
 test("all static product surfaces render without application or server failure", async ({ page }) => {
   test.setTimeout(150_000);
   const failures = watchServerFailures(page);
