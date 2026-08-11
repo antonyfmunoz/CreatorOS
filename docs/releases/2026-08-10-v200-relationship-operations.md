@@ -15,6 +15,8 @@
   with private notes excluded by default.
 - Realtime session metering at stop, retention integration, audit evidence, and
   release-readiness reporting.
+- An independent 64-character room-media ingest secret generated directly in
+  1Password and rolled into Fly without plaintext source or terminal output.
 
 ## Qualification gates
 
