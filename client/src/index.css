@@ -65,6 +65,11 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
 }
 
 @layer components {
@@ -74,6 +79,14 @@
 
   .tab-content {
     @apply w-full h-full;
+  }
+
+  .skip-link {
+    @apply fixed left-3 top-3 z-[100] -translate-y-24 rounded-lg bg-white px-4 py-2 text-sm font-bold text-black shadow-xl transition-transform;
+  }
+
+  .skip-link:focus {
+    @apply translate-y-0;
   }
 
   /* Touch-first rails: hide the visual scrollbar without disabling natural
@@ -88,6 +101,17 @@
 
   .horizontal-rail > * {
     scroll-snap-align: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

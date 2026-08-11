@@ -32,8 +32,10 @@ export const users = pgTable("users", {
   bio: text("bio"),
   profileImageUrl: text("profile_image_url"),
   role: text("role").default("creator").notNull(),
+  status: text("status").default("active").notNull(),
   xpPoints: integer("xp_points").default(0).notNull(),
   level: integer("level").default(1).notNull(),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -46,6 +48,42 @@ export const insertUserSchema = createInsertSchema(users).pick({
   profileImageUrl: true,
   role: true,
 });
+
+// Account privacy requests are durable because export and erasure must remain
+// auditable across restarts. The table stores workflow evidence only; export
+// payloads are generated on demand and are never retained here.
+export const accountPrivacyRequests = pgTable(
+  "account_privacy_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("scheduled"),
+    scheduledFor: timestamp("scheduled_for"),
+    completedAt: timestamp("completed_at"),
+    canceledAt: timestamp("canceled_at"),
+    failureCode: text("failure_code"),
+    metadata: json("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userKindCreatedIdx: index("account_privacy_user_kind_created_idx").on(
+      table.userId,
+      table.kind,
+      table.createdAt,
+    ),
+    statusScheduleIdx: index("account_privacy_status_schedule_idx").on(
+      table.status,
+      table.scheduledFor,
+    ),
+  }),
+);
 
 // Post schema
 export const posts = pgTable("posts", {
@@ -4033,6 +4071,7 @@ export const followersRelations = relations(followers, ({ one }) => ({
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type AccountPrivacyRequest = typeof accountPrivacyRequests.$inferSelect;
 
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;

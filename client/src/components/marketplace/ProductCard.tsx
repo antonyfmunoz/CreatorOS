@@ -16,6 +16,8 @@ const ProductCard = ({ product, variant = "grid", className = "" }: ProductCardP
         <img
           src={product.imageUrl}
           alt={product.title}
+          loading="lazy"
+          decoding="async"
           className="w-24 h-24 object-cover"
         />
         <CardContent className="p-3 flex-1">
@@ -39,6 +41,8 @@ const ProductCard = ({ product, variant = "grid", className = "" }: ProductCardP
         <img
           src={product.imageUrl}
           alt={product.title}
+          loading="lazy"
+          decoding="async"
           className="w-full h-32 object-cover"
         />
         <CardContent className="p-3">

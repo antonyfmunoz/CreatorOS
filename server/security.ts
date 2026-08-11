@@ -104,6 +104,52 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
   res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=(self)");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+  res.setHeader("Origin-Agent-Cluster", "?1");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   next();
+}
+
+const originExemptPaths = [
+  "/api/stripe/webhook",
+  "/api/relationship-hub/webhooks/",
+  "/api/community-room-media/transcripts",
+  "/api/umh/commands",
+];
+
+export function mutationOriginAllowed(input: {
+  method: string;
+  origin?: string;
+  path: string;
+  publicAppUrl?: string;
+  production?: boolean;
+}) {
+  if (["GET", "HEAD", "OPTIONS"].includes(input.method.toUpperCase())) return true;
+  if (originExemptPaths.some((candidate) => input.path === candidate || input.path.startsWith(candidate))) return true;
+  if (!input.origin) return true;
+  const allowed = new Set<string>();
+  if (input.publicAppUrl) allowed.add(input.publicAppUrl.replace(/\/$/, ""));
+  if (!input.production) {
+    allowed.add("http://localhost:3000");
+    allowed.add("http://localhost:5000");
+    allowed.add("http://127.0.0.1:3000");
+    allowed.add("http://127.0.0.1:5000");
+  }
+  return allowed.has(input.origin.replace(/\/$/, ""));
+}
+
+/**
+ * Browser mutations must originate from the configured first-party app.
+ * Signed webhooks and server-to-server calls either use their dedicated
+ * signature contract or omit Origin and remain unaffected.
+ */
+export function sameOriginMutationGuard(req: Request, res: Response, next: NextFunction) {
+  if (mutationOriginAllowed({
+    method: req.method,
+    origin: req.get("origin") ?? undefined,
+    path: req.path,
+    publicAppUrl: process.env.PUBLIC_APP_URL,
+    production: process.env.NODE_ENV === "production",
+  })) return next();
+  return res.status(403).json({ message: "Cross-site mutation blocked" });
 }

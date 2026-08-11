@@ -10,12 +10,13 @@ import { scheduleAutomationProcessing } from "./automation-engine";
 import { scheduleRelationshipHubProcessing } from "./relationship-hub";
 import { scheduleInstagramRelationshipTokenRefresh } from "./relationship-instagram-oauth";
 import { scheduleXRelationshipTokenRefresh } from "./relationship-x-oauth";
-import { apiRateLimiter, securityHeaders } from "./security";
+import { apiRateLimiter, sameOriginMutationGuard, securityHeaders } from "./security";
 
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(securityHeaders);
+app.use(sameOriginMutationGuard);
 app.use(apiRateLimiter());
 app.use(express.json({
   limit: "1mb",

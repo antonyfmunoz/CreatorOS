@@ -20,7 +20,7 @@ const AuthPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <main className="min-h-screen flex flex-col md:flex-row">
       {/* Auth form section */}
       <div className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 md:w-1/2 md:px-10">
         <div className="w-full max-w-md space-y-6">
@@ -62,6 +62,12 @@ const AuthPage = () => {
               </div>
             </>
           )}
+          <nav aria-label="Trust and safety" className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-zinc-500">
+            <button onClick={() => setLocation("/trust")} className="hover:text-white hover:underline">Trust center</button>
+            <button onClick={() => setLocation("/legal/community-guidelines")} className="hover:text-white hover:underline">Community rules</button>
+            <button onClick={() => setLocation("/legal/ai-recording")} className="hover:text-white hover:underline">AI &amp; recording</button>
+            <button onClick={() => setLocation("/legal/data-deletion")} className="hover:text-white hover:underline">Data deletion</button>
+          </nav>
         </div>
       </div>
 
@@ -101,7 +107,7 @@ const AuthPage = () => {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -34,6 +34,9 @@ try {
 
   & npx.cmd tsx scripts/qualify-relationship-operations.ts
   if ($LASTEXITCODE -ne 0) { throw "Relationship operations qualification failed" }
+
+  & npx.cmd tsx scripts/qualify-account-privacy.ts
+  if ($LASTEXITCODE -ne 0) { throw "Account privacy qualification failed" }
 } finally {
   if ($postgresStarted) {
     & pg_ctl -D $qualificationPath -m fast -w stop

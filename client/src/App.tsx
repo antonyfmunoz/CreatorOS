@@ -13,6 +13,7 @@ import ToastContainer from "@/components/notifications/ToastContainer";
 import { MessageButton } from "@/components/messages";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
+import { routeChrome } from "./lib/route-chrome";
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
@@ -57,6 +58,9 @@ const EarningsPage = lazy(() => import("@/pages/earnings"));
 const ModerationPage = lazy(() => import("@/pages/moderation"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
+const PrivacySettingsPage = lazy(() => import("@/pages/privacy-settings"));
+const TrustCenterPage = lazy(() => import("@/pages/trust-center"));
+const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
@@ -129,7 +133,7 @@ function Router() {
     if (['marketplace', 'cart', 'orders', 'checkout', 'learn', 'courses'].includes(path)) return setActiveTab('marketplace');
     if (['create', 'studio', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
     if (['communities', 'events'].includes(path)) return setActiveTab('communities');
-    if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation'].includes(path)) return setActiveTab('profile');
+    if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation', 'settings'].includes(path)) return setActiveTab('profile');
     if (path === 'ai') return setActiveTab('create');
   }, [location, setActiveTab]);
 
@@ -141,6 +145,10 @@ function Router() {
       <Route path="/login" component={LoginRoute} />
       <Route path="/register" component={LegacyRegisterRoute} />
       <Route path="/logout" component={DEMO_MODE ? DemoLogoutRoute : LogoutRoute} />
+      <Route path="/trust" component={TrustCenterPage} />
+      <Route path="/legal/data-deletion" component={TrustPolicyPage} />
+      <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
+      <Route path="/legal/ai-recording" component={TrustPolicyPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />
@@ -159,6 +167,7 @@ function Router() {
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
+      <ProtectedRoute path="/settings/privacy" component={PrivacySettingsPage} />
       <ProtectedRoute path="/communities/:communityId/rooms/:roomId" component={CommunityRoomPage} />
       <ProtectedRoute path="/communities/:id" component={Communities} />
       <ProtectedRoute path="/communities" component={Communities} />
@@ -198,26 +207,20 @@ function AppContent() {
   const { currentUser, setCurrentUser } = useAppStore();
   const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   const [location] = useLocation();
-  const isAuthRoute =
-    location === "/auth" ||
-    location === "/auth/login" ||
-    location === "/auth/register" ||
-    location === "/login" ||
-    location === "/register" ||
-    location === "/logout";
-  const isConferenceRoute = /^\/communities\/[^/]+\/rooms\/[^/]+$/.test(location);
+  const chrome = routeChrome(location);
 
   return (
     <>
-      <div className={isAuthRoute ? "app-container pb-0" : "app-container"}>
-        <main className="tab-content">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <div className={chrome.isAuth ? "app-container pb-0" : "app-container"}>
+        <div id="main-content" tabIndex={-1} className="tab-content">
           <RouteErrorBoundary>
             <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
               <Router />
             </Suspense>
           </RouteErrorBoundary>
-        </main>
-        {!isAuthRoute && !isConferenceRoute && <BottomNavigation />}
+        </div>
+        {chrome.showBottomNavigation && <BottomNavigation />}
         {isOpen && <ChatInterface />}
       </div>
       <Toaster />

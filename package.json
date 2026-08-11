@@ -10,12 +10,17 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "test": "vitest run",
-    "verify": "npm run test && npm run check && npm run build",
+    "verify": "npm run test && npm run check && npm run build && npm run verify:bundle",
     "verify:migrations": "node scripts/migrate-qualification.mjs",
     "verify:automations": "tsx scripts/qualify-automation-kernel.ts",
     "verify:social-automations": "tsx scripts/qualify-native-social-automations.ts",
     "verify:relationship-operations": "tsx scripts/qualify-relationship-operations.ts",
     "verify:relationship-release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-relationship-release.ps1",
+    "verify:browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-browser.ps1",
+    "verify:backup-restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-backup-restore.ps1",
+    "verify:secrets": "node scripts/scan-source-secrets.mjs",
+    "verify:capacity": "node scripts/qualify-http-capacity.mjs",
+    "verify:bundle": "node scripts/verify-bundle-budget.mjs",
     "test:watch": "vitest",
     "db:push": "drizzle-kit push"
   },
@@ -101,6 +106,8 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.1",
     "@replit/vite-plugin-cartographer": "^0.0.11",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",

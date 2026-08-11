@@ -5,6 +5,7 @@ import { cleanupExpiredRoomMedia } from "./room-media-retention";
 import { reconcileRoomMediaRuntime } from "./room-media-reconciliation";
 import { redactExpiredAutomationPayloads } from "./automation-retention";
 import { cleanupRelationshipHubRetention } from "./relationship-retention";
+import { processDueAccountPrivacyRequests } from "./account-privacy";
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -94,6 +95,9 @@ export function scheduleCleanupTasks() {
   reconcileRoomMediaRuntime()
     .then((result) => console.log("Initial room media recovery completed:", result))
     .catch((error) => console.error("Initial room media recovery failed:", error));
+  processDueAccountPrivacyRequests()
+    .then((result) => console.log("Initial account privacy processing completed:", result))
+    .catch((error) => console.error("Initial account privacy processing failed:", error));
   
   // Schedule the cleanup to run every 5 minutes
   const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -141,6 +145,11 @@ export function scheduleCleanupTasks() {
         if (Object.values(result).some((value) => value > 0)) console.log("Scheduled relationship retention completed:", result);
       })
       .catch((error) => console.error("Scheduled relationship retention failed:", error));
+    processDueAccountPrivacyRequests()
+      .then((result) => {
+        if (Object.values(result).some((value) => value > 0)) console.log("Scheduled account privacy processing completed:", result);
+      })
+      .catch((error) => console.error("Scheduled account privacy processing failed:", error));
   }, ONE_HOUR_MS);
   
   console.log("Automated story cleanup scheduled to run every 5 minutes");

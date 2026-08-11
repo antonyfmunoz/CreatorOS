@@ -73,6 +73,8 @@ function ProductGrid({
                   <img
                     src={product.imageUrl}
                     alt={product.title}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
@@ -322,6 +324,8 @@ export default function Marketplace() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
               <Input
                 ref={searchInputRef}
+                type="search"
+                aria-label="Search marketplace"
                 value={searchQuery}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);

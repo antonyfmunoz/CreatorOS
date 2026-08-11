@@ -5,7 +5,7 @@ import {
   BarChart3Icon, BookmarkIcon, UserPlus, UserMinus,
   FileText, DollarSign, UsersIcon, ShoppingBag, ArrowLeft,
   CalendarDays, LayoutDashboard, Menu, MessageSquare, Share2, Copy, Camera, AtSign,
-  MoreHorizontal, Send, Plus, Trash2
+  MoreHorizontal, Send, Plus, Trash2, ShieldCheck
 } from "lucide-react";
 import { NotificationBell } from "@/components/notifications";
 import { MessageButton } from "@/components/messages";
@@ -443,6 +443,9 @@ const Profile = () => {
               <DropdownMenuItem onClick={() => setLocation("/documents")}>
                 <FileText className="mr-2 h-4 w-4" /> Documents
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation("/settings/privacy")}>
+                <ShieldCheck className="mr-2 h-4 w-4" /> Data &amp; privacy
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-500">
                 <LogOut className="mr-2 h-4 w-4" /> Logout
@@ -579,6 +582,8 @@ const Profile = () => {
         ] as const).map(([value, label]) => (
           <button
             key={value}
+            type="button"
+            aria-current={profileView === value ? "page" : undefined}
             className={`relative shrink-0 basis-1/3 snap-start px-3 py-3 text-sm font-bold ${profileView === value ? "text-white" : "text-zinc-500"}`}
             onClick={() => setProfileView(value)}
           >

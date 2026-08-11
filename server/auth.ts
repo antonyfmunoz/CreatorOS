@@ -201,6 +201,9 @@ export async function attachUser(
       return res.status(401).json({ message: "Not authenticated" });
     }
     req.dbUser = await getOrCreateDbUser(userId);
+    if (req.dbUser.status === "deleted") {
+      return res.status(410).json({ message: "This account has been deleted" });
+    }
     next();
   } catch (error) {
     console.error("Failed to resolve authenticated user:", error);

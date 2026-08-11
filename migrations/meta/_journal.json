@@ -414,6 +414,13 @@
       "when": 1786414200000,
       "tag": "0058_relationship_usage_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1786500600000,
+      "tag": "0059_account_privacy_lifecycle",
+      "breakpoints": true
     }
   ]
 }

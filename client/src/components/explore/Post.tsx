@@ -903,6 +903,8 @@ const Post = ({ post, surface = 'light', onDeleted }: PostProps) => {
                 <img
                   src={mediaUrl}
                   alt="Post content"
+                  loading="lazy"
+                  decoding="async"
                   className={`aspect-square w-full rounded-xl object-cover ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
                 />
               </button>
@@ -941,6 +943,8 @@ const Post = ({ post, surface = 'light', onDeleted }: PostProps) => {
             {taggedUsers.length > 0 && !showTags && (
               <div className="absolute bottom-2 left-2 flex items-center">
                 <button 
+                  type="button"
+                  aria-label={`View ${taggedUsers.length} tagged ${taggedUsers.length === 1 ? 'person' : 'people'}`}
                   className="bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
                   onClick={() => setShowTags(true)}
                 >

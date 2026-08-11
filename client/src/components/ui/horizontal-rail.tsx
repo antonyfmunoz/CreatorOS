@@ -14,6 +14,9 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
 
     const stopDragging = (event: PointerEvent<HTMLDivElement>) => {
       if (drag.current?.pointerId === event.pointerId) {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
         drag.current = null;
         event.currentTarget.classList.remove("is-dragging");
       }
@@ -36,7 +39,6 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
           onPointerDown?.(event);
           if (event.defaultPrevented || event.pointerType !== "mouse") return;
           drag.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: event.currentTarget.scrollLeft, didMove: false };
-          event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           onPointerMove?.(event);
@@ -45,6 +47,7 @@ export const HorizontalRail = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivE
           if (!drag.current.didMove && Math.abs(distance) >= 12) {
             drag.current.didMove = true;
             event.currentTarget.classList.add("is-dragging");
+            event.currentTarget.setPointerCapture(event.pointerId);
           }
           if (drag.current.didMove) {
             event.currentTarget.scrollLeft = drag.current.startScrollLeft - distance;

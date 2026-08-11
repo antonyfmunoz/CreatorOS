@@ -56,6 +56,7 @@ const requiredTables = [
   "relationship_usage_reservations",
   "relationship_operational_alerts",
   "relationship_room_bindings",
+  "account_privacy_requests",
 ];
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

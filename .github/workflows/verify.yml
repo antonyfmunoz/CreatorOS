@@ -39,4 +39,12 @@ jobs:
       - run: npm run verify:automations
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
+      - run: npm run verify:secrets
       - run: npm run verify
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
+          CREATOROS_DEMO_MODE: "true"
+          VITE_CREATOROS_DEMO_MODE: "true"
+      - run: npm audit --omit=dev --audit-level=high

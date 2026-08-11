@@ -101,6 +101,7 @@ import { normalizeCartProductIds } from "../shared/cart";
 import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
+import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
@@ -617,6 +618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
   registerAutomationRoutes(app);
   registerRelationshipHubRoutes(app);
+  registerAccountPrivacyRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 
