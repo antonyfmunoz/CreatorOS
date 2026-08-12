@@ -59,6 +59,7 @@ const requiredTables = [
   "account_privacy_requests",
   "commerce_provider_events",
   "creator_payout_events",
+  "production_backups",
 ];
 
 const requiredColumns = {

@@ -3,7 +3,7 @@ FROM node:22-slim
 WORKDIR /app
 
 # Install build tools for native deps (bcrypt)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ postgresql-client && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 RUN npm ci

@@ -2,6 +2,22 @@
 
 ## Backup
 
+Production automatically requests one idempotent backup at 09:17 UTC each day.
+The Cloudflare scheduler calls the authenticated internal backup endpoint, the
+application creates a compressed PostgreSQL custom archive, and stores the
+archive plus a SHA-256 manifest in the private production R2 bucket. Every run
+has a durable `production_backups` record. Failed runs may be retried; concurrent
+or duplicate successful runs for the same UTC date do not create extra copies.
+
+Use `scripts/trigger-production-backup.mjs` inside a production machine for a
+safe operator-triggered run. Use `scripts/inspect-production-backup.mjs` to
+download the newest private archive to an access-restricted temporary file,
+verify its database and manifest hashes, and prove `pg_restore` can read the
+required archive tables. The temporary file is removed whether verification
+succeeds or fails.
+
+For an operator-created off-platform copy:
+
 1. Load the production `DATABASE_URL` through the approved secret manager.
 2. Choose a dedicated encrypted backup directory outside the repository.
 3. Run `scripts/backup-database.ps1 -Destination <absolute .dump path>`.
@@ -20,3 +36,7 @@ integrity, then stops and removes the disposable cluster.
 
 Run a restore drill at least every 90 days and after any material migration or
 storage topology change. A backup is not qualified until a restore drill passes.
+
+The private bucket's retention period is a product/legal decision because the
+rule deletes backup objects permanently. Do not enable an expiration lifecycle
+until the approved retention period is recorded.

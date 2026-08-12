@@ -2,6 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectComm
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
+import { createReadStream } from "fs";
 import path from "path";
 import type { AssetVisibility } from "./asset-policy";
 
@@ -119,6 +120,32 @@ export async function persistPrivateBuffer(input: {
     Metadata: { owner: String(input.ownerUserId), kind: input.kind, visibility: "private" },
   }));
   return { storageKey: key, sizeBytes: input.body.byteLength };
+}
+
+export async function persistSystemPrivateFile(input: {
+  sourcePath: string;
+  storageKey: string;
+  mimeType: string;
+}) {
+  if (!/^creativesos\/(production|development)\/private\/system\/[a-zA-Z0-9/_.-]+$/.test(input.storageKey)) {
+    throw new Error("Invalid system-private storage key");
+  }
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  if (provider !== "r2") throw new Error("System-private storage requires R2");
+  const { client, bucket } = r2BucketFor("private");
+  const file = await fs.stat(input.sourcePath);
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: input.storageKey,
+    Body: createReadStream(input.sourcePath),
+    ContentLength: file.size,
+    ContentType: input.mimeType,
+    CacheControl: "private, no-store",
+    Metadata: { kind: "system-backup", visibility: "private" },
+  }));
+  const stored = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: input.storageKey }));
+  if (stored.ContentLength !== file.size) throw new Error("Stored backup size did not match the source");
+  return { storageKey: input.storageKey, sizeBytes: file.size };
 }
 
 export async function persistUpload(file: Express.Multer.File, ownerUserId: number, kind: string): Promise<StoredUpload> {

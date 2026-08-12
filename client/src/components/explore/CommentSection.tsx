@@ -10,7 +10,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Post as PostType, User } from '@/types';
 import type { Comment } from '@/types';
 import { useLocation } from 'wouter';
-import { parseUserTags } from '@/lib/textParser';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +55,21 @@ const SingleComment = ({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [_, setLocation] = useLocation();
+
+  const renderCommentContent = (content: string) => content.split(/(@\w+)/g).map((part, index) => {
+    if (!part.startsWith('@') || part.length < 2) return part;
+    const username = part.slice(1);
+    return (
+      <button
+        key={`${username}-${index}`}
+        type="button"
+        className="font-medium text-primary hover:underline"
+        onClick={() => setLocation(`/user/${encodeURIComponent(username)}`)}
+      >
+        {part}
+      </button>
+    );
+  });
   
   // Check if the current user is the author of the comment
   const isAuthor = currentUser?.id === comment.userId;
@@ -584,10 +598,7 @@ const SingleComment = ({
             </div>
           ) : (
             <>
-              <p 
-                className="text-sm mt-1" 
-                dangerouslySetInnerHTML={{ __html: parseUserTags(comment.content) }}
-              />
+              <p className="text-sm mt-1">{renderCommentContent(comment.content)}</p>
               
               <div className="flex items-center gap-3 mt-2">
                 <Button 

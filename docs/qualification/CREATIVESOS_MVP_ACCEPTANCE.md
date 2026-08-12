@@ -49,7 +49,7 @@ must fail closed without breaking the native workflow.
 
 - [x] Product and billing policy unit tests.
 - [x] TypeScript, production build, and bundle limits.
-- [x] Fresh PostgreSQL migration applies all 62 migrations and verifies the 14 MVP-critical columns.
+- [x] Fresh PostgreSQL migration applies all 64 migrations and verifies 49 required tables and 27 critical columns.
 - [x] Mobile and desktop browser proof for recurring community publication,
   paid join denial, compatible order snapshots, catalog visibility, and price cadence.
 - [x] Full 64-journey mobile and desktop browser matrix passed after the
@@ -68,8 +68,9 @@ Fly release `v237` passed its release migration and both live machines report
 passing health checks. `/api/health` is `ok`; `/api/ready` is `ready` with no
 release blockers, production Clerk authentication, private R2 delivery, the
 native automation kernel, the Relationship Hub kernel, and community-room
-media configured. The final qualification passed 203 automated tests, TypeScript,
-production build and bundle limits, the 508-file source secret scan, all 64
+media configured. The current production-closure candidate passed 207 automated
+tests, TypeScript, production build and bundle limits, the 515-file source
+secret scan, all 64
 mobile and desktop browser journeys, backup/restore recovery, and a 200-request
 capacity probe with zero failures.
 

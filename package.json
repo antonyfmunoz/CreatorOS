@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "tsx server/index.ts",
     "dev:demo": "cross-env CREATOROS_DEMO_MODE=true VITE_CREATOROS_DEMO_MODE=true tsx server/index.ts",
@@ -10,7 +13,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "test": "vitest run",
-    "verify": "npm run test && npm run check && npm run build && npm run verify:bundle",
+    "verify": "npm run test && npm run check && npm run build && npm run verify:bundle && npm run verify:worker",
     "verify:migrations": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-migrations.ps1",
     "verify:automations": "tsx scripts/qualify-automation-kernel.ts",
     "verify:social-automations": "tsx scripts/qualify-native-social-automations.ts",
@@ -21,6 +24,7 @@
     "verify:secrets": "node scripts/scan-source-secrets.mjs",
     "verify:capacity": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-capacity.ps1",
     "verify:bundle": "node scripts/verify-bundle-budget.mjs",
+    "verify:worker": "wrangler types workers/distribution-scheduler/worker-configuration.d.ts --config workers/distribution-scheduler/wrangler.jsonc --check && tsc --noEmit --strict --skipLibCheck --module ESNext --moduleResolution Bundler --lib ESNext,WebWorker workers/distribution-scheduler/src/index.ts workers/distribution-scheduler/worker-configuration.d.ts && wrangler deploy --dry-run --config workers/distribution-scheduler/wrangler.jsonc",
     "verify:release-local": "npm run verify && npm run verify:relationship-release && npm run verify:browser && npm run verify:backup-restore && npm run verify:secrets && npm run verify:capacity",
     "test:watch": "vitest",
     "db:push": "drizzle-kit push"
@@ -130,7 +134,8 @@
     "tsx": "^4.19.1",
     "typescript": "5.6.3",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.121.0"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"

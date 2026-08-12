@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { createProductionBackup } from "./production-backup";
 import { z } from "zod";
 import { storage } from "./storage";
 import OpenAI from "openai";
@@ -523,6 +524,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/internal/operations/backup", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isDistributionDispatchConfigured()) return res.status(503).json({ message: "Backup dispatch is not configured" });
+    if (!isAuthorizedDistributionDispatch(req.get("authorization"))) return res.status(401).json({ message: "Unauthorized backup dispatch" });
+    try {
+      const result = await createProductionBackup();
+      return res.json(result);
+    } catch (error) {
+      console.error("Production backup failed", { errorType: error instanceof Error ? error.name : typeof error });
+      return res.status(500).json({ message: "Production backup failed" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", app: "creativesos" });
@@ -552,6 +566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "relationship_messages",
       "relationship_delivery_jobs",
       "relationship_audit_events",
+      "production_backups",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",

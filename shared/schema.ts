@@ -91,6 +91,28 @@ export const accountPrivacyRequests = pgTable(
   }),
 );
 
+export const productionBackups = pgTable(
+  "production_backups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dateKey: text("date_key").notNull(),
+    status: text("status").notNull().default("running"),
+    storageKey: text("storage_key"),
+    manifestStorageKey: text("manifest_storage_key"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    sha256: text("sha256"),
+    failureCode: text("failure_code"),
+    startedAt: timestamp("started_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    dateKeyUnique: uniqueIndex("production_backups_date_key_unique").on(table.dateKey),
+    statusStartedIdx: index("production_backups_status_started_idx").on(table.status, table.startedAt),
+  }),
+);
+
 // Post schema
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
@@ -4175,6 +4197,7 @@ export const followersRelations = relations(followers, ({ one }) => ({
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type AccountPrivacyRequest = typeof accountPrivacyRequests.$inferSelect;
+export type ProductionBackup = typeof productionBackups.$inferSelect;
 
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;

@@ -14,6 +14,7 @@ import { MessageButton } from "@/components/messages";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 import { routeChrome } from "./lib/route-chrome";
+import { captureClientException, capturePageView } from "./lib/posthog";
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
@@ -86,6 +87,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
   }
 
   componentDidCatch(error: Error, _info: ErrorInfo) {
+    captureClientException(error);
     recoverFromStaleBuild(error);
   }
 
@@ -139,6 +141,10 @@ function Router() {
     if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation', 'settings'].includes(path)) return setActiveTab('profile');
     if (path === 'ai') return setActiveTab('create');
   }, [location, setActiveTab]);
+
+  useEffect(() => {
+    capturePageView(location);
+  }, [location]);
 
   return (
     <Switch>
