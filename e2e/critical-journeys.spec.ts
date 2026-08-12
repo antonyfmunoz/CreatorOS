@@ -88,6 +88,7 @@ test("core provider-independent workspaces render without route failures", async
     "/campaigns",
     "/earnings",
     "/distribution",
+    "/cut-studio",
   ];
   for (const route of routes) {
     await page.goto(route);
@@ -161,6 +162,7 @@ test("all static product surfaces render without application or server failure",
     "/notifications",
     "/search",
     "/new-text-post",
+    "/cut-studio",
   ];
 
   for (const route of routes) {
@@ -169,6 +171,19 @@ test("all static product surfaces render without application or server failure",
     await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
     await expect(page.getByText("Page Not Found", { exact: true })).toHaveCount(0);
   }
+  expect(failures).toEqual([]);
+});
+
+test("CutStudio is reachable from Create and presents a private-media workflow", async ({ page }) => {
+  const failures = watchServerFailures(page);
+  await page.goto("/create");
+  await page.getByRole("button", { name: /Open CutStudio/ }).click();
+  await expect(page).toHaveURL(/\/cut-studio$/);
+  await expect(page.getByRole("heading", { name: "CutStudio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start with your footage" })).toBeVisible();
+  await expect(page.locator('input[type="file"][accept="video/*,audio/*"]')).toHaveCount(1);
+  await expect(page.getByText(/keeps the source secure/i)).toBeVisible();
+  await expectNoHighImpactAccessibilityViolations(page);
   expect(failures).toEqual([]);
 });
 

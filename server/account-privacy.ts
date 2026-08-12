@@ -133,6 +133,8 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from revenue where user_id = ${userId} order by date`),
       exportRows(sql`select * from contacts where user_id = ${userId} order by created_at`),
       exportRows(sql`select * from documents where user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_projects where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_jobs where owner_user_id = ${userId} order by created_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from purchases where buyer_id = ${userId} order by purchased_at`),
@@ -211,6 +213,7 @@ export async function buildAccountExport(user: User) {
       assets: creatorStudio[3], products: creatorStudio[4], campaigns: creatorStudio[5],
       aiAgents: creatorStudio[6], aiChats: creatorStudio[7], revenue: creatorStudio[8],
       contacts: creatorStudio[9], documents: creatorStudio[10],
+      cutStudioProjects: creatorStudio[11], cutStudioJobs: creatorStudio[12],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],

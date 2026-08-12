@@ -50,6 +50,7 @@ const CoursePlayer = lazy(() => import("@/pages/course-player"));
 const LearningLibraryPage = lazy(() => import("@/pages/learning-library"));
 const DistributionStudio = lazy(() => import("@/pages/distribution-studio"));
 const DistributionConnections = lazy(() => import("@/pages/distribution-connections"));
+const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
 const CourseBuilder = lazy(() => import("@/pages/course-builder"));
@@ -136,7 +137,7 @@ function Router() {
     if (path === '') return setActiveTab('explore');
     if (path === 'post') return setActiveTab('explore');
     if (['marketplace', 'cart', 'orders', 'checkout', 'learn', 'courses'].includes(path)) return setActiveTab('marketplace');
-    if (['create', 'studio', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
+    if (['create', 'studio', 'cut-studio', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
     if (['communities', 'events'].includes(path)) return setActiveTab('communities');
     if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation', 'settings'].includes(path)) return setActiveTab('profile');
     if (path === 'ai') return setActiveTab('create');
@@ -169,6 +170,7 @@ function Router() {
       <ProtectedRoute path="/studio" component={DistributionStudio} />
       <ProtectedRoute path="/distribution" component={DistributionStudio} />
       <ProtectedRoute path="/distribution/connections" component={DistributionConnections} />
+      <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
       <ProtectedRoute path="/business/approvals" component={UmhApprovalsPage} />
       <ProtectedRoute path="/earnings" component={EarningsPage} />

@@ -2518,6 +2518,56 @@ export const contentDrafts = pgTable("content_drafts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// CutStudio is a standalone-safe projection instrument. Source media and
+// renders remain private assets; the database stores the durable edit graph,
+// transcript, optimistic revision, and restart-safe processing jobs.
+export const cutStudioProjects = pgTable(
+  "cut_studio_projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    sourceAssetId: uuid("source_asset_id").references(() => assets.id, { onDelete: "restrict" }).notNull(),
+    name: text("name").notNull(),
+    duration: doublePrecision("duration").notNull(),
+    mediaKind: text("media_kind").notNull(),
+    edl: json("edl").$type<import("./cut-studio").CutEdl>().notNull(),
+    transcript: json("transcript").$type<import("./cut-studio").CutTranscript | null>(),
+    revision: integer("revision").notNull().default(1),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerUpdatedIdx: index("cut_studio_projects_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+    businessUpdatedIdx: index("cut_studio_projects_business_updated_idx").on(table.businessId, table.updatedAt),
+  }),
+);
+
+export const cutStudioJobs = pgTable(
+  "cut_studio_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    kind: text("kind").notNull(),
+    state: text("state").notNull().default("queued"),
+    detail: text("detail").notNull().default("Queued"),
+    progress: doublePrecision("progress").notNull().default(0),
+    request: json("request").$type<Record<string, unknown>>().notNull().default({}),
+    output: json("output").$type<Record<string, unknown>>().notNull().default({}),
+    artifactAssetId: uuid("artifact_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+  },
+  (table) => ({
+    projectCreatedIdx: index("cut_studio_jobs_project_created_idx").on(table.projectId, table.createdAt),
+    stateCreatedIdx: index("cut_studio_jobs_state_created_idx").on(table.state, table.createdAt),
+  }),
+);
+
 // A private asset can be fulfilled through one or more paid products without
 // copying the bytes or exposing a permanent download URL.
 export const assetProductAccess = pgTable(
@@ -4205,6 +4255,8 @@ export type BusinessMember = typeof businessMembers.$inferSelect;
 export type InsertBusinessMember = z.infer<typeof insertBusinessMemberSchema>;
 export type Asset = typeof assets.$inferSelect;
 export type ContentDraft = typeof contentDrafts.$inferSelect;
+export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
+export type CutStudioJob = typeof cutStudioJobs.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type CampaignDeliverable = typeof campaignDeliverables.$inferSelect;

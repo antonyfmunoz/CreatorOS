@@ -60,6 +60,8 @@ const requiredTables = [
   "commerce_provider_events",
   "creator_payout_events",
   "production_backups",
+  "cut_studio_projects",
+  "cut_studio_jobs",
 ];
 
 const requiredColumns = {

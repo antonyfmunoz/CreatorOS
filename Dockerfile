@@ -5,7 +5,7 @@ FROM node:22-slim
 WORKDIR /app
 
 # Install build tools for native deps (bcrypt)
-RUN apt-get update && apt-get install -y python3 make g++ libpq5 libzstd1 liblz4-1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ libpq5 libzstd1 liblz4-1 ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Debian bookworm ships an older pg_dump than managed production databases.
 # Pin the portable backup/inspection tools to PostgreSQL 17 so they can read

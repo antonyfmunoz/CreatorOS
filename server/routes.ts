@@ -105,6 +105,7 @@ import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
+import { registerCutStudioRoutes } from "./cut-studio";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
@@ -567,6 +568,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "relationship_delivery_jobs",
       "relationship_audit_events",
       "production_backups",
+      "cut_studio_projects",
+      "cut_studio_jobs",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -637,6 +640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAutomationRoutes(app);
   registerRelationshipHubRoutes(app);
   registerAccountPrivacyRoutes(app);
+  registerCutStudioRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 

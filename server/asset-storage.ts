@@ -2,7 +2,8 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectComm
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
-import { createReadStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 import path from "path";
 import type { AssetVisibility } from "./asset-policy";
 
@@ -133,6 +134,78 @@ export async function persistPrivateBuffer(input: {
   return { storageKey: key, sizeBytes: input.body.byteLength };
 }
 
+export async function persistPrivateFile(input: {
+  sourcePath: string;
+  ownerUserId: number;
+  kind: string;
+  filename: string;
+  mimeType: string;
+}) {
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "private");
+  const file = await fs.stat(input.sourcePath);
+  if (provider === "local") {
+    if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
+    const localPath = path.resolve(process.cwd(), key);
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.copyFile(input.sourcePath, localPath);
+    return { storageKey: key, sizeBytes: file.size };
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket } = r2BucketFor("private");
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: createReadStream(input.sourcePath),
+    ContentLength: file.size,
+    ContentType: input.mimeType,
+    CacheControl: "private, no-store",
+    Metadata: { owner: String(input.ownerUserId), kind: input.kind, visibility: "private" },
+  }));
+  return { storageKey: key, sizeBytes: file.size };
+}
+
+export async function materializePrivateAsset(storageKey: string, destination: string) {
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  if (provider === "local") {
+    const source = path.resolve(process.cwd(), storageKey);
+    await fs.copyFile(source, destination);
+    return destination;
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket } = r2BucketFor("private");
+  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+  if (!object.Body) throw new Error("Private asset body was unavailable");
+  await pipeline(object.Body as NodeJS.ReadableStream, createWriteStream(destination));
+  return destination;
+}
+
+export async function promotePrivateAsset(input: {
+  storageKey: string;
+  ownerUserId: number;
+  kind: string;
+  filename: string;
+  mimeType: string;
+}) {
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  if (provider !== "r2") throw new Error("Publishing private media requires R2 asset storage");
+  const privateStore = r2BucketFor("private");
+  const publicStore = r2BucketFor("public");
+  const source = await privateStore.client.send(new GetObjectCommand({ Bucket: privateStore.bucket, Key: input.storageKey }));
+  if (!source.Body) throw new Error("Private asset body was unavailable");
+  const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "public");
+  await publicStore.client.send(new PutObjectCommand({
+    Bucket: publicStore.bucket,
+    Key: key,
+    Body: source.Body,
+    ContentLength: source.ContentLength,
+    ContentType: input.mimeType,
+    CacheControl: "public, max-age=31536000, immutable",
+    Metadata: { owner: String(input.ownerUserId), kind: input.kind, visibility: "public" },
+  }));
+  return { storageKey: key, publicUrl: `${publicStore.publicBaseUrl}/${key}`, sizeBytes: source.ContentLength ?? 0 };
+}
+
 export async function persistSystemPrivateFile(input: {
   sourcePath: string;
   storageKey: string;
@@ -189,6 +262,6 @@ export async function discardUploadedFiles(files: Array<Express.Multer.File | un
 
 export function assetStorageReadiness() {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
-  if (provider === "r2") return { provider, configured: Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET_NAME && process.env.R2_PUBLIC_BASE_URL) };
+  if (provider === "r2") return { provider, configured: Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET_NAME && process.env.R2_PRIVATE_BUCKET_NAME && process.env.R2_PUBLIC_BASE_URL) };
   return { provider, configured: process.env.NODE_ENV !== "production" };
 }

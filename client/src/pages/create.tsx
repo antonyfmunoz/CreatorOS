@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Bot, CalendarPlus, FileText, Image, LayoutDashboard, Megaphone, Mic, PackagePlus, Repeat2, Send, Video } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, CalendarPlus, FileText, Film, Image, LayoutDashboard, Megaphone, Mic, PackagePlus, Repeat2, Send, Video } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,10 @@ export default function CreatePage() {
         <button onClick={() => setLocation("/studio")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Send className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open distribution studio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Compose once, schedule content, and manage your publishing queue.</span></span>
+        </button>
+        <button onClick={() => setLocation("/cut-studio")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1d9bf0] text-black"><Film className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open CutStudio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Edit video by timeline or transcript, generate clips, add captions, and prepare distribution-ready renders.</span></span>
         </button>
         <button onClick={() => setLocation("/campaigns")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Megaphone className="h-5 w-5" /></span>
