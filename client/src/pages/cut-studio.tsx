@@ -74,14 +74,14 @@ export default function CutStudioPage() {
   }, [edl]);
 
   useEffect(() => {
-    if (!project || !edl || edl === project.edl) return;
+    if (!project || !edl || JSON.stringify(edl) === JSON.stringify(project.edl)) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         const response = await apiRequest("PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(revision) });
         const saved = await response.json() as CutEdl;
         const nextRevision = Number(response.headers.get("X-EDL-Rev"));
-        setRevision(nextRevision); setProject((value) => value ? { ...value, edl: saved, revision: nextRevision } : value); setMessage("Saved");
+        setRevision(nextRevision); setEdl(saved); setProject((value) => value ? { ...value, edl: saved, revision: nextRevision } : value); setMessage("Saved");
       } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save the edit"); }
     }, 800);
     return () => clearTimeout(saveTimer.current);
