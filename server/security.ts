@@ -98,6 +98,7 @@ export function automationMutationRateLimiter(options: { windowMs?: number; max?
 }
 
 export function securityHeaders(_req: Request, res: Response, next: NextFunction) {
+  const isProduction = process.env.NODE_ENV === "production";
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("X-Frame-Options", "DENY");
@@ -112,7 +113,7 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self' https://accounts.creativesos.net https://*.clerk.accounts.dev https://connect.stripe.com https://checkout.stripe.com",
-    "script-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+    `script-src 'self'${isProduction ? "" : " 'unsafe-inline'"} https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
@@ -121,9 +122,9 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
     "frame-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https://checkout.stripe.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
-    ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),
+    ...(isProduction ? ["upgrade-insecure-requests"] : []),
   ].join("; "));
-  if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  if (isProduction) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   next();
 }
 

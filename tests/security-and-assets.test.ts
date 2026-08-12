@@ -11,6 +11,7 @@ afterEach(() => {
 
 describe("production safety boundaries", () => {
   it("applies browser isolation and transport headers", () => {
+    process.env.NODE_ENV = "production";
     const headers = new Map<string, string>();
     let called = false;
     securityHeaders({} as never, { setHeader: (key: string, value: string) => headers.set(key, value) } as never, () => { called = true; });
@@ -20,6 +21,15 @@ describe("production safety boundaries", () => {
     expect(headers.get("Content-Security-Policy")).toContain("default-src 'self'");
     expect(headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
     expect(headers.get("Content-Security-Policy")).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
+  });
+
+  it("allows the Vite development preamble without weakening production CSP", () => {
+    process.env.NODE_ENV = "development";
+    const headers = new Map<string, string>();
+    securityHeaders({} as never, { setHeader: (key: string, value: string) => headers.set(key, value) } as never, () => undefined);
+    expect(headers.get("Content-Security-Policy")).toContain("script-src 'self' 'unsafe-inline'");
+    expect(headers.has("Strict-Transport-Security")).toBe(false);
   });
 
   it("throttles repeated API calls while leaving health checks alone", () => {
