@@ -27,7 +27,22 @@ async function sha256File(filePath: string) {
 
 async function runPgDump(destination: string) {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for backup");
-  const childEnvironment: NodeJS.ProcessEnv = { ...process.env, PGDATABASE: process.env.DATABASE_URL };
+  const connection = new URL(process.env.DATABASE_URL);
+  if (!["postgres:", "postgresql:"].includes(connection.protocol)) throw new Error("DATABASE_URL must use PostgreSQL");
+  const databaseName = decodeURIComponent(connection.pathname.replace(/^\//, ""));
+  if (!connection.hostname || !connection.username || !databaseName) throw new Error("DATABASE_URL is incomplete");
+  const childEnvironment: NodeJS.ProcessEnv = {
+    ...process.env,
+    PGHOST: connection.hostname,
+    PGPORT: connection.port || "5432",
+    PGUSER: decodeURIComponent(connection.username),
+    PGPASSWORD: decodeURIComponent(connection.password),
+    PGDATABASE: databaseName,
+    PGAPPNAME: "creativesos-production-backup",
+    PGSSLMODE: connection.searchParams.get("sslmode") || "require",
+  };
+  const channelBinding = connection.searchParams.get("channel_binding");
+  if (channelBinding) childEnvironment.PGCHANNELBINDING = channelBinding;
   delete childEnvironment.DATABASE_URL;
   await new Promise<void>((resolve, reject) => {
     const child = spawn("pg_dump", [
