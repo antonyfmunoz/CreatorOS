@@ -31,7 +31,7 @@ must fail closed without breaking the native workflow.
 | Learning | Course curriculum, lesson progress, assessments, completion, and entitlement enforcement | qualified before this release |
 | Commerce separation | Platform revenue and creator proceeds are separate; Connect routes creator funds and records each recurring paid invoice | production data contains a paid creator allocation; platform subscription revenue remains separate; invoice handling is enabled and replay-safe |
 | Subscription management | Buyer can cancel renewal while retaining access through the paid period | production-qualified through buyer cancellation, retained paid-period access, and terminal cancellation |
-| Safety and operations | Moderation, privacy/export/deletion, readiness, migration, backup, security, and capacity gates | production-qualified on v241 with private backup evidence, protected main, and zero open code/secret-scanning alerts |
+| Safety and operations | Moderation, privacy/export/deletion, readiness, migration, backup, security, and capacity gates | production-qualified on v242 with private backup evidence, protected main, and zero open Dependabot, code-scanning, or secret-scanning alerts |
 | Projection kernel | Signed, scoped, replay-safe UMH ingress and durable outbox; CreativesOS remains standalone | projection side qualified; UMH pairing is outside this repository |
 
 ## Explicitly after MVP
@@ -64,7 +64,7 @@ completed. Local implementation alone is not production completion.
 
 ## Current production evidence
 
-Fly release `v241` passed its release migration and its required live machine
+Fly release `v242` passed its release migration and its required live machine
 reports a passing health check. `/api/health` is `ok`; `/api/ready` is `ready` with no
 release blockers, production Clerk authentication, private R2 delivery, the
 native automation kernel, the Relationship Hub kernel, and community-room
@@ -76,7 +76,10 @@ capacity probe with zero failures.
 
 The final signed-in production field test covered profile tab selection,
 marketplace search and its empty state, route-correct marketplace navigation,
-and the Relationship Hub inbox with no browser errors. The private production
+and the Relationship Hub inbox with no browser errors. After upgrading the
+upload middleware, a production image was uploaded and published as a story;
+the feed changed from `Create a story` to `View your story` with no browser
+errors. The private production
 backup was uploaded, downloaded, checksum-matched, archive-read, and verified
 to contain the required tables; a duplicate same-day request returned the
 existing completed receipt rather than creating a second backup. Production
