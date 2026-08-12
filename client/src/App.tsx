@@ -4,7 +4,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
 import { Toaster } from "@/components/ui/toaster";
 import BottomNavigation from "@/components/layout/BottomNavigation";
-import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
 import ChatInterface from "@/components/ai/ChatInterface";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -49,7 +56,9 @@ const OrdersPage = lazy(() => import("@/pages/orders"));
 const CoursePlayer = lazy(() => import("@/pages/course-player"));
 const LearningLibraryPage = lazy(() => import("@/pages/learning-library"));
 const DistributionStudio = lazy(() => import("@/pages/distribution-studio"));
-const DistributionConnections = lazy(() => import("@/pages/distribution-connections"));
+const DistributionConnections = lazy(
+  () => import("@/pages/distribution-connections"),
+);
 const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
@@ -68,12 +77,14 @@ const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
-const QUALIFICATION_MODE = import.meta.env.VITE_CREATOROS_QUALIFICATION_MODE === "true";
+const QUALIFICATION_MODE =
+  import.meta.env.VITE_CREATOROS_QUALIFICATION_MODE === "true";
 const LOCAL_IDENTITY_MODE = DEMO_MODE || QUALIFICATION_MODE;
 
 function recoverFromStaleBuild(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  if (!/dynamically imported module|failed to fetch/i.test(message)) return false;
+  if (!/dynamically imported module|failed to fetch/i.test(message))
+    return false;
   const retryKey = `creativesos:stale-build-retry:${message}`;
   if (sessionStorage.getItem(retryKey)) return false;
   sessionStorage.setItem(retryKey, "1");
@@ -81,7 +92,10 @@ function recoverFromStaleBuild(error: unknown): boolean {
   return true;
 }
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
   state = { error: null };
 
   static getDerivedStateFromError(error: Error) {
@@ -95,13 +109,27 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
 
   render() {
     if (!this.state.error) return this.props.children;
-    return <section className="mx-auto flex min-h-[40vh] max-w-sm flex-col justify-center px-6 text-center text-white"><h1 className="text-xl font-bold">Updating CreativesOS</h1><p className="mt-2 text-sm leading-6 text-zinc-500">This page needs a fresh app version. Reload to continue.</p><button className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-black" onClick={() => window.location.reload()}>Reload</button></section>;
+    return (
+      <section className="mx-auto flex min-h-[40vh] max-w-sm flex-col justify-center px-6 text-center text-white">
+        <h1 className="text-xl font-bold">Updating CreativesOS</h1>
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          This page needs a fresh app version. Reload to continue.
+        </p>
+        <button
+          className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-black"
+          onClick={() => window.location.reload()}
+        >
+          Reload
+        </button>
+      </section>
+    );
   }
 }
 
 window.addEventListener("vite:preloadError", (event) => {
   const preloadEvent = event as Event & { payload?: unknown };
-  if (recoverFromStaleBuild(preloadEvent.payload)) preloadEvent.preventDefault();
+  if (recoverFromStaleBuild(preloadEvent.payload))
+    preloadEvent.preventDefault();
 });
 
 if (!LOCAL_IDENTITY_MODE && !CLERK_PUBLISHABLE_KEY) {
@@ -134,14 +162,53 @@ function Router() {
 
   // Update active tab when route changes
   useEffect(() => {
-    const path = location.substring(1).split('/')[0];
-    if (path === '') return setActiveTab('explore');
-    if (path === 'post') return setActiveTab('explore');
-    if (['marketplace', 'cart', 'orders', 'checkout', 'learn', 'courses'].includes(path)) return setActiveTab('marketplace');
-    if (['create', 'studio', 'cut-studio', 'broadcast', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
-    if (['communities', 'events'].includes(path)) return setActiveTab('communities');
-    if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation', 'settings'].includes(path)) return setActiveTab('profile');
-    if (path === 'ai') return setActiveTab('create');
+    const path = location.substring(1).split("/")[0];
+    if (path === "") return setActiveTab("explore");
+    if (path === "post") return setActiveTab("explore");
+    if (
+      [
+        "marketplace",
+        "cart",
+        "orders",
+        "checkout",
+        "learn",
+        "courses",
+      ].includes(path)
+    )
+      return setActiveTab("marketplace");
+    if (
+      [
+        "create",
+        "studio",
+        "cut-studio",
+        "broadcast",
+        "distribution",
+        "business",
+        "campaigns",
+        "earnings",
+        "products",
+        "automations",
+      ].includes(path)
+    )
+      return setActiveTab("create");
+    if (["communities", "events"].includes(path))
+      return setActiveTab("communities");
+    if (
+      [
+        "profile",
+        "user",
+        "saved-posts",
+        "followers",
+        "following",
+        "revenue",
+        "contacts",
+        "documents",
+        "moderation",
+        "settings",
+      ].includes(path)
+    )
+      return setActiveTab("profile");
+    if (path === "ai") return setActiveTab("create");
   }, [location, setActiveTab]);
 
   useEffect(() => {
@@ -155,7 +222,10 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/login" component={LoginRoute} />
       <Route path="/register" component={LegacyRegisterRoute} />
-      <Route path="/logout" component={LOCAL_IDENTITY_MODE ? DemoLogoutRoute : LogoutRoute} />
+      <Route
+        path="/logout"
+        component={LOCAL_IDENTITY_MODE ? DemoLogoutRoute : LogoutRoute}
+      />
       <Route path="/trust" component={TrustCenterPage} />
       <Route path="/legal/data-deletion" component={TrustPolicyPage} />
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
@@ -164,13 +234,19 @@ function Router() {
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />
       <ProtectedRoute path="/orders" component={OrdersPage} />
-      <ProtectedRoute path="/checkout/success" component={CheckoutSuccessPage} />
+      <ProtectedRoute
+        path="/checkout/success"
+        component={CheckoutSuccessPage}
+      />
       <ProtectedRoute path="/learn" component={LearningLibraryPage} />
       <ProtectedRoute path="/learn/:id" component={CoursePlayer} />
       <ProtectedRoute path="/courses/:id/manage" component={CourseBuilder} />
       <ProtectedRoute path="/studio" component={DistributionStudio} />
       <ProtectedRoute path="/distribution" component={DistributionStudio} />
-      <ProtectedRoute path="/distribution/connections" component={DistributionConnections} />
+      <ProtectedRoute
+        path="/distribution/connections"
+        component={DistributionConnections}
+      />
       <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
       <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
@@ -181,8 +257,14 @@ function Router() {
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
-      <ProtectedRoute path="/settings/privacy" component={PrivacySettingsPage} />
-      <ProtectedRoute path="/communities/:communityId/rooms/:roomId" component={CommunityRoomPage} />
+      <ProtectedRoute
+        path="/settings/privacy"
+        component={PrivacySettingsPage}
+      />
+      <ProtectedRoute
+        path="/communities/:communityId/rooms/:roomId"
+        component={CommunityRoomPage}
+      />
       <ProtectedRoute path="/communities/:id" component={Communities} />
       <ProtectedRoute path="/communities" component={Communities} />
       <ProtectedRoute path="/profile" component={Profile} />
@@ -191,16 +273,25 @@ function Router() {
       <ProtectedRoute path="/saved-posts" component={SavedPostsPage} />
       <ProtectedRoute path="/followers" component={FollowersPage} />
       <ProtectedRoute path="/followers/:id" component={FollowersPage} />
-      <ProtectedRoute path="/user/:username/followers" component={FollowersPage} />
+      <ProtectedRoute
+        path="/user/:username/followers"
+        component={FollowersPage}
+      />
       <ProtectedRoute path="/following" component={FollowingPage} />
       <ProtectedRoute path="/following/:id" component={FollowingPage} />
-      <ProtectedRoute path="/user/:username/following" component={FollowingPage} />
+      <ProtectedRoute
+        path="/user/:username/following"
+        component={FollowingPage}
+      />
       <ProtectedRoute path="/revenue" component={RevenuePage} />
       <ProtectedRoute path="/contacts" component={ContactsPage} />
       <ProtectedRoute path="/documents" component={DocumentsPage} />
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/products/:id/edit" component={OfferEditor} />
-      <ProtectedRoute path="/marketplace/product/:id" component={ProductDetail} />
+      <ProtectedRoute
+        path="/marketplace/product/:id"
+        component={ProductDetail}
+      />
       <ProtectedRoute path="/create/post" component={CreatePostPage} />
       <ProtectedRoute path="/create/event" component={CreateEventPage} />
       <ProtectedRoute path="/events/:id/edit" component={CreateEventPage} />
@@ -210,7 +301,10 @@ function Router() {
       <ProtectedRoute path="/search" component={SearchPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <ProtectedRoute path="/post/:id" component={PostDetailPage} />
-      <ProtectedRoute path="/posts/:id/analytics" component={PostAnalyticsPage} />
+      <ProtectedRoute
+        path="/posts/:id/analytics"
+        component={PostAnalyticsPage}
+      />
       <Route component={NotFound} />
     </Switch>
   );
@@ -219,21 +313,29 @@ function Router() {
 function AppContent() {
   const { isOpen } = useAIChatStore();
   const { currentUser } = useAppStore();
-  const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
+  const { isNotificationPanelOpen, closeNotificationPanel } =
+    useNotifications();
   const [location] = useLocation();
   const chrome = routeChrome(location);
 
   useEffect(() => {
-    document.documentElement.dataset.colorMode = currentUser?.colorMode === "high_contrast" ? "high_contrast" : "dark";
+    document.documentElement.dataset.colorMode =
+      currentUser?.colorMode === "high_contrast" ? "high_contrast" : "dark";
   }, [currentUser?.colorMode]);
 
   return (
     <>
-      <a href="#main-content" className="skip-link">Skip to main content</a>
-      <div className={chrome.isAuth ? "app-container pb-0" : "app-container"}>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <div
+        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location === "/broadcast" ? " app-container-workspace" : ""}`}
+      >
         <div id="main-content" tabIndex={-1} className="tab-content">
           <RouteErrorBoundary>
-            <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+            <Suspense
+              fallback={<div className="min-h-[40vh]" aria-busy="true" />}
+            >
               <Router />
             </Suspense>
           </RouteErrorBoundary>

@@ -183,6 +183,14 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
     );
   }
   await page.goto("/broadcast");
+  const viewport = page.viewportSize();
+  const workspace = await page.locator(".app-container").boundingBox();
+  expect(workspace).not.toBeNull();
+  if (viewport && viewport.width >= 1200) {
+    expect(workspace!.width).toBeGreaterThan(1000);
+  } else {
+    expect(workspace!.width).toBeLessThanOrEqual(720);
+  }
   await expect(
     page.locator("header").getByText(/Broadcast Studio/),
   ).toBeVisible();
