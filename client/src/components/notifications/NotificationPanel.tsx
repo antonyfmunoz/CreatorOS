@@ -65,9 +65,9 @@ const NotificationPanel = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex h-full flex-col bg-black text-white">
       {/* Header */}
-      <div className="p-4 border-b flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-zinc-800 p-4">
         <div className="flex items-center space-x-2">
           <SheetTitle className="font-semibold text-lg">Notifications</SheetTitle>
           {unreadCount > 0 && (
@@ -79,7 +79,7 @@ const NotificationPanel = () => {
         <div className="flex space-x-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900 hover:text-white">
                 <Bell className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -95,7 +95,7 @@ const NotificationPanel = () => {
             </DropdownMenuContent>
           </DropdownMenu>
           <SheetClose asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="text-zinc-400 hover:bg-zinc-900 hover:text-white">
               <X className="h-5 w-5" />
             </Button>
           </SheetClose>
@@ -109,11 +109,11 @@ const NotificationPanel = () => {
             <p>Loading notifications...</p>
           </div>
         ) : notifications.length > 0 ? (
-          <div className="divide-y">
+          <div className="divide-y divide-zinc-800">
             {notifications.map((notification) => (
               <div 
                 key={notification.id} 
-                className={`p-4 hover:bg-muted/50 transition-colors ${!notification.read ? 'bg-muted/30' : ''}`}
+                className={`group p-4 transition-colors hover:bg-zinc-950 ${!notification.read ? 'bg-zinc-900/40' : ''}`}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-primary/10 rounded-full">
@@ -164,10 +164,10 @@ const NotificationPanel = () => {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center h-full">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900">
               <Bell className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="font-medium mb-1">No notifications yet</p>
+            <p className="mb-1 font-medium text-white">No notifications yet</p>
             <p className="text-muted-foreground text-sm">We'll notify you when something important happens</p>
           </div>
         )}

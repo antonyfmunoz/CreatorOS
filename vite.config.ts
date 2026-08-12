@@ -27,7 +27,22 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
+    // LiveKit is loaded only after a user enters a live room. Its 138 kB gzip
+    // provider runtime is intentionally isolated from the application shell.
+    chunkSizeWarningLimit: 550,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/@clerk/")) return "clerk";
+          if (id.includes("node_modules/@tanstack/react-query")) return "query";
+          if (id.includes("node_modules/@livekit/components")) return "livekit-components";
+          if (id.includes("node_modules/@livekit/protocol")) return "livekit-protocol";
+          if (id.includes("node_modules/webrtc-adapter")) return "webrtc-adapter";
+          if (id.includes("node_modules/livekit-client")) return "livekit-runtime";
+        },
+      },
+    },
   },
 });

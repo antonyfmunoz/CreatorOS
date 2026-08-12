@@ -4,7 +4,9 @@ import fs from 'fs';
 import { Request } from 'express';
 
 // Ensure uploads directory exists
-const uploadDir = path.join(process.cwd(), 'uploads');
+const uploadDir = process.env.CREATOROS_UPLOAD_DIR
+  ? path.resolve(process.env.CREATOROS_UPLOAD_DIR)
+  : path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -42,8 +44,6 @@ const storage = multer.diskStorage({
 
 // File filter function that adapts based on the field name
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  console.log('Processing file upload:', file.fieldname, file.originalname, file.mimetype);
-  
   // Determine allowed types based on the file type that comes from MediaType parameter
   // or fall back to the field name if not specified
   const mediaType = req.body.mediaType || file.fieldname;
@@ -92,7 +92,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     const isAudio = file.mimetype.startsWith('audio/') || 
                     file.mimetype === 'application/octet-stream'; // For some webm recordings
 
-    if (isAudio || extname) {
+    if (isAudio && extname) {
       return cb(null, true);
     } else {
       cb(new Error('Only audio files are allowed!'));
@@ -105,7 +105,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     // Check mime type
     const isVideo = file.mimetype.startsWith('video/');
 
-    if (isVideo || extname) {
+    if (isVideo && extname) {
       return cb(null, true);
     } else {
       cb(new Error('Only video files are allowed!'));
@@ -120,7 +120,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
 // Create the multer upload instance
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 25 * 1024 * 1024, files: 10 },
   fileFilter: fileFilter
 });
 

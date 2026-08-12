@@ -2,12 +2,15 @@ export interface User {
   id: number;
   username: string;
   displayName: string;
-  bio?: string;
-  profileImageUrl?: string;
+  bio?: string | null;
+  profileLinks?: Array<{ label: string; url: string }>;
+  pushNotificationsEnabled?: boolean;
+  colorMode?: string;
+  profileImageUrl?: string | null;
   role: string;
   xpPoints: number;
   level: number;
-  createdAt: string;
+  createdAt: string | Date;
 }
 
 export interface TaggedUser {
@@ -26,7 +29,9 @@ export interface Post {
   imageUrl?: string;
   audioUrl?: string;
   videoUrl?: string;
+  location?: string | null;
   mediaType?: string;
+  repostOfId?: number | null;
   likes: number;
   comments: number;
   createdAt: string;
@@ -48,6 +53,12 @@ export interface Comment {
 export interface Product {
   id: number;
   userId: number;
+  businessId?: string | null;
+  payoutMode: 'platform' | 'creator';
+  status: 'draft' | 'published' | 'archived';
+  productType: 'digital_download' | 'course' | 'community' | 'membership';
+  billingModel: 'one_time' | 'recurring';
+  billingInterval?: 'month' | 'year' | null;
   title: string;
   description: string;
   price: number;
@@ -57,6 +68,16 @@ export interface Product {
   reviewCount: number;
   createdAt: string;
   user: User;
+}
+
+export interface Purchase {
+  id: number;
+  buyerId: number;
+  productId: number;
+  status: string;
+  paymentProvider: string;
+  purchasedAt: string;
+  product: Product;
 }
 
 export interface AIAgent {
@@ -95,6 +116,7 @@ export interface Community {
   description: string;
   iconColor: string;
   createdAt: string;
+  accessProductId?: number | null;
 }
 
 export interface Channel {
@@ -108,9 +130,11 @@ export interface ChannelMessage {
   id: number;
   channelId: number;
   userId: number;
+  parentMessageId: number | null;
   content: string;
   isPinned: boolean;
   likes: number;
+  likedByCurrentUser?: boolean;
   createdAt: string;
   user: User;
 }

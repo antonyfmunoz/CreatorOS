@@ -1,0 +1,106 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  core:
+    name: Core
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:secrets
+      - run: npm run verify
+      - run: npm audit --omit=dev --audit-level=high
+
+  database:
+    name: Database and durable workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: creativesos_qualification
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d creativesos_qualification"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
+      QUALIFICATION_ISOLATED_DATABASE: "true"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Apply and qualify every migration
+        run: node scripts/migrate-qualification.mjs
+      - name: Qualify automation kernel
+        run: npx tsx scripts/qualify-automation-kernel.ts
+      - name: Qualify native social automations
+        run: npx tsx scripts/qualify-native-social-automations.ts
+      - name: Qualify relationship operations
+        run: npx tsx scripts/qualify-relationship-operations.ts
+      - name: Qualify account privacy lifecycle
+        run: npx tsx scripts/qualify-account-privacy.ts
+
+  browser:
+    name: Browser journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: creativesos_browser
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d creativesos_browser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_browser
+      QUALIFICATION_ISOLATED_DATABASE: "true"
+      CREATOROS_QUALIFICATION_MODE: "true"
+      VITE_CREATOROS_QUALIFICATION_MODE: "true"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: node scripts/migrate-qualification.mjs
+      - run: npx tsx scripts/seed-browser-qualification.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test

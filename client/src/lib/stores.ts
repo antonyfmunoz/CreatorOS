@@ -1,100 +1,14 @@
 import { create } from 'zustand';
 import { User, AIAgent, AIChat, ChatMessage, Notification, Conversation, DirectMessage } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
-
-// Auth store for handling user authentication
-interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (username: string, password: string) => Promise<User>;
-  register: (userData: Partial<User> & { username: string; password: string; displayName: string }) => Promise<User>;
-  logout: () => void;
-  setUser: (user: User | null) => void;
-}
-
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  
-  login: async (username, password) => {
-    try {
-      set({ isLoading: true });
-      
-      // For demo purposes, we're just using the first user from the list
-      const response = await fetch('/api/users');
-      const users = await response.json();
-      
-      const user = users.find((u: User) => u.username === username);
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
-      
-      set({ 
-        user, 
-        isAuthenticated: true, 
-        isLoading: false 
-      });
-      
-      return user;
-    } catch (error) {
-      set({ isLoading: false });
-      throw error;
-    }
-  },
-  
-  register: async (userData) => {
-    try {
-      set({ isLoading: true });
-      
-      // In a real app, we would send a POST request to register the user
-      // For now, mock by returning user data
-      const user = {
-        id: 11, // Mock ID
-        role: 'creator',
-        xpPoints: 0,
-        level: 1,
-        createdAt: new Date().toISOString(),
-        ...userData
-      } as User;
-      
-      set({ 
-        user, 
-        isAuthenticated: true, 
-        isLoading: false 
-      });
-      
-      return user;
-    } catch (error) {
-      set({ isLoading: false });
-      throw error;
-    }
-  },
-  
-  logout: () => {
-    set({ 
-      user: null, 
-      isAuthenticated: false 
-    });
-  },
-  
-  setUser: (user) => {
-    set({ 
-      user, 
-      isAuthenticated: !!user 
-    });
-  }
-}));
 
 // App state store for current active tab, user, etc.
+// `currentUser` is the Clerk-backed DB user, bridged in from AuthProvider (see use-auth.tsx).
 interface AppState {
-  activeTab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile';
+  activeTab: 'explore' | 'marketplace' | 'create' | 'messages' | 'ai' | 'communities' | 'profile';
   currentUser: User | null;
   isLoading: boolean;
   targetPostId: number | null; // Track the post to highlight
-  setActiveTab: (tab: 'explore' | 'marketplace' | 'ai' | 'communities' | 'profile') => void;
+  setActiveTab: (tab: 'explore' | 'marketplace' | 'create' | 'messages' | 'ai' | 'communities' | 'profile') => void;
   setCurrentUser: (user: User | null) => void;
   setIsLoading: (isLoading: boolean) => void;
   navigateToPost: (postId: number) => void; // Function to navigate to a specific post
@@ -157,9 +71,12 @@ interface CommunitiesState {
 }
 
 export const useCommunitiesStore = create<CommunitiesState>((set) => ({
-  activeCommunityId: 1, // Default to first community
-  activeChannelId: 1, // Default to first channel
-  setActiveCommunity: (id) => set({ activeCommunityId: id }),
+  // IDs are selected from server-backed collections. Hard-coded defaults can
+  // point at archived or nonexistent records and expose a misleading access
+  // gate before the live list has loaded.
+  activeCommunityId: null,
+  activeChannelId: null,
+  setActiveCommunity: (id) => set({ activeCommunityId: id, activeChannelId: null }),
   setActiveChannel: (id) => set({ activeChannelId: id }),
 }));
 
@@ -365,6 +282,7 @@ interface MessagingState {
   setSelectedConversation: (conversationId: number | null) => void;
   setEditingMessageId: (messageId: number | null) => void;
   setReplyingToMessage: (message: DirectMessage | null) => void;
+  openMessagePanel: () => void;
   toggleMessagePanel: () => void;
   closeMessagePanel: () => void;
 }
@@ -477,7 +395,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       }));
       
       // Update conversations to show latest message content if it was edited
-      const { user } = useAuthStore.getState();
+      const user = useAppStore.getState().currentUser;
       if (user) {
         await get().fetchConversations(user.id);
       }
@@ -501,7 +419,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       }));
       
       // Update conversations list to reflect the deletion
-      const { user } = useAuthStore.getState();
+      const user = useAppStore.getState().currentUser;
       if (user) {
         await get().fetchConversations(user.id);
       }
@@ -559,7 +477,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   markConversationAsRead: async (conversationId: number) => {
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/mark-read`, {
+      const response = await fetch(`/api/conversations/${conversationId}/read`, {
         method: 'PATCH'
       });
       
@@ -568,7 +486,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       }
       
       // Update conversations to reflect read status
-      const { user } = useAuthStore.getState();
+      const user = useAppStore.getState().currentUser;
       if (user) {
         await get().fetchConversations(user.id);
       }
@@ -595,7 +513,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       
       // If this is a direct message (only 2 users and no name), check if conversation already exists
       if (userIds.length === 2 && !name) {
-        const { user } = useAuthStore.getState();
+        const user = useAppStore.getState().currentUser;
         if (user) {
           // Ensure we have the latest conversations
           await get().fetchConversations(user.id);
@@ -648,7 +566,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       console.log('Created conversation:', newConversation);
       
       // Update conversations list
-      const { user } = useAuthStore.getState();
+      const user = useAppStore.getState().currentUser;
       if (user) {
         await get().fetchConversations(user.id);
       }
@@ -661,6 +579,8 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   },
   
   setSelectedConversation: (conversationId) => set({ selectedConversation: conversationId }),
+
+  openMessagePanel: () => set({ isMessagePanelOpen: true }),
   
   toggleMessagePanel: () => set((state) => ({
     isMessagePanelOpen: !state.isMessagePanelOpen

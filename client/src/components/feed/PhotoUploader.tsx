@@ -11,12 +11,10 @@ import {
   Plus, 
   Users, 
   MapPin, 
-  Eye, 
   Share,
   BarChart2,
   Instagram,
   Facebook,
-  ShoppingBag,
   Camera,
   RefreshCw
 } from "lucide-react";
@@ -24,8 +22,8 @@ import { PollCreator, type PollData } from "@/components/feed/PollCreator";
 import { LocationPicker, type LocationData } from "@/components/feed/LocationPicker";
 import { TagEditor, type TaggedUser } from "@/components/feed/TagEditor";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 interface PhotoUploaderProps {
@@ -449,11 +447,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   // If images are selected, show the carousel editor and options
   if (imagePreviews.length > 0) {
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
-        <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
+      <div className="flex min-h-dvh flex-col overflow-hidden bg-black text-white">
+        <h1 className="sr-only">Create New Photo Post</h1>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b h-[58px]">
+        <div className="flex h-[58px] items-center justify-between border-b border-zinc-800 p-4">
           <div className="w-10 h-6 flex items-center justify-center"></div> {/* Empty space matched to X button size */}
           <h2 className="text-lg font-medium">New post</h2>
           <div className="w-10 h-6"></div> {/* Empty space to balance the header */}
@@ -466,7 +464,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         >
           {/* Image preview carousel */}
           <div 
-            className="relative w-full aspect-square bg-muted flex items-center justify-center"
+            className="relative flex aspect-square w-full items-center justify-center bg-zinc-900"
             onClick={() => {
               if (taggedUsers.length > 0) {
                 setShowTagLabels(!showTagLabels);
@@ -585,9 +583,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
           </div>
           
           {/* Caption input */}
-          <div className="p-4 border-b">
+          <div className="border-b border-zinc-800 p-4">
             <textarea
-              className="w-full p-3 bg-background border border-border rounded resize-none"
+              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
               placeholder="Write a caption..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -655,24 +653,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </button>
               
-              {/* Tag product button */}
-              <button 
-                type="button"
-                className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
-                onClick={() => {
-                  toast({
-                    title: "Product tagging",
-                    description: "Product tagging feature coming soon!"
-                  });
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>Tag product</span>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
-              
               {/* Tagged users pills */}
               {taggedUsers.length > 0 && (
                 <div className="flex flex-wrap gap-2 py-2">
@@ -733,34 +713,17 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 </div>
               )}
               
-              <div className="flex items-center justify-between py-2"
-                onClick={() => {
-                  toast({
-                    title: "Audience",
-                    description: "Choose who can see your post",
-                  });
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <Eye className="w-5 h-5" />
-                  <span>Audience</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Everyone</span>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                </div>
-              </div>
             </div>
             
             {/* Post to / Share to */}
             <div className="px-4 pb-4 border-b">
               <div className="flex items-center justify-between pb-3">
-                <span className="font-medium">Post to</span>
+                <span className="font-medium">Post to CreativesOS</span>
                 <ChevronRight className="w-5 h-5 text-muted-foreground transform rotate-90" />
               </div>
               
               {/* Social platforms */}
-              <div className="space-y-3">
+              <div className="hidden" aria-hidden="true">
                 {/* X (Twitter) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -934,21 +897,18 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <Share className="w-5 h-5" />
                 <span>Your story</span>
               </div>
-              <div 
-                className={`w-12 h-6 ${addToStory ? 'bg-primary' : 'bg-gray-200'} rounded-full relative cursor-pointer group`}
-                onClick={() => {
-                  setAddToStory(!addToStory);
-                }}
+              <Switch
                 id="story-toggle"
-              >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transform transition-transform duration-200 ease-in-out ${addToStory ? 'translate-x-5 left-2' : 'translate-x-0 left-1'}`}></div>
-              </div>
+                checked={addToStory}
+                onCheckedChange={setAddToStory}
+                aria-label="Add photo post to your story"
+              />
             </div>
             
             {/* Share Button */}
-            <div className="sticky bottom-0 w-full pt-2 pb-4 px-4 bg-white border-t">
+            <div className="sticky bottom-0 w-full border-t border-zinc-800 bg-black px-4 pb-4 pt-2">
               <Button 
-                className="w-full rounded-md py-2 flex items-center justify-center bg-black text-white hover:bg-gray-900"
+                className="flex w-full items-center justify-center rounded-xl bg-[#1d9bf0] py-2 text-white hover:bg-[#1a8cd8]"
                 onClick={handlePost}
               >
                 Share
@@ -980,7 +940,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <PostOptionsPanel 
                   content={content}
                   onContentChange={setContent}
+                  addToStory={addToStory}
+                  onAddToStoryChange={setAddToStory}
                   onShare={handlePost}
+                  isSharing={createPostMutation.isPending}
+                  shareDisabled={imageFiles.length === 0}
                 />
               </div>
             </div>
@@ -1057,16 +1021,17 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
   
   // Photo selection mode with Instagram-inspired UI, similar to story creator
   return (
-    <div className="flex flex-col w-full h-[100vh] bg-white text-foreground">
-      <DialogTitle className="sr-only">Create New Photo Post</DialogTitle>
+    <div className="flex h-[100vh] w-full flex-col bg-black text-white">
+      <h1 className="sr-only">Create New Photo Post</h1>
       
       {/* Top bar - exactly like story creator */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-white z-50">
+      <div className="z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-3">
         <Button 
           variant="ghost" 
           size="icon" 
           className="rounded-full h-8 w-8" 
           onClick={onClose}
+          aria-label="Cancel photo post"
         >
           <X className="h-5 w-5" />
         </Button>
@@ -1081,15 +1046,15 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         <div className="flex items-center justify-center min-h-full">
           {!cameraMode ? (
             <div className="flex flex-col items-center w-full max-w-md px-4">
-              <DialogDescription className="text-center text-gray-500 mb-8">
+              <p className="mb-8 text-center text-zinc-400">
                 Add photos or videos to your post to share with your followers.
-              </DialogDescription>
+              </p>
               
               <div className="w-full grid grid-cols-2 gap-4">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-white hover:bg-zinc-800"
                   onClick={triggerFileSelect}
                 >
                   <Upload className="h-7 w-7 mb-2" />
@@ -1099,7 +1064,7 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-white hover:bg-zinc-800"
                   onClick={startCamera}
                 >
                   <Camera className="h-7 w-7 mb-2" />

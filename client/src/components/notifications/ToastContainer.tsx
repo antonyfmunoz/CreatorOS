@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Notification } from '@/types';
 
 const ToastContainer: React.FC = () => {
-  const { notifications, deleteNotification } = useNotifications();
+  const { notifications } = useNotifications();
   const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
 
   // Track recent notifications to display as toasts
@@ -60,10 +60,10 @@ const ToastContainer: React.FC = () => {
         {recentNotifications.map((notification: Notification) => (
           <motion.div
             key={notification.id}
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-            className="shadow-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden"
+            initial={{ y: -20, scale: 0.95 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={{ x: 24, scale: 0.95, transition: { duration: 0.2 } }}
+            className="overflow-hidden rounded-lg border border-zinc-800 bg-[#09090b] shadow-lg"
           >
             <Toast 
               notification={notification} 

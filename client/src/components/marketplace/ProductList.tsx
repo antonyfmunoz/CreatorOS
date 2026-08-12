@@ -7,22 +7,45 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const categories = ["All", "Courses", "eBooks", "Templates", "Software", "Coaching"];
 
-const ProductList = ({ title, section }: { title: string; section: "featured" | "bestsellers" | "recommended" }) => {
+const categoryApiValues: Record<string, string> = {
+  Courses: "Course",
+  eBooks: "eBook",
+  Templates: "Template",
+  Software: "Software",
+  Coaching: "Coaching",
+};
+
+const ProductList = ({ title, section, searchQuery = "" }: { title: string; section: "featured" | "bestsellers" | "recommended"; searchQuery?: string }) => {
   const [activeCategory, setActiveCategory] = useState("All");
   
   const { data: products, isLoading } = useQuery<Product[]>({
     queryKey: ['/api/products', activeCategory !== "All" ? activeCategory : null],
+    queryFn: async () => {
+      const categoryValue = categoryApiValues[activeCategory];
+      const category = categoryValue ? `?category=${encodeURIComponent(categoryValue)}` : "";
+      const response = await fetch(`/api/products${category}`);
+      if (!response.ok) {
+        throw new Error("Failed to load products");
+      }
+      return response.json();
+    },
   });
 
   // Filter products based on section
-  const filteredProducts = products?.filter(product => {
-    if (section === "featured") {
-      return product.rating >= 4.5;
-    } else if (section === "bestsellers") {
-      return product.reviewCount > 10;
-    } else {
-      return true; // Recommended - show all remaining
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const matchingProducts = products?.filter(product => {
+    if (normalizedSearch && ![product.title, product.description, product.category, product.user?.displayName]
+      .filter(Boolean)
+      .some(value => value!.toLowerCase().includes(normalizedSearch))) {
+      return false;
     }
+    return true;
+  });
+
+  const filteredProducts = matchingProducts?.slice().sort((a, b) => {
+    if (section === "featured") return (b.rating ?? 0) - (a.rating ?? 0);
+    if (section === "bestsellers") return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
+    return 0;
   });
 
   if (isLoading) {
@@ -91,7 +114,7 @@ const ProductList = ({ title, section }: { title: string; section: "featured" | 
       <div>
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
         
-        <div className="overflow-x-auto scrollbar-hide mb-6">
+        <div className="horizontal-rail mb-6">
           <div className="flex space-x-4">
             {categories.map((category) => (
               <Button
@@ -110,6 +133,7 @@ const ProductList = ({ title, section }: { title: string; section: "featured" | 
           {filteredProducts?.slice(0, 4).map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
+          {filteredProducts?.length === 0 && <p className="col-span-2 text-sm text-muted-foreground">No products found.</p>}
         </div>
       </div>
     );
@@ -132,9 +156,10 @@ const ProductList = ({ title, section }: { title: string; section: "featured" | 
     <div>
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       <div className="grid grid-cols-2 gap-4">
-        {filteredProducts?.slice(0, 2).map((product) => (
+        {filteredProducts?.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}
+        {filteredProducts?.length === 0 && <p className="col-span-2 text-sm text-muted-foreground">No products found.</p>}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { PostHog } from "posthog-node";
 
-const POSTHOG_KEY = process.env.POSTHOG_KEY as string | undefined;
-const POSTHOG_HOST = process.env.POSTHOG_HOST as string | undefined;
+const POSTHOG_KEY = (process.env.POSTHOG_KEY ?? process.env.VITE_POSTHOG_KEY) as string | undefined;
+const POSTHOG_HOST = (process.env.POSTHOG_HOST ?? process.env.VITE_POSTHOG_HOST) as string | undefined;
 
 export const posthog = POSTHOG_KEY
   ? new PostHog(POSTHOG_KEY, {

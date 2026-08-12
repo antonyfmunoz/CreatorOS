@@ -1,38 +1,44 @@
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { Redirect, useLocation } from "wouter";
+
+const clerkAppearance = {
+  elements: {
+    rootBox: "!w-full !max-w-none",
+    cardBox: "!w-full",
+    card: "!w-full !max-w-none !rounded-xl",
+  },
+} as const;
 
 const AuthPage = () => {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
+  const isRegistration = location === "/auth/register";
 
   if (isSignedIn) {
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <main className="min-h-screen flex flex-col md:flex-row">
       {/* Auth form section */}
-      <div className="w-full md:w-1/2 p-8 flex flex-1 items-center justify-center">
+      <div className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 md:w-1/2 md:px-10">
         <div className="w-full max-w-md space-y-6">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold">Welcome to CreatorOS</h1>
-            <p className="text-gray-500 mt-2">
-              Your all-in-one platform for creators
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to CreativesOS</h1>
+            <p className="mt-2 text-zinc-400">
+              Your all-in-one platform for distribution
             </p>
           </div>
 
-          {mode === "sign-in" ? (
+          {!isRegistration ? (
             <>
-              <SignIn routing="hash" />
+              <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/auth/register" />
               <div className="text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-zinc-400">
                   Don't have an account?{" "}
                   <button
-                    onClick={() => setMode("sign-up")}
+                    onClick={() => setLocation("/auth/register")}
                     className="text-primary hover:underline"
                   >
                     Register now
@@ -42,12 +48,12 @@ const AuthPage = () => {
             </>
           ) : (
             <>
-              <SignUp routing="hash" />
+              <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth/login" />
               <div className="text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-zinc-400">
                   Already have an account?{" "}
                   <button
-                    onClick={() => setMode("sign-in")}
+                    onClick={() => setLocation("/auth/login")}
                     className="text-primary hover:underline"
                   >
                     Login
@@ -56,11 +62,17 @@ const AuthPage = () => {
               </div>
             </>
           )}
+          <nav aria-label="Trust and safety" className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-zinc-500">
+            <button onClick={() => setLocation("/trust")} className="hover:text-white hover:underline">Trust center</button>
+            <button onClick={() => setLocation("/legal/community-guidelines")} className="hover:text-white hover:underline">Community rules</button>
+            <button onClick={() => setLocation("/legal/ai-recording")} className="hover:text-white hover:underline">AI &amp; recording</button>
+            <button onClick={() => setLocation("/legal/data-deletion")} className="hover:text-white hover:underline">Data deletion</button>
+          </nav>
         </div>
       </div>
 
       {/* Hero section */}
-      <div className="w-full md:w-1/2 bg-gradient-to-br from-primary/10 to-primary/20 p-8 hidden md:flex items-center justify-center">
+      <div className="hidden w-full items-center justify-center bg-gradient-to-br from-sky-500/10 to-violet-500/10 p-8 md:flex md:w-1/2">
         <div className="max-w-lg space-y-6">
           <h2 className="text-3xl font-bold">Everything Creators Need in One Place</h2>
 
@@ -95,7 +107,7 @@ const AuthPage = () => {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

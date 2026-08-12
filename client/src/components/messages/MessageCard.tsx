@@ -178,7 +178,7 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
               }
             }}
           >
-            <AvatarImage src={message.sender?.profileImageUrl} />
+            <AvatarImage src={message.sender?.profileImageUrl ?? undefined} />
             <AvatarFallback>{message.sender?.displayName?.charAt(0) || 'U'}</AvatarFallback>
           </Avatar>
         )}
@@ -320,6 +320,16 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                                 </div>
                               </div>
                             </div>
+                          </div>
+                        );
+                      }
+                      if (parsedContent.type === 'voice_note' && parsedContent.url) {
+                        return (
+                          <div className="min-w-56 space-y-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">AI-generated voice</div>
+                            <audio controls preload="metadata" src={parsedContent.url} className="h-10 w-full" />
+                            {parsedContent.caption && <p className="text-xs">{parsedContent.caption}</p>}
+                            {parsedContent.disclosure && <p className="text-[10px] opacity-70">{parsedContent.disclosure}</p>}
                           </div>
                         );
                       }

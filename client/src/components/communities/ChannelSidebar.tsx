@@ -1,15 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCommunitiesStore } from '@/lib/stores';
 import { Community, Channel } from '@/types';
-import { MessageSquare, Users, Settings, Hash } from 'lucide-react';
+import { Hash, Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 
 interface ChannelSidebarProps {
   isMobile?: boolean;
+  isMember?: boolean;
+  canManage?: boolean;
+  onCreateChannel?: () => void;
 }
 
-const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
+const ChannelSidebar = ({ isMobile = false, isMember = false, canManage = false, onCreateChannel }: ChannelSidebarProps) => {
+  const [channelSearch, setChannelSearch] = useState("");
   const { activeCommunityId, activeChannelId, setActiveCommunity, setActiveChannel } = useCommunitiesStore();
   
   const { data: communities, isLoading: isLoadingCommunities } = useQuery<Community[]>({
@@ -18,25 +25,28 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
   
   const { data: channels, isLoading: isLoadingChannels } = useQuery<Channel[]>({
     queryKey: ['/api/communities', activeCommunityId, 'channels'],
-    enabled: activeCommunityId !== null,
+    enabled: activeCommunityId !== null && isMember,
+    queryFn: async () => {
+      const response = await fetch(`/api/communities/${activeCommunityId}/channels`);
+      if (!response.ok) throw new Error("Failed to load channels");
+      return response.json();
+    },
   });
-  
-  if (isMobile) {
-    return null; // Don't render on mobile, handled by modal
-  }
+  const activeCommunity = communities?.find((community) => community.id === activeCommunityId);
+  const visibleChannels = channels?.filter((channel) => channel.name.toLowerCase().includes(channelSearch.trim().toLowerCase()));
   
   return (
-    <div className="w-1/4 bg-gray-800 text-white p-4 hidden md:block">
-      <h2 className="text-xl font-bold mb-6">Communities</h2>
+    <div className={isMobile ? "h-full w-full bg-zinc-950 p-4 text-white" : "hidden w-52 shrink-0 border-r border-zinc-800 bg-[#171719] p-4 text-white md:block"}>
+      <h2 className="mb-5 text-2xl font-bold">{isMobile ? "Communities" : activeCommunity?.name ?? "Community"}</h2>
       
       <div className="space-y-6">
-        <div>
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Your Communities</h3>
+        {isMobile && <div>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Switch community</h3>
           
           {isLoadingCommunities ? (
             <div className="space-y-2">
               {Array(3).fill(0).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full bg-gray-700" />
+                <Skeleton key={i} className="h-10 w-full bg-zinc-900" />
               ))}
             </div>
           ) : (
@@ -46,69 +56,56 @@ const ChannelSidebar = ({ isMobile = false }: ChannelSidebarProps) => {
                   key={community.id}
                   className={`
                     flex items-center p-2 rounded-md cursor-pointer
-                    ${activeCommunityId === community.id ? 'bg-gray-700' : 'hover:bg-gray-700'}
+                    ${activeCommunityId === community.id ? 'bg-white text-black' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'}
                   `}
                   onClick={() => setActiveCommunity(community.id)}
                 >
-                  <span className={`w-2 h-2 ${community.iconColor} rounded-full mr-2`}></span>
+                  <span className={`mr-2 h-2 w-2 rounded-full ${activeCommunityId === community.id ? 'bg-black' : 'bg-zinc-600'}`}></span>
                   <span>{community.name}</span>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </div>}
         
-        {activeCommunityId && (
+        {isMember && activeCommunityId && (
           <div>
-            <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Channels</h3>
+          <Input aria-label="Search channels" value={channelSearch} onChange={(event) => setChannelSearch(event.target.value)} placeholder="Search channels" className="mb-6 h-11 rounded-xl border-0 bg-black px-4 text-white placeholder:text-zinc-500" />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Text channels</h3>
+            {canManage && onCreateChannel && <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-full text-zinc-500 hover:bg-zinc-900 hover:text-white" onClick={onCreateChannel} aria-label="Create channel"><Plus className="h-4 w-4" /></Button>}
+          </div>
             
             {isLoadingChannels ? (
               <div className="space-y-2">
                 {Array(5).fill(0).map((_, i) => (
-                  <Skeleton key={i} className="h-8 w-full bg-gray-700" />
+                  <Skeleton key={i} className="h-8 w-full bg-zinc-900" />
                 ))}
               </div>
             ) : (
               <ScrollArea className="h-40">
                 <ul className="space-y-1 pr-4">
-                  {channels?.map(channel => (
+                  {visibleChannels?.map(channel => (
                     <li 
                       key={channel.id}
                       className={`
                         flex items-center p-2 rounded-md cursor-pointer
-                        ${activeChannelId === channel.id ? 'bg-gray-700' : 'hover:bg-gray-700'}
+                        ${activeChannelId === channel.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}
                       `}
                       onClick={() => setActiveChannel(channel.id)}
                     >
-                      <Hash className="h-4 w-4 mr-2 text-gray-400" />
+                      <Hash className="mr-2 h-4 w-4 text-zinc-500" />
                       <span>{channel.name}</span>
                     </li>
                   ))}
+                  {visibleChannels?.length === 0 && <li className="px-2 py-4 text-center text-xs text-zinc-500">No channels match “{channelSearch}”.</li>}
                 </ul>
               </ScrollArea>
             )}
           </div>
         )}
         
-        <div>
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 mb-2">Direct Messages</h3>
-          <ul className="space-y-2">
-            <li className="flex items-center p-2 hover:bg-gray-700 rounded-md cursor-pointer">
-              <div className="relative mr-2">
-                <div className="w-6 h-6 rounded-full bg-gray-500"></div>
-                <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full"></span>
-              </div>
-              <span>David Kim</span>
-            </li>
-            <li className="flex items-center p-2 hover:bg-gray-700 rounded-md cursor-pointer">
-              <div className="relative mr-2">
-                <div className="w-6 h-6 rounded-full bg-gray-500"></div>
-                <span className="absolute bottom-0 right-0 w-2 h-2 bg-gray-500 rounded-full"></span>
-              </div>
-              <span>Sarah Mitchell</span>
-            </li>
-          </ul>
-        </div>
+        {isMember && <p className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs leading-5 text-zinc-500">Choose a channel to join the conversation.</p>}
       </div>
     </div>
   );

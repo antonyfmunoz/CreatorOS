@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { StoryCreator } from './StoryCreator';
+import { HorizontalRail } from '@/components/ui/horizontal-rail';
 
 // Define the User type inline to avoid import issues
 interface User {
@@ -37,11 +38,6 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   const { toast } = useToast();
   const [storyCreatorOpen, setStoryCreatorOpen] = useState(false);
   
-  // Fetch all users
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-  });
-  
   // Fetch all stories with aggressive settings to ensure freshness
   const { data: stories, isLoading: storiesLoading, refetch: refetchStories } = useQuery<Story[]>({
     queryKey: ['/api/stories'],
@@ -58,7 +54,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
     console.log('Refreshing stories data on StoriesBar mount');
   }, [refetchStories]);
   
-  const isLoading = usersLoading || storiesLoading;
+  const isLoading = storiesLoading;
   
   // Group stories by user
   const storiesByUser = stories?.reduce((acc, story) => {
@@ -77,34 +73,31 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   
   if (isLoading) {
     return (
-      <div className="py-3 mb-4">
-        <div className="overflow-x-auto px-4">
-          <div className="flex space-x-4">
+      <div className="mb-4 bg-black py-3 text-white">
+        <HorizontalRail className="px-4">
+          <div className="flex w-max space-x-4 pr-4">
             {/* Current user story skeleton */}
-            <div className="flex flex-col items-center">
+            <div className="flex shrink-0 flex-col items-center">
               <Skeleton className="w-16 h-16 rounded-full" />
               <Skeleton className="w-12 h-3 mt-1" />
             </div>
             
             {/* Other users stories skeletons */}
             {Array(4).fill(0).map((_, i) => (
-              <div key={i} className="flex flex-col items-center">
+              <div key={i} className="flex shrink-0 flex-col items-center">
                 <Skeleton className="w-16 h-16 rounded-full" />
                 <Skeleton className="w-12 h-3 mt-1" />
               </div>
             ))}
           </div>
-        </div>
+        </HorizontalRail>
       </div>
     );
   }
 
-  if (!users || users.length === 0) {
-    return null; // Don't show stories bar if there are no users
-  }
-
-  // Filter out the current user
-  const otherUsers = users.filter(u => u.id !== currentUser?.id);
+  const storyUsers = Object.values(storiesByUser).map((userStories) => userStories[0].user);
+  const otherUsers = storyUsers.filter((user) => user.id !== currentUser?.id);
+  if (!currentUser && otherUsers.length === 0) return null;
   
   // Check if current user has a story
   const hasCurrentUserStory = currentUser && storiesByUser[currentUser.id]?.length > 0;
@@ -112,23 +105,32 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   return (
     <>
       <div className="py-3 mb-4">
-        <div className="overflow-x-auto px-4">
-          <div className="flex space-x-4">
+        <HorizontalRail className="px-4">
+          <div className="flex w-max space-x-4 pr-4">
             {/* Current user's story or create story button */}
             {currentUser && (
               <div 
-                className="flex flex-col items-center cursor-pointer"
+                className="flex shrink-0 flex-col items-center cursor-pointer"
+                role="button"
+                tabIndex={0}
+                aria-label={hasCurrentUserStory ? "View your story" : "Create a story"}
                 onClick={hasCurrentUserStory 
                   ? () => onStoryClick && onStoryClick(currentUser.id) 
                   : handleAddStory
                 }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    hasCurrentUserStory ? onStoryClick?.(currentUser.id) : handleAddStory();
+                  }
+                }}
               >
-                <div className={`w-16 h-16 rounded-full ${
+                <div className={`relative h-16 w-16 rounded-full ${
                   hasCurrentUserStory 
                     ? 'bg-gradient-to-r from-primary to-secondary p-0.5' 
                     : ''
                 }`}>
-                  <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-white' : 'w-16 h-16'}`}>
+                  <Avatar className={`${hasCurrentUserStory ? 'w-full h-full border-2 border-black' : 'w-16 h-16'}`}>
                     <AvatarImage
                       src={currentUser.profileImageUrl || undefined}
                       alt={currentUser.displayName}
@@ -139,7 +141,7 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                   
                   {/* Add story plus icon */}
                   {!hasCurrentUserStory && (
-                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center border-2 border-white">
+                    <div className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border-2 border-black bg-[#1d9bf0] text-white">
                       <Plus className="w-4 h-4" />
                     </div>
                   )}
@@ -151,17 +153,24 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
             )}
             
             {/* Other users' stories - only show users with active stories */}
-            {otherUsers
-              .filter(user => storiesByUser[user.id]?.length > 0)
-              .map((user) => (
+            {otherUsers.map((user) => (
                 <div 
                   key={user.id}
-                  className="flex flex-col items-center cursor-pointer"
+                  className="flex shrink-0 flex-col items-center cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View ${user.displayName}'s story`}
                   onClick={() => onStoryClick && onStoryClick(user.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onStoryClick?.(user.id);
+                    }
+                  }}
                   data-user-id={user.id}
                 >
                   <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-secondary p-0.5">
-                    <Avatar className="w-full h-full border-2 border-white">
+                    <Avatar className="h-full w-full border-2 border-black">
                       <AvatarImage
                         src={user.profileImageUrl || undefined}
                         alt={user.displayName}
@@ -174,10 +183,9 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
                     {user.displayName.split(' ')[0]}
                   </span>
                 </div>
-              ))
-            }
+              ))}
           </div>
-        </div>
+        </HorizontalRail>
       </div>
       
       {/* Story Creator Dialog */}

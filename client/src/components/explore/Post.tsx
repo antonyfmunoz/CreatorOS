@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { 
-  Heart, MessageSquare, Share2, MoreHorizontal, Check, Copy, Link, Send, Search, 
-  User as UserIcon, Users, X, Pencil, Trash, Bookmark, Edit, Save 
+  Heart, MessageSquare, Share2, Repeat2, BarChart3, MoreHorizontal, Check, Copy, Send, Search,
+  User as UserIcon, Users, X, Pencil, Trash, Bookmark, Edit, Save, Play, Pause, Volume2, VolumeX, Maximize2, PictureInPicture2, Flag
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Post as ImportedPostType, Conversation } from '@/types';
 // Extend the PostType to include taggedUsers
 interface PostType extends ImportedPostType {
   taggedUsers?: TaggedUser[];
+  repostOfId?: number | null;
 }
 
 // Define a local User interface to avoid dependency issues
@@ -46,13 +47,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useLocation } from 'wouter';
-import { parseUserTagsToJSX, parseUserTags } from '@/lib/textParser';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose
 } from "@/components/ui/dialog";
@@ -64,12 +63,33 @@ import {
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PostProps {
   post: PostType;
+  surface?: 'light' | 'dark';
+  onDeleted?: () => void;
 }
 
-const Post = ({ post }: PostProps) => {
+type PostPoll = {
+  id: number;
+  question: string;
+  totalVotes: number;
+  viewerOptionId: number | null;
+  options: Array<{ id: number; body: string; position: number; votes: number }>;
+};
+
+const Post = ({ post, surface = 'light', onDeleted }: PostProps) => {
+  const isDark = surface === 'dark';
   const [showComments, setShowComments] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -86,35 +106,89 @@ const Post = ({ post }: PostProps) => {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
   
-  // Use local storage to remember liked posts across refreshes
-  const [likedPosts, setLikedPosts] = useState<number[]>(() => {
-    const saved = localStorage.getItem('likedPosts');
-    return saved ? JSON.parse(saved) : [];
-  });
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
   const [showTags, setShowTags] = useState(false);
-  const [savedPosts, setSavedPosts] = useState<number[]>(() => {
-    const saved = localStorage.getItem('savedPosts');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
+  const [isMediaPlaying, setIsMediaPlaying] = useState(false);
+  const [isMediaMuted, setIsMediaMuted] = useState(true);
+  const mediaViewerRef = useRef<HTMLVideoElement>(null);
   
-  const isLiked = likedPosts.includes(post.id);
-  const isSaved = savedPosts.includes(post.id);
+  const mediaUrl = post.videoUrl || post.imageUrl;
+  const isVideoPost = Boolean(post.videoUrl) || post.mediaType === 'video';
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { createConversation, sendMessage } = useMessaging();
   const [, setLocation] = useLocation();
-
-  // Get the current user
-  const { data: users } = useQuery<User[]>({
-    queryKey: ['/api/users'],
+  const isOwnRepost = Boolean(user && post.userId === user.id && post.repostOfId);
+  const { data: persistedSavedPosts = [] } = useQuery<ImportedPostType[]>({
+    queryKey: [`/api/users/${user?.id}/saved-posts`],
+    enabled: !!user,
     queryFn: async () => {
-      const res = await fetch('/api/users');
-      if (!res.ok) throw new Error('Failed to fetch users');
-      return res.json();
-    }
+      const response = await fetch(`/api/users/${user!.id}/saved-posts`);
+      if (!response.ok) throw new Error('Failed to fetch saved posts');
+      return response.json();
+    },
+  });
+  const { data: persistedLikedPosts = [] } = useQuery<ImportedPostType[]>({
+    queryKey: [`/api/users/${user?.id}/liked-posts`],
+    enabled: !!user,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${user!.id}/liked-posts`);
+      if (!response.ok) throw new Error('Failed to fetch liked posts');
+      return response.json();
+    },
+  });
+  const { data: myPosts = [] } = useQuery<ImportedPostType[]>({
+    queryKey: ['/api/users', user?.id, 'posts'],
+    enabled: !!user,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${user!.id}/posts`);
+      if (!response.ok) throw new Error('Failed to fetch your posts');
+      return response.json();
+    },
+  });
+  const isSaved = persistedSavedPosts.some((savedPost) => savedPost.id === post.id);
+  const isLiked = persistedLikedPosts.some((likedPost) => likedPost.id === post.id);
+  const repostContent = `Reposted @${post.user.username}: ${post.content}`;
+  const isReposted = myPosts.some((candidate) => candidate.repostOfId === post.id);
+  const { data: postPoll = null } = useQuery<PostPoll | null>({
+    queryKey: ['/api/posts', post.id, 'poll'],
+    enabled: !!user,
+    queryFn: async () => {
+      const response = await fetch(`/api/posts/${post.id}/poll`);
+      if (!response.ok) throw new Error('Failed to load poll');
+      return response.json();
+    },
+  });
+  const mentionedUsernames = Array.from(
+    new Set((post.content.match(/@[A-Za-z0-9_]+/g) ?? []).map((mention) => mention.slice(1).toLowerCase())),
+  ).slice(0, 10);
+
+  useEffect(() => {
+    if (!user || post.userId === user.id) return;
+    void apiRequest('POST', `/api/posts/${post.id}/view`).catch(() => undefined);
+  }, [post.id, post.userId, user]);
+
+  // Resolve only the accounts explicitly mentioned in this post. This keeps
+  // profile links functional without downloading the entire user directory.
+  const { data: mentionedUsers = [] } = useQuery<User[]>({
+    queryKey: ['/api/posts', post.id, 'mentioned-users', mentionedUsernames],
+    enabled: mentionedUsernames.length > 0,
+    queryFn: async () => {
+      const resultSets = await Promise.all(mentionedUsernames.map(async (username) => {
+        const res = await fetch(`/api/users?search=${encodeURIComponent(username)}`);
+        if (!res.ok) return [] as User[];
+        return res.json() as Promise<User[]>;
+      }));
+      const uniqueUsers = new Map<number, User>();
+      for (const candidate of resultSets.flat()) {
+        if (mentionedUsernames.includes(candidate.username.toLowerCase())) uniqueUsers.set(candidate.id, candidate);
+      }
+      return Array.from(uniqueUsers.values());
+    },
   });
   
   // Fetch the comments for this post - always fetch to get accurate count
@@ -153,31 +227,15 @@ const Post = ({ post }: PostProps) => {
   // This includes both top-level comments and all replies
   const totalCommentCount = commentCountData?.count || 0;
 
-  // Save liked posts to local storage
-  useEffect(() => {
-    localStorage.setItem('likedPosts', JSON.stringify(likedPosts));
-  }, [likedPosts]);
-  
-  // Save saved posts to local storage
-  useEffect(() => {
-    localStorage.setItem('savedPosts', JSON.stringify(savedPosts));
-  }, [savedPosts]);
-
   const likePostMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', `/api/posts/${post.id}/like`, null);
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        // Maintain the same array order while updating the specific post
-        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
-      // Remember this post was liked by adding it to likedPosts
-      setLikedPosts(prev => [...prev, post.id]);
+      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/liked-posts`] });
     },
     onError: () => {
       toast({
@@ -194,15 +252,9 @@ const Post = ({ post }: PostProps) => {
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        // Maintain the same array order while updating the specific post
-        return oldData.map(p => p.id === post.id ? { ...p, likes: updatedPost.likes } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
-      // Remove this post from the liked posts list
-      setLikedPosts(prev => prev.filter(id => id !== post.id));
+      queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}/liked-posts`] });
     },
     onError: () => {
       toast({
@@ -348,10 +400,11 @@ const Post = ({ post }: PostProps) => {
     }
   };
   
-  const copyPostLink = () => {
+  const copyPostLink = async () => {
     // Create a shareable link for the post
     const postLink = `${window.location.origin}/post/${post.id}`;
-    navigator.clipboard.writeText(postLink).then(() => {
+    try {
+      await navigator.clipboard.writeText(postLink);
       setCopied(true);
       
       // Show success toast notification
@@ -362,7 +415,12 @@ const Post = ({ post }: PostProps) => {
       
       // Reset the copied state after 2 seconds
       setTimeout(() => setCopied(false), 2000);
-    });
+    } catch {
+      toast({
+        title: "Post link",
+        description: postLink,
+      });
+    }
   };
   
   // Search for users to share with
@@ -468,11 +526,7 @@ const Post = ({ post }: PostProps) => {
       return res.json();
     },
     onSuccess: (updatedPost) => {
-      // Update the post in the cache directly without refetching
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => p.id === post.id ? { ...p, content: updatedPost.content } : p);
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       
       // Exit editing mode and show success toast
       setIsEditing(false);
@@ -505,6 +559,7 @@ const Post = ({ post }: PostProps) => {
         title: "Success",
         description: "Post deleted successfully.",
       });
+      onDeleted?.();
     },
     onError: () => {
       // Only show toast for errors
@@ -527,9 +582,6 @@ const Post = ({ post }: PostProps) => {
       await apiRequest('POST', `/api/posts/${post.id}/save`, {});
     },
     onSuccess: () => {
-      // Add the post to saved posts
-      setSavedPosts(prev => [...prev, post.id]);
-      
       // Update the global cache to reflect that this post is saved
       queryClient.invalidateQueries({queryKey: [`/api/users/${user?.id}/saved-posts`]});
       
@@ -556,9 +608,6 @@ const Post = ({ post }: PostProps) => {
       await apiRequest('POST', `/api/posts/${post.id}/unsave`, {});
     },
     onSuccess: () => {
-      // Remove the post from saved posts
-      setSavedPosts(prev => prev.filter(id => id !== post.id));
-      
       // Update the global cache to reflect that this post is unsaved
       queryClient.invalidateQueries({queryKey: [`/api/users/${user?.id}/saved-posts`]});
       
@@ -601,24 +650,88 @@ const Post = ({ post }: PostProps) => {
     setIsEditing(false);
   };
 
-  // Handle delete post with confirmation
   const handleDeletePost = () => {
-    if (confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
-      // Immediately hide the post from UI before the API call completes
-      const postElement = document.getElementById(`post-${post.id}`);
-      if (postElement) {
-        postElement.style.display = 'none';
-      }
-      
-      // Also update the cache immediately
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.filter(p => p.id !== post.id);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  // A repost is a real new feed item from the active creator, rather than a
+  // decorative counter. It keeps the MVP's repost control useful without
+  // pretending we have a separate federation layer yet.
+  const repostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('You must be signed in to repost');
+      const res = await apiRequest('POST', '/api/posts', {
+        content: repostContent,
+        imageUrl: post.imageUrl ?? null,
+        mediaType: post.imageUrl ? 'photo' : 'text',
+        repostOfId: post.id,
       });
-      
-      // Then call the API
-      deletePostMutation.mutate();
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users', user?.id, 'posts'] });
+      toast({ title: 'Reposted', description: 'The post is now on your feed.' });
+    },
+    onError: () => {
+      toast({ title: 'Could not repost', description: 'Please try again.', variant: 'destructive' });
+    },
+  });
+
+  const votePostPollMutation = useMutation({
+    mutationFn: async (optionId: number) => (await apiRequest('POST', `/api/posts/${post.id}/poll/vote`, { optionId })).json() as Promise<PostPoll>,
+    onSuccess: (poll) => queryClient.setQueryData(['/api/posts', post.id, 'poll'], poll),
+    onError: () => toast({ title: 'Vote not saved', description: 'Please try again.', variant: 'destructive' }),
+  });
+
+  const reportPostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("User not authenticated");
+      await apiRequest("POST", `/api/posts/${post.id}/report`, { reason: "safety_concern" });
+    },
+    onSuccess: () => toast({ title: "Report received", description: "Thanks. Our moderation team can now review this post." }),
+    onError: () => toast({ title: "Could not submit report", description: "Please try again.", variant: "destructive" }),
+  });
+
+  const handleRepost = () => {
+    if (!isReposted && !isOwnRepost) repostMutation.mutate();
+  };
+
+  const renderPostContent = () => post.content.split(/(@[A-Za-z0-9_]+)/g).map((part, index) => {
+    if (!part.startsWith('@')) return part;
+
+    const username = part.slice(1);
+    const mentionedUser = mentionedUsers.find((candidate) => candidate.username.toLowerCase() === username.toLowerCase());
+    if (!mentionedUser) {
+      return <span key={`${part}-${index}`} className="font-medium text-[#1d9bf0]">{part}</span>;
     }
+
+    return (
+      <button
+        key={`${part}-${index}`}
+        type="button"
+        className="font-medium text-[#1d9bf0] hover:underline"
+        aria-label={`Open @${mentionedUser.username}'s profile`}
+        onClick={() => setLocation(`/profile/${mentionedUser.id}`)}
+      >
+        {part}
+      </button>
+    );
+  });
+
+  const confirmDeletePost = () => {
+    setIsDeleteConfirmOpen(false);
+    const postElement = document.getElementById(`post-${post.id}`);
+    if (postElement) {
+      postElement.style.display = 'none';
+    }
+
+    queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
+      if (!oldData) return oldData;
+      return oldData.filter(p => p.id !== post.id);
+    });
+
+    deletePostMutation.mutate();
   };
 
   // Handle save/unsave post toggle
@@ -640,12 +753,31 @@ const Post = ({ post }: PostProps) => {
   };
 
   const formattedDate = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
-  const isPending = likePostMutation.isPending || unlikePostMutation.isPending || 
+  const isPending = likePostMutation.isPending || unlikePostMutation.isPending || repostMutation.isPending ||
                    updatePostMutation.isPending || deletePostMutation.isPending || 
                    savePostMutation.isPending || unsavePostMutation.isPending;
 
   return (
-    <Card id={`post-${post.id}`} className="mb-4 overflow-hidden">
+    <Card id={`post-${post.id}`} className={`mb-0 overflow-hidden rounded-none border-x-0 border-t-0 shadow-none ${isDark ? 'border-zinc-800 bg-black text-white' : 'border-zinc-100 bg-white text-black'}`}>
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePost}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CardContent className="p-4">
         <div className="flex items-center mb-3">
           <Avatar 
@@ -655,18 +787,19 @@ const Post = ({ post }: PostProps) => {
             <AvatarImage src={post.user.profileImageUrl || undefined} alt={post.user.displayName} />
             <AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
-          <div>
+          <div className="min-w-0">
             <p 
-              className="font-semibold cursor-pointer hover:text-primary hover:underline" 
+              className={`cursor-pointer font-semibold hover:text-primary hover:underline ${isDark ? 'text-white' : 'text-black'}`}
               onClick={() => setLocation(`/profile/${post.user.id}`)}
             >
               {post.user.displayName}
             </p>
-            <p className="text-xs text-gray-500">{formattedDate}</p>
+            <p className="truncate text-xs text-zinc-500">@{post.user.username} · {formattedDate}</p>
+            {post.location && <p className="mt-0.5 truncate text-xs text-zinc-400">{post.location}</p>}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="ml-auto">
+              <Button variant="ghost" size="icon" className="ml-auto" aria-label="Post options">
                 <MoreHorizontal className="h-5 w-5 text-gray-400" />
               </Button>
             </DropdownMenuTrigger>
@@ -708,6 +841,11 @@ const Post = ({ post }: PostProps) => {
                       </>
                     )}
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="cursor-pointer text-destructive" disabled={reportPostMutation.isPending} onClick={() => reportPostMutation.mutate()}>
+                    <Flag className="mr-2 h-4 w-4" />
+                    <span>{reportPostMutation.isPending ? "Sending report…" : "Report post"}</span>
+                  </DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -748,23 +886,29 @@ const Post = ({ post }: PostProps) => {
             </div>
           </div>
         ) : (
-          <p 
-            className="mb-4" 
-            dangerouslySetInnerHTML={{ __html: parseUserTags(post.content) }}
-          />
+          <p className={`mb-4 text-[15px] leading-6 ${isDark ? 'text-white' : 'text-black'}`}>{renderPostContent()}</p>
         )}
+
+        {postPoll && <section className="mb-4 rounded-xl border border-zinc-800 bg-zinc-950 p-3" aria-label={`Poll: ${postPoll.question}`}><h3 className="text-sm font-bold text-white">{postPoll.question}</h3><div className="mt-3 space-y-2">{postPoll.options.map((option) => { const percentage = postPoll.totalVotes ? Math.round((option.votes / postPoll.totalVotes) * 100) : 0; const selected = postPoll.viewerOptionId === option.id; return <button key={option.id} type="button" aria-pressed={selected} disabled={votePostPollMutation.isPending} onClick={() => votePostPollMutation.mutate(option.id)} className={`relative flex w-full overflow-hidden rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${selected ? 'border-[#1d9bf0] text-white' : 'border-zinc-700 text-zinc-200 hover:border-zinc-500'}`}><span className="absolute inset-y-0 left-0 bg-[#1d9bf0]/15" style={{ width: `${percentage}%` }} /><span className="relative z-10 flex-1 font-medium">{option.body}</span><span className="relative z-10 ml-3 text-xs text-zinc-400">{percentage}%</span></button>; })}</div><p className="mt-3 text-xs text-zinc-500">{postPoll.totalVotes.toLocaleString()} vote{postPoll.totalVotes === 1 ? '' : 's'} · Select an option to vote or change your vote</p></section>}
         
-        {post.imageUrl && (
+        {mediaUrl && (
           <div className="relative mb-4">
-            <img 
-              src={post.imageUrl} 
-              alt="Post content" 
-              className={`w-full object-contain rounded-lg cursor-pointer ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
-              onClick={() => {
-                console.log("Image clicked, toggling tags. Tagged users:", post.taggedUsers);
-                setShowTags(!showTags);
-              }}
-            />
+            {isVideoPost ? (
+              <button type="button" className="group relative block w-full overflow-hidden rounded-xl bg-black text-left" onClick={() => setMediaViewerOpen(true)} aria-label="Open video">
+                <video src={mediaUrl} muted playsInline preload="metadata" className="aspect-square w-full object-cover" />
+                <span className="absolute inset-0 grid place-items-center bg-black/20 transition-colors group-hover:bg-black/35"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black"><Play className="ml-0.5 h-5 w-5 fill-current" /></span></span>
+              </button>
+            ) : (
+              <button type="button" className="block w-full" onClick={() => setMediaViewerOpen(true)} aria-label="Open image">
+                <img
+                  src={mediaUrl}
+                  alt="Post content"
+                  loading="lazy"
+                  decoding="async"
+                  className={`aspect-square w-full rounded-xl object-cover ${post.taggedUsers && post.taggedUsers.length > 0 ? 'hover:opacity-95' : ''}`}
+                />
+              </button>
+            )}
             
             {/* Tagged users overlay - only show username fab when clicked */}
             {showTags && taggedUsers.length > 0 && (
@@ -799,6 +943,8 @@ const Post = ({ post }: PostProps) => {
             {taggedUsers.length > 0 && !showTags && (
               <div className="absolute bottom-2 left-2 flex items-center">
                 <button 
+                  type="button"
+                  aria-label={`View ${taggedUsers.length} tagged ${taggedUsers.length === 1 ? 'person' : 'people'}`}
                   className="bg-primary text-white rounded-full p-2 shadow-md animate-pulse"
                   onClick={() => setShowTags(true)}
                 >
@@ -811,15 +957,46 @@ const Post = ({ post }: PostProps) => {
             )}
           </div>
         )}
+
+        <Dialog open={mediaViewerOpen} onOpenChange={setMediaViewerOpen}>
+          <DialogContent className="h-dvh max-w-none overflow-hidden border-0 bg-black p-0 text-white sm:rounded-none">
+            <DialogTitle className="sr-only">{isVideoPost ? 'Video post' : 'Image post'} by {post.user.displayName}</DialogTitle>
+            <button type="button" onClick={() => setMediaViewerOpen(false)} className="absolute right-4 top-4 z-30 rounded-full bg-black/45 p-2 text-white transition-colors hover:bg-black/70" aria-label="Close media viewer"><X className="h-6 w-6" /></button>
+            <button type="button" className="absolute left-4 top-4 z-30 rounded-full bg-black/45 p-2 text-white transition-colors hover:bg-black/70" aria-label="More media options"><MoreHorizontal className="h-6 w-6" /></button>
+            <div className="relative flex h-full items-center justify-center bg-black">
+              {isVideoPost ? (
+                <video ref={mediaViewerRef} src={mediaUrl} playsInline muted={isMediaMuted} onPlay={() => setIsMediaPlaying(true)} onPause={() => setIsMediaPlaying(false)} className="h-full w-full object-contain" />
+              ) : (
+                <img src={mediaUrl} alt={`Post by ${post.user.displayName}`} className="h-full w-full object-contain" />
+              )}
+              {isVideoPost && !isMediaPlaying && <button type="button" onClick={() => void mediaViewerRef.current?.play()} className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black" aria-label="Play video"><Play className="ml-1 h-7 w-7 fill-current" /></button>}
+            </div>
+            <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/75 to-transparent px-4 pb-5 pt-20">
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => { setMediaViewerOpen(false); setLocation(`/profile/${post.user.id}`); }} className="flex min-w-0 items-center gap-2 text-left"><Avatar className="h-9 w-9 border border-white/70"><AvatarImage src={post.user.profileImageUrl || undefined} /><AvatarFallback>{post.user.displayName.charAt(0)}</AvatarFallback></Avatar><span className="min-w-0"><span className="block truncate text-sm font-bold">{post.user.displayName}</span><span className="block truncate text-xs text-zinc-300">@{post.user.username}</span></span></button>
+                <button type="button" onClick={() => { setMediaViewerOpen(false); setLocation(`/profile/${post.user.id}`); }} className="ml-auto rounded-full border border-white/80 px-3 py-1.5 text-xs font-bold text-white hover:bg-white hover:text-black">View profile</button>
+              </div>
+              <p className="mt-3 line-clamp-3 text-sm leading-5 text-white">{post.content}</p>
+              <div className="mt-4 flex items-center gap-4 text-sm text-white">
+                <button type="button" onClick={handleLikeToggle} className="flex items-center gap-1.5"><Heart className={`h-5 w-5 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} /><span>{post.likes}</span></button>
+                <button type="button" onClick={() => { setMediaViewerOpen(false); toggleComments(); }} className="flex items-center gap-1.5"><MessageSquare className="h-5 w-5" /><span>{totalCommentCount}</span></button>
+                <button type="button" onClick={handleRepost} disabled={isReposted || isOwnRepost} className="flex items-center gap-1.5 disabled:opacity-50"><Repeat2 className="h-5 w-5" /><span>Repost</span></button>
+                <button type="button" onClick={handleShare} className="ml-auto" aria-label="Share post"><Share2 className="h-5 w-5" /></button>
+              </div>
+              {isVideoPost && <div className="mt-4 flex items-center justify-between border-t border-white/20 pt-3"><button type="button" onClick={() => isMediaPlaying ? mediaViewerRef.current?.pause() : void mediaViewerRef.current?.play()} className="rounded-full p-1.5 hover:bg-white/10" aria-label={isMediaPlaying ? 'Pause video' : 'Play video'}>{isMediaPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current" />}</button><button type="button" onClick={() => setIsMediaMuted((muted) => !muted)} className="rounded-full p-1.5 hover:bg-white/10" aria-label={isMediaMuted ? 'Unmute video' : 'Mute video'}>{isMediaMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}</button><span className="flex-1 text-center text-xs text-zinc-300">Video post</span><button type="button" onClick={() => void mediaViewerRef.current?.requestPictureInPicture?.()} className="rounded-full p-1.5 hover:bg-white/10" aria-label="Picture in picture"><PictureInPicture2 className="h-5 w-5" /></button><button type="button" onClick={() => void mediaViewerRef.current?.requestFullscreen?.()} className="rounded-full p-1.5 hover:bg-white/10" aria-label="Fullscreen"><Maximize2 className="h-5 w-5" /></button></div>}
+            </div>
+          </DialogContent>
+        </Dialog>
         
-        <div className="flex items-center justify-between text-gray-500">
-          <div className="flex space-x-4">
+        <div className="flex items-center justify-between text-zinc-500">
+          <div className="flex flex-1 items-center justify-between">
             <Button 
               variant="ghost" 
               size="sm" 
-              className="flex items-center gap-1 px-2"
+              className={`flex items-center gap-1 px-2 ${isLiked ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/15 hover:text-rose-500' : ''}`}
               onClick={handleLikeToggle}
               disabled={isPending}
+              aria-label={isLiked ? "Unlike post" : "Like post"}
             >
               <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
               <span>{post.likes}</span>
@@ -830,10 +1007,25 @@ const Post = ({ post }: PostProps) => {
               size="sm" 
               className="flex items-center gap-1 px-2"
               onClick={toggleComments}
+              aria-label="Show comments"
             >
               <MessageSquare className={`h-5 w-5 ${showComments ? 'text-blue-500' : ''}`} />
               <span>{totalCommentCount}</span>
             </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`flex items-center gap-1 px-2 ${isReposted ? 'bg-[#1d9bf0]/10 text-[#1d9bf0] hover:bg-[#1d9bf0]/15 hover:text-[#1d9bf0]' : ''}`}
+              onClick={handleRepost}
+              disabled={isPending || isReposted || isOwnRepost}
+              aria-label={isOwnRepost ? "Your repost" : isReposted ? "Reposted" : "Repost"}
+              title={isOwnRepost ? "You cannot repost your own repost" : undefined}
+            >
+              <Repeat2 className={`h-5 w-5 ${isReposted ? 'fill-[#1d9bf0]' : ''}`} />
+            </Button>
+
+            <Button variant="ghost" size="sm" className="flex items-center gap-1 px-2" onClick={() => setLocation(`/posts/${post.id}/analytics`)} aria-label="View post analytics"><BarChart3 className="h-5 w-5" /></Button>
           </div>
           
           <Dialog 
@@ -849,11 +1041,9 @@ const Post = ({ post }: PostProps) => {
               }
             }}
           >
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="flex items-center px-2" onClick={handleShare}>
-                <Share2 className="h-5 w-5" />
-              </Button>
-            </DialogTrigger>
+            <Button variant="ghost" size="sm" className="ml-1 flex items-center px-2" onClick={handleShare} aria-label="Share post">
+              <Share2 className="h-5 w-5" />
+            </Button>
             <DialogContent className="sm:max-w-md rounded-lg">
               <DialogHeader>
                 <DialogTitle>Share post</DialogTitle>

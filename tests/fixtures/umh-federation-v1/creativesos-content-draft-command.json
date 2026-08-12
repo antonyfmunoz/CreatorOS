@@ -1,0 +1,34 @@
+{
+  "contract_version": "umh.federation.v1",
+  "message_id": "72f0a054-4445-4b15-8379-cda67081345f",
+  "message_kind": "command",
+  "product_id": "creativesos",
+  "installation_id": "replace-with-bound-creativesos-installation-id",
+  "idempotency_key": "qualification:creativesos:draft:001",
+  "correlation_id": "qualification:content-draft:001",
+  "trace_id": "qualification-trace:001",
+  "principal": {
+    "subject": "replace-with-umh-principal-id",
+    "local_user_id": "replace-with-creativesos-user-id"
+  },
+  "tenant": {
+    "type": "business",
+    "id": "replace-with-creativesos-business-id"
+  },
+  "workspace": null,
+  "authority": {
+    "basis": "business_manager",
+    "delegation_id": "replace-with-verified-delegation-id"
+  },
+  "issued_at": "2026-08-05T00:00:00.000Z",
+  "expires_at": "2026-08-05T00:05:00.000Z",
+  "consent": {
+    "basis": "none_required"
+  },
+  "payload": {
+    "schema_version": "creativesos.content_draft.create.v1",
+    "content": "Qualification-only private draft. Do not publish.",
+    "kind": "post",
+    "audience": "private"
+  }
+}

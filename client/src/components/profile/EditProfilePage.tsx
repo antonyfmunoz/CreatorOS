@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Camera, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,6 @@ import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Upload } from "lucide-react";
 
 // Define the form schema
 const profileSchema = z.object({
@@ -50,6 +49,8 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   const { updateProfileMutation, uploadProfileImageMutation } = useAuth();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.profileImageUrl || undefined);
+  const initialLinks = user.profileLinks ?? [];
+  const [profileLinks, setProfileLinks] = useState<Array<{ label: string; url: string }>>(initialLinks);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -64,7 +65,16 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   });
 
   // Track if form is dirty (has changes)
-  const isDirty = form.formState.isDirty || selectedImage !== null;
+  const linksChanged = JSON.stringify(profileLinks) !== JSON.stringify(initialLinks);
+  const linksValid = profileLinks.every((link) => {
+    try {
+      const url = new URL(link.url);
+      return Boolean(link.label.trim()) && (url.protocol === "https:" || url.protocol === "http:");
+    } catch {
+      return false;
+    }
+  });
+  const isDirty = form.formState.isDirty || selectedImage !== null || linksChanged;
   
   // Handle image file selection 
   const handleImageUpload = (file: File) => {
@@ -95,6 +105,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
       username: lowercaseUsername,
       displayName: values.displayName,
       bio: values.bio || null,
+      profileLinks: profileLinks.map((link) => ({ label: link.label.trim(), url: link.url.trim() })),
     }, {
       onSuccess: () => {
         // If there's an image selected, upload it after updating profile
@@ -145,20 +156,20 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
   const isSaving = updateProfileMutation.isPending || uploadProfileImageMutation.isPending;
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex h-screen flex-col bg-black text-white">
       {/* Sticky Header - Instagram-style */}
-      <header className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-3">
         <button 
           onClick={onClose}
-          className="text-black p-1"
+          className="p-1 text-zinc-400 transition-colors hover:text-white"
         >
           <ArrowLeft size={20} />
         </button>
         <h1 className="text-base font-semibold">Edit Profile</h1>
         <Button
-          disabled={!isDirty || isSaving}
+          disabled={!isDirty || isSaving || !linksValid}
           onClick={form.handleSubmit(onSubmit)}
-          className="text-black font-semibold bg-transparent hover:bg-transparent hover:text-gray-600 px-0 py-0 h-auto"
+          className="h-auto bg-transparent px-0 py-0 font-semibold text-[#1d9bf0] hover:bg-transparent hover:text-[#1d9bf0]/80 disabled:text-zinc-600"
           variant="ghost"
         >
           {isSaving ? (
@@ -201,14 +212,14 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               className="relative cursor-pointer group mx-auto"
               onClick={triggerUpload}
             >
-              <Avatar className="w-[77px] h-[77px] border border-gray-200">
+              <Avatar className="h-[77px] w-[77px] border border-zinc-700">
                 <AvatarImage 
                   src={previewUrl} 
                   alt="Profile" 
                   className="object-cover" 
                 />
-                <AvatarFallback className="bg-gray-100">
-                  <Camera className="h-8 w-8 text-gray-500" />
+                <AvatarFallback className="bg-zinc-900">
+                  <Camera className="h-8 w-8 text-zinc-500" />
                 </AvatarFallback>
               </Avatar>
               
@@ -219,7 +230,7 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
             </div>
             
             <button 
-              className="text-black text-sm font-medium mt-3 text-center"
+              className="mt-3 text-center text-sm font-medium text-[#1d9bf0]"
               onClick={triggerUpload}
             >
               Change profile photo
@@ -235,12 +246,12 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="displayName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Name</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Name</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Name" 
                       {...field} 
-                      className="rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="border-zinc-800 bg-zinc-900 px-3 py-2 text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       maxLength={30}
                     />
                   </FormControl>
@@ -254,12 +265,12 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="username"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Username</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Username</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Username" 
                       {...field}
-                      className="rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 lowercase focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="border-zinc-800 bg-zinc-900 px-3 py-2 lowercase text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       onChange={(e) => field.onChange(e.target.value.toLowerCase())}
                       maxLength={20}
                     />
@@ -274,22 +285,76 @@ export default function EditProfilePage({ user, onClose }: EditProfilePageProps)
               name="bio"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-black font-normal text-base block mb-1">Bio</FormLabel>
+                  <FormLabel className="mb-1 block text-base font-normal text-white">Bio</FormLabel>
                   <FormControl>
                     <Textarea 
                       placeholder="Bio" 
-                      className="resize-none rounded-none border-gray-300 border-l-0 border-r-0 border-t-0 px-0 py-2 min-h-[100px] focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="min-h-[100px] resize-none border-zinc-800 bg-zinc-900 px-3 py-2 text-white placeholder:text-zinc-500 focus-visible:ring-[#1d9bf0]"
                       {...field} 
                       maxLength={150}
                     />
                   </FormControl>
-                  <div className="text-xs text-gray-500 text-right">
+                  <div className="text-right text-xs text-zinc-500">
                     {field.value?.length || 0}/150
                   </div>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            <section aria-labelledby="profile-links-heading" className="space-y-3 pb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 id="profile-links-heading" className="text-base font-normal text-white">Links</h2>
+                  <p className="mt-1 text-xs text-zinc-500">Add up to five public destinations.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={profileLinks.length >= 5}
+                  onClick={() => setProfileLinks((links) => [...links, { label: "", url: "https://" }])}
+                  className="text-[#1d9bf0] hover:bg-zinc-900 hover:text-[#1d9bf0]"
+                >
+                  <Plus className="mr-1 h-4 w-4" /> Add link
+                </Button>
+              </div>
+              {profileLinks.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setProfileLinks([{ label: "", url: "https://" }])}
+                  className="flex w-full items-center rounded-xl border border-dashed border-zinc-800 px-4 py-4 text-left text-sm text-zinc-400 hover:border-zinc-600 hover:text-white"
+                >
+                  <Link2 className="mr-3 h-5 w-5" /> Add your website, storefront, or social profile
+                </button>
+              )}
+              {profileLinks.map((link, index) => (
+                <div key={index} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex gap-2">
+                    <Input
+                      aria-label={`Link ${index + 1} label`}
+                      value={link.label}
+                      maxLength={40}
+                      placeholder="Label"
+                      onChange={(event) => setProfileLinks((links) => links.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))}
+                      className="border-zinc-800 bg-zinc-900 text-white"
+                    />
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove link ${index + 1}`} onClick={() => setProfileLinks((links) => links.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 text-zinc-400 hover:bg-zinc-900 hover:text-red-300">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Input
+                    aria-label={`Link ${index + 1} URL`}
+                    type="url"
+                    value={link.url}
+                    maxLength={2000}
+                    placeholder="https://example.com"
+                    onChange={(event) => setProfileLinks((links) => links.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))}
+                    className="mt-2 border-zinc-800 bg-zinc-900 text-white"
+                  />
+                </div>
+              ))}
+              {!linksValid && profileLinks.length > 0 && <p role="alert" className="text-xs text-red-300">Every link needs a label and a complete http or https URL.</p>}
+            </section>
           </form>
         </Form>
       </div>

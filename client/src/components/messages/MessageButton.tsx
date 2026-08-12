@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import MessagePanel from './MessagePanel';
 import { useMessaging } from '@/lib/stores';
-import { useAuth } from '@/hooks/use-auth';
 
-const MessageButton = () => {
-  const { isMessagePanelOpen, toggleMessagePanel, closeMessagePanel, conversations } = useMessaging();
-  const { user } = useAuth();
+interface MessageButtonProps {
+  showTrigger?: boolean;
+}
+
+const MessageButton = ({ showTrigger = true }: MessageButtonProps) => {
+  const { isMessagePanelOpen, openMessagePanel, closeMessagePanel, conversations } = useMessaging();
   
   const unreadCount = conversations.reduce((total, conv) => total + (conv.unreadCount || 0), 0);
   
@@ -19,22 +21,27 @@ const MessageButton = () => {
     };
   }, [closeMessagePanel]);
 
-  return (
-    <Sheet open={isMessagePanelOpen} onOpenChange={toggleMessagePanel}>
-      <SheetTrigger asChild>
-        <Button 
+  if (showTrigger) {
+    return (
+      <Button
           size="icon" 
           variant="outline" 
           className="bg-white/90 rounded-full relative mr-2"
-        >
+          onClick={openMessagePanel}
+          aria-label="Open messages"
+      >
           <MessageSquare className="h-5 w-5" />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full h-5 min-w-5 flex items-center justify-center px-1 text-xs font-medium">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
-        </Button>
-      </SheetTrigger>
+      </Button>
+    );
+  }
+
+  return (
+    <Sheet open={isMessagePanelOpen} onOpenChange={(open) => open ? openMessagePanel() : closeMessagePanel()}>
       <SheetContent side="right" className="sm:max-w-md p-0 border-l" aria-describedby="message-panel-desc" hideCloseButton>
         <MessagePanel />
         <div id="message-panel-desc" className="sr-only">Message panel for your conversations</div>

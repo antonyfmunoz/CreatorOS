@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { X, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
-import { DialogTitle } from "@/components/ui/dialog";
 
 interface VideoRecorderProps {
   onClose: () => void;
@@ -16,6 +15,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [content, setContent] = useState("");
+  const [addToStory, setAddToStory] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -96,6 +96,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
     formData.append('content', content || 'Video post');
     formData.append('video', videoFile);
     formData.append('mediaType', 'video');
+    formData.append('addToStory', String(addToStory));
     
     createPostMutation.mutate(formData);
   };
@@ -108,12 +109,12 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   // If video is selected, show the video editor and options
   if (videoPreview) {
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
-        <DialogTitle className="sr-only">Create New Video Post</DialogTitle>
+      <div className="flex min-h-dvh flex-col overflow-hidden bg-black text-white">
+        <h1 className="sr-only">Create New Video Post</h1>
         
         {/* Top Bar - Instagram-like header */}
-        <div className="flex justify-between items-center p-4 border-b">
-          <button className="text-foreground" onClick={onClose}>Cancel</button>
+        <div className="flex items-center justify-between border-b border-zinc-800 p-4">
+        <button className="text-zinc-300" onClick={onClose} aria-label="Cancel video post">Cancel</button>
           <div className="text-sm font-medium">
             {videoDuration < 10 ? 'Short video' : 'Long video'}
           </div>
@@ -139,7 +140,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           className="flex-grow overflow-y-auto"
         >
           {/* Video preview */}
-          <div className="w-full aspect-video bg-muted flex items-center justify-center">
+          <div className="flex aspect-[4/5] w-full items-center justify-center bg-zinc-900">
             <video 
               ref={videoRef}
               src={videoPreview} 
@@ -153,7 +154,7 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           <div className="p-4 border-b">
             <input
               type="text"
-              className="w-full p-3 mb-4 bg-background border border-border rounded"
+              className="mb-4 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
               placeholder="Add a caption"
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -178,6 +179,11 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
           <PostOptionsPanel 
             content={content}
             onContentChange={setContent}
+            addToStory={addToStory}
+            onAddToStoryChange={setAddToStory}
+            onShare={handlePost}
+            isSharing={createPostMutation.isPending}
+            shareDisabled={!videoFile}
           />
         </div>
       </div>
@@ -186,53 +192,40 @@ export const VideoRecorder = ({ onClose }: VideoRecorderProps) => {
   
   // TikTok-inspired UI for video selection
   return (
-    <div className="relative w-full h-screen bg-background text-foreground">
-      <DialogTitle className="sr-only">Create New Video Post</DialogTitle>
+    <div className="relative h-screen w-full bg-black text-white">
+      <h1 className="sr-only">Create New Video Post</h1>
       
       {/* Top Controls */}
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
-        <button className="text-foreground text-xl" onClick={onClose}>✕</button>
+      <div className="absolute left-0 right-0 top-0 z-10 flex h-[58px] items-center justify-between border-b border-zinc-800 bg-black px-4">
+        <button className="rounded-full p-2 text-xl text-white transition-colors hover:bg-white/10" onClick={onClose} aria-label="Cancel video post">✕</button>
+        <span className="absolute left-1/2 -translate-x-1/2 text-lg font-semibold">New reel</span>
         <div className="flex space-x-2">
           <Button 
             variant="outline" 
             size="sm" 
-            className="rounded-full"
+            className="rounded-full border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800"
             onClick={triggerFileSelect}
           >
             Upload
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon"
-            className="rounded-full w-8 h-8"
-          >
-            <span className="text-xs">15s</span>
           </Button>
         </div>
       </div>
 
       {/* Center Upload Button */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <p className="text-lg mb-4">Select a video to upload</p>
+        <p className="mb-4 text-lg">Choose a video to share</p>
         <button 
           onClick={triggerFileSelect}
           className="flex flex-col items-center justify-center space-y-2"
+          aria-label="Upload a video"
         >
-          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#1d9bf0]">
             <Upload className="h-8 w-8 text-primary-foreground" />
           </div>
           <span className="text-sm">Tap to select</span>
         </button>
       </div>
 
-      {/* Bottom Nav */}
-      <div className="absolute bottom-5 left-0 right-0 flex justify-around text-sm">
-        <span>Video</span>
-        <span className="font-bold">Short</span>
-        <span>Live</span>
-        <span>Post</span>
-      </div>
-      
       {/* Hidden file input */}
       <input 
         type="file" 

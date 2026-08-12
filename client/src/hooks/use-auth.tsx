@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useEffect } from "react";
 import {
   useQuery,
   useMutation,
@@ -8,12 +8,14 @@ import { User as SelectUser } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useAppStore } from "@/lib/stores";
 
 type UpdateProfileData = {
   id: number;
   username?: string;
   displayName?: string;
   bio?: string | null;
+  profileLinks?: Array<{ label: string; url: string }>;
   profileImageUrl?: string | null;
 };
 
@@ -27,6 +29,7 @@ type AuthContextType = {
   isLoading: boolean;
   error: Error | null;
   isSignedIn: boolean;
+  signOut: (options?: { redirectUrl?: string }) => Promise<void>;
   updateProfileMutation: UseMutationResult<SelectUser, Error, UpdateProfileData>;
   uploadProfileImageMutation: UseMutationResult<{ user: SelectUser; imageUrl: string }, Error, UploadProfileImageData>;
 };
@@ -35,7 +38,7 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const { isSignedIn, isLoaded } = useClerkAuth();
+  const { isSignedIn, isLoaded, signOut } = useClerkAuth();
 
   const {
     data: user,
@@ -46,6 +49,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
     enabled: isLoaded && !!isSignedIn,
   });
+
+  // Bridge the Clerk-backed DB user into the global app store so components and
+  // stores that read `useAppStore.currentUser` (feed, messaging, profile, etc.)
+  // see the real numeric user. Clears on sign-out.
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  useEffect(() => {
+    setCurrentUser((user ?? null) as any);
+  }, [user, setCurrentUser]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: UpdateProfileData) => {
@@ -115,6 +126,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         isSignedIn: !!isSignedIn,
+        signOut,
+        updateProfileMutation,
+        uploadProfileImageMutation,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/**
+ * Local-only identity bridge used by `npm run dev:demo`. It exercises the same
+ * API and ownership paths as production without embedding test credentials in
+ * the client or requiring a Clerk session.
+ */
+export function DemoAuthProvider({ children }: { children: ReactNode }) {
+  const { toast } = useToast();
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  const {
+    data: user,
+    error,
+    isLoading,
+  } = useQuery<SelectUser | null, Error>({
+    queryKey: ["/api/user"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  useEffect(() => {
+    setCurrentUser((user ?? null) as any);
+  }, [user, setCurrentUser]);
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: UpdateProfileData) => {
+      const { id, ...updateData } = data;
+      const res = await apiRequest("PATCH", `/api/users/${id}`, updateData);
+      return await res.json();
+    },
+    onSuccess: (updatedUser: SelectUser) => {
+      queryClient.setQueryData(["/api/user"], updatedUser);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Profile updated", description: "Your profile has been successfully updated." });
+    },
+  });
+
+  const uploadProfileImageMutation = useMutation({
+    mutationFn: async (data: UploadProfileImageData) => {
+      const formData = new FormData();
+      formData.append("image", data.imageFile);
+      const res = await fetch(`/api/users/${data.id}/profile-image`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to upload image");
+      }
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/user"], data.user);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Profile image updated", description: "Your profile image has been successfully updated." });
+    },
+  });
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user: user ?? null,
+        isLoading,
+        error: error ?? null,
+        isSignedIn: true,
+        signOut: async () => undefined,
         updateProfileMutation,
         uploadProfileImageMutation,
       }}

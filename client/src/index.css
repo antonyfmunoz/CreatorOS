@@ -2,6 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 100%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 203 89% 53%;
+  --primary-foreground: 0 0% 0%;
+  --secondary: 0 0% 12%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 215 12% 57%;
+  --accent: 0 0% 12%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 18%;
+  --input: 0 0% 12%;
+  --ring: 203 89% 53%;
+  --radius: 0.5rem;
+}
+
+:root[data-color-mode="high_contrast"] {
+  --muted-foreground: 0 0% 82%;
+  --border: 0 0% 32%;
+}
+
+:root[data-color-mode="high_contrast"] .text-zinc-400,
+:root[data-color-mode="high_contrast"] .text-zinc-500,
+:root[data-color-mode="high_contrast"] .text-zinc-600,
+:root[data-color-mode="high_contrast"] .text-zinc-700 {
+  color: rgb(212 212 216 / var(--tw-text-opacity, 1));
+}
+
 @keyframes pulse-slow {
   0%, 100% {
     transform: scale(1) translate(-50%, -50%);
@@ -42,15 +77,70 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
 }
 
 @layer components {
   .app-container {
-    @apply min-h-[100dvh] w-full pb-16 relative;
+    @apply relative mx-auto min-h-[100dvh] w-full max-w-[720px] border-x border-zinc-900 bg-black pb-16;
   }
 
   .tab-content {
     @apply w-full h-full;
+  }
+
+  .skip-link {
+    @apply fixed left-3 top-3 z-[100] -translate-y-24 rounded-lg bg-white px-4 py-2 text-sm font-bold text-black shadow-xl transition-transform;
+  }
+
+  .skip-link:focus {
+    @apply translate-y-0;
+  }
+
+  /* Touch-first rails: hide the visual scrollbar without disabling natural
+     swipe, trackpad, Shift+wheel, or keyboard scrolling. */
+  .horizontal-rail {
+    @apply flex overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 1rem;
+    touch-action: pan-x pan-y;
+  }
+
+  .horizontal-rail > * {
+    scroll-snap-align: start;
+  }
+}
+
+@layer utilities {
+  /* Zinc 500 (#71717a) is 4.34:1 on the product's black canvas and misses
+     WCAG AA for normal text. Preserve the semantic utility while lifting its
+     rendered value to the accessible Zinc 400 tone used by the design system. */
+  .text-zinc-500 {
+    color: rgb(161 161 170 / var(--tw-text-opacity, 1));
+  }
+
+  /* The Stitch palette uses several low-emphasis zinc tones. On the pure
+     black application canvas, zinc 600/700 do not meet normal-text contrast.
+     Keep the hierarchy through size and weight while rendering readable gray. */
+  .text-zinc-600,
+  .text-zinc-700 {
+    color: rgb(161 161 170 / var(--tw-text-opacity, 1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

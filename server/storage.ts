@@ -3,9 +3,11 @@ import {
   posts, type Post, type InsertPost,
   comments, type Comment, type InsertComment,
   products, type Product, type InsertProduct,
+  purchases, type Purchase, type InsertPurchase,
   aiAgents, type AIAgent, type InsertAIAgent,
   aiChats, type AIChat, type InsertAIChat,
   communities, type Community, type InsertCommunity,
+  communityMemberships, type CommunityMembership, type InsertCommunityMembership,
   channels, type Channel, type InsertChannel,
   channelMessages, type ChannelMessage, type InsertChannelMessage,
   revenue, type Revenue, type InsertRevenue,
@@ -17,21 +19,45 @@ import {
   directMessages, type DirectMessage, type InsertDirectMessage,
   stories, type Story, type InsertStory,
   savedPosts, type SavedPost, type InsertSavedPost,
+  postLikes,
   followers, type Follower, type InsertFollower,
   taggedUsers, type TaggedUser, type InsertTaggedUser
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne, Json } from "drizzle-orm";
+import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
 import crypto from "crypto";
+import { deleteAgentWithChats } from "./memory-cleanup";
+
+type TaggedUserProfile = {
+  id: number;
+  username: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  positionX: number;
+  positionY: number;
+};
+
+type ProductInput = InsertProduct & {
+  businessId?: string | null;
+  communityId?: number | null;
+  payoutMode?: "platform" | "creator";
+  status?: "draft" | "published" | "archived";
+  productType?: "digital_download" | "course" | "community" | "membership";
+  billingModel?: "one_time" | "recurring";
+  billingInterval?: "month" | "year" | null;
+};
+type ProductUpdate = Pick<ProductInput, "title" | "description" | "price" | "category" | "imageUrl" | "payoutMode" | "status" | "productType" | "billingModel" | "billingInterval"> & { businessId?: string | null; communityId?: number | null };
 
 // Storage interface for the application
 export interface IStorage {
   // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByClerkId(clerkId: string): Promise<User | undefined>;
+  getUserByAuthEmail(authEmail: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   searchUsersByUsername(query: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User>;
   updateUser(id: number, userData: Partial<User>): Promise<User>;
   getAllUsers(): Promise<User[]>;
   
@@ -46,7 +72,7 @@ export interface IStorage {
 
   // Post operations
   getPosts(): Promise<(Post & { user: User })[]>;
-  getPostById(id: number): Promise<(Post & { user: User }) | undefined>;
+  getPostById(id: number): Promise<(Post & { user: User; taggedUsers?: TaggedUserProfile[] }) | undefined>;
   getPostsByUserId(userId: number): Promise<(Post & { user: User })[]>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
@@ -56,6 +82,10 @@ export interface IStorage {
   savePost(userId: number, postId: number): Promise<void>;
   unsavePost(userId: number, postId: number): Promise<void>;
   getSavedPosts(userId: number): Promise<(Post & { user: User })[]>;
+  isPostLiked(userId: number, postId: number): Promise<boolean>;
+  addPostLike(userId: number, postId: number): Promise<boolean>;
+  removePostLike(userId: number, postId: number): Promise<boolean>;
+  getLikedPosts(userId: number): Promise<(Post & { user: User })[]>;
   getPostCountByUser(userId: number): Promise<number>;
 
   // Comment operations
@@ -73,13 +103,19 @@ export interface IStorage {
   getProducts(): Promise<(Product & { user: User })[]>;
   getProductById(id: number): Promise<(Product & { user: User }) | undefined>;
   getProductsByCategory(category: string): Promise<(Product & { user: User })[]>;
-  createProduct(product: InsertProduct): Promise<Product>;
+  createProduct(product: ProductInput): Promise<Product>;
+  updateProduct(id: number, product: ProductUpdate): Promise<Product>;
+  getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]>;
+  getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined>;
+  createPurchase(purchase: InsertPurchase): Promise<Purchase>;
 
   // AI Agent operations
   getAIAgents(): Promise<AIAgent[]>;
   getAIAgentById(id: number): Promise<AIAgent | undefined>;
   getUserAIAgents(userId: number): Promise<AIAgent[]>;
   createAIAgent(agent: InsertAIAgent): Promise<AIAgent>;
+  updateAIAgent(id: number, agent: Partial<InsertAIAgent>): Promise<AIAgent | undefined>;
+  deleteAIAgent(id: number): Promise<boolean>;
 
   // AI Chat operations
   getAIChatsByAgentId(agentId: number, userId: number): Promise<AIChat[]>;
@@ -90,6 +126,9 @@ export interface IStorage {
   getCommunities(): Promise<Community[]>;
   getCommunityById(id: number): Promise<Community | undefined>;
   createCommunity(community: InsertCommunity): Promise<Community>;
+  archiveCommunity(id: number): Promise<Community | undefined>;
+  getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined>;
+  joinCommunity(membership: InsertCommunityMembership): Promise<CommunityMembership>;
 
   // Channel operations
   getChannelsByCommunityId(communityId: number): Promise<Channel[]>;
@@ -108,13 +147,17 @@ export interface IStorage {
 
   // Contact operations
   getContactsByUserId(userId: number): Promise<Contact[]>;
+  getContactById(id: number): Promise<Contact | undefined>;
   createContact(contact: InsertContact): Promise<Contact>;
+  updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact>;
+  deleteContact(id: number): Promise<void>;
 
   // Document operations
   getDocumentsByUserId(userId: number): Promise<Document[]>;
   getDocumentById(id: number): Promise<Document | undefined>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: number, title: string, content: string): Promise<Document>;
+  deleteDocument(id: number): Promise<void>;
 
   // Notification operations
   getNotificationsByUserId(userId: number): Promise<Notification[]>;
@@ -157,9 +200,11 @@ export class MemStorage implements IStorage {
   private posts: Map<number, Post>;
   private comments: Map<number, Comment>;
   private products: Map<number, Product>;
+  private purchases: Map<number, Purchase>;
   private aiAgents: Map<number, AIAgent>;
   private aiChats: Map<number, AIChat>;
   private communities: Map<number, Community>;
+  private communityMemberships: Map<number, CommunityMembership>;
   private channels: Map<number, Channel>;
   private channelMessages: Map<number, ChannelMessage>;
   private revenues: Map<number, Revenue>;
@@ -176,9 +221,11 @@ export class MemStorage implements IStorage {
   private postIdCounter = 1;
   private commentIdCounter = 1;
   private productIdCounter = 1;
+  private purchaseIdCounter = 1;
   private aiAgentIdCounter = 1;
   private aiChatIdCounter = 1;
   private communityIdCounter = 1;
+  private communityMembershipIdCounter = 1;
   private channelIdCounter = 1;
   private channelMessageIdCounter = 1;
   private revenueIdCounter = 1;
@@ -195,9 +242,11 @@ export class MemStorage implements IStorage {
     this.posts = new Map();
     this.comments = new Map();
     this.products = new Map();
+    this.purchases = new Map();
     this.aiAgents = new Map();
     this.aiChats = new Map();
     this.communities = new Map();
+    this.communityMemberships = new Map();
     this.channels = new Map();
     this.channelMessages = new Map();
     this.revenues = new Map();
@@ -445,6 +494,13 @@ export class MemStorage implements IStorage {
       name: 'resources',
     });
 
+    // Each discoverable community receives an actual channel structure. The
+    // member gate in the route layer keeps this content private until joined.
+    this.createChannel({ communityId: 2, name: 'general' });
+    this.createChannel({ communityId: 2, name: 'content-strategy' });
+    this.createChannel({ communityId: 3, name: 'general' });
+    this.createChannel({ communityId: 3, name: 'design-feedback' });
+
     // Create channel messages
     this.createChannelMessage({
       channelId: 1,
@@ -471,6 +527,20 @@ export class MemStorage implements IStorage {
       channelId: 1,
       userId: 5,
       content: 'Welcome to the Web Developers community! Please read our guidelines and introduce yourself in the #introductions channel.',
+      isPinned: true,
+    });
+
+    this.createChannelMessage({
+      channelId: 6,
+      userId: 2,
+      content: 'Welcome creators! Share your latest idea, experiment, or launch.',
+      isPinned: true,
+    });
+
+    this.createChannelMessage({
+      channelId: 8,
+      userId: 4,
+      content: 'Drop work-in-progress designs here for thoughtful feedback.',
       isPinned: true,
     });
 
@@ -567,6 +637,13 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async getUserByAuthEmail(authEmail: string): Promise<User | undefined> {
+    const normalizedEmail = authEmail.trim().toLowerCase();
+    return Array.from(this.users.values()).find(
+      (user) => user.authEmail?.toLowerCase() === normalizedEmail,
+    );
+  }
+
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
@@ -580,10 +657,23 @@ export class MemStorage implements IStorage {
     }
     
     // Only update allowed fields
+    if (userData.username !== undefined) user.username = userData.username;
     if (userData.displayName !== undefined) user.displayName = userData.displayName;
     if (userData.bio !== undefined) user.bio = userData.bio;
+    if (userData.profileLinks !== undefined) user.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined) user.pushNotificationsEnabled = userData.pushNotificationsEnabled;
+    if (userData.colorMode !== undefined) user.colorMode = userData.colorMode;
     if (userData.profileImageUrl !== undefined) user.profileImageUrl = userData.profileImageUrl;
     
+    this.users.set(id, user);
+    return user;
+  }
+
+  async rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
+    user.clerkId = clerkId;
+    user.authEmail = authEmail;
     this.users.set(id, user);
     return user;
   }
@@ -612,9 +702,15 @@ export class MemStorage implements IStorage {
       xpPoints: 0,
       level: 1,
       // Ensure required fields have default values
+      authEmail: insertUser.authEmail ?? null,
       bio: insertUser.bio ?? null,
+      profileLinks: [],
+      pushNotificationsEnabled: true,
+      colorMode: 'dark',
       profileImageUrl: insertUser.profileImageUrl ?? null,
       role: insertUser.role ?? 'user',
+      status: 'active',
+      deletedAt: null,
     };
     this.users.set(id, user);
     return user;
@@ -750,6 +846,11 @@ export class MemStorage implements IStorage {
       createdAt: now,
       // Ensure required fields have default values
       imageUrl: insertPost.imageUrl ?? null,
+      audioUrl: insertPost.audioUrl ?? null,
+      videoUrl: insertPost.videoUrl ?? null,
+      location: insertPost.location ?? null,
+      mediaType: insertPost.mediaType ?? "text",
+      repostOfId: insertPost.repostOfId ?? null,
     };
     this.posts.set(id, post);
     return post;
@@ -804,6 +905,7 @@ export class MemStorage implements IStorage {
 
   // In-memory map to track saved posts for each user
   private savedPosts: Map<number, Set<number>> = new Map();
+  private postLikes: Map<number, Set<number>> = new Map();
 
   async savePost(userId: number, postId: number): Promise<void> {
     // Check if post exists
@@ -845,6 +947,30 @@ export class MemStorage implements IStorage {
         const user = this.users.get(post.userId)!;
         return { ...post, user };
       });
+  }
+
+  async isPostLiked(userId: number, postId: number): Promise<boolean> {
+    return this.postLikes.get(userId)?.has(postId) ?? false;
+  }
+
+  async addPostLike(userId: number, postId: number): Promise<boolean> {
+    if (!this.posts.has(postId)) throw new Error('Post not found');
+    const liked = this.postLikes.get(userId) ?? new Set<number>();
+    if (liked.has(postId)) return false;
+    liked.add(postId);
+    this.postLikes.set(userId, liked);
+    return true;
+  }
+
+  async removePostLike(userId: number, postId: number): Promise<boolean> {
+    return this.postLikes.get(userId)?.delete(postId) ?? false;
+  }
+
+  async getLikedPosts(userId: number): Promise<(Post & { user: User })[]> {
+    return Array.from(this.postLikes.get(userId) ?? [])
+      .map((postId) => this.posts.get(postId))
+      .filter((post): post is Post => Boolean(post))
+      .map((post) => ({ ...post, user: this.users.get(post.userId)! }));
   }
   
   async getPostCountByUser(userId: number): Promise<number> {
@@ -988,7 +1114,7 @@ export class MemStorage implements IStorage {
 
   // Product operations
   async getProducts(): Promise<(Product & { user: User })[]> {
-    return Array.from(this.products.values()).map(product => {
+    return Array.from(this.products.values()).filter(product => product.status === "published").map(product => {
       const user = this.users.get(product.userId)!;
       return { ...product, user };
     });
@@ -1004,25 +1130,74 @@ export class MemStorage implements IStorage {
 
   async getProductsByCategory(category: string): Promise<(Product & { user: User })[]> {
     return Array.from(this.products.values())
-      .filter(product => product.category === category)
+      .filter(product => product.category === category && product.status === "published")
       .map(product => {
         const user = this.users.get(product.userId)!;
         return { ...product, user };
       });
   }
 
-  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+  async createProduct(insertProduct: ProductInput): Promise<Product> {
     const id = this.productIdCounter++;
     const now = new Date();
     const product: Product = { 
       ...insertProduct, 
       id, 
       rating: 0, 
-      reviewCount: 0, 
+      reviewCount: 0,
       createdAt: now,
+      imageUrl: insertProduct.imageUrl ?? null,
+      businessId: insertProduct.businessId ?? null,
+      communityId: insertProduct.communityId ?? null,
+      payoutMode: insertProduct.payoutMode ?? "platform",
+      status: insertProduct.status ?? "draft",
+      productType: insertProduct.productType ?? "digital_download",
+      billingModel: insertProduct.billingModel ?? "one_time",
+      billingInterval: insertProduct.billingModel === "recurring" ? insertProduct.billingInterval ?? "month" : null,
     };
     this.products.set(id, product);
     return product;
+  }
+
+  async updateProduct(id: number, productUpdate: ProductUpdate): Promise<Product> {
+    const existing = this.products.get(id);
+    if (!existing) throw new Error("Product not found");
+    const product = { ...existing, ...productUpdate };
+    this.products.set(id, product);
+    return product;
+  }
+
+  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
+    return Array.from(this.purchases.values())
+      .filter((purchase) => purchase.buyerId === buyerId)
+      .map((purchase) => {
+        const product = this.products.get(purchase.productId)!;
+        const user = this.users.get(product.userId)!;
+        return { ...purchase, product: { ...product, user } };
+      })
+      .sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+  }
+
+  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
+    return Array.from(this.purchases.values()).find(
+      (purchase) => purchase.buyerId === buyerId && purchase.productId === productId,
+    );
+  }
+
+  async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
+    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    if (existing) return existing;
+
+    const purchase: Purchase = {
+      id: this.purchaseIdCounter++,
+      buyerId: insertPurchase.buyerId,
+      productId: insertPurchase.productId,
+      status: insertPurchase.status ?? "active",
+      paymentProvider: insertPurchase.paymentProvider ?? "demo",
+      purchasedAt: new Date(),
+    };
+    this.purchases.set(purchase.id, purchase);
+    return purchase;
   }
 
   // AI Agent operations
@@ -1049,9 +1224,22 @@ export class MemStorage implements IStorage {
       createdAt: now, 
       chatCount: 0,
       status: 'active',
+      isCustom: insertAgent.isCustom ?? false,
     };
     this.aiAgents.set(id, agent);
     return agent;
+  }
+
+  async updateAIAgent(id: number, update: Partial<InsertAIAgent>): Promise<AIAgent | undefined> {
+    const agent = this.aiAgents.get(id);
+    if (!agent) return undefined;
+    const updated = { ...agent, ...update, id: agent.id, userId: agent.userId, isCustom: agent.isCustom };
+    this.aiAgents.set(id, updated);
+    return updated;
+  }
+
+  async deleteAIAgent(id: number): Promise<boolean> {
+    return deleteAgentWithChats(id, this.aiAgents, this.aiChats);
   }
 
   // AI Chat operations
@@ -1094,19 +1282,51 @@ export class MemStorage implements IStorage {
 
   // Community operations
   async getCommunities(): Promise<Community[]> {
-    return Array.from(this.communities.values());
+    return Array.from(this.communities.values()).filter((community) => !community.archivedAt);
   }
 
   async getCommunityById(id: number): Promise<Community | undefined> {
-    return this.communities.get(id);
+    const community = this.communities.get(id);
+    return community && !community.archivedAt ? community : undefined;
   }
 
   async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
     const id = this.communityIdCounter++;
     const now = new Date();
-    const community: Community = { ...insertCommunity, id, createdAt: now };
+    const community: Community = { ...insertCommunity, id, archivedAt: null, createdAt: now };
     this.communities.set(id, community);
     return community;
+  }
+
+  async archiveCommunity(id: number): Promise<Community | undefined> {
+    const community = this.communities.get(id);
+    if (!community || community.archivedAt) return undefined;
+    const archived = { ...community, archivedAt: new Date() };
+    this.communities.set(id, archived);
+    return archived;
+  }
+
+  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
+    return Array.from(this.communityMemberships.values()).find(
+      (membership) => membership.userId === userId && membership.communityId === communityId && membership.status !== "banned",
+    );
+  }
+
+  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+    if (existing) return existing;
+    const membership: CommunityMembership = {
+      id: this.communityMembershipIdCounter++,
+      userId: insertMembership.userId,
+      communityId: insertMembership.communityId,
+      role: insertMembership.role ?? "member",
+      status: "active",
+      moderationReason: null,
+      moderatedAt: null,
+      joinedAt: new Date(),
+    };
+    this.communityMemberships.set(membership.id, membership);
+    return membership;
   }
 
   // Channel operations
@@ -1146,6 +1366,8 @@ export class MemStorage implements IStorage {
       id, 
       likes: 0,
       createdAt: now,
+      isPinned: insertMessage.isPinned ?? false,
+      parentMessageId: insertMessage.parentMessageId ?? null,
     };
     this.channelMessages.set(id, message);
     return message;
@@ -1189,12 +1411,34 @@ export class MemStorage implements IStorage {
       .filter(contact => contact.userId === userId);
   }
 
+  async getContactById(id: number): Promise<Contact | undefined> {
+    return this.contacts.get(id);
+  }
+
   async createContact(insertContact: InsertContact): Promise<Contact> {
     const id = this.contactIdCounter++;
     const now = new Date();
-    const contact: Contact = { ...insertContact, id, createdAt: now };
+    const contact: Contact = {
+      ...insertContact,
+      id,
+      createdAt: now,
+      contactImage: insertContact.contactImage ?? null,
+      purchaseInfo: insertContact.purchaseInfo ?? null,
+    };
     this.contacts.set(id, contact);
     return contact;
+  }
+
+  async updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact> {
+    const contact = this.contacts.get(id);
+    if (!contact) throw new Error('Contact not found');
+    const updated = { ...contact, contactName, purchaseInfo };
+    this.contacts.set(id, updated);
+    return updated;
+  }
+
+  async deleteContact(id: number): Promise<void> {
+    this.contacts.delete(id);
   }
 
   // Document operations
@@ -1231,6 +1475,10 @@ export class MemStorage implements IStorage {
     return document;
   }
 
+  async deleteDocument(id: number): Promise<void> {
+    this.documents.delete(id);
+  }
+
   // Notification operations
   async getNotificationsByUserId(userId: number): Promise<Notification[]> {
     return Array.from(this.notifications.values())
@@ -1250,6 +1498,8 @@ export class MemStorage implements IStorage {
       linkTo: notification.linkTo ?? null,
       relatedUserId: notification.relatedUserId ?? null,
       relatedUserImage: notification.relatedUserImage ?? null,
+      sourceType: null,
+      sourceId: null,
     };
     
     this.notifications.set(id, newNotification);
@@ -1442,6 +1692,9 @@ export class MemStorage implements IStorage {
       id,
       sentAt: now,
       read: false,
+      isEdited: message.isEdited ?? false,
+      replyToMessageId: message.replyToMessageId ?? null,
+      reactions: message.reactions ?? {},
     };
     
     this.directMessages.set(id, directMessage);
@@ -1476,7 +1729,7 @@ export class MemStorage implements IStorage {
     if (!message) throw new Error('Message not found');
     
     // Initialize reactions object if it doesn't exist
-    const reactions = message.reactions || {};
+    const reactions = (message.reactions ?? {}) as Record<string, string>;
     
     // Convert number to string for consistent object keys
     const userIdStr = userId.toString();
@@ -1619,6 +1872,11 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByAuthEmail(authEmail: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.authEmail, authEmail.trim().toLowerCase()));
+    return user || undefined;
+  }
+
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
@@ -1647,16 +1905,31 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ clerkId, authEmail })
+      .where(eq(users.id, id))
+      .returning();
+    if (!updatedUser) throw new Error("User not found or could not be rebound");
+    return updatedUser;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
   }
   
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
-    // Make sure we don't update sensitive fields like clerkId or username
+    // Keep identity and authorization fields immutable while allowing the
+    // public username and profile presentation to be edited by their owner.
     const allowedFields: Partial<User> = {};
     
+    if (userData.username !== undefined) allowedFields.username = userData.username;
     if (userData.displayName !== undefined) allowedFields.displayName = userData.displayName;
     if (userData.bio !== undefined) allowedFields.bio = userData.bio;
+    if (userData.profileLinks !== undefined) allowedFields.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined) allowedFields.pushNotificationsEnabled = userData.pushNotificationsEnabled;
+    if (userData.colorMode !== undefined) allowedFields.colorMode = userData.colorMode;
     if (userData.profileImageUrl !== undefined) allowedFields.profileImageUrl = userData.profileImageUrl;
     
     // Update the user record
@@ -1776,7 +2049,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
+  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1785,7 +2058,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
     
     // Fetch all tagged users for all posts in a batch
-    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
     
     // Get all post IDs
     const postIds = postsWithUsers.map(post => post.id);
@@ -1816,7 +2089,7 @@ export class DatabaseStorage implements IStorage {
         });
         
         return acc;
-      }, {} as Record<number, TaggedUser[]>);
+      }, {} as Record<number, TaggedUserProfile[]>);
       
       // Add tagged users to their respective posts
       postsWithUsers.forEach(post => {
@@ -1827,7 +2100,7 @@ export class DatabaseStorage implements IStorage {
     return postsWithUsers;
   }
 
-  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] }) | undefined> {
+  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] }) | undefined> {
     const [result] = await db.select({
       post: posts,
       user: users,
@@ -1837,7 +2110,7 @@ export class DatabaseStorage implements IStorage {
     
     if (!result) return undefined;
     
-    const postWithUser = { ...result.post, user: result.user };
+    const postWithUser: Post & { user: User; taggedUsers: TaggedUserProfile[] } = { ...result.post, user: result.user, taggedUsers: [] };
     
     // Fetch tagged users for this post
     const taggedUsersResult = await db.select({
@@ -1864,7 +2137,7 @@ export class DatabaseStorage implements IStorage {
     return postWithUser;
   }
   
-  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUser[] })[]> {
+  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
     const result = await db.select({
       post: posts,
       user: users,
@@ -1874,7 +2147,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.id)); // Sort newest first
     
     // Fetch all tagged users for all posts in a batch
-    const postsWithUsers = result.map(({ post, user }) => ({ ...post, user }));
+    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
     
     // Get all post IDs
     const postIds = postsWithUsers.map(post => post.id);
@@ -1905,7 +2178,7 @@ export class DatabaseStorage implements IStorage {
         });
         
         return acc;
-      }, {} as Record<number, TaggedUser[]>);
+      }, {} as Record<number, TaggedUserProfile[]>);
       
       // Add tagged users to their respective posts
       postsWithUsers.forEach(post => {
@@ -2153,6 +2426,30 @@ export class DatabaseStorage implements IStorage {
     
     return result.map(({ post, user }) => ({ ...post, user }));
   }
+
+  async isPostLiked(userId: number, postId: number): Promise<boolean> {
+    const [record] = await db.select({ id: postLikes.id }).from(postLikes).where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId)));
+    return Boolean(record);
+  }
+
+  async addPostLike(userId: number, postId: number): Promise<boolean> {
+    const [record] = await db.insert(postLikes).values({ userId, postId }).onConflictDoNothing().returning({ id: postLikes.id });
+    return Boolean(record);
+  }
+
+  async removePostLike(userId: number, postId: number): Promise<boolean> {
+    const removed = await db.delete(postLikes).where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId))).returning({ id: postLikes.id });
+    return removed.length > 0;
+  }
+
+  async getLikedPosts(userId: number): Promise<(Post & { user: User })[]> {
+    const result = await db.select({ post: posts, user: users }).from(postLikes)
+      .innerJoin(posts, eq(postLikes.postId, posts.id))
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(eq(postLikes.userId, userId))
+      .orderBy(desc(postLikes.id));
+    return result.map(({ post, user }) => ({ ...post, user }));
+  }
   
   async getPostCountByUser(userId: number): Promise<number> {
     const result = await db.select({ count: count() })
@@ -2328,6 +2625,7 @@ export class DatabaseStorage implements IStorage {
       user: users,
     }).from(products)
       .innerJoin(users, eq(products.userId, users.id))
+      .where(eq(products.status, "published"))
       .orderBy(desc(products.createdAt));
     
     return result.map(({ product, user }) => ({ ...product, user }));
@@ -2351,20 +2649,53 @@ export class DatabaseStorage implements IStorage {
       user: users,
     }).from(products)
       .innerJoin(users, eq(products.userId, users.id))
-      .where(eq(products.category, category))
+      .where(and(eq(products.category, category), eq(products.status, "published")))
       .orderBy(desc(products.createdAt));
     
     return result.map(({ product, user }) => ({ ...product, user }));
   }
 
-  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+  async createProduct(insertProduct: ProductInput): Promise<Product> {
     const [product] = await db.insert(products).values(insertProduct).returning();
     return product;
   }
 
+  async updateProduct(id: number, productUpdate: ProductUpdate): Promise<Product> {
+    const [product] = await db.update(products).set(productUpdate).where(eq(products.id, id)).returning();
+    if (!product) throw new Error("Product not found");
+    return product;
+  }
+
+  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
+    const result = await db.select({
+      purchase: purchases,
+      product: products,
+      user: users,
+    }).from(purchases)
+      .innerJoin(products, eq(purchases.productId, products.id))
+      .innerJoin(users, eq(products.userId, users.id))
+      .where(eq(purchases.buyerId, buyerId))
+      .orderBy(desc(purchases.purchasedAt));
+
+    return result.map(({ purchase, product, user }) => ({ ...purchase, product: { ...product, user } }));
+  }
+
+  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
+    const [purchase] = await db.select().from(purchases)
+      .where(and(eq(purchases.buyerId, buyerId), eq(purchases.productId, productId)));
+    return purchase || undefined;
+  }
+
+  async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
+    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    if (existing) return existing;
+    const [purchase] = await db.insert(purchases).values(insertPurchase).returning();
+    return purchase;
+  }
+
   // AI Agent operations
   async getAIAgents(): Promise<AIAgent[]> {
-    return await db.select().from(aiAgents);
+    return await db.select().from(aiAgents).where(eq(aiAgents.isCustom, false));
   }
 
   async getAIAgentById(id: number): Promise<AIAgent | undefined> {
@@ -2373,12 +2704,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserAIAgents(userId: number): Promise<AIAgent[]> {
-    return await db.select().from(aiAgents).where(eq(aiAgents.userId, userId));
+    return await db
+      .select()
+      .from(aiAgents)
+      .where(and(eq(aiAgents.userId, userId), eq(aiAgents.isCustom, true)));
   }
 
   async createAIAgent(insertAgent: InsertAIAgent): Promise<AIAgent> {
     const [agent] = await db.insert(aiAgents).values(insertAgent).returning();
     return agent;
+  }
+
+  async updateAIAgent(id: number, update: Partial<InsertAIAgent>): Promise<AIAgent | undefined> {
+    const { userId: _userId, isCustom: _isCustom, ...safeUpdate } = update;
+    const [agent] = await db
+      .update(aiAgents)
+      .set(safeUpdate)
+      .where(eq(aiAgents.id, id))
+      .returning();
+    return agent || undefined;
+  }
+
+  async deleteAIAgent(id: number): Promise<boolean> {
+    const deleted = await db.delete(aiAgents).where(eq(aiAgents.id, id)).returning({ id: aiAgents.id });
+    return deleted.length > 0;
   }
 
   // AI Chat operations
@@ -2421,17 +2770,38 @@ export class DatabaseStorage implements IStorage {
 
   // Community operations
   async getCommunities(): Promise<Community[]> {
-    return await db.select().from(communities);
+    return await db.select().from(communities).where(isNull(communities.archivedAt));
   }
 
   async getCommunityById(id: number): Promise<Community | undefined> {
-    const [community] = await db.select().from(communities).where(eq(communities.id, id));
+    const [community] = await db.select().from(communities).where(and(eq(communities.id, id), isNull(communities.archivedAt)));
     return community || undefined;
   }
 
   async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
     const [community] = await db.insert(communities).values(insertCommunity).returning();
     return community;
+  }
+
+  async archiveCommunity(id: number): Promise<Community | undefined> {
+    const [community] = await db.update(communities)
+      .set({ archivedAt: new Date() })
+      .where(and(eq(communities.id, id), isNull(communities.archivedAt)))
+      .returning();
+    return community || undefined;
+  }
+
+  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
+    const [membership] = await db.select().from(communityMemberships)
+      .where(and(eq(communityMemberships.userId, userId), eq(communityMemberships.communityId, communityId), ne(communityMemberships.status, "banned")));
+    return membership || undefined;
+  }
+
+  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+    if (existing) return existing;
+    const [membership] = await db.insert(communityMemberships).values(insertMembership).returning();
+    return membership;
   }
 
   // Channel operations
@@ -2519,9 +2889,27 @@ export class DatabaseStorage implements IStorage {
       .orderBy(contacts.contactName);
   }
 
+  async getContactById(id: number): Promise<Contact | undefined> {
+    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return contact || undefined;
+  }
+
   async createContact(insertContact: InsertContact): Promise<Contact> {
     const [contact] = await db.insert(contacts).values(insertContact).returning();
     return contact;
+  }
+
+  async updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact> {
+    const [contact] = await db
+      .update(contacts)
+      .set({ contactName, purchaseInfo })
+      .where(eq(contacts.id, id))
+      .returning();
+    return contact;
+  }
+
+  async deleteContact(id: number): Promise<void> {
+    await db.delete(contacts).where(eq(contacts.id, id));
   }
 
   // Document operations
@@ -2552,6 +2940,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return document;
+  }
+
+  async deleteDocument(id: number): Promise<void> {
+    await db.delete(documents).where(eq(documents.id, id));
   }
 
   // Notification operations
@@ -3031,4 +3423,9 @@ export class DatabaseStorage implements IStorage {
 }
 
 // Replace MemStorage with DatabaseStorage
-export const storage = new DatabaseStorage();
+// Demo mode intentionally keeps data local to the process. It lets contributors
+// exercise the creator flow without production credentials; all deployed modes
+// continue to use the authoritative Postgres store.
+export const storage: IStorage = process.env.CREATOROS_DEMO_MODE === "true"
+  ? new MemStorage()
+  : new DatabaseStorage();

@@ -39,23 +39,20 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
     }
   }, [isOpen, initialTags]);
   
-  // Fetch real users from the database
+  const normalizedSearch = searchQuery.trim();
+  // Tagging is a typeahead, not a directory download. The server bounds and
+  // projects this result to public profile fields only.
   const { data: users = [], isLoading } = useQuery<any[]>({
-    queryKey: ['/api/users'],
+    queryKey: ['/api/users', 'tag-search', normalizedSearch],
+    enabled: isSearchView && normalizedSearch.length > 0,
     queryFn: async () => {
-      const res = await fetch('/api/users');
+      const res = await fetch(`/api/users?search=${encodeURIComponent(normalizedSearch)}`);
       if (!res.ok) throw new Error('Failed to fetch users');
       return res.json();
     }
   });
 
-  const filteredUsers = searchQuery 
-    ? users.filter(
-        (user: any) => 
-          user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.displayName.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : users;
+  const filteredUsers = users;
   
   const handleAddTag = (user: any) => {
     // Store the selected user. We'll ask the user to tap where to place the tag
@@ -184,16 +181,22 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
           
           {/* Search results */}
           <div className="flex-1 overflow-y-auto">
-            {filteredUsers.length === 0 ? (
+            {!normalizedSearch ? (
+              <div className="p-8 text-center text-muted-foreground">Search for a creative to tag</div>
+            ) : isLoading ? (
+              <div className="p-8 text-center text-muted-foreground">Searching…</div>
+            ) : filteredUsers.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 No users found matching "{searchQuery}"
               </div>
             ) : (
               <div className="divide-y">
                 {filteredUsers.map((user: any) => (
-                  <div 
+                  <button
+                    type="button"
                     key={user.id}
-                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted"
+                    className="flex w-full items-center justify-between p-4 text-left hover:bg-muted"
+                    aria-label={`Tag ${user.displayName}`}
                     onClick={() => {
                       handleAddTag(user);
                       setIsSearchView(false);
@@ -217,7 +220,7 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
                     {taggedUsers.some(tagged => tagged.id === user.id) && (
                       <div className="text-sm text-primary font-semibold">Tagged</div>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

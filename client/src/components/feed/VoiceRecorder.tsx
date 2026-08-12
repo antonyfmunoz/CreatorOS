@@ -6,7 +6,6 @@ import { Progress } from "@/components/ui/progress";
 import { PostOptionsPanel } from "@/components/feed/PostOptionsPanel";
 import { Button } from "@/components/ui/button";
 import { Loader2, Mic, Pause, Play } from "lucide-react";
-import { DialogTitle } from "@/components/ui/dialog";
 
 interface VoiceRecorderProps {
   onClose: () => void;
@@ -19,6 +18,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [content, setContent] = useState("");
+  const [addToStory, setAddToStory] = useState(false);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -35,12 +35,15 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   useEffect(() => {
     startRecording();
     return () => {
-      stopRecording();
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  useEffect(() => () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
 
   // Update timer when recording
   useEffect(() => {
@@ -122,7 +125,6 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         description: 'Could not access your microphone. Please check your permissions.',
         variant: 'destructive'
       });
-      onClose();
     }
   };
 
@@ -196,6 +198,7 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
     formData.append('content', content || 'Voice message');
     formData.append('audio', audioBlob, 'recording.webm');
     formData.append('mediaType', 'audio');
+    formData.append('addToStory', String(addToStory));
     
     createPostMutation.mutate(formData);
   };
@@ -207,12 +210,12 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground">
-      <DialogTitle className="sr-only">Create New Voice Post</DialogTitle>
+    <div className="flex min-h-dvh flex-col overflow-hidden bg-black text-white">
+      <h1 className="sr-only">Create New Voice Post</h1>
       
       {/* Top Bar */}
-      <div className="flex justify-between items-center p-4 border-b">
-        <button className="text-foreground" onClick={onClose}>Cancel</button>
+      <div className="flex items-center justify-between border-b border-zinc-800 p-4">
+        <button className="text-zinc-300" onClick={onClose} aria-label="Cancel voice post">Cancel</button>
         <h2 className="text-lg font-medium">Voice Message</h2>
         <Button 
           variant="ghost" 
@@ -306,10 +309,10 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
         
         {/* Caption input - only show if recording is complete */}
         {audioBlob && (
-          <div className="p-4 border-b">
+          <div className="border-b border-zinc-800 p-4">
             <input
               type="text"
-              className="w-full p-3 bg-background border border-border rounded"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
               placeholder="Add caption (optional)"
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -323,6 +326,11 @@ export const VoiceRecorder = ({ onClose }: VoiceRecorderProps) => {
           <PostOptionsPanel 
             content={content}
             onContentChange={setContent}
+            addToStory={addToStory}
+            onAddToStoryChange={setAddToStory}
+            onShare={handleSend}
+            isSharing={createPostMutation.isPending}
+            shareDisabled={!audioBlob}
           />
         )}
       </div>

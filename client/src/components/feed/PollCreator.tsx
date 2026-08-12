@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { X, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -145,8 +144,8 @@ export const PollCreator = ({ isOpen, onClose, onSave }: PollCreatorProps) => {
           </p>
           
           <div className="flex justify-end mt-2">
-            <button className="text-sm text-destructive">
-              Delete
+            <button type="button" onClick={onClose} className="text-sm text-destructive">
+              Cancel poll
             </button>
           </div>
         </div>

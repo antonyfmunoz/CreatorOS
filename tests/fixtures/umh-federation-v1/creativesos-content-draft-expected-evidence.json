@@ -1,0 +1,18 @@
+{
+  "operation": "content.draft.create",
+  "required_projection_evidence": [
+    "verified_signature",
+    "recorded_nonce",
+    "durable_command_receipt",
+    "one_local_content_draft",
+    "durable_completed_outcome",
+    "durable_content_draft_created_event",
+    "durable_audit_record"
+  ],
+  "required_negative_probes": [
+    "exact_replay_creates_no_second_draft",
+    "tampered_body_with_original_signature_is_rejected",
+    "expired_command_is_rejected"
+  ],
+  "required_resilience_proof": "local_draft_succeeds_while_umh_is_unavailable"
+}

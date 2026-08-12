@@ -1,12 +1,22 @@
-import { useState } from "react";
-import { useLocation as useWouterLocation } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useLocation as useWouterLocation, useSearch } from "wouter";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
-import { ChevronRight, BarChart2 } from "lucide-react";
+import { BarChart2, ImagePlus, Mic, Upload, Video } from "lucide-react";
 import { PollCreator } from "@/components/feed/PollCreator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HorizontalRail } from "@/components/ui/horizontal-rail";
+
+type ContentDraft = {
+  id: string;
+  content: string;
+  kind: string;
+  audience: string;
+  platformVariants: Record<string, unknown>;
+};
 
 export default function NewTextPost() {
   const [content, setContent] = useState("");
@@ -14,17 +24,71 @@ export default function NewTextPost() {
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
   const [pollData, setPollData] = useState<any>(null);
   const [, setLocation] = useWouterLocation();
+  const search = useSearch();
+  const draftIdFromUrl = new URLSearchParams(search).get("draft");
+  const [draftId, setDraftId] = useState<string | null>(draftIdFromUrl);
+  const hydratedDraftId = useRef<string | null>(null);
   
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const draftQuery = useQuery<ContentDraft>({
+    queryKey: ["/api/content-drafts", draftIdFromUrl],
+    enabled: Boolean(user && draftIdFromUrl),
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/content-drafts/${draftIdFromUrl}`);
+      return response.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!draftQuery.data || hydratedDraftId.current === draftQuery.data.id) return;
+    hydratedDraftId.current = draftQuery.data.id;
+    setDraftId(draftQuery.data.id);
+    setContent(draftQuery.data.content);
+    setAddToStory(draftQuery.data.platformVariants.addToStory === true);
+    setPollData(draftQuery.data.platformVariants.pollData ?? null);
+  }, [draftQuery.data]);
+
+  const saveDraftMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        content,
+        kind: "post",
+        audience: "public",
+        platformVariants: { addToStory, ...(pollData ? { pollData } : {}) },
+      };
+      const response = draftId
+        ? await apiRequest("PATCH", `/api/content-drafts/${draftId}`, payload)
+        : await apiRequest("POST", "/api/content-drafts", payload);
+      return response.json() as Promise<ContentDraft>;
+    },
+    onSuccess: (draft) => {
+      setDraftId(draft.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/content-drafts"] });
+      toast({ title: "Draft saved", description: "You can safely return to it from Create." });
+    },
+    onError: () => {
+      toast({ title: "Draft not saved", description: "Check your connection and try again.", variant: "destructive" });
+    },
+  });
   
   const createPostMutation = useMutation({
     mutationFn: async (postData: any) => {
       const res = await apiRequest('POST', '/api/posts', postData);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (draftId) {
+        try {
+          await apiRequest("DELETE", `/api/content-drafts/${draftId}`);
+          queryClient.invalidateQueries({ queryKey: ["/api/content-drafts"] });
+        } catch {
+          // The published post is authoritative; leave a recoverable draft if
+          // cleanup was interrupted and let the user remove it later.
+        }
+      }
       toast({
         title: 'Post created!',
         description: 'Your post has been successfully shared.'
@@ -79,40 +143,55 @@ export default function NewTextPost() {
     createPostMutation.mutate(postData);
   };
 
+  const handleSaveDraft = () => {
+    if (!user) {
+      toast({ title: "Authentication Required", description: "Please log in to save a draft.", variant: "destructive" });
+      return;
+    }
+    saveDraftMutation.mutate();
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
+    <main className="flex min-h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-black pb-20 text-white">
       {/* Header */}
-      <div className="flex justify-between items-center px-4 py-2.5 border-b">
+      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
         <button 
-          className="text-xl" 
+          className="rounded-full px-2 py-1 text-xl text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white"
           onClick={() => setLocation('/')}
+          aria-label="Cancel post"
         >
           ✕
         </button>
         <span className="font-semibold">New post</span>
-        <div className="w-5"></div>
-      </div>
+        <div className="flex items-center gap-2">
+          <button className="rounded-full px-3 py-1 text-xs font-bold text-zinc-300 transition-colors hover:bg-zinc-900 disabled:opacity-40" onClick={handleSaveDraft} disabled={saveDraftMutation.isPending}>
+            {saveDraftMutation.isPending ? "Saving..." : "Save draft"}
+          </button>
+          <button className="rounded-full bg-[#1d9bf0] px-3 py-1 text-xs font-bold text-white disabled:opacity-40" onClick={handleSubmit} disabled={!content.trim() || createPostMutation.isPending}>Share</button>
+        </div>
+      </header>
       
       {/* All content */}
       <div>
         {/* Caption Input */}
-        <div className="p-4 border-b">
+        <div className="flex gap-3 border-b border-zinc-800 p-4">
+          <Avatar className="h-10 w-10 shrink-0"><AvatarImage src={user?.profileImageUrl || undefined} /><AvatarFallback>{user?.displayName?.charAt(0) ?? "Y"}</AvatarFallback></Avatar>
           <textarea
-            className="w-full h-20 text-base resize-none outline-none"
-            placeholder="Write a caption..."
+            className="h-36 w-full resize-none bg-transparent text-lg text-white outline-none placeholder:text-zinc-500"
+            placeholder="What's on your mind?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
           ></textarea>
         </div>
         
         {/* Poll Button - Exactly matching the PhotoUploader.tsx line 628 */}
-        <div className="p-4 space-y-4 border-b">
+        <div className="space-y-4 border-b border-zinc-800 p-4">
           {pollData ? (
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="rounded-lg bg-zinc-900 p-3">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-medium">Poll: {pollData.question}</h3>
                 <button 
-                  className="text-red-500"
+                  className="text-red-400"
                   onClick={() => setPollData(null)}
                 >
                   Remove
@@ -120,218 +199,29 @@ export default function NewTextPost() {
               </div>
               <div className="space-y-2">
                 {pollData.options.map((option: string, i: number) => (
-                  <div key={i} className="bg-muted p-2 rounded-md">{option}</div>
+                  <div key={i} className="rounded-md bg-zinc-800 p-2">{option}</div>
                 ))}
               </div>
             </div>
           ) : (
-            <button 
-              type="button"
-              className="flex items-center justify-center gap-2 w-full h-[38px] px-4 py-2 rounded-full border border-gray-300 cursor-pointer bg-transparent"
-              onClick={() => {
-                console.log("Opening poll modal");
-                setIsPollModalOpen(true);
-              }}
-            >
-              <div className="flex items-center justify-center">
-                <BarChart2 className="w-4 h-4 mr-1.5" />
-                <span className="text-[14px]">Poll</span>
-              </div>
-            </button>
+            <HorizontalRail className="gap-3">
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=photo')}><ImagePlus className="h-4 w-4 text-[#1d9bf0]" /> Photo</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=video')}><Video className="h-4 w-4 text-[#1d9bf0]" /> Video</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setLocation('/create/post?type=audio')}><Mic className="h-4 w-4 text-[#1d9bf0]" /> Audio</button>
+              <button type="button" className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800" onClick={() => setIsPollModalOpen(true)}><BarChart2 className="h-4 w-4 text-[#1d9bf0]" /> Poll</button>
+            </HorizontalRail>
           )}
         </div>
         
-        {/* Tag people */}
-        <div className="space-y-4 px-4 pb-4 border-b">
-          <button 
-            type="button"
-            className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
-            onClick={() => {
-              console.log("Opening tag editor");
-              toast({
-                title: "Tag people",
-                description: "This feature will be available soon!"
-              });
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M4 20C4 17.7909 5.79086 16 8 16H16C18.2091 16 20 17.7909 20 20" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span>Tag people</span>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </button>
-          
-          {/* Tag product button */}
-          <button 
-            type="button"
-            className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
-            onClick={() => {
-              console.log("Opening product tag editor");
-              toast({
-                title: "Tag product",
-                description: "Product tagging feature coming soon!"
-              });
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="3" width="18" height="18" rx="1" stroke="black" strokeWidth="1.5"/>
-                <path d="M9 3V21" stroke="black" strokeWidth="1.5"/>
-                <path d="M3 9H21" stroke="black" strokeWidth="1.5"/>
-              </svg>
-              <span>Tag product</span>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </button>
-          
-          {/* Add location */}
-          <button 
-            type="button"
-            className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
-            onClick={() => {
-              console.log("Setting location");
-              toast({
-                title: "Add location",
-                description: "Location feature coming soon!"
-              });
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 21.25C12 21.25 19.5 15.75 19.5 9.75C19.5 7.76088 18.7098 5.85322 17.3033 4.4467C15.8968 3.04018 13.9891 2.25 12 2.25C10.0109 2.25 8.10322 3.04018 6.6967 4.4467C5.29018 5.85322 4.5 7.76088 4.5 9.75C4.5 15.75 12 21.25 12 21.25Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 12.75C13.6569 12.75 15 11.4069 15 9.75C15 8.09315 13.6569 6.75 12 6.75C10.3431 6.75 9 8.09315 9 9.75C9 11.4069 10.3431 12.75 12 12.75Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span>Add location</span>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </button>
-          
-          {/* Audience */}
-          <div className="flex items-center justify-between py-2"
-            onClick={() => {
-              console.log("Setting audience");
-              toast({
-                title: "Audience",
-                description: "Choose who can see your post"
-              });
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.42012 12.7132C2.28394 12.4975 2.21584 12.3897 2.17772 12.2234C2.14909 12.0985 2.14909 11.9015 2.17772 11.7766C2.21584 11.6103 2.28394 11.5025 2.42012 11.2868C3.54553 9.50484 6.8954 5 12.0004 5C17.1054 5 20.4552 9.50484 21.5806 11.2868C21.7168 11.5025 21.7849 11.6103 21.8231 11.7766C21.8517 11.9015 21.8517 12.0985 21.8231 12.2234C21.7849 12.3897 21.7168 12.4975 21.5806 12.7132C20.4552 14.4952 17.1054 19 12.0004 19C6.8954 19 3.54553 14.4952 2.42012 12.7132Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12.0004 15C13.6573 15 15.0004 13.6569 15.0004 12C15.0004 10.3431 13.6573 9 12.0004 9C10.3435 9 9.0004 10.3431 9.0004 12C9.0004 13.6569 10.3435 15 12.0004 15Z" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span>Audience</span>
-            </div>
-            <div className="flex items-center">
-              <span className="text-gray-500 text-sm mr-1">Everyone</span>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-        
-        {/* Post to section */}
-        <div className="border-b">
-          <div className="flex items-center justify-between p-3">
-            <span className="font-medium text-[14px]">Post to</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="rotate-180">
-              <path d="M6 9L12 15L18 9" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          
-          {/* X (Twitter) */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px] font-semibold">X</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect X (Twitter)</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* Facebook */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px] font-bold">f</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect Facebook</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* Instagram */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center">
-                <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full border-[1px] border-black"></div>
-                </div>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect Instagram</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* TikTok */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white text-[10px]">♪</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect TikTok</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
-          
-          {/* YouTube */}
-          <div className="flex justify-between items-center p-3 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-red-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-[8px]">▶</span>
-              </div>
-              <div>
-                <div className="text-[12px] font-medium">Connect YouTube</div>
-                <div className="text-[10px] text-gray-500">Connect to share posts</div>
-              </div>
-            </div>
-            <button className="bg-transparent border border-gray-200 rounded text-[11px] px-2 py-0.5 font-medium">
-              Connect
-            </button>
-          </div>
+        <div className="border-b border-zinc-800 p-3">
+          <p className="font-medium text-[14px]">Post to CreativesOS</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Your post will appear on your CreativesOS profile and feed.</p>
         </div>
         
         {/* Your story */}
         <div className="flex justify-between items-center p-3">
           <div className="flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 4V16M12 4L7 9M12 4L17 9" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M4 14V18C4 19.1046 4.89543 20 6 20H18C19.1046 20 20 19.1046 20 18V14" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <Upload className="h-[18px] w-[18px] text-zinc-300" />
             <span className="text-[13px] font-medium">Your story</span>
           </div>
           <Switch 
@@ -343,19 +233,19 @@ export default function NewTextPost() {
       </div>
       
       {/* Share Button */}
-      <div className="px-2 py-2.5 bg-white border-t mt-auto">
+      <footer className="mt-auto border-t border-zinc-800 bg-black px-3 py-3">
         <button
-          className="w-full bg-black text-white text-[14px] py-2 rounded font-medium"
+          className="w-full rounded-lg bg-[#1d9bf0] py-2.5 text-[14px] font-bold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           onClick={handleSubmit}
-          disabled={!content.trim()}
+          disabled={!content.trim() || createPostMutation.isPending}
         >
           Share
         </button>
-      </div>
+      </footer>
       
       {/* Poll Modal */}
       {isPollModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-black">
           <PollCreator 
             isOpen={true}
             onClose={() => {
@@ -374,6 +264,6 @@ export default function NewTextPost() {
           />
         </div>
       )}
-    </div>
+    </main>
   );
 }

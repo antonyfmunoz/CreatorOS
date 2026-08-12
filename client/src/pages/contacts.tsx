@@ -25,22 +25,22 @@ const ContactsPage = () => {
   }
 
   return (
-    <div className="pb-20">
-      {/* Header with back button */}
-      <div className="flex items-center justify-between p-4 border-b">
+    <div className="min-h-screen bg-black pb-24 text-white">
+      <div className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-900 bg-black/95 p-4 backdrop-blur">
         <Button 
           variant="ghost" 
           size="icon" 
           onClick={() => setLocation("/profile")}
-          className="mr-2"
+          aria-label="Back to profile"
+          className="mr-2 text-white hover:bg-zinc-900 hover:text-white"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-lg font-bold flex-1 text-center">Contacts</h1>
-        <div className="w-9"></div> {/* Empty div for balance */}
+        <div className="w-9" />
       </div>
       
-      <div className="p-4">
+      <div className="mx-auto max-w-xl p-4">
         <ContactList userId={user.id} />
       </div>
     </div>

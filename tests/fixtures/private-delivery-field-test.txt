@@ -1,0 +1,2 @@
+CreativesOS private delivery field-test asset.
+This file is intentionally safe to upload to a private test offer.

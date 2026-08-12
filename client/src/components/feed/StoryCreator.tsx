@@ -271,15 +271,15 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
   
   return (
     <Dialog open={isOpen} onOpenChange={handleClose} modal={true}>
-      <DialogContent className="max-w-full h-[100vh] p-0 overflow-hidden bg-white border-0 sm:rounded-none">
+      <DialogContent className="h-[100vh] max-w-full overflow-hidden border-0 bg-black p-0 text-white sm:rounded-none">
         <DialogTitle className="sr-only">
           {preview ? 'Create Story' : 'Add to Your Story'}
         </DialogTitle>
-        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b bg-white">
+        <div className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-3 text-white">
           <Button 
             variant="ghost" 
             size="icon" 
-            className="rounded-full h-8 w-8" 
+            className="h-8 w-8 rounded-full text-white hover:bg-zinc-900 hover:text-white"
             onClick={handleClose}
           >
             <X className="h-5 w-5" />
@@ -293,7 +293,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
         <div className="absolute inset-0 flex items-center justify-center">
           {!preview && !cameraMode ? (
             <div className="flex flex-col items-center w-full max-w-md px-4">
-              <DialogDescription className="text-center text-gray-500 mb-8">
+              <DialogDescription className="mb-8 text-center text-zinc-500">
                 Add photos or videos to your story. They'll disappear after 24 hours.
               </DialogDescription>
               
@@ -301,7 +301,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 text-white hover:bg-zinc-900 hover:text-white"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-7 w-7 mb-2" />
@@ -311,7 +311,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex flex-col items-center justify-center h-32 w-full rounded-lg border bg-white"
+                  className="flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 text-white hover:bg-zinc-900 hover:text-white"
                   onClick={startCamera}
                 >
                   <Camera className="h-7 w-7 mb-2" />
@@ -396,9 +396,9 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                 {/* Removed back button as requested */}
                 
                 {/* Caption input */}
-                <div className="p-4 bg-white border-t">
+                <div className="border-t border-zinc-800 bg-black p-4">
                   <textarea
-                    className="w-full p-3 border rounded-md resize-none"
+                    className="w-full resize-none rounded-xl border-zinc-800 bg-zinc-950 p-3 text-white placeholder:text-zinc-500"
                     placeholder="Write a caption..."
                     rows={2}
                     value={caption}
@@ -406,7 +406,7 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
                   />
                   
                   <Button
-                    className="w-full mt-4 bg-black hover:bg-gray-900 text-white"
+                    className="mt-4 w-full bg-[#1d9bf0] text-white hover:bg-[#1d9bf0]/90"
                     onClick={handleUpload}
                     disabled={uploadMutation.isPending}
                   >

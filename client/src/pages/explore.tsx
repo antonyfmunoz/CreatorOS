@@ -5,27 +5,35 @@ import Post from "@/components/explore/Post";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NotificationBell } from "@/components/notifications";
-import { MessageButton } from "@/components/messages";
+import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useLocation, useSearch } from "wouter";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { User } from "@/types";
 
 // Import new feed components
 import { Tabs, TabType } from "@/components/feed/Tabs";
-import { FilterDropdown, ContentFilterType } from "@/components/feed/FilterDropdown";
-import { VoicePostCard } from "@/components/feed/VoicePostCard";
-import { FloatingActionButton } from "@/components/feed/FloatingActionButton";
+import { ContentFilterType } from "@/components/feed/FilterDropdown";
 import { StoriesBar } from "@/components/feed/StoriesBar";
+import { parseStoryId } from "@/lib/story-links";
 
 const Explore = () => {
   const queryClient = useQueryClient();
   const { targetPostId, clearTargetPost } = useAppStore();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const initialStoryId = parseStoryId(search);
   
   // Feed Tab State
   const [activeTab, setActiveTab] = useState<TabType>("forYou");
   
-  // Content Filter State
-  const [contentFilter, setContentFilter] = useState<ContentFilterType>("all");
+  // The approved Explore surface is intentionally unfiltered; discovery filters
+  // live in Marketplace so the feed keeps its compact Stitch layout.
+  const [contentFilter] = useState<ContentFilterType>("all");
   
   // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
@@ -50,6 +58,16 @@ const Explore = () => {
       
       // Sort by ID to ensure consistent order
       return filteredPosts.sort((a, b) => b.id - a.id);
+    },
+  });
+
+  const { data: following = [] } = useQuery<User[]>({
+    queryKey: ["/api/users", user?.id, "following"],
+    enabled: activeTab === "following" && !!user,
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${user!.id}/following`);
+      if (!response.ok) throw new Error("Failed to load followed creators");
+      return response.json();
     },
   });
   
@@ -108,8 +126,12 @@ const Explore = () => {
   // Sort posts by ID in descending order to maintain consistent position
   const sortedPosts = useMemo(() => {
     if (!posts) return [];
-    return [...posts].sort((a, b) => b.id - a.id);
-  }, [posts]);
+    const followedIds = new Set(following.map((followedUser) => followedUser.id));
+    const visiblePosts = activeTab === "following"
+      ? posts.filter((post) => followedIds.has(post.userId))
+      : posts;
+    return [...visiblePosts].sort((a, b) => b.id - a.id);
+  }, [activeTab, following, posts]);
 
   // Callback for story click in the following tab
   const handleStoryClick = (userId: number) => {
@@ -121,14 +143,15 @@ const Explore = () => {
   };
 
   return (
-    <div className="pb-20">
+    <div className="min-h-dvh bg-black pb-20 text-white">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-black px-4 py-2 flex justify-between items-center shadow-sm">
-        <span className="text-xl font-semibold text-black dark:text-white">CreatorOS</span>
+      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
+        <span className="text-xl font-bold tracking-tight text-white">CreativesOS</span>
         <div className="flex items-center space-x-3">
-          <FilterDropdown selectedFilter={contentFilter} onSelect={setContentFilter} />
+          <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/search')} aria-label="Search CreativesOS">
+            <Search className="h-5 w-5" />
+          </Button>
           <NotificationBell />
-          <MessageButton />
         </div>
       </header>
 
@@ -137,24 +160,22 @@ const Explore = () => {
         <Tabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
-      {/* Stories Bar - Only shown in Following tab */}
-      {activeTab === "following" && (
-        <StoriesBar onStoryClick={handleStoryClick} />
-      )}
+      {/* Stitch Explore keeps the story rail visible above both feed modes. */}
+      <StoriesBar onStoryClick={handleStoryClick} />
 
       {/* Original Stories component for compatibility */}
       <div className="hidden">
-        <Stories />
+        <Stories initialStoryId={initialStoryId} />
       </div>
 
       {/* Content Feed */}
-      <div className="space-y-6 px-4 mt-4">
+      <div className="space-y-0">
         {isLoading ? (
           // Loading skeletons
           Array(3)
             .fill(0)
             .map((_, i) => (
-              <div key={i} className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div key={i} className="overflow-hidden border-b border-zinc-800 bg-black">
                 <div className="p-4">
                   <div className="flex items-center mb-3">
                     <Skeleton className="w-10 h-10 rounded-full mr-3" />
@@ -178,31 +199,14 @@ const Explore = () => {
             ))
         ) : (
           <>
-            {/* Example Voice Post Card - we'll show this only for demonstration */}
-            {contentFilter === "audio" && (
-              <VoicePostCard
-                user={{
-                  id: 1,
-                  name: "Voice Demo",
-                  username: "voicedemo",
-                  avatar: "https://avatars.githubusercontent.com/u/1?v=4"
-                }}
-                audioUrl="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"
-                transcript="This is an example voice post with a transcript that can be toggled. The actual audio is from a free source for demonstration purposes."
-                createdAt={new Date().toISOString()}
-                likes={42}
-                comments={7}
-              />
-            )}
-            
             {/* Regular post listing */}
-            {sortedPosts.map((post) => <Post key={post.id} post={post} />)}
+            {sortedPosts.map((post) => <Post key={post.id} post={post} surface="dark" />)}
             
             {/* Empty state */}
-            {posts?.length === 0 && !isLoading && (
+            {sortedPosts.length === 0 && !isLoading && (
               <div className="text-center py-10">
-                <h3 className="text-xl font-medium mb-2">No posts yet</h3>
-                <p className="text-gray-500">
+                <h3 className="mb-2 text-xl font-medium text-white">No posts yet</h3>
+                <p className="text-zinc-500">
                   {activeTab === "following" 
                     ? "Start following creators to see posts in your feed" 
                     : contentFilter !== "all"
@@ -215,8 +219,6 @@ const Explore = () => {
         )}
       </div>
       
-      {/* Floating Action Button */}
-      <FloatingActionButton />
     </div>
   );
 };
