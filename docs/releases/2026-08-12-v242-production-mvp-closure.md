@@ -1,10 +1,10 @@
-# CreativesOS v241 production-MVP closure
+# CreativesOS v242 production-MVP closure
 
 Date: 2026-08-12
 
 ## Outcome
 
-CreativesOS v241 satisfies the provider-independent Production-MVP boundary.
+CreativesOS v242 satisfies the provider-independent Production-MVP boundary.
 The native creator-to-customer loop, production data path, durable commerce,
 security baseline, recovery path, continuous delivery gates, and signed-in
 browser journeys are implemented and evidenced. External provider activation
@@ -13,7 +13,7 @@ inside the technical qualification result.
 
 ## Release evidence
 
-- Fly release v241 completed its release migration and the required machine is
+- Fly release v242 completed its release migration and the required machine is
   healthy.
 - `/api/ready` returns ready with no release blockers. Production Clerk, private
   R2, native automations, the Relationship Hub, and community-room media are
@@ -32,7 +32,8 @@ inside the technical qualification result.
   The same-day idempotency path returned the completed receipt.
 - Production HTML is no-cache, hashed assets are immutable, HSTS is enabled,
   and the CSP permits only the required custom Clerk domains.
-- GitHub code scanning and secret scanning have no open findings. Main is
+- GitHub Dependabot, code scanning, and secret scanning have no open findings.
+  Main is
   protected by the four required CI checks, strict synchronization, enforced
   administrator rules, conversation resolution, and disabled force pushes and
   deletion.
@@ -41,8 +42,10 @@ inside the technical qualification result.
 
 The production upload dependency was upgraded from Multer 1.4.5-lts.2 to 2.2.0
 to close the remaining GitHub high-severity advisory family. The complete local
-verification suite passes on the upgraded dependency; CI and production field
-verification are required again after merge and deployment.
+and protected-main verification suites pass on the upgraded dependency. In the
+production field test, the approved Stitch image was selected, uploaded through
+the live middleware, published as a story, and returned as `View your story`
+with no browser errors.
 
 ## Deliberately external gates
 
