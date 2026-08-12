@@ -404,8 +404,8 @@ const Communities = () => {
           <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900"><LockKeyhole className="h-7 w-7 text-zinc-300" /></span>
           <h1 className="mt-6 text-2xl font-bold">Join {community?.name ?? "this community"}</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-500">{community?.description ?? "Community conversations, channels, and live rooms are available to members."}</p>
-          <Button className="mt-7 h-11 w-full rounded-full bg-white font-bold text-black hover:bg-zinc-200" disabled={joinCommunityMutation.isPending || !activeCommunityId} onClick={() => joinCommunityMutation.mutate()}>
-            <UserPlus className="mr-2 h-4 w-4" /> {joinCommunityMutation.isPending ? "Joining…" : "Join community"}
+          <Button className="mt-7 h-11 w-full rounded-full bg-white font-bold text-black hover:bg-zinc-200" disabled={joinCommunityMutation.isPending || !activeCommunityId} onClick={() => community?.accessProductId ? setLocation(`/marketplace/product/${community.accessProductId}`) : joinCommunityMutation.mutate()}>
+            <UserPlus className="mr-2 h-4 w-4" /> {community?.accessProductId ? "View membership offer" : joinCommunityMutation.isPending ? "Joining…" : "Join community"}
           </Button>
           <button className="mt-4 text-sm font-semibold text-zinc-400 hover:text-white" onClick={() => setLocation("/marketplace")}>Browse other communities</button>
         </section>

@@ -11,7 +11,7 @@
     "check": "tsc",
     "test": "vitest run",
     "verify": "npm run test && npm run check && npm run build && npm run verify:bundle",
-    "verify:migrations": "node scripts/migrate-qualification.mjs",
+    "verify:migrations": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-migrations.ps1",
     "verify:automations": "tsx scripts/qualify-automation-kernel.ts",
     "verify:social-automations": "tsx scripts/qualify-native-social-automations.ts",
     "verify:relationship-operations": "tsx scripts/qualify-relationship-operations.ts",

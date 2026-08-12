@@ -99,6 +99,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { normalizeCartProductIds } from "../shared/cart";
+import { normalizeProductCommercialTerms } from "../shared/product-catalog";
 import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
@@ -3335,15 +3336,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
       if (query.category === "courses")
-        clauses.push(ilike(products.category, "%course%"));
+        clauses.push(eq(products.productType, "course"));
+      if (query.category === "communities")
+        clauses.push(inArray(products.productType, ["community", "membership"]));
       if (query.category === "digital_assets")
-        clauses.push(
-          and(
-            not(ilike(products.category, "%course%")),
-            not(ilike(products.category, "%community%")),
-            not(ilike(products.category, "%membership%")),
-          )!,
-        );
+        clauses.push(eq(products.productType, "digital_download"));
       const whereClause = clauses.length ? and(...clauses) : undefined;
       const order =
         query.sort === "price_low"
@@ -5444,6 +5441,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(400)
           .json({ message: "You cannot purchase your own offer" });
       }
+      const schedules = new Set(
+        offers.map((product) =>
+          product.billingModel === "recurring"
+            ? `recurring:${product.billingInterval ?? "month"}`
+            : "one_time",
+        ),
+      );
+      if (schedules.size !== 1) {
+        return res.status(409).json({
+          message: "Checkout offers must use the same billing schedule",
+        });
+      }
       const alreadyOwned = await db
         .select({ productId: entitlements.productId })
         .from(entitlements)
@@ -5510,6 +5519,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               titleSnapshot: product.title,
               unitAmount: product.price,
               quantity: 1,
+              productTypeSnapshot: product.productType,
+              billingModelSnapshot: product.billingModel,
+              billingIntervalSnapshot: product.billingInterval,
             })),
           )
           .returning();
@@ -5570,6 +5582,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allowedCategories = new Set([
         "Course",
         "Community",
+        "Membership",
         "Digital Asset",
         "Coaching",
         "Software",
@@ -5602,6 +5615,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(403)
           .json({ message: "You do not have access to that business" });
       }
+      let commercialTerms;
+      try {
+        commercialTerms = normalizeProductCommercialTerms({
+          productType: req.body?.productType,
+          billingModel: req.body?.billingModel,
+          billingInterval: req.body?.billingInterval,
+          category,
+        });
+      } catch (error) {
+        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid offer billing" });
+      }
       const product = await storage.createProduct({
         title: title.trim(),
         description: description.trim(),
@@ -5611,6 +5635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.dbUser!.id,
         businessId,
         status: "draft",
+        ...commercialTerms,
       });
       void emitProjectionEvent({
         aggregateType: "product",
@@ -5645,6 +5670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allowedCategories = new Set([
         "Course",
         "Community",
+        "Membership",
         "Digital Asset",
         "Coaching",
         "Software",
@@ -5721,7 +5747,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Invalid offer status" });
         status = req.body.status;
       }
-      const product = await storage.updateProduct(productId, {
+      let commercialTerms;
+      try {
+        commercialTerms = normalizeProductCommercialTerms({
+          productType: req.body?.productType ?? existing.productType,
+          billingModel: req.body?.billingModel ?? existing.billingModel,
+          billingInterval: Object.prototype.hasOwnProperty.call(req.body ?? {}, "billingInterval")
+            ? req.body.billingInterval
+            : existing.billingInterval,
+          category,
+        });
+      } catch (error) {
+        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid offer billing" });
+      }
+      let product = await storage.updateProduct(productId, {
         title: title.trim(),
         description: description.trim(),
         price: parsedPrice,
@@ -5730,7 +5769,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessId,
         payoutMode,
         status,
+        ...commercialTerms,
       });
+      if (
+        status === "published"
+        && !product.communityId
+        && ["community", "membership"].includes(product.productType)
+      ) {
+        const provisioned = await db.transaction(async (tx) => {
+          const [community] = await tx.insert(communities).values({
+            name: product.title,
+            description: product.description,
+            iconColor: "#1d9bf0",
+          }).returning();
+          const [claimed] = await tx.update(products).set({ communityId: community.id }).where(and(
+            eq(products.id, product.id),
+            isNull(products.communityId),
+          )).returning();
+          if (!claimed) {
+            await tx.delete(communities).where(eq(communities.id, community.id));
+            return null;
+          }
+          await tx.insert(communityMemberships).values({
+            userId: req.dbUser!.id,
+            communityId: community.id,
+            role: "owner",
+          }).onConflictDoNothing();
+          await tx.insert(channels).values({ communityId: community.id, name: "general" });
+          return claimed;
+        });
+        if (provisioned) product = { ...product, ...provisioned };
+      }
       void emitProjectionEvent({
         aggregateType: "product",
         aggregateId: product.id,
@@ -5966,8 +6035,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Community routes
   app.get("/api/communities", async (req, res) => {
     try {
-      const communities = await storage.getCommunities();
-      res.json(communities);
+      const communityRows = await storage.getCommunities();
+      if (process.env.CREATOROS_DEMO_MODE === "true" || communityRows.length === 0) {
+        return res.json(communityRows.map((community) => ({ ...community, accessProductId: null })));
+      }
+      const accessOffers = await db.select({ id: products.id, communityId: products.communityId })
+        .from(products)
+        .where(and(
+          eq(products.status, "published"),
+          inArray(products.communityId, communityRows.map((community) => community.id)),
+          inArray(products.productType, ["community", "membership"]),
+        ));
+      const offerByCommunity = new Map(accessOffers.map((offer) => [offer.communityId, offer.id]));
+      res.json(communityRows.map((community) => ({
+        ...community,
+        accessProductId: offerByCommunity.get(community.id) ?? null,
+      })));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch communities" });
     }
@@ -6008,7 +6091,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!community) {
         return res.status(404).json({ message: "Community not found" });
       }
-      res.json(community);
+      if (process.env.CREATOROS_DEMO_MODE === "true") {
+        return res.json({ ...community, accessProductId: null });
+      }
+      const [accessOffer] = await db.select({ id: products.id })
+        .from(products)
+        .where(and(
+          eq(products.communityId, community.id),
+          eq(products.status, "published"),
+          inArray(products.productType, ["community", "membership"]),
+        ))
+        .limit(1);
+      res.json({ ...community, accessProductId: accessOffer?.id ?? null });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch community" });
     }
@@ -6273,6 +6367,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(403)
           .json({ message: "You cannot join this community" });
       if (existing) return res.json(existing);
+      if (process.env.CREATOROS_DEMO_MODE !== "true") {
+        const [accessOffer] = await db.select({ id: products.id })
+          .from(products)
+          .where(and(
+            eq(products.communityId, communityId),
+            eq(products.status, "published"),
+            inArray(products.productType, ["community", "membership"]),
+          ))
+          .limit(1);
+        if (accessOffer) {
+          const [access] = await db.select({ id: entitlements.id })
+            .from(entitlements)
+            .where(and(
+              eq(entitlements.userId, req.dbUser!.id),
+              eq(entitlements.productId, accessOffer.id),
+              eq(entitlements.status, "active"),
+            ))
+            .limit(1);
+          if (!access) {
+            return res.status(402).json({
+              message: "Purchase this membership before joining its community",
+              productId: accessOffer.id,
+            });
+          }
+        }
+      }
       const membership = await storage.joinCommunity({
         userId: req.dbUser!.id,
         communityId,

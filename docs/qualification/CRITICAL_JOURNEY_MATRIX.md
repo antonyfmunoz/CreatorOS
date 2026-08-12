@@ -10,8 +10,8 @@ workflow, its evidence, or its recovery path.
 | Social | Create every supported post/story type, view, react, comment, save, repost once | creator, audience | persisted API response and refreshed feed/profile state |
 | Profiles | Navigate mentions, slide/click profile tabs, follow/unfollow | creator, audience | correct URL, selected navigation, persisted relationship |
 | Marketplace | Search, inspect a published product, save, add to cart | buyer | stable product identity and account-backed cart |
-| Commerce | Checkout, verify order, grant entitlement, view purchase | buyer | verified provider event, order, entitlement, notification |
-| Earnings | Connect creator payout account and inspect allocations | creator | creator-owned Connect status; platform revenue remains separate |
+| Commerce | Checkout a one-time or recurring offer, verify order, grant entitlement, view purchase, cancel renewal | buyer | verified provider event, billing snapshot, order, subscription state, entitlement, notification |
+| Earnings | Connect creator payout account and inspect one-time and recurring paid-invoice allocations | creator | creator-owned Connect status; provider-event idempotency; platform revenue remains separate |
 | Communities | Discover, join, enter, post, reply, poll, moderate, leave | member, moderator, owner | membership gate and durable channel state |
 | Conference room | Join, consent, record, transcribe, create notes/actions, review insights | member, host, approved AI role | attendance, consent, media lineage, review evidence |
 | Learning | Buy/access course, progress, complete assessment | learner, creator | entitlement, progress, score and unlock rules |

@@ -145,6 +145,8 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from product_reviews where user_id = ${userId} order by created_at`),
       exportRows(sql`select * from course_progress where user_id = ${userId} order by completed_at`),
       exportRows(sql`select * from course_assessment_attempts where user_id = ${userId} order by completed_at`),
+      exportRows(sql`select * from creator_payout_events where seller_user_id = ${userId} order by updated_at`),
+      exportRows(sql`select cpe.* from commerce_provider_events cpe join orders o on o.id = cpe.order_id where o.buyer_id = ${userId} or o.id in (select order_id from creator_earnings_allocations where seller_user_id = ${userId}) order by cpe.received_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from community_memberships where user_id = ${userId} order by joined_at`),
@@ -214,6 +216,7 @@ export async function buildAccountExport(user: User) {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],
       creatorEarnings: commerce[3], entitlements: commerce[4], cart: commerce[5],
       savedProducts: commerce[6], reviews: commerce[7], courseProgress: commerce[8], assessments: commerce[9],
+      creatorPayouts: commerce[10], providerEvents: commerce[11],
     },
     communities: {
       memberships: communities[0], moderation: communities[1], messages: communities[2],

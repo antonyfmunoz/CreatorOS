@@ -40,8 +40,11 @@ export async function settleOrder(input: SettleOrderInput) {
       }
       await tx.update(orders).set({
         status: "paid",
+        financialStatus: "paid",
         paymentProvider,
         providerReference,
+        providerPaymentReference: input.creatorPaymentIntentReference ?? order.providerPaymentReference,
+        lastProviderEventAt: new Date(),
         updatedAt: new Date(),
       }).where(and(eq(orders.id, order.id), eq(orders.status, order.status)));
     }
@@ -87,7 +90,10 @@ export async function settleOrder(input: SettleOrderInput) {
         status: "paid",
         paymentIntentReference: input.creatorPaymentIntentReference,
         updatedAt: new Date(),
-      }).where(eq(creatorEarningsAllocations.orderId, order.id));
+      }).where(and(
+        eq(creatorEarningsAllocations.orderId, order.id),
+        eq(creatorEarningsAllocations.status, "payment_required"),
+      ));
     }
 
     const [buyer] = await tx.select({

@@ -428,6 +428,20 @@
       "when": 1786504200000,
       "tag": "0060_profile_links",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1786507800000,
+      "tag": "0061_mvp_product_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1786511400000,
+      "tag": "0062_commerce_financial_lifecycle",
+      "breakpoints": true
     }
   ]
 }

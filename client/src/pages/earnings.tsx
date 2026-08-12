@@ -21,9 +21,13 @@ type Allocation = {
   platformFeeAmount: number;
   creatorNetAmount: number;
   status: string;
+  refundedAmount?: number;
+  reversedAmount?: number;
 };
+type PayoutEvent = { id: string; providerPayoutId: string; amount: number; currency: string; status: string; arrivalAt?: string | null; failureMessage?: string | null; updatedAt: string };
 type Earnings = {
   allocations: Allocation[];
+  payoutEvents: PayoutEvent[];
   totals: {
     grossAmount: number;
     platformFeeAmount: number;
@@ -259,6 +263,10 @@ export default function EarningsPage() {
               ))}
             </div>
           )}
+        </article>
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+          <h2 className="text-sm font-bold">Stripe payouts</h2>
+          {!earnings.data?.payoutEvents?.length ? <p className="mt-3 text-sm leading-6 text-zinc-500">Connected-account payout updates will appear here after Stripe schedules the first bank payout.</p> : <div className="mt-3 space-y-3">{earnings.data.payoutEvents.map((payout) => <div key={payout.id} className="flex items-start justify-between gap-3 border-t border-zinc-800 pt-3"><div><p className="text-sm font-semibold">{money(payout.amount)} payout</p><p className="mt-1 text-xs text-zinc-500">{payout.arrivalAt ? `Expected ${new Date(payout.arrivalAt).toLocaleDateString()}` : "Arrival date pending"}{payout.failureMessage ? ` · ${payout.failureMessage}` : ""}</p></div><span className="text-xs font-semibold capitalize text-zinc-400">{payout.status.replaceAll("_", " ")}</span></div>)}</div>}
         </article>
       </section>
     </main>

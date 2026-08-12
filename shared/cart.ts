@@ -22,6 +22,8 @@ export type CheckoutGroupItem = {
   creatorId: number;
   creatorName: string;
   payoutMode: "platform" | "creator";
+  billingModel?: "one_time" | "recurring";
+  billingInterval?: "month" | "year" | null;
   price: number;
 };
 
@@ -39,7 +41,11 @@ export function groupCartItemsForCheckout<T extends CheckoutGroupItem>(
   const groups = new Map<string, CartCheckoutGroup<T>>();
   for (const item of items) {
     const isCreatorPayout = item.payoutMode === "creator";
-    const key = isCreatorPayout ? `creator:${item.creatorId}` : "platform";
+    const schedule = item.billingModel === "recurring"
+      ? `recurring:${item.billingInterval ?? "month"}`
+      : "one_time";
+    const revenueOwner = isCreatorPayout ? `creator:${item.creatorId}` : "platform";
+    const key = `${revenueOwner}:${schedule}`;
     const existing = groups.get(key);
     if (existing) {
       existing.items.push(item);

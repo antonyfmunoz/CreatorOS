@@ -56,6 +56,9 @@ export interface Product {
   businessId?: string | null;
   payoutMode: 'platform' | 'creator';
   status: 'draft' | 'published' | 'archived';
+  productType: 'digital_download' | 'course' | 'community' | 'membership';
+  billingModel: 'one_time' | 'recurring';
+  billingInterval?: 'month' | 'year' | null;
   title: string;
   description: string;
   price: number;
@@ -113,6 +116,7 @@ export interface Community {
   description: string;
   iconColor: string;
   createdAt: string;
+  accessProductId?: number | null;
 }
 
 export interface Channel {

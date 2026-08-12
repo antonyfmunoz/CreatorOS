@@ -25,7 +25,7 @@ function CartLine({ item, onRemove }: { item: CartItem; onRemove: () => void }) 
         <h2 className="mt-1 truncate text-sm font-bold text-white">{item.title}</h2>
         <p className="mt-1 text-xs text-zinc-500">by {item.creatorName}</p>
         <div className="mt-3 flex items-center justify-between">
-          <strong className="text-sm text-white">${item.price.toFixed(2)}</strong>
+          <strong className="text-sm text-white">${item.price.toFixed(2)}{item.billingModel === "recurring" ? `/${item.billingInterval === "year" ? "year" : "month"}` : ""}</strong>
           <button onClick={onRemove} className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-500 hover:text-red-400" aria-label={`Remove ${item.title} from cart`}>
             <Trash2 className="h-3.5 w-3.5" /> Remove
           </button>
@@ -120,7 +120,7 @@ export default function CartPage() {
                 {group.items.map((item) => <CartLine key={item.id} item={item} onRemove={() => void removeItem(item.id)} />)}
               </div>
               <div className="border-t border-zinc-800 p-4">
-                <div className="mb-3 flex items-center justify-between text-sm font-bold"><span>Group total</span><span>${group.total.toFixed(2)}</span></div>
+                <div className="mb-3 flex items-center justify-between text-sm font-bold"><span>{group.items[0]?.billingModel === "recurring" ? "Recurring total" : "Group total"}</span><span>${group.total.toFixed(2)}{group.items[0]?.billingModel === "recurring" ? `/${group.items[0].billingInterval === "year" ? "year" : "month"}` : ""}</span></div>
                 <Button className="h-11 w-full rounded-xl bg-white font-bold text-black hover:bg-zinc-200" disabled={checkingOutGroup !== null || removingProductId !== null} onClick={() => void checkout(group)}>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   {checkingOutGroup === group.key ? "Opening secure checkout..." : `Checkout ${group.label}`}

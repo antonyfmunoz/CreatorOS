@@ -10,7 +10,12 @@ import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 
-const categories = ['Course', 'Community', 'Digital Asset', 'Coaching', 'Software'];
+const offerTypes = [
+  { value: 'digital_download', label: 'Digital download', category: 'Digital Asset' },
+  { value: 'course', label: 'Course', category: 'Course' },
+  { value: 'community', label: 'Community', category: 'Community' },
+  { value: 'membership', label: 'Membership', category: 'Membership' },
+] as const;
 type Business = { id: string; name: string; handle: string; isDefault: boolean };
 
 const ProductForm = () => {
@@ -24,6 +29,9 @@ const ProductForm = () => {
     description: '',
     price: '',
     category: 'Course',
+    productType: 'course',
+    billingModel: 'one_time',
+    billingInterval: 'month',
     businessId: '',
   });
   const { data: businesses = [] } = useQuery<Business[]>({
@@ -41,6 +49,9 @@ const ProductForm = () => {
         description: formData.description.trim(),
         price: Number(formData.price),
         category: formData.category,
+        productType: formData.productType,
+        billingModel: formData.billingModel,
+        billingInterval: formData.billingModel === 'recurring' ? formData.billingInterval : null,
         ...(formData.businessId ? { businessId: formData.businessId } : {}),
       };
       
@@ -59,6 +70,9 @@ const ProductForm = () => {
         description: '',
         price: '',
         category: 'Course',
+        productType: 'course',
+        billingModel: 'one_time',
+        billingInterval: 'month',
         businessId: '',
       });
       setLocation(`/products/${product.id}/edit`);
@@ -77,8 +91,14 @@ const ProductForm = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleSelectChange = (value: string) => {
-    setFormData(prev => ({ ...prev, category: value }));
+  const handleOfferTypeChange = (value: string) => {
+    const offer = offerTypes.find((candidate) => candidate.value === value) ?? offerTypes[0];
+    setFormData(prev => ({
+      ...prev,
+      category: offer.category,
+      productType: offer.value,
+      billingModel: offer.value === 'membership' ? 'recurring' : prev.billingModel === 'recurring' && offer.value !== 'community' ? 'one_time' : prev.billingModel,
+    }));
   };
   
   const handleSubmit = (e: React.FormEvent) => {
@@ -140,21 +160,40 @@ const ProductForm = () => {
             </div>
             
             <div>
-              <Label htmlFor="category" className="mb-2 block text-sm text-zinc-300">Category</Label>
-              <Select onValueChange={handleSelectChange} value={formData.category}>
+              <Label htmlFor="product-type" className="mb-2 block text-sm text-zinc-300">Offer type</Label>
+              <Select onValueChange={handleOfferTypeChange} value={formData.productType}>
                 <SelectTrigger className="border-zinc-700 bg-black text-white">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select offer type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
+                  {offerTypes.map(offer => (
+                    <SelectItem key={offer.value} value={offer.value}>
+                      {offer.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
+          {(formData.productType === 'community' || formData.productType === 'membership') && <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="mb-2 block text-sm text-zinc-300">Payment schedule</Label>
+              <Select value={formData.billingModel} onValueChange={(billingModel) => setFormData((current) => ({ ...current, billingModel }))}>
+                <SelectTrigger className="border-zinc-700 bg-black text-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {formData.productType === 'community' && <SelectItem value="one_time">One-time access</SelectItem>}
+                  <SelectItem value="recurring">Recurring membership</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {formData.billingModel === 'recurring' && <div>
+              <Label className="mb-2 block text-sm text-zinc-300">Billing interval</Label>
+              <Select value={formData.billingInterval} onValueChange={(billingInterval) => setFormData((current) => ({ ...current, billingInterval }))}>
+                <SelectTrigger className="border-zinc-700 bg-black text-white"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="month">Monthly</SelectItem><SelectItem value="year">Yearly</SelectItem></SelectContent>
+              </Select>
+            </div>}
+          </div>}
           {businesses.length > 1 && <div>
             <Label className="mb-2 block text-sm text-zinc-300">Business</Label>
             <Select value={formData.businessId} onValueChange={(businessId) => setFormData((current) => ({ ...current, businessId }))}>

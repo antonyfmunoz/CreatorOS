@@ -3,7 +3,7 @@ import type { Product } from "@/types";
 const CART_KEY = "creativesos.cart.v1";
 export const CART_UPDATED_EVENT = "creativesos:cart-updated";
 
-export type CartItem = Pick<Product, "id" | "title" | "price" | "category" | "imageUrl" | "payoutMode"> & { creatorId: number; creatorName: string };
+export type CartItem = Pick<Product, "id" | "title" | "price" | "category" | "imageUrl" | "payoutMode" | "billingModel" | "billingInterval"> & { creatorId: number; creatorName: string };
 
 function readCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -18,7 +18,7 @@ export const getCartItems = () => readCart();
 export function addToCart(product: Product) {
   const items = readCart();
   if (items.some((item) => item.id === product.id)) return false;
-  writeCart([...items, { id: product.id, title: product.title, price: product.price, category: product.category, imageUrl: product.imageUrl, payoutMode: product.payoutMode, creatorId: product.userId, creatorName: product.user.displayName }]);
+  writeCart([...items, { id: product.id, title: product.title, price: product.price, category: product.category, imageUrl: product.imageUrl, payoutMode: product.payoutMode, billingModel: product.billingModel, billingInterval: product.billingInterval, creatorId: product.userId, creatorName: product.user.displayName }]);
   return true;
 }
 export const removeFromCart = (productId: number) => writeCart(readCart().filter((item) => item.id !== productId));

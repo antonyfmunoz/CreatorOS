@@ -1,8 +1,8 @@
 export type MarketplaceSort = "newest" | "price_low" | "price_high" | "top_rated";
-export type MarketplaceCategory = "all" | "courses" | "digital_assets";
+export type MarketplaceCategory = "all" | "courses" | "communities" | "digital_assets";
 
 const sorts = new Set<MarketplaceSort>(["newest", "price_low", "price_high", "top_rated"]);
-const categories = new Set<MarketplaceCategory>(["all", "courses", "digital_assets"]);
+const categories = new Set<MarketplaceCategory>(["all", "courses", "communities", "digital_assets"]);
 
 function boundedPositiveInteger(value: unknown, fallback: number, maximum: number) {
   const parsed = typeof value === "string" ? Number(value) : NaN;

@@ -161,6 +161,63 @@ test("marketplace saves and cart are durable and account-scoped", async ({ page 
   await expect(page.getByRole("heading", { name: product.title })).toBeVisible();
 });
 
+test("recurring community offers provision gated access and compatible checkout", async ({ page }, testInfo) => {
+  const { owner, peer } = actors(testInfo);
+  const marker = `${testInfo.project.name}-${Date.now()}`;
+  const title = `Membership ${marker}`;
+  const createdResponse = await api(page, owner, "POST", "/api/products", {
+    title,
+    description: "A paid community qualification offer",
+    price: 19,
+    category: "Membership",
+    imageUrl: null,
+    productType: "membership",
+    billingModel: "recurring",
+    billingInterval: "month",
+  });
+  await expectOk(createdResponse);
+  const created = await createdResponse.json();
+  const publishedResponse = await api(page, owner, "PATCH", `/api/products/${created.id}`, {
+    title,
+    description: "A paid community qualification offer",
+    price: 19,
+    category: "Membership",
+    imageUrl: null,
+    productType: "membership",
+    billingModel: "recurring",
+    billingInterval: "month",
+    payoutMode: "platform",
+    status: "published",
+  });
+  await expectOk(publishedResponse);
+  const published = await publishedResponse.json();
+  expect(published.communityId).toBeTruthy();
+
+  expect((await api(page, peer, "GET", `/api/communities/${published.communityId}/channels`)).status()).toBe(403);
+  const unpaidJoin = await api(page, peer, "POST", `/api/communities/${published.communityId}/join`);
+  expect(unpaidJoin.status()).toBe(402);
+  expect(await unpaidJoin.json()).toMatchObject({ productId: published.id });
+  const orderResponse = await api(page, peer, "POST", "/api/orders", {
+    productIds: [published.id],
+    idempotencyKey: `qualification-membership-${marker}`,
+  });
+  await expectOk(orderResponse);
+  const order = await orderResponse.json();
+  expect(order.items).toHaveLength(1);
+  expect(order.items[0]).toMatchObject({
+    productTypeSnapshot: "membership",
+    billingModelSnapshot: "recurring",
+    billingIntervalSnapshot: "month",
+  });
+
+  await page.goto("/marketplace");
+  const search = page.getByRole("searchbox", { name: "Search marketplace" });
+  await search.fill(title);
+  await page.locator("main").getByRole("button", { name: "Communities" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(page.getByText("$19.00/month", { exact: true })).toBeVisible();
+});
+
 test("community owner, member and moderator lifecycle is enforced", async ({ page }, testInfo) => {
   const { owner, peer, third } = actors(testInfo);
   const marker = `${testInfo.project.name}-${Date.now()}`;

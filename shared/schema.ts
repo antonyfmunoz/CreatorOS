@@ -1565,6 +1565,12 @@ export const products = pgTable("products", {
   // Offers are prepared privately first. Existing rows are backfilled as
   // published so this lifecycle never takes a live offer offline.
   status: text("status").notNull().default("draft"),
+  // MVP commerce is deliberately limited to the four offer types that close
+  // the creator acquisition -> access -> revenue loop. Later product types use
+  // separate additive tables instead of overloading category labels.
+  productType: text("product_type").notNull().default("digital_download"),
+  billingModel: text("billing_model").notNull().default("one_time"),
+  billingInterval: text("billing_interval"),
   title: text("title").notNull(),
   description: text("description").notNull(),
   price: doublePrecision("price").notNull(),
@@ -1816,6 +1822,19 @@ export const orders = pgTable("orders", {
   totalAmount: doublePrecision("total_amount").notNull().default(0),
   paymentProvider: text("payment_provider"),
   providerReference: text("provider_reference"),
+  // The Checkout Session identifies the buyer-facing flow while the payment
+  // reference identifies the durable Stripe money object used by refunds and
+  // disputes. Keeping both prevents a later financial event from being
+  // matched by amount or customer-controlled metadata.
+  providerPaymentReference: text("provider_payment_reference"),
+  providerSubscriptionReference: text("provider_subscription_reference"),
+  subscriptionStatus: text("subscription_status"),
+  subscriptionCancelAt: timestamp("subscription_cancel_at"),
+  subscriptionCancelAtPeriodEnd: boolean("subscription_cancel_at_period_end").notNull().default(false),
+  financialStatus: text("financial_status").notNull().default("open"),
+  refundedAmount: doublePrecision("refunded_amount").notNull().default(0),
+  disputedAmount: doublePrecision("disputed_amount").notNull().default(0),
+  lastProviderEventAt: timestamp("last_provider_event_at"),
   idempotencyKey: text("idempotency_key").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1836,6 +1855,11 @@ export const creatorPaymentAccounts = pgTable("creator_payment_accounts", {
   detailsSubmitted: boolean("details_submitted").notNull().default(false),
   chargesEnabled: boolean("charges_enabled").notNull().default(false),
   payoutsEnabled: boolean("payouts_enabled").notNull().default(false),
+  disabledReason: text("disabled_reason"),
+  requirementsCurrentlyDue: json("requirements_currently_due").$type<string[]>().notNull().default([]),
+  requirementsPastDue: json("requirements_past_due").$type<string[]>().notNull().default([]),
+  country: text("country"),
+  defaultCurrency: text("default_currency"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1850,8 +1874,7 @@ export const creatorEarningsAllocations = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
       .references(() => orders.id, { onDelete: "cascade" })
-      .notNull()
-      .unique(),
+      .notNull(),
     sellerUserId: integer("seller_user_id")
       .references(() => users.id, { onDelete: "restrict" })
       .notNull(),
@@ -1861,10 +1884,81 @@ export const creatorEarningsAllocations = pgTable(
     platformFeeAmount: doublePrecision("platform_fee_amount").notNull(),
     creatorNetAmount: doublePrecision("creator_net_amount").notNull(),
     paymentIntentReference: text("payment_intent_reference"),
+    providerEventReference: text("provider_event_reference"),
     status: text("status").notNull().default("payment_required"),
+    refundedAmount: doublePrecision("refunded_amount").notNull().default(0),
+    disputedAmount: doublePrecision("disputed_amount").notNull().default(0),
+    reversedAmount: doublePrecision("reversed_amount").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
+  (table) => ({
+    orderIdx: index("creator_earnings_allocations_order_id_idx").on(table.orderId),
+    providerEventUnique: uniqueIndex("creator_earnings_allocations_provider_event_unique").on(table.providerEventReference),
+    pendingOrderUnique: uniqueIndex("creator_earnings_allocations_pending_order_unique")
+      .on(table.orderId)
+      .where(sql`${table.providerEventReference} is null`),
+  }),
+);
+
+// Every verified provider event receives one durable processing row before it
+// can mutate commerce state. Raw webhook payloads are deliberately not stored;
+// the hash, resource references, result and bounded error are enough for
+// idempotency, reconciliation and incident response without retaining payment
+// data that CreativesOS does not need.
+export const commerceProviderEvents = pgTable(
+  "commerce_provider_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    livemode: boolean("livemode").notNull().default(false),
+    status: text("status").notNull().default("processing"),
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+    connectedAccountId: text("connected_account_id"),
+    providerObjectReference: text("provider_object_reference"),
+    amount: doublePrecision("amount"),
+    currency: text("currency"),
+    payloadSha256: text("payload_sha256").notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    providerEventUnique: unique("commerce_provider_event_unique").on(table.provider, table.providerEventId),
+    orderCreatedIndex: index("commerce_provider_events_order_created_idx").on(table.orderId, table.receivedAt),
+    statusUpdatedIndex: index("commerce_provider_events_status_updated_idx").on(table.status, table.updatedAt),
+  }),
+);
+
+// Payouts are connected-account cash movements rather than order payments, so
+// they need their own immutable provider identity and status history. This lets
+// creators see whether Stripe has merely scheduled, paid, canceled or failed a
+// payout without conflating that state with earnings allocation.
+export const creatorPayoutEvents = pgTable(
+  "creator_payout_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerUserId: integer("seller_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    stripeConnectedAccountId: text("stripe_connected_account_id").notNull(),
+    providerPayoutId: text("provider_payout_id").notNull().unique(),
+    amount: doublePrecision("amount").notNull(),
+    currency: text("currency").notNull(),
+    status: text("status").notNull(),
+    arrivalAt: timestamp("arrival_at"),
+    failureCode: text("failure_code"),
+    failureMessage: text("failure_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sellerUpdatedIndex: index("creator_payout_events_seller_updated_idx").on(table.sellerUserId, table.updatedAt),
+  }),
 );
 
 // OAuth state is one-time, short-lived, and bound to a local creator. The
@@ -1890,6 +1984,9 @@ export const orderItems = pgTable("order_items", {
   titleSnapshot: text("title_snapshot").notNull(),
   unitAmount: doublePrecision("unit_amount").notNull(),
   quantity: integer("quantity").notNull().default(1),
+  productTypeSnapshot: text("product_type_snapshot").notNull().default("digital_download"),
+  billingModelSnapshot: text("billing_model_snapshot").notNull().default("one_time"),
+  billingIntervalSnapshot: text("billing_interval_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -35,9 +35,29 @@ describe("cart checkout routing", () => {
       ids: group.items.map((item) => item.id),
       total: group.total,
     }))).toEqual([
-      { key: "platform", ids: [1, 2], total: 12 },
-      { key: "creator:4", ids: [3, 4], total: 24 },
-      { key: "creator:5", ids: [5], total: 17 },
+      { key: "platform:one_time", ids: [1, 2], total: 12 },
+      { key: "creator:4:one_time", ids: [3, 4], total: 24 },
+      { key: "creator:5:one_time", ids: [5], total: 17 },
+    ]);
+  });
+
+  it("separates one-time, monthly, and yearly offers into compatible checkouts", () => {
+    const base = {
+      creatorId: 4,
+      creatorName: "A",
+      payoutMode: "creator" as const,
+      price: 10,
+    };
+    const groups = groupCartItemsForCheckout([
+      { ...base, id: 1, billingModel: "one_time" },
+      { ...base, id: 2, billingModel: "recurring", billingInterval: "month" },
+      { ...base, id: 3, billingModel: "recurring", billingInterval: "year" },
+    ]);
+
+    expect(groups.map((group) => group.key)).toEqual([
+      "creator:4:one_time",
+      "creator:4:recurring:month",
+      "creator:4:recurring:year",
     ]);
   });
 });

@@ -92,7 +92,7 @@ function ProductGrid({
               </p>
               <div className="mt-1 flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-white">
-                  ${product.price.toFixed(2)}
+                  ${product.price.toFixed(2)}{product.billingModel === "recurring" ? `/${product.billingInterval === "year" ? "year" : "month"}` : ""}
                 </span>
                 {product.reviewCount > 0 && (
                   <span className="text-[11px] text-zinc-500">
@@ -128,43 +128,37 @@ function ProductGrid({
 
 function CommunityGrid({
   communities,
+  offers,
   emptyMessage,
+  savedProductIds,
+  savingProductId,
+  onSave,
 }: {
   communities: Community[];
+  offers: Product[];
   emptyMessage: string;
+  savedProductIds: number[];
+  savingProductId?: number | null;
+  onSave: (productId: number, isSaved: boolean) => void;
 }) {
-  if (communities.length === 0) {
-    return (
-      <p className="py-12 text-center text-sm text-zinc-500">{emptyMessage}</p>
-    );
+  if (communities.length === 0 && offers.length === 0) {
+    return <p className="py-12 text-center text-sm text-zinc-500">{emptyMessage}</p>;
   }
 
-  return (
-    <div className="space-y-3">
-      {communities.map((community) => (
-        <Link
-          key={community.id}
-          href={`/communities/${community.id}`}
-          className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 transition-colors hover:bg-zinc-900"
-        >
-          <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${community.iconColor}`}
-          >
-            <Users className="h-5 w-5 text-white" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-bold text-white">
-              {community.name}
-            </h2>
-            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-500">
-              {community.description}
-            </p>
-          </div>
-          <span className="shrink-0 text-xs font-bold text-white">View</span>
-        </Link>
-      ))}
-    </div>
-  );
+  return <div className="space-y-7">
+    {communities.length > 0 && <div className="space-y-3">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Free communities</h2>
+      {communities.map((community) => <Link key={community.id} href={`/communities/${community.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 transition-colors hover:bg-zinc-900">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${community.iconColor}`}><Users className="h-5 w-5 text-white" /></div>
+        <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-white">{community.name}</h3><p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-500">{community.description}</p></div>
+        <span className="shrink-0 text-xs font-bold text-white">View</span>
+      </Link>)}
+    </div>}
+    {offers.length > 0 && <div>
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Community offers</h2>
+      <ProductGrid products={offers} emptyMessage={emptyMessage} savedProductIds={savedProductIds} savingProductId={savingProductId} onSave={onSave} />
+    </div>}
+  </div>;
 }
 
 export default function Marketplace() {
@@ -182,6 +176,8 @@ export default function Marketplace() {
   const catalogCategory =
     category === "Courses"
       ? "courses"
+      : category === "Communities"
+        ? "communities"
       : category === "Digital Assets"
         ? "digital_assets"
         : "all";
@@ -211,6 +207,7 @@ export default function Marketplace() {
       },
     });
   const products = catalog?.items ?? [];
+  const { data: communities = [], isLoading: isLoadingCommunityDirectory } = useQuery<Community[]>({ queryKey: ["/api/communities"] });
   const { data: purchases = [], isLoading: isLoadingPurchases } = useQuery<
     Purchase[]
   >({ queryKey: ["/api/purchases"] });
@@ -239,10 +236,6 @@ export default function Marketplace() {
         queryKey: ["/api/marketplace/saved-products"],
       }),
   });
-  const { data: communities = [], isLoading: isLoadingCommunities } = useQuery<
-    Community[]
-  >({ queryKey: ["/api/communities"] });
-
   const purchasedProducts = purchases.map((purchase) => purchase.product);
   const savedProductIds = savedProducts.map((product) => product.id);
   const isLoading =
@@ -260,15 +253,9 @@ export default function Marketplace() {
   };
   const visibleCommunities = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return communities.filter(
-      (community) =>
-        !query ||
-        [community.name, community.description].some((value) =>
-          value.toLowerCase().includes(query),
-        ),
-    );
+    return communities.filter((community) => !community.accessProductId && (!query || [community.name, community.description].some((value) => value.toLowerCase().includes(query))));
   }, [communities, searchQuery]);
-
+  const isLoadingCommunities = isLoadingProducts || isLoadingCommunityDirectory;
   return (
     <main className="min-h-[calc(100dvh-3.5rem)] bg-black pb-20 text-white">
       <header className="sticky top-0 z-30 border-b border-zinc-800 bg-black">
@@ -361,6 +348,10 @@ export default function Marketplace() {
               ) : (
                 <CommunityGrid
                   communities={visibleCommunities}
+                  offers={products}
+                  savedProductIds={savedProductIds}
+                  savingProductId={saveMutation.isPending ? saveMutation.variables?.productId : null}
+                  onSave={saveProduct}
                   emptyMessage="No communities match those filters yet."
                 />
               )

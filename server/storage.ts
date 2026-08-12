@@ -37,8 +37,16 @@ type TaggedUserProfile = {
   positionY: number;
 };
 
-type ProductInput = InsertProduct & { businessId?: string | null; communityId?: number | null; payoutMode?: "platform" | "creator"; status?: "draft" | "published" | "archived" };
-type ProductUpdate = Pick<ProductInput, "title" | "description" | "price" | "category" | "imageUrl" | "payoutMode" | "status"> & { businessId?: string | null; communityId?: number | null };
+type ProductInput = InsertProduct & {
+  businessId?: string | null;
+  communityId?: number | null;
+  payoutMode?: "platform" | "creator";
+  status?: "draft" | "published" | "archived";
+  productType?: "digital_download" | "course" | "community" | "membership";
+  billingModel?: "one_time" | "recurring";
+  billingInterval?: "month" | "year" | null;
+};
+type ProductUpdate = Pick<ProductInput, "title" | "description" | "price" | "category" | "imageUrl" | "payoutMode" | "status" | "productType" | "billingModel" | "billingInterval"> & { businessId?: string | null; communityId?: number | null };
 
 // Storage interface for the application
 export interface IStorage {
@@ -1143,6 +1151,9 @@ export class MemStorage implements IStorage {
       communityId: insertProduct.communityId ?? null,
       payoutMode: insertProduct.payoutMode ?? "platform",
       status: insertProduct.status ?? "draft",
+      productType: insertProduct.productType ?? "digital_download",
+      billingModel: insertProduct.billingModel ?? "one_time",
+      billingInterval: insertProduct.billingModel === "recurring" ? insertProduct.billingInterval ?? "month" : null,
     };
     this.products.set(id, product);
     return product;

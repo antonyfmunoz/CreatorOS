@@ -21,19 +21,21 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types";
 
-const categories = [
-  "Course",
-  "Community",
-  "Digital Asset",
-  "Coaching",
-  "Software",
-];
+const offerTypes = [
+  { value: "digital_download", label: "Digital download", category: "Digital Asset" },
+  { value: "course", label: "Course", category: "Course" },
+  { value: "community", label: "Community", category: "Community" },
+  { value: "membership", label: "Membership", category: "Membership" },
+] as const;
 type Business = { id: string; name: string; isDefault: boolean };
 type FormState = {
   title: string;
   description: string;
   price: string;
   category: string;
+  productType: Product["productType"];
+  billingModel: Product["billingModel"];
+  billingInterval: "month" | "year";
   imageUrl: string;
   businessId: string;
   payoutMode: "platform" | "creator";
@@ -88,6 +90,9 @@ export default function OfferEditor() {
     description: "",
     price: "",
     category: "Course",
+    productType: "course",
+    billingModel: "one_time",
+    billingInterval: "month",
     imageUrl: "",
     businessId: "",
     payoutMode: "platform",
@@ -129,6 +134,9 @@ export default function OfferEditor() {
         description: product.description,
         price: String(product.price),
         category: product.category,
+        productType: product.productType ?? "digital_download",
+        billingModel: product.billingModel ?? "one_time",
+        billingInterval: product.billingInterval ?? "month",
         imageUrl: product.imageUrl ?? "",
         businessId: product.businessId ?? "",
         payoutMode: product.payoutMode ?? "platform",
@@ -150,6 +158,7 @@ export default function OfferEditor() {
           price: Number(form.price),
           imageUrl: form.imageUrl.trim() || null,
           businessId: form.businessId || null,
+          billingInterval: form.billingModel === "recurring" ? form.billingInterval : null,
         })
       ).json(),
     onSuccess: (product: Product) => {
@@ -400,18 +409,39 @@ export default function OfferEditor() {
             />
           </div>
           <div>
-            <Label className="text-zinc-300">Category</Label>
+            <Label className="text-zinc-300">Offer type</Label>
             <select
-              value={form.category}
-              onChange={(event) => update("category", event.target.value)}
+              value={form.productType}
+              onChange={(event) => {
+                const offer = offerTypes.find((candidate) => candidate.value === event.target.value) ?? offerTypes[0];
+                setForm((current) => ({
+                  ...current,
+                  productType: offer.value,
+                  category: offer.category,
+                  billingModel: offer.value === "membership" ? "recurring" : current.billingModel === "recurring" && offer.value !== "community" ? "one_time" : current.billingModel,
+                }));
+              }}
               className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white"
             >
-              {categories.map((category) => (
-                <option key={category}>{category}</option>
+              {offerTypes.map((offer) => (
+                <option key={offer.value} value={offer.value}>{offer.label}</option>
               ))}
             </select>
           </div>
         </div>
+        {(form.productType === "community" || form.productType === "membership") && <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-zinc-300">Payment schedule</Label>
+            <select value={form.billingModel} onChange={(event) => update("billingModel", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white">
+              {form.productType === "community" && <option value="one_time">One-time access</option>}
+              <option value="recurring">Recurring membership</option>
+            </select>
+          </div>
+          {form.billingModel === "recurring" && <div>
+            <Label className="text-zinc-300">Billing interval</Label>
+            <select value={form.billingInterval} onChange={(event) => update("billingInterval", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white"><option value="month">Monthly</option><option value="year">Yearly</option></select>
+          </div>}
+        </div>}
         <div>
           <Label className="text-zinc-300">Cover image URL</Label>
           <Input
@@ -441,7 +471,7 @@ export default function OfferEditor() {
         )}
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-          {form.category === "Course" && (
+          {form.productType === "course" && (
             <div className="mb-5 rounded-xl border border-zinc-800 bg-black p-3">
               <div className="flex items-start gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900">

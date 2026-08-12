@@ -57,10 +57,17 @@ const requiredTables = [
   "relationship_operational_alerts",
   "relationship_room_bindings",
   "account_privacy_requests",
+  "commerce_provider_events",
+  "creator_payout_events",
 ];
 
 const requiredColumns = {
   users: ["profile_links", "push_notifications_enabled", "color_mode"],
+  products: ["product_type", "billing_model", "billing_interval"],
+  orders: ["provider_payment_reference", "provider_subscription_reference", "subscription_status", "subscription_cancel_at", "subscription_cancel_at_period_end", "financial_status", "refunded_amount", "disputed_amount", "last_provider_event_at"],
+  order_items: ["product_type_snapshot", "billing_model_snapshot", "billing_interval_snapshot"],
+  creator_payment_accounts: ["disabled_reason", "requirements_currently_due", "requirements_past_due", "country", "default_currency"],
+  creator_earnings_allocations: ["provider_event_reference", "refunded_amount", "disputed_amount", "reversed_amount"],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
