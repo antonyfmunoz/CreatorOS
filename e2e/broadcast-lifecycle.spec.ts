@@ -210,5 +210,9 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await page.getByLabel("Transition type").selectOption("fade");
   await expect(page.getByLabel("Fade duration milliseconds")).toBeVisible();
   await page.getByRole("button", { name: "Add text" }).click();
-  await expect(page.getByText("Lower third", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Text", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Lower third", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Lower third", exact: true })).toHaveCount(2);
+  await page.getByLabel("Broadcast resolution").selectOption("1080x1920");
+  await expect(page.getByLabel("Broadcast resolution")).toHaveValue("1080x1920");
 });

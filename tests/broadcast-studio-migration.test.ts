@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(new URL("../migrations/0065_broadcast_studio.sql", import.meta.url), "utf8");
+const multiDestinationMigration = readFileSync(new URL("../migrations/0066_broadcast_multidestination.sql", import.meta.url), "utf8");
 
 describe("Broadcast Studio migration", () => {
   it("persists studios, encrypted destinations, and durable sessions", () => {
@@ -16,5 +17,9 @@ describe("Broadcast Studio migration", () => {
     expect(migration).toContain("'starting', 'live', 'stopping', 'complete', 'error', 'interrupted'");
     expect(migration).toContain("ON DELETE cascade");
   });
-});
 
+  it("adds durable multi-destination lineage", () => {
+    expect(multiDestinationMigration).toContain('ADD COLUMN IF NOT EXISTS "destination_ids" json');
+    expect(multiDestinationMigration).toContain('json_build_array("destination_id")');
+  });
+});

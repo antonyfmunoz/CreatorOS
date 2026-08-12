@@ -463,6 +463,13 @@
       "when": 1786561200000,
       "tag": "0065_broadcast_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1786568400000,
+      "tag": "0066_broadcast_multidestination",
+      "breakpoints": true
     }
   ]
 }

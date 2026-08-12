@@ -327,7 +327,7 @@ async function finalizeRuntime(runtime: Runtime, code: number | null) {
 function buildFfmpegArgs(
   input: z.infer<typeof broadcastSessionStartSchema>,
   studio: typeof broadcastStudios.$inferSelect,
-  destination: typeof broadcastDestinations.$inferSelect | null,
+  destinations: Array<typeof broadcastDestinations.$inferSelect>,
   outputPath: string | null,
 ) {
   const { width, height, fps } = studio.config.canvas;
@@ -379,12 +379,15 @@ function buildFfmpegArgs(
     "-stats_period",
     "1",
   );
-  if (input.outputMode === "stream" && destination)
-    args.push(
-      "-f",
-      destination.protocol === "srt" ? "mpegts" : "flv",
-      destinationWithKey(destination),
-    );
+  if (input.outputMode === "stream" && destinations.length) {
+    for (const destination of destinations) {
+      args.push(
+        "-f",
+        destination.protocol === "srt" ? "mpegts" : "flv",
+        destinationWithKey(destination),
+      );
+    }
+  }
   else if (outputPath)
     args.push(
       "-movflags",
@@ -399,7 +402,7 @@ function buildFfmpegArgs(
 async function launchRuntime(
   session: typeof broadcastSessions.$inferSelect,
   studio: typeof broadcastStudios.$inferSelect,
-  destination: typeof broadcastDestinations.$inferSelect | null,
+  destinations: Array<typeof broadcastDestinations.$inferSelect>,
   request: z.infer<typeof broadcastSessionStartSchema>,
 ) {
   const temp =
@@ -409,7 +412,7 @@ async function launchRuntime(
   const outputPath = temp ? path.join(temp, "recording.mp4") : null;
   const child = spawn(
     "ffmpeg",
-    buildFfmpegArgs(request, studio, destination, outputPath),
+    buildFfmpegArgs(request, studio, destinations, outputPath),
     { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
   ) as ChildProcessWithoutNullStreams;
   const runtime: Runtime = {
@@ -721,18 +724,23 @@ export function registerBroadcastStudioRoutes(app: Express) {
         return res
           .status(400)
           .json({ message: parsed.error.issues[0]?.message });
-      const destination = parsed.data.destinationId
-        ? await ownedDestination(req.dbUser!.id, parsed.data.destinationId)
-        : null;
-      if (parsed.data.outputMode === "stream" && !destination)
+      const requestedDestinationIds = Array.from(new Set([
+        ...parsed.data.destinationIds,
+        ...(parsed.data.destinationId ? [parsed.data.destinationId] : []),
+      ]));
+      const destinations = (await Promise.all(requestedDestinationIds.map((id) => ownedDestination(req.dbUser!.id, id))))
+        .filter((value): value is NonNullable<typeof value> => Boolean(value));
+      if (destinations.length !== requestedDestinationIds.length)
+        return res.status(404).json({ message: "One or more destinations were not found" });
+      if (parsed.data.outputMode === "stream" && !destinations.length)
         return res
           .status(400)
           .json({ message: "Choose a streaming destination" });
-      if (destination && destination.status !== "active")
+      if (destinations.some((destination) => destination.status !== "active"))
         return res.status(409).json({ message: "Destination is disabled" });
       let sessionId: string | null = null;
       try {
-        if (destination)
+        for (const destination of destinations)
           await validatePublicDestination(
             destination.protocol,
             destination.ingestUrl,
@@ -743,14 +751,15 @@ export function registerBroadcastStudioRoutes(app: Express) {
             studioId: studio.id,
             ownerUserId: req.dbUser!.id,
             businessId: studio.businessId,
-            destinationId: destination?.id ?? null,
+            destinationId: destinations[0]?.id ?? null,
+            destinationIds: destinations.map((destination) => destination.id),
             outputMode: parsed.data.outputMode,
             sourceMode: parsed.data.sourceMode,
             runtimeMachineId,
           })
           .returning();
         sessionId = session.id;
-        await launchRuntime(session, studio, destination, parsed.data);
+        await launchRuntime(session, studio, destinations, parsed.data);
         await emitProjectionEvent({
           aggregateType: "broadcast_studio",
           aggregateId: studio.id,
@@ -762,7 +771,8 @@ export function registerBroadcastStudioRoutes(app: Express) {
           payload: {
             businessId: studio.businessId,
             sessionId: session.id,
-            destinationId: destination?.id ?? null,
+            destinationId: destinations[0]?.id ?? null,
+            destinationIds: destinations.map((destination) => destination.id),
           },
           idempotencyKey: `broadcast:${session.id}:started`,
         });

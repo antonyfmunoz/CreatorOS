@@ -329,7 +329,7 @@ function AppContent() {
         Skip to main content
       </a>
       <div
-        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location === "/broadcast" ? " app-container-workspace" : ""}`}
+        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location === "/broadcast" || location === "/cut-studio" ? " app-container-workspace" : ""}`}
       >
         <div id="main-content" tabIndex={-1} className="tab-content">
           <RouteErrorBoundary>

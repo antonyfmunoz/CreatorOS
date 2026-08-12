@@ -111,6 +111,7 @@ const sourceDefaults = {
   volume: 1,
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+  presentation: { style: "plain" as const, secondaryText: null, backgroundColor: null, fontScale: 1, align: "center" as const, scrollSpeed: 90, countdownEndsAt: null },
   transform: {
     x: 0.1,
     y: 0.1,
@@ -150,7 +151,7 @@ export default function BroadcastStudioPage() {
   const [studio, setStudio] = useState<Studio | null>(null);
   const [config, setConfig] = useState<BroadcastStudioConfig | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [destinationId, setDestinationId] = useState("");
+  const [destinationIds, setDestinationIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [destinationForm, setDestinationForm] = useState({
@@ -362,11 +363,41 @@ export default function BroadcastStudioPage() {
         ctx.rotate((t.rotation * Math.PI) / 180);
         ctx.translate(-w / 2, -h / 2);
         if (source.type === "text") {
+          const presentation = source.presentation ?? sourceDefaults.presentation;
+          const style = presentation.style;
+          const align = presentation.align;
+          const padding = Math.max(12, h * 0.12);
+          if (style !== "plain") {
+            ctx.fillStyle = presentation.backgroundColor ?? "#101014";
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = "#1d9bf0";
+            ctx.fillRect(0, 0, Math.max(7, w * 0.012), h);
+          }
           ctx.fillStyle = source.color ?? "#ffffff";
-          ctx.font = `700 ${Math.max(18, h * 0.45)}px Inter, sans-serif`;
-          ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(source.text ?? source.name, w / 2, h / 2, w);
+          ctx.textAlign = align;
+          const textX = align === "left" ? padding : align === "right" ? w - padding : w / 2;
+          if (style === "ticker") {
+            const label = source.text ?? source.name;
+            ctx.font = `700 ${Math.max(18, h * 0.42 * presentation.fontScale)}px Inter, sans-serif`;
+            const textWidth = ctx.measureText(label).width;
+            const movingX = w - ((performance.now() / 1000 * presentation.scrollSpeed) % (w + textWidth));
+            ctx.textAlign = "left";
+            ctx.fillText(label, movingX, h / 2);
+          } else if (style === "countdown") {
+            const remaining = Math.max(0, Math.ceil(((presentation.countdownEndsAt ?? Date.now()) - Date.now()) / 1000));
+            const countdown = `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(remaining % 60).padStart(2, "0")}`;
+            ctx.font = `800 ${Math.max(22, h * 0.52 * presentation.fontScale)}px ui-monospace, monospace`;
+            ctx.fillText(countdown, textX, h / 2);
+          } else {
+            ctx.font = `700 ${Math.max(18, h * (style === "lower_third" ? 0.32 : 0.45) * presentation.fontScale)}px Inter, sans-serif`;
+            ctx.fillText(source.text ?? source.name, textX, style === "lower_third" && presentation.secondaryText ? h * 0.38 : h / 2, w - padding * 2);
+            if (style === "lower_third" && presentation.secondaryText) {
+              ctx.globalAlpha *= 0.75;
+              ctx.font = `500 ${Math.max(13, h * 0.2 * presentation.fontScale)}px Inter, sans-serif`;
+              ctx.fillText(presentation.secondaryText, textX, h * 0.7, w - padding * 2);
+            }
+          }
         } else if (source.type === "color" || source.type === "test_pattern") {
           const gradient = ctx.createLinearGradient(0, 0, w, h);
           gradient.addColorStop(0, source.color ?? "#1d9bf0");
@@ -627,16 +658,17 @@ export default function BroadcastStudioPage() {
       type: asset.mimeType?.startsWith("image/") ? "image" : "media",
     });
   };
-  const addSource = (type: BroadcastSource["type"]) => {
+  const addSource = (type: BroadcastSource["type"], graphicStyle: "plain" | "lower_third" | "ticker" | "countdown" = "plain") => {
     if (!previewScene) return;
     const id = safeId("source");
     const source: BroadcastSource = {
       ...sourceDefaults,
       id,
-      name: type === "text" ? "Lower third" : type.replace("_", " "),
+      name: type === "text" ? graphicStyle === "lower_third" ? "Lower third" : graphicStyle === "ticker" ? "Ticker" : graphicStyle === "countdown" ? "Countdown" : "Text" : type.replace("_", " "),
       type,
-      text: type === "text" ? "Your headline" : null,
+      text: type === "text" ? graphicStyle === "ticker" ? "Your live announcement scrolls here" : graphicStyle === "countdown" ? "Countdown" : "Your headline" : null,
       color: type === "color" ? "#1d9bf0" : type === "text" ? "#ffffff" : null,
+      presentation: type === "text" ? { ...sourceDefaults.presentation, style: graphicStyle, align: graphicStyle === "plain" ? "center" : "left", backgroundColor: graphicStyle === "plain" ? null : "#101014", secondaryText: graphicStyle === "lower_third" ? "Role or call to action" : null, countdownEndsAt: graphicStyle === "countdown" ? Date.now() + 300_000 : null } : sourceDefaults.presentation,
       zOrder: previewScene.sources.length,
       muted:
         type === "text" ||
@@ -719,8 +751,8 @@ export default function BroadcastStudioPage() {
       return setMessage(
         "Confirm that you have permission to capture guests and media first",
       );
-    if (outputMode === "stream" && !destinationId)
-      return setMessage("Choose a destination before going live");
+    if (outputMode === "stream" && !destinationIds.length)
+      return setMessage("Choose at least one destination before going live");
     if (!MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus"))
       return setMessage(
         "This browser cannot produce the required live WebM feed",
@@ -732,7 +764,8 @@ export default function BroadcastStudioPage() {
           "POST",
           `/api/broadcast/studios/${studio.id}/sessions`,
           {
-            destinationId: outputMode === "stream" ? destinationId : null,
+            destinationId: outputMode === "stream" ? destinationIds[0] ?? null : null,
+            destinationIds: outputMode === "stream" ? destinationIds : [],
             outputMode,
             sourceMode: "browser",
             videoBitrateKbps: config.output.videoBitrateKbps,
@@ -1086,7 +1119,7 @@ export default function BroadcastStudioPage() {
                 size="sm"
                 className="bg-red-600 text-white hover:bg-red-500"
                 disabled={
-                  Boolean(busy) || !destinationId || !captureAcknowledged
+                  Boolean(busy) || !destinationIds.length || !captureAcknowledged
                 }
                 onClick={() => void beginOutput("stream")}
               >
@@ -1285,6 +1318,11 @@ export default function BroadcastStudioPage() {
                 </Button>
               ))}
             </div>
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("text", "lower_third")}>Lower third</Button>
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("text", "ticker")}>Ticker</Button>
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("text", "countdown")}>Countdown</Button>
+            </div>
             {selectedSource && (
               <Button
                 className="mt-2 w-full"
@@ -1316,7 +1354,8 @@ export default function BroadcastStudioPage() {
             <CanvasPanel label="PREVIEW">
               <canvas
                 ref={previewCanvas}
-                className="aspect-video w-full bg-black"
+                className="max-h-[56vh] w-full bg-black object-contain"
+                style={{ aspectRatio: `${config.canvas.width}/${config.canvas.height}` }}
                 onPointerDown={onCanvasDown}
                 onPointerMove={onCanvasMove}
                 onPointerUp={onCanvasUp}
@@ -1326,7 +1365,8 @@ export default function BroadcastStudioPage() {
             <CanvasPanel label="PROGRAM" live={Boolean(activeSession)}>
               <canvas
                 ref={programCanvas}
-                className="aspect-video w-full bg-black"
+                className="max-h-[56vh] w-full bg-black object-contain"
+                style={{ aspectRatio: `${config.canvas.width}/${config.canvas.height}` }}
               />
             </CanvasPanel>
           </div>
@@ -1622,6 +1662,11 @@ export default function BroadcastStudioPage() {
                         }
                       />
                     </label>
+                    <label className="block text-xs text-zinc-500">Graphic style<select aria-label="Text graphic style" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).style} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), style: event.target.value as "plain" | "lower_third" | "ticker" | "countdown" } })}><option value="plain">Plain text</option><option value="lower_third">Lower third</option><option value="ticker">Scrolling ticker</option><option value="countdown">Countdown</option></select></label>
+                    {(selectedSource.presentation ?? sourceDefaults.presentation).style === "lower_third" && <label className="block text-xs text-zinc-500">Secondary text<Input className="mt-1 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).secondaryText ?? ""} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), secondaryText: event.target.value } }, false)} onBlur={() => config && void persist(config)}/></label>}
+                    {(selectedSource.presentation ?? sourceDefaults.presentation).style !== "plain" && <label className="block text-xs text-zinc-500">Graphic background<Input aria-label="Graphic background" type="color" className="mt-1 h-10 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).backgroundColor ?? "#101014"} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), backgroundColor: event.target.value } })}/></label>}
+                    {(selectedSource.presentation ?? sourceDefaults.presentation).style === "countdown" && <Button size="sm" variant="outline" className="w-full" onClick={() => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), countdownEndsAt: Date.now() + 300_000 } })}>Reset to 5:00</Button>}
+                    <Control label="Text scale" value={(selectedSource.presentation ?? sourceDefaults.presentation).fontScale} min={0.25} max={2} onChange={(value) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), fontScale: value } }, false)} onCommit={() => config && void persist(config)}/>
                   </>
                 )}
                 <div className="grid grid-cols-2 gap-2">
@@ -1917,19 +1962,22 @@ export default function BroadcastStudioPage() {
                   className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-2 text-xs text-white"
                   value={`${config.canvas.width}x${config.canvas.height}`}
                   onChange={(event) => {
-                    const fullHd = event.target.value === "1920x1080";
+                    const [width, height] = event.target.value.split("x").map(Number) as [720 | 1080 | 1280 | 1920, 720 | 1080 | 1280 | 1920];
                     void persist({
                       ...config,
                       canvas: {
                         ...config.canvas,
-                        width: fullHd ? 1920 : 1280,
-                        height: fullHd ? 1080 : 720,
+                        width,
+                        height,
                       },
                     });
                   }}
                 >
-                  <option value="1280x720">720p</option>
-                  <option value="1920x1080">1080p</option>
+                  <option value="1280x720">Landscape · 720p</option>
+                  <option value="1920x1080">Landscape · 1080p</option>
+                  <option value="720x1280">Portrait · 720p</option>
+                  <option value="1080x1920">Portrait · 1080p</option>
+                  <option value="1080x1080">Square · 1080p</option>
                 </select>
               </label>
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
@@ -2007,19 +2055,13 @@ export default function BroadcastStudioPage() {
             </p>
           </Panel>
           <Panel title="Destinations" icon={Radio}>
-            <select
-              aria-label="Streaming destination"
-              className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs"
-              value={destinationId}
-              onChange={(e) => setDestinationId(e.target.value)}
-            >
-              <option value="">Choose destination</option>
-              {destinations.map((destination) => (
-                <option key={destination.id} value={destination.id}>
-                  {destination.name} · {destination.protocol.toUpperCase()}
-                </option>
-              ))}
-            </select>
+            <p className="mb-2 text-[10px] leading-4 text-zinc-500">Select up to eight outputs. One encoded program is fanned out securely to every selected destination.</p>
+            <div className="max-h-44 space-y-1 overflow-y-auto">
+              {destinations.length ? destinations.map((destination) => {
+                const selected = destinationIds.includes(destination.id);
+                return <div key={destination.id} className={`flex items-center gap-2 rounded-lg border px-2 py-2 ${selected ? "border-[#1d9bf0] bg-[#1d9bf0]/10" : "border-zinc-800 bg-black"}`}><label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs"><input type="checkbox" aria-label={`Stream to ${destination.name}`} checked={selected} disabled={!selected && destinationIds.length >= 8} onChange={() => setDestinationIds((items) => selected ? items.filter((id) => id !== destination.id) : [...items, destination.id])}/><span className="truncate">{destination.name}</span><span className="ml-auto text-[9px] text-zinc-600">{destination.protocol.toUpperCase()}</span></label><button type="button" className="text-[10px] font-bold text-[#1d9bf0]" onClick={async () => { try { const result = await (await apiRequest("POST", `/api/broadcast/destinations/${destination.id}/test`, {})).json() as { detail: string }; setMessage(result.detail); } catch (error) { setMessage(error instanceof Error ? error.message : "Test failed"); } }}>Test</button></div>;
+              }) : <p className="rounded-lg bg-black p-3 text-xs text-zinc-600">Add a destination to enable live output.</p>}
+            </div>
             <div className="mt-2 flex gap-2">
               <Button
                 size="sm"
@@ -2030,30 +2072,7 @@ export default function BroadcastStudioPage() {
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Destination
               </Button>
-              {destinationId && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const result = (await (
-                        await apiRequest(
-                          "POST",
-                          `/api/broadcast/destinations/${destinationId}/test`,
-                          {},
-                        )
-                      ).json()) as { detail: string };
-                      setMessage(result.detail);
-                    } catch (error) {
-                      setMessage(
-                        error instanceof Error ? error.message : "Test failed",
-                      );
-                    }
-                  }}
-                >
-                  Test
-                </Button>
-              )}
+              {destinationIds.length > 0 && <span className="self-center text-[10px] font-bold text-emerald-400">{destinationIds.length} selected</span>}
             </div>
             {destinationOpen && (
               <form

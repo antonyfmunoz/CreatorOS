@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
+import { broadcastSessionStartSchema, defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
 import { isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
@@ -39,5 +39,14 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(isPrivateBroadcastAddress("192.168.1.2")).toBe(true);
     expect(isPrivateBroadcastAddress("8.8.8.8")).toBe(false);
     expect(maskBroadcastDestinationUrl("rtmps://user:secret@example.com/live?key=secret")).toBe("rtmps://example.com/live");
+  });
+
+  it("supports portrait and square profiles plus multi-destination sessions", () => {
+    const base = defaultBroadcastStudioConfig();
+    expect(validateBroadcastStudioConfig({ ...base, canvas: { width: 1080, height: 1920, fps: 30 } }).canvas).toMatchObject({ width: 1080, height: 1920 });
+    expect(validateBroadcastStudioConfig({ ...base, canvas: { width: 1080, height: 1080, fps: 30 } }).canvas).toMatchObject({ width: 1080, height: 1080 });
+    expect(() => validateBroadcastStudioConfig({ ...base, canvas: { width: 1920, height: 1920, fps: 30 } })).toThrow(/production profile/i);
+    const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
+    expect(broadcastSessionStartSchema.parse({ outputMode: "stream", destinationIds: ids, sourceMode: "browser" }).destinationIds).toEqual(ids);
   });
 });

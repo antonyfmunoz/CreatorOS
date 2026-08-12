@@ -2608,6 +2608,7 @@ export const broadcastSessions = pgTable(
     ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
     destinationId: uuid("destination_id").references(() => broadcastDestinations.id, { onDelete: "set null" }),
+    destinationIds: json("destination_ids").$type<string[]>().notNull().default([]),
     recordingAssetId: uuid("recording_asset_id").references(() => assets.id, { onDelete: "set null" }),
     outputMode: text("output_mode").notNull(),
     sourceMode: text("source_mode").notNull(),

@@ -127,8 +127,9 @@ function srtTimestamp(seconds: number) {
 function sourceToOutput(edl: CutEdl, time: number) {
   let cursor = 0;
   for (const clip of edl.clips) {
-    if (time >= clip.start && time <= clip.end) return cursor + time - clip.start;
-    cursor += clip.end - clip.start;
+    const speed = clip.speed ?? 1;
+    if (time >= clip.start && time <= clip.end) return cursor + (time - clip.start) / speed;
+    cursor += (clip.end - clip.start) / speed;
   }
   return null;
 }
@@ -186,39 +187,69 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       clips = clips.flatMap((clip) => {
         const start = Math.max(clip.start, request.clip!.start);
         const end = Math.min(clip.end, request.clip!.end);
-        return end > start ? [{ start, end }] : [];
+        return end > start ? [{ ...clip, start, end }] : [];
       });
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     const filters: string[] = [];
     const concatInputs: string[] = [];
     clips.forEach((clip, index) => {
-      if (media.hasVideo) { filters.push(`[0:v]trim=start=${clip.start}:end=${clip.end},setpts=PTS-STARTPTS[v${index}]`); concatInputs.push(`[v${index}]`); }
-      if (media.hasAudio) { filters.push(`[0:a]atrim=start=${clip.start}:end=${clip.end},asetpts=PTS-STARTPTS[a${index}]`); concatInputs.push(`[a${index}]`); }
+      const speed = clip.speed ?? 1;
+      const outputDuration = (clip.end - clip.start) / speed;
+      const fadeIn = Math.min(clip.fadeIn ?? 0, outputDuration / 2);
+      const fadeOut = Math.min(clip.fadeOut ?? 0, outputDuration / 2);
+      if (media.hasVideo) {
+        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
+        if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
+        if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+        filters.push(`[0:v]${videoFilters.join(",")}[v${index}]`);
+        concatInputs.push(`[v${index}]`);
+      }
+      if (media.hasAudio) {
+        const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS"];
+        let remaining = speed;
+        while (remaining > 2.0001) { audioFilters.push("atempo=2"); remaining /= 2; }
+        while (remaining < 0.4999) { audioFilters.push("atempo=0.5"); remaining /= 0.5; }
+        if (Math.abs(remaining - 1) > 0.0001) audioFilters.push(`atempo=${remaining}`);
+        audioFilters.push(`volume=${clip.volume ?? 1}`);
+        if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
+        if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+        filters.push(`[0:a]${audioFilters.join(",")}[a${index}]`);
+        concatInputs.push(`[a${index}]`);
+      }
     });
     filters.push(`${concatInputs.join("")}concat=n=${clips.length}:v=${media.hasVideo ? 1 : 0}:a=${media.hasAudio ? 1 : 0}${media.hasVideo ? "[video]" : ""}${media.hasAudio ? "[audio]" : ""}`);
     let videoLabel = "video";
     let audioLabel = "audio";
-    if (media.hasVideo && request.aspect !== "source") {
-      const size = request.aspect === "9:16" ? [1080, 1920] : request.aspect === "1:1" ? [1080, 1080] : [1920, 1080];
-      filters.push(`[${videoLabel}]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black[framed]`);
+    if (media.hasVideo) {
+      const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
+      if (request.aspect === "source") {
+        filters.push(`[${videoLabel}]scale=-2:${height},fps=${request.fps}[framed]`);
+      } else {
+        const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
+        filters.push(`[${videoLabel}]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed]`);
+      }
       videoLabel = "framed";
     }
     if (media.hasVideo && request.captions && project.transcript) {
       const srtPath = path.join(temp, "captions.srt");
-      await fs.writeFile(srtPath, transcriptToSrt(project.transcript, { version: 1, clips }), "utf8");
+      await fs.writeFile(srtPath, transcriptToSrt(project.transcript, { version: 2, clips }), "utf8");
       const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
       const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
       filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
       videoLabel = "captioned";
     }
     if (media.hasAudio && request.cleanAudio) { filters.push(`[${audioLabel}]afftdn=nf=-25[clean]`); audioLabel = "clean"; }
-    const args = ["-y", "-i", secure.url, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20"] : ["-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${clips.reduce((t, c) => t + c.end - c.start, 0)}`, "-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", "192k"] : []), "-movflags", "+faststart", "-shortest", outputPath];
+    const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+    const duration = cutDuration({ version: 2, clips });
+    const inputArgs = ["-y", "-i", secure.url];
+    if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
+    const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
     await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering edit" }).where(eq(cutStudioJobs.id, jobId));
     await runProcess("ffmpeg", args);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
-    return { artifact, output: { filename: outputName, duration: clips.reduce((total, clip) => total + clip.end - clip.start, 0), aspect: request.aspect } };
+    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }
@@ -294,7 +325,7 @@ export function registerCutStudioRoutes(app: Express) {
     if (!source || source.visibility !== "private" || source.status !== "ready") return res.status(400).json({ message: "The private source media is not ready" });
     if (!source.mimeType?.startsWith(`${parsed.data.mediaKind}/`)) return res.status(400).json({ message: "The source media type does not match the project" });
     const business = await ensureDefaultBusiness(req.dbUser!);
-    const [project] = await db.insert(cutStudioProjects).values({ ...parsed.data, ownerUserId: req.dbUser!.id, businessId: business.id, edl: { version: 1, clips: [{ start: 0, end: parsed.data.duration, label: "clip00" }] } }).returning();
+    const [project] = await db.insert(cutStudioProjects).values({ ...parsed.data, ownerUserId: req.dbUser!.id, businessId: business.id, edl: { version: 2, clips: [{ id: "clip_00", start: 0, end: parsed.data.duration, label: "clip00", speed: 1, volume: 1, fadeIn: 0, fadeOut: 0 }] } }).returning();
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.project.created", actorUserId: req.dbUser!.id, payload: { businessId: business.id, sourceAssetId: project.sourceAssetId, mediaKind: project.mediaKind, duration: project.duration }, idempotencyKey: `cutstudio:${project.id}:project.created` });
     res.status(201).json(project);
   });

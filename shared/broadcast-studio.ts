@@ -50,6 +50,15 @@ export const broadcastSourceSchema = z.object({
     saturation: z.number().finite().min(0).max(2).default(1),
     blurPx: z.number().finite().min(0).max(20).default(0),
   }),
+  presentation: z.object({
+    style: z.enum(["plain", "lower_third", "ticker", "countdown"]).default("plain"),
+    secondaryText: z.string().max(300).nullable().default(null),
+    backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+    fontScale: z.number().finite().min(0.25).max(2).default(1),
+    align: z.enum(["left", "center", "right"]).default("center"),
+    scrollSpeed: z.number().finite().min(10).max(400).default(90),
+    countdownEndsAt: z.number().finite().nullable().default(null),
+  }).optional(),
 });
 
 export const broadcastSceneSchema = z.object({
@@ -65,8 +74,8 @@ export const broadcastSceneSchema = z.object({
 export const broadcastStudioConfigSchema = z.object({
   version: z.literal(1),
   canvas: z.object({
-    width: z.union([z.literal(1280), z.literal(1920)]).default(1280),
-    height: z.union([z.literal(720), z.literal(1080)]).default(720),
+    width: z.union([z.literal(720), z.literal(1080), z.literal(1280), z.literal(1920)]).default(1280),
+    height: z.union([z.literal(720), z.literal(1080), z.literal(1280), z.literal(1920)]).default(720),
     fps: z.union([z.literal(24), z.literal(30), z.literal(60)]).default(30),
   }),
   output: z
@@ -97,6 +106,7 @@ export const broadcastDestinationInputSchema = z.object({
 
 export const broadcastSessionStartSchema = z.object({
   destinationId: z.string().uuid().nullable().default(null),
+  destinationIds: z.array(z.string().uuid()).max(8).default([]),
   outputMode: z.enum(["stream", "recording"]),
   sourceMode: z.enum(["browser", "test_pattern"]).default("browser"),
   videoBitrateKbps: z.number().int().min(500).max(12_000).default(4_500),
@@ -163,6 +173,10 @@ export function validateBroadcastStudioConfig(
   value: unknown,
 ): BroadcastStudioConfig {
   const config = broadcastStudioConfigSchema.parse(value);
+  const dimensions = `${config.canvas.width}x${config.canvas.height}`;
+  if (!["1280x720", "1920x1080", "720x1280", "1080x1920", "1080x1080"].includes(dimensions)) {
+    throw new Error("Canvas must use a supported landscape, portrait, or square production profile");
+  }
   const sceneIds = new Set(config.scenes.map((scene) => scene.id));
   if (
     !sceneIds.has(config.previewSceneId) ||

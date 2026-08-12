@@ -24,4 +24,25 @@ describe("CutStudio edit decision list", () => {
     expect(result).toContain("00:00:02:00 00:00:04:00");
     expect(result).toContain("00:00:00:00 00:00:02:00");
   });
+
+  it("preserves per-clip controls and calculates retimed duration", () => {
+    const result = validateCutEdl({ version: 2, clips: [
+      { id: "intro", start: 0, end: 10, speed: 2, volume: 0.8, fadeIn: 0.5, fadeOut: 0.25 },
+      { id: "main", start: 10, end: 20, speed: 0.5, volume: 1.2 },
+    ] }, 20);
+    expect(result.version).toBe(2);
+    expect(result.clips[0]).toMatchObject({ id: "intro", speed: 2, volume: 0.8, fadeIn: 0.5, fadeOut: 0.25 });
+    expect(cutDuration(result)).toBe(25);
+    const split = splitCutAt(result, 15);
+    expect(split.clips).toHaveLength(3);
+    expect(split.clips[1]).toMatchObject({ speed: 0.5, volume: 1.2 });
+  });
+
+  it("preserves intentional sequence order for story restructuring", () => {
+    const result = validateCutEdl({ version: 2, clips: [
+      { id: "hook", start: 20, end: 25 },
+      { id: "context", start: 0, end: 10 },
+    ] }, 30);
+    expect(result.clips.map((clip) => clip.id)).toEqual(["hook", "context"]);
+  });
 });
