@@ -1,10 +1,8 @@
 import type { Express, RequestHandler, Response } from "express";
 import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import OpenAI from "openai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { assets, cutStudioJobs, cutStudioProjects } from "@shared/schema";
@@ -89,6 +87,32 @@ async function probeMedia(url: string) {
   });
   const streams = (JSON.parse(stdout).streams ?? []) as Array<{ codec_type?: string }>;
   return { hasVideo: streams.some((stream) => stream.codec_type === "video"), hasAudio: streams.some((stream) => stream.codec_type === "audio") };
+}
+
+async function transcribeMedia(inputPath: string, tempDirectory: string) {
+  const audioPath = path.join(tempDirectory, "transcription.mp3");
+  await runProcess("ffmpeg", ["-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", audioPath], 10 * 60_000);
+  const audio = await fs.readFile(audioPath);
+  if (audio.byteLength > 24 * 1024 * 1024) throw Object.assign(new Error("The extracted audio is too long for one transcription job"), { code: "transcription_too_large" });
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type: "audio/mpeg" }), "transcription.mp3");
+  form.append("model", "whisper-1");
+  form.append("response_format", "verbose_json");
+  form.append("timestamp_granularities[]", "word");
+  form.append("timestamp_granularities[]", "segment");
+  let response: globalThis.Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form });
+  } catch {
+    throw Object.assign(new Error("The transcription provider could not be reached"), { code: "provider_unavailable" });
+  }
+  const result = await response.json() as any;
+  if (!response.ok) {
+    const providerCode = String(result?.error?.code ?? `provider_${response.status}`);
+    const message = providerCode === "credit_balance_exhausted" ? "Transcription requires available provider credit" : response.status === 401 ? "The transcription credential was rejected" : "The transcription provider rejected this job";
+    throw Object.assign(new Error(message), { code: providerCode });
+  }
+  return result;
 }
 
 function srtTimestamp(seconds: number) {
@@ -218,8 +242,7 @@ async function processJob(jobId: string) {
       try {
         await materializePrivateAsset(source.storageKey, inputPath);
         await db.update(cutStudioJobs).set({ progress: 0.3, detail: "Transcribing media" }).where(eq(cutStudioJobs.id, jobId));
-        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const result: any = await client.audio.transcriptions.create({ file: createReadStream(inputPath), model: "whisper-1", response_format: "verbose_json", timestamp_granularities: ["word", "segment"] } as any);
+        const result = await transcribeMedia(inputPath, temp);
         const words = (result.words ?? []).map((word: any) => ({ word: String(word.word ?? "").trim(), start: Number(word.start ?? 0), end: Number(word.end ?? word.start ?? 0) })).filter((word: any) => word.word);
         const segments = (result.segments ?? []).map((segment: any, index: number) => ({ id: String(segment.id ?? index), start: Number(segment.start ?? 0), end: Number(segment.end ?? 0), text: String(segment.text ?? "").trim(), words: words.filter((word: any) => word.start >= Number(segment.start ?? 0) && word.end <= Number(segment.end ?? project.duration) + 0.1) }));
         const transcript: CutTranscript = { duration: Number(result.duration ?? project.duration), language: String(result.language ?? "en"), segments: segments.length ? segments : [{ id: "0", start: 0, end: project.duration, text: String(result.text ?? ""), words }] };
