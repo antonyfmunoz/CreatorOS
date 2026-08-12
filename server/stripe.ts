@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import type { Express, Request, Response } from "express";
 import { createHash } from "node:crypto";
-import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { commerceProviderEvents, communityMemberships, creatorEarningsAllocations, creatorPaymentAccounts, creatorPayoutEvents, entitlements, orderItems, orders, products } from "../shared/schema";
 import { db } from "./db";
 import { attachUser } from "./auth";
@@ -506,6 +506,82 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<CommerceEven
   return { orderId: order.id, providerObjectReference: charge.id, amount: refundedAmount, currency: charge.currency };
 }
 
+async function reconcileDisputeTransfer(input: {
+  charge: Stripe.Charge;
+  dispute: Stripe.Dispute;
+  order: typeof orders.$inferSelect;
+  allocation: typeof creatorEarningsAllocations.$inferSelect;
+  won: boolean;
+}) {
+  const chargeTransferReference = typeof input.charge.transfer === "string" ? input.charge.transfer : input.charge.transfer?.id;
+  const transfer = chargeTransferReference
+    ? await getStripe().transfers.retrieve(chargeTransferReference)
+    : (await getStripe().transfers.list({
+        transfer_group: input.order.id,
+        destination: input.allocation.stripeConnectedAccountId,
+        limit: 100,
+      })).data.find((candidate) => {
+        const sourceTransaction = typeof candidate.source_transaction === "string"
+          ? candidate.source_transaction
+          : candidate.source_transaction?.id;
+        return sourceTransaction === input.charge.id;
+      });
+  if (!transfer) {
+    throw new Error(`The destination transfer for disputed charge ${input.charge.id} could not be resolved`);
+  }
+  const transferReference = transfer.id;
+  const reversals = await getStripe().transfers.listReversals(transferReference, { limit: 100 });
+  const disputeReversedCents = reversals.data
+    .filter((reversal) => reversal.metadata?.creativesOsDisputeId === input.dispute.id)
+    .reduce((total, reversal) => total + reversal.amount, 0);
+
+  if (input.won) {
+    if (disputeReversedCents <= 0) return;
+    const priorRestorations = await getStripe().transfers.list({
+      destination: input.allocation.stripeConnectedAccountId,
+      transfer_group: input.order.id,
+      limit: 100,
+    });
+    const alreadyRestored = priorRestorations.data.some((candidate) =>
+      candidate.metadata?.creativesOsDisputeId === input.dispute.id
+        && candidate.metadata?.purpose === "dispute_won_restoration"
+    );
+    if (alreadyRestored) return;
+    await getStripe().transfers.create({
+      amount: disputeReversedCents,
+      currency: transfer.currency,
+      destination: input.allocation.stripeConnectedAccountId,
+      transfer_group: input.order.id,
+      metadata: {
+        orderId: input.order.id,
+        creativesOsDisputeId: input.dispute.id,
+        purpose: "dispute_won_restoration",
+      },
+    // Stripe caches failed idempotent requests. Use one key per retry after
+    // the metadata lookup proves no prior attempt produced the transfer.
+    }, { idempotencyKey: `creativesos-dispute-${input.dispute.id}-restore-${Date.now()}` });
+    return;
+  }
+
+  const desiredReversalCents = cents(allocationReversalAmount({
+    creatorNetAmount: input.allocation.creatorNetAmount,
+    affectedAmountCents: input.dispute.amount,
+    orderAmountCents: cents(input.order.totalAmount),
+  }));
+  const remainingReversalCents = Math.max(0, desiredReversalCents - disputeReversedCents);
+  const reversibleCents = Math.min(remainingReversalCents, Math.max(0, transfer.amount - transfer.amount_reversed));
+  if (reversibleCents <= 0) return;
+  await getStripe().transfers.createReversal(transferReference, {
+    amount: reversibleCents,
+    refund_application_fee: false,
+    metadata: {
+      orderId: input.order.id,
+      creativesOsDisputeId: input.dispute.id,
+      purpose: "dispute_risk_recovery",
+    },
+  }, { idempotencyKey: `creativesos-dispute-${input.dispute.id}-reverse-${desiredReversalCents}` });
+}
+
 async function handleChargeDispute(dispute: Stripe.Dispute): Promise<CommerceEventOutcome> {
   const charge = typeof dispute.charge === "string" ? await getStripe().charges.retrieve(dispute.charge) : dispute.charge;
   const paymentReference = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
@@ -515,14 +591,94 @@ async function handleChargeDispute(dispute: Stripe.Dispute): Promise<CommerceEve
   await setOrderFinancialState({ order, financialStatus: disputeState.financialStatus, disputedAmount: disputeState.disputedAmount, accessActive: disputeState.accessActive });
   const allocations = await db.select().from(creatorEarningsAllocations).where(eq(creatorEarningsAllocations.orderId, order.id));
   for (const allocation of allocations) {
+    try {
+      await reconcileDisputeTransfer({ charge, dispute, order, allocation, won: disputeState.won });
+    } catch (error) {
+      if (disputeState.won) {
+        // A won dispute can credit the platform balance after the closing
+        // webhook arrives. Keep the creator obligation explicit and let the
+        // durable recovery worker retry the idempotent restoration transfer.
+        await db.update(creatorEarningsAllocations).set({
+          status: "restoration_pending",
+          disputedAmount: 0,
+          updatedAt: new Date(),
+        }).where(eq(creatorEarningsAllocations.id, allocation.id));
+      }
+      throw error;
+    }
+    const refundOnlyReversal = allocationReversalAmount({
+      creatorNetAmount: allocation.creatorNetAmount,
+      affectedAmountCents: cents(allocation.refundedAmount),
+      orderAmountCents: cents(order.totalAmount),
+    });
     await db.update(creatorEarningsAllocations).set({
       status: disputeState.won ? (allocation.refundedAmount > 0 ? "partially_refunded" : "paid") : disputeState.lost ? "dispute_lost" : "disputed",
       disputedAmount: disputeState.disputedAmount,
-      reversedAmount: disputeState.lost ? Math.max(allocation.reversedAmount, allocationReversalAmount({ creatorNetAmount: allocation.creatorNetAmount, affectedAmountCents: dispute.amount, orderAmountCents: cents(order.totalAmount) })) : allocation.reversedAmount,
+      reversedAmount: disputeState.won
+        ? refundOnlyReversal
+        : Math.max(allocation.reversedAmount, allocationReversalAmount({ creatorNetAmount: allocation.creatorNetAmount, affectedAmountCents: dispute.amount, orderAmountCents: cents(order.totalAmount) })),
       updatedAt: new Date(),
     }).where(eq(creatorEarningsAllocations.id, allocation.id));
   }
   return { orderId: order.id, providerObjectReference: dispute.id, amount: dispute.amount / 100, currency: dispute.currency };
+}
+
+async function retryFailedCommerceProviderEvents() {
+  if (!isStripeConfigured()) return;
+  const staleClaimCutoff = new Date(Date.now() - 5 * 60_000);
+  const failedEvents = await db.select().from(commerceProviderEvents)
+    .where(and(
+      eq(commerceProviderEvents.provider, PAYMENT_PROVIDER),
+      or(
+        eq(commerceProviderEvents.status, "failed"),
+        and(
+          eq(commerceProviderEvents.status, "processing"),
+          lt(commerceProviderEvents.updatedAt, staleClaimCutoff),
+        ),
+      ),
+      or(
+        eq(commerceProviderEvents.eventType, "charge.dispute.created"),
+        eq(commerceProviderEvents.eventType, "charge.dispute.updated"),
+        eq(commerceProviderEvents.eventType, "charge.dispute.closed"),
+      ),
+    ))
+    .orderBy(commerceProviderEvents.updatedAt)
+    .limit(10);
+  for (const eventRow of failedEvents) {
+    const [claimed] = await db.update(commerceProviderEvents).set({
+      status: "processing",
+      errorCode: null,
+      errorMessage: null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(commerceProviderEvents.id, eventRow.id),
+      or(
+        eq(commerceProviderEvents.status, "failed"),
+        and(
+          eq(commerceProviderEvents.status, "processing"),
+          lt(commerceProviderEvents.updatedAt, staleClaimCutoff),
+        ),
+      ),
+    )).returning();
+    if (!claimed?.providerObjectReference) continue;
+    try {
+      const dispute = await getStripe().disputes.retrieve(claimed.providerObjectReference);
+      const outcome = await handleChargeDispute(dispute);
+      await finishCommerceProviderEvent(claimed.id, outcome);
+    } catch (error) {
+      await failCommerceProviderEvent(claimed.id, error);
+    }
+  }
+}
+
+export function scheduleStripeCommerceRecovery() {
+  const run = () => retryFailedCommerceProviderEvents().catch((error) => {
+    console.error("Stripe commerce recovery failed:", error);
+  });
+  const initial = setTimeout(run, 15_000);
+  initial.unref?.();
+  const interval = setInterval(run, 60_000);
+  interval.unref?.();
 }
 
 async function handleConnectedAccountUpdated(account: Stripe.Account): Promise<CommerceEventOutcome> {

@@ -11,4 +11,5 @@ if (-not $env:VITE_CLERK_PUBLISHABLE_KEY.StartsWith("pk_")) {
 flyctl deploy `
   --app creatoros-app `
   --remote-only `
+  --release-command-timeout 10m `
   --build-arg "VITE_CLERK_PUBLISHABLE_KEY=$env:VITE_CLERK_PUBLISHABLE_KEY"

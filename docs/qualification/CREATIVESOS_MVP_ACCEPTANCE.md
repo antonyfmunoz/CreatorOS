@@ -64,12 +64,12 @@ completed. Local implementation alone is not production completion.
 
 ## Current production evidence
 
-Fly release `v228` passed its release migration and both live machines report
+Fly release `v237` passed its release migration and both live machines report
 passing health checks. `/api/health` is `ok`; `/api/ready` is `ready` with no
 release blockers, production Clerk authentication, private R2 delivery, the
 native automation kernel, the Relationship Hub kernel, and community-room
-media configured. The final qualification passed 199 automated tests, TypeScript,
-production build and bundle limits, the 490-file source secret scan, all 64
+media configured. The final qualification passed 203 automated tests, TypeScript,
+production build and bundle limits, the 508-file source secret scan, all 64
 mobile and desktop browser journeys, backup/restore recovery, and a 200-request
 capacity probe with zero failures.
 

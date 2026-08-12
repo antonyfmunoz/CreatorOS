@@ -10,6 +10,7 @@ import { scheduleAutomationProcessing } from "./automation-engine";
 import { scheduleRelationshipHubProcessing } from "./relationship-hub";
 import { scheduleInstagramRelationshipTokenRefresh } from "./relationship-instagram-oauth";
 import { scheduleXRelationshipTokenRefresh } from "./relationship-x-oauth";
+import { scheduleStripeCommerceRecovery } from "./stripe";
 import { apiRateLimiter, sameOriginMutationGuard, securityHeaders } from "./security";
 
 const app = express();
@@ -103,6 +104,7 @@ app.use((req, res, next) => {
     scheduleRelationshipHubProcessing();
     scheduleInstagramRelationshipTokenRefresh();
     scheduleXRelationshipTokenRefresh();
+    scheduleStripeCommerceRecovery();
     log("background workers scheduled");
   });
 })();
