@@ -62,6 +62,9 @@ const requiredTables = [
   "production_backups",
   "cut_studio_projects",
   "cut_studio_jobs",
+  "broadcast_studios",
+  "broadcast_destinations",
+  "broadcast_sessions",
 ];
 
 const requiredColumns = {

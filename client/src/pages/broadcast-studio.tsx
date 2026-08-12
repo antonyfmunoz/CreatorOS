@@ -1,0 +1,2330 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Camera,
+  CircleStop,
+  Copy,
+  Eye,
+  EyeOff,
+  Image,
+  Layers3,
+  Lock,
+  Mic,
+  MonitorUp,
+  Play,
+  Plus,
+  Radio,
+  Save,
+  Settings2,
+  Square,
+  Trash2,
+  Type,
+  Unlock,
+  Video,
+  Volume2,
+  VolumeX,
+  Wand2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { apiRequest } from "@/lib/queryClient";
+import type {
+  BroadcastScene,
+  BroadcastSource,
+  BroadcastStudioConfig,
+} from "@shared/broadcast-studio";
+import {
+  duplicateBroadcastScene,
+  transitionBroadcastScene,
+  validateBroadcastStudioConfig,
+} from "@shared/broadcast-studio";
+
+type Studio = {
+  id: string;
+  name: string;
+  config: BroadcastStudioConfig;
+  revision: number;
+  updatedAt: string;
+  sessions?: Session[];
+};
+type Destination = {
+  id: string;
+  name: string;
+  protocol: "rtmp" | "rtmps" | "srt";
+  ingestUrl: string;
+  hasStreamKey: boolean;
+  status: string;
+};
+type Session = {
+  id: string;
+  outputMode: "stream" | "recording";
+  sourceMode: string;
+  state: string;
+  health: Record<string, unknown>;
+  recordingAssetId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+type Asset = {
+  id: string;
+  kind: string;
+  mimeType: string | null;
+  originalFilename: string | null;
+  visibility: string;
+  status: string;
+};
+type RuntimeCapture = {
+  recorder: MediaRecorder;
+  sessionId: string;
+  queue: Promise<void>;
+  stream: MediaStream;
+  audioContext: AudioContext | null;
+  sourceGains: Map<string, GainNode>;
+  masterGain: GainNode | null;
+};
+type ReplayCapture = {
+  recorder: MediaRecorder;
+  stream: MediaStream;
+  audioContext: AudioContext | null;
+};
+type ActiveTransition = {
+  from: BroadcastScene;
+  to: BroadcastScene;
+  startedAt: number;
+  durationMs: number;
+};
+
+const sourceDefaults = {
+  assetId: null,
+  text: null,
+  color: null,
+  zOrder: 0,
+  visible: true,
+  locked: false,
+  muted: false,
+  volume: 1,
+  blendMode: "source-over" as const,
+  filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+  transform: {
+    x: 0.1,
+    y: 0.1,
+    width: 0.8,
+    height: 0.8,
+    rotation: 0,
+    opacity: 1,
+    cropTop: 0,
+    cropRight: 0,
+    cropBottom: 0,
+    cropLeft: 0,
+  },
+};
+function safeId(prefix: string) {
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`;
+}
+function formatUptime(seconds: unknown) {
+  const value = Number(seconds) || 0;
+  return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
+}
+function formatBytes(bytes: unknown) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+function exactConfig(
+  left: BroadcastStudioConfig,
+  right: BroadcastStudioConfig,
+) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export default function BroadcastStudioPage() {
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const [studio, setStudio] = useState<Studio | null>(null);
+  const [config, setConfig] = useState<BroadcastStudioConfig | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [destinationId, setDestinationId] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [destinationForm, setDestinationForm] = useState({
+    name: "",
+    protocol: "rtmps",
+    ingestUrl: "",
+    streamKey: "",
+  });
+  const [destinationOpen, setDestinationOpen] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [busy, setBusy] = useState("");
+  const [replayActive, setReplayActive] = useState(false);
+  const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
+  const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
+  const previewCanvas = useRef<HTMLCanvasElement>(null);
+  const programCanvas = useRef<HTMLCanvasElement>(null);
+  const liveStreams = useRef(new Map<string, MediaStream>());
+  const mediaElements = useRef(
+    new Map<string, HTMLVideoElement | HTMLImageElement>(),
+  );
+  const runtimeCapture = useRef<RuntimeCapture | null>(null);
+  const replayCapture = useRef<ReplayCapture | null>(null);
+  const replayChunks = useRef<Array<{ blob: Blob; at: number }>>([]);
+  const drag = useRef<{
+    sourceId: string;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const meterContexts = useRef(new Map<string, AudioContext>());
+  const transitionFrame = useRef<ActiveTransition | null>(null);
+  const transitionCanvases = useRef<{
+    from: HTMLCanvasElement;
+    to: HTMLCanvasElement;
+  } | null>(null);
+
+  const studiosQuery = useQuery<Studio[]>({
+    queryKey: ["/api/broadcast/studios"],
+  });
+  const destinationsQuery = useQuery<Destination[]>({
+    queryKey: ["/api/broadcast/destinations"],
+  });
+  const assetsQuery = useQuery<Asset[]>({
+    queryKey: ["/api/assets", "broadcast-library"],
+    queryFn: async () => (await apiRequest("GET", "/api/assets")).json(),
+  });
+  const destinations = destinationsQuery.data ?? [];
+  const assets = (assetsQuery.data ?? []).filter(
+    (asset) =>
+      asset.status === "ready" &&
+      (asset.mimeType?.startsWith("video/") ||
+        asset.mimeType?.startsWith("image/")),
+  );
+  const previewScene =
+    config?.scenes.find((scene) => scene.id === config.previewSceneId) ?? null;
+  const programScene =
+    config?.scenes.find((scene) => scene.id === config.programSceneId) ?? null;
+  const selectedSource =
+    previewScene?.sources.find((source) => source.id === selectedSourceId) ??
+    null;
+
+  const openStudio = useCallback(async (id: string) => {
+    const value = (await (
+      await apiRequest("GET", `/api/broadcast/studios/${id}`)
+    ).json()) as Studio;
+    setStudio(value);
+    setConfig(value.config);
+    setSelectedSourceId(
+      value.config.scenes.find(
+        (scene) => scene.id === value.config.previewSceneId,
+      )?.sources[0]?.id ?? null,
+    );
+    const active =
+      value.sessions?.find((item) =>
+        ["starting", "live", "stopping"].includes(item.state),
+      ) ?? null;
+    setSession(active);
+  }, []);
+  useEffect(() => {
+    if (!studio && studiosQuery.data?.length)
+      void openStudio(studiosQuery.data[0].id);
+  }, [studio, studiosQuery.data, openStudio]);
+
+  const persist = useCallback(
+    async (next: BroadcastStudioConfig, nextName = studio?.name) => {
+      if (!studio || exactConfig(next, studio.config)) {
+        setConfig(next);
+        return;
+      }
+      setSaving(true);
+      setConfig(next);
+      try {
+        const updated = (await (
+          await apiRequest(
+            "PUT",
+            `/api/broadcast/studios/${studio.id}`,
+            { config: next, name: nextName },
+            { "If-Match": String(studio.revision) },
+          )
+        ).json()) as Studio;
+        setStudio(updated);
+        setConfig(updated.config);
+      } catch (error) {
+        setMessage(
+          error instanceof Error ? error.message : "Studio could not be saved",
+        );
+        await openStudio(studio.id);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [studio, openStudio],
+  );
+
+  const updatePreviewScene = useCallback(
+    (change: (scene: BroadcastScene) => BroadcastScene, save = true) => {
+      if (!config || !previewScene) return;
+      const next = validateBroadcastStudioConfig({
+        ...config,
+        scenes: config.scenes.map((scene) =>
+          scene.id === previewScene.id ? change(scene) : scene,
+        ),
+      });
+      if (save) void persist(next);
+      else setConfig(next);
+    },
+    [config, previewScene, persist],
+  );
+  const updateSource = useCallback(
+    (sourceId: string, patch: Partial<BroadcastSource>, save = true) =>
+      updatePreviewScene(
+        (scene) => ({
+          ...scene,
+          sources: scene.sources.map((source) =>
+            source.id === sourceId ? { ...source, ...patch } : source,
+          ),
+        }),
+        save,
+      ),
+    [updatePreviewScene],
+  );
+  const updateProgramSource = useCallback(
+    (sourceId: string, patch: Partial<BroadcastSource>, save = true) => {
+      if (!config || !programScene) return;
+      const next = validateBroadcastStudioConfig({
+        ...config,
+        scenes: config.scenes.map((scene) =>
+          scene.id === programScene.id
+            ? {
+                ...scene,
+                sources: scene.sources.map((source) =>
+                  source.id === sourceId ? { ...source, ...patch } : source,
+                ),
+              }
+            : scene,
+        ),
+      });
+      if (save) void persist(next);
+      else setConfig(next);
+    },
+    [config, programScene, persist],
+  );
+  const moveSourceLayer = useCallback(
+    (sourceId: string, direction: -1 | 1) =>
+      updatePreviewScene((scene) => {
+        const ordered = [...scene.sources].sort(
+          (left, right) => left.zOrder - right.zOrder,
+        );
+        const index = ordered.findIndex((source) => source.id === sourceId);
+        const target = index + direction;
+        if (index < 0 || target < 0 || target >= ordered.length) return scene;
+        [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+        return {
+          ...scene,
+          sources: ordered.map((source, zOrder) => ({ ...source, zOrder })),
+        };
+      }),
+    [updatePreviewScene],
+  );
+
+  useEffect(() => {
+    if (!config) return;
+    let animation = 0;
+    const drawScene = (
+      canvas: HTMLCanvasElement | null,
+      scene: BroadcastScene | null,
+      showSelection = false,
+    ) => {
+      if (!canvas || !scene) return;
+      canvas.width = config.canvas.width;
+      canvas.height = config.canvas.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = scene.background;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (const source of [...scene.sources].sort(
+        (a, b) => a.zOrder - b.zOrder,
+      )) {
+        if (!source.visible || source.type === "microphone") continue;
+        const t = source.transform;
+        const x = t.x * canvas.width;
+        const y = t.y * canvas.height;
+        const w = t.width * canvas.width;
+        const h = t.height * canvas.height;
+        ctx.save();
+        ctx.globalAlpha = t.opacity;
+        ctx.globalCompositeOperation = source.blendMode;
+        ctx.filter = `brightness(${source.filters.brightness}) contrast(${source.filters.contrast}) saturate(${source.filters.saturation}) blur(${source.filters.blurPx}px)`;
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.rotate((t.rotation * Math.PI) / 180);
+        ctx.translate(-w / 2, -h / 2);
+        if (source.type === "text") {
+          ctx.fillStyle = source.color ?? "#ffffff";
+          ctx.font = `700 ${Math.max(18, h * 0.45)}px Inter, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(source.text ?? source.name, w / 2, h / 2, w);
+        } else if (source.type === "color" || source.type === "test_pattern") {
+          const gradient = ctx.createLinearGradient(0, 0, w, h);
+          gradient.addColorStop(0, source.color ?? "#1d9bf0");
+          gradient.addColorStop(1, "#09090b");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, w, h);
+          if (source.type === "test_pattern") {
+            ctx.fillStyle = "#fff";
+            ctx.font = `700 ${Math.max(16, h * 0.08)}px monospace`;
+            ctx.fillText("CREATIVESOS TEST", w / 2, h / 2);
+          }
+        } else {
+          const media = mediaElements.current.get(source.id);
+          if (
+            media &&
+            ((media instanceof HTMLVideoElement && media.readyState >= 2) ||
+              (media instanceof HTMLImageElement && media.complete))
+          ) {
+            const sw =
+              media instanceof HTMLVideoElement
+                ? media.videoWidth
+                : media.naturalWidth;
+            const sh =
+              media instanceof HTMLVideoElement
+                ? media.videoHeight
+                : media.naturalHeight;
+            const sx = sw * t.cropLeft;
+            const sy = sh * t.cropTop;
+            const sourceW = sw * (1 - t.cropLeft - t.cropRight);
+            const sourceH = sh * (1 - t.cropTop - t.cropBottom);
+            ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
+          } else {
+            ctx.fillStyle = "#18181b";
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = "#71717a";
+            ctx.font = "600 22px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(`${source.name} · connect source`, w / 2, h / 2);
+          }
+        }
+        if (showSelection && source.id === selectedSourceId) {
+          ctx.filter = "none";
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "#1d9bf0";
+          ctx.lineWidth = 5;
+          ctx.strokeRect(2, 2, w - 4, h - 4);
+        }
+        ctx.restore();
+      }
+    };
+    const loop = () => {
+      drawScene(previewCanvas.current, previewScene, true);
+      const active = transitionFrame.current;
+      if (active && programCanvas.current) {
+        transitionCanvases.current ??= {
+          from: document.createElement("canvas"),
+          to: document.createElement("canvas"),
+        };
+        drawScene(transitionCanvases.current.from, active.from);
+        drawScene(transitionCanvases.current.to, active.to);
+        const target = programCanvas.current;
+        target.width = config.canvas.width;
+        target.height = config.canvas.height;
+        const ctx = target.getContext("2d");
+        if (ctx) {
+          const progress = Math.min(
+            1,
+            (performance.now() - active.startedAt) /
+              Math.max(1, active.durationMs),
+          );
+          ctx.globalAlpha = 1;
+          ctx.drawImage(transitionCanvases.current.from, 0, 0);
+          ctx.globalAlpha = progress;
+          ctx.drawImage(transitionCanvases.current.to, 0, 0);
+          ctx.globalAlpha = 1;
+          if (progress >= 1) transitionFrame.current = null;
+        }
+      } else drawScene(programCanvas.current, programScene);
+      animation = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => cancelAnimationFrame(animation);
+  }, [config, previewScene, programScene, selectedSourceId]);
+
+  useEffect(
+    () => () => {
+      liveStreams.current.forEach((stream) =>
+        stream.getTracks().forEach((track) => track.stop()),
+      );
+      meterContexts.current.forEach((context) => void context.close());
+      runtimeCapture.current?.recorder.stop();
+      replayCapture.current?.recorder.stop();
+      replayCapture.current?.stream
+        .getTracks()
+        .forEach((track) => track.stop());
+      void replayCapture.current?.audioContext?.close();
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!session || !["starting", "live", "stopping"].includes(session.state))
+      return;
+    const timer = setInterval(async () => {
+      try {
+        const current = (await (
+          await apiRequest("GET", `/api/broadcast/sessions/${session.id}`)
+        ).json()) as Session;
+        setSession(current);
+        if (!["starting", "live", "stopping"].includes(current.state)) {
+          clearInterval(timer);
+          setMessage(
+            current.state === "complete"
+              ? "Broadcast output completed"
+              : (current.errorMessage ?? "Broadcast stopped"),
+          );
+          if (studio) void openStudio(studio.id);
+        }
+      } catch {}
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [session?.id, session?.state, studio?.id, openStudio]);
+  const performTransition = useCallback(() => {
+    if (
+      !config ||
+      !previewScene ||
+      !programScene ||
+      previewScene.id === programScene.id
+    )
+      return;
+    if (config.transition.type === "fade")
+      transitionFrame.current = {
+        from: programScene,
+        to: previewScene,
+        startedAt: performance.now(),
+        durationMs: config.transition.durationMs,
+      };
+    void persist(transitionBroadcastScene(config));
+  }, [config, previewScene, programScene, persist]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        !config ||
+        !(event.altKey || event.metaKey) ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(
+          (event.target as HTMLElement)?.tagName,
+        )
+      )
+        return;
+      if (/^[1-9]$/.test(event.key)) {
+        const scene = config.scenes[Number(event.key) - 1];
+        if (scene) {
+          event.preventDefault();
+          setConfig({ ...config, previewSceneId: scene.id });
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        performTransition();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [config, performTransition]);
+
+  const attachMedia = async (source: BroadcastSource) => {
+    try {
+      let stream: MediaStream;
+      if (source.type === "screen")
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+      else
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: source.type === "camera",
+          audio: source.type === "camera" || source.type === "microphone",
+        });
+      liveStreams.current
+        .get(source.id)
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      liveStreams.current.set(source.id, stream);
+      await meterContexts.current.get(source.id)?.close();
+      meterContexts.current.delete(source.id);
+      if (stream.getAudioTracks().length) {
+        const context = new AudioContext();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        context.createMediaStreamSource(stream).connect(analyser);
+        meterContexts.current.set(source.id, context);
+        const samples = new Uint8Array(analyser.frequencyBinCount);
+        const meter = () => {
+          if (meterContexts.current.get(source.id) !== context) return;
+          analyser.getByteTimeDomainData(samples);
+          const rms = Math.sqrt(
+            samples.reduce(
+              (total, sample) => total + ((sample - 128) / 128) ** 2,
+              0,
+            ) / samples.length,
+          );
+          setAudioLevels((current) => ({
+            ...current,
+            [source.id]: Math.min(1, rms * 4),
+          }));
+          requestAnimationFrame(meter);
+        };
+        meter();
+      }
+      if (source.type !== "microphone") {
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+        await video.play();
+        mediaElements.current.set(source.id, video);
+      }
+      stream.getTracks().forEach((track) =>
+        track.addEventListener("ended", () => {
+          liveStreams.current.delete(source.id);
+          mediaElements.current.delete(source.id);
+          void meterContexts.current.get(source.id)?.close();
+          meterContexts.current.delete(source.id);
+          setAudioLevels((current) => ({ ...current, [source.id]: 0 }));
+        }),
+      );
+      setMessage(`${source.name} connected`);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Device access was not granted",
+      );
+    }
+  };
+  const attachAsset = async (sourceId: string, assetId: string) => {
+    const asset = assets.find((item) => item.id === assetId);
+    if (!asset) return;
+    const access = (await (
+      await apiRequest("GET", `/api/assets/${assetId}/access`)
+    ).json()) as { url: string };
+    if (asset.mimeType?.startsWith("image/")) {
+      const image = new window.Image();
+      image.crossOrigin = "anonymous";
+      image.src = access.url;
+      await image.decode();
+      mediaElements.current.set(sourceId, image);
+    } else {
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.src = access.url;
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play();
+      mediaElements.current.set(sourceId, video);
+    }
+    updateSource(sourceId, {
+      assetId,
+      type: asset.mimeType?.startsWith("image/") ? "image" : "media",
+    });
+  };
+  const addSource = (type: BroadcastSource["type"]) => {
+    if (!previewScene) return;
+    const id = safeId("source");
+    const source: BroadcastSource = {
+      ...sourceDefaults,
+      id,
+      name: type === "text" ? "Lower third" : type.replace("_", " "),
+      type,
+      text: type === "text" ? "Your headline" : null,
+      color: type === "color" ? "#1d9bf0" : type === "text" ? "#ffffff" : null,
+      zOrder: previewScene.sources.length,
+      muted:
+        type === "text" ||
+        type === "image" ||
+        type === "color" ||
+        type === "test_pattern",
+    };
+    updatePreviewScene((scene) => ({
+      ...scene,
+      sources: [...scene.sources, source],
+    }));
+    setSelectedSourceId(id);
+    if (["camera", "screen", "microphone"].includes(type))
+      void attachMedia(source);
+  };
+
+  const compositeStream = () => {
+    if (!programCanvas.current || !config)
+      throw new Error("Program canvas is not ready");
+    const stream = programCanvas.current.captureStream(config.canvas.fps);
+    let audioContext: AudioContext | null = null;
+    const sourceGains = new Map<string, GainNode>();
+    let masterGain: GainNode | null = null;
+    const audioInputs: Array<{ sourceId: string; stream: MediaStream }> =
+      Array.from(liveStreams.current.entries()).map(
+        ([sourceId, sourceStream]) => ({ sourceId, stream: sourceStream }),
+      );
+    for (const source of programScene?.sources ?? []) {
+      const element = mediaElements.current.get(source.id) as
+        (HTMLVideoElement & { captureStream?: () => MediaStream }) | undefined;
+      if (element instanceof HTMLVideoElement && element.captureStream)
+        audioInputs.push({
+          sourceId: source.id,
+          stream: element.captureStream(),
+        });
+    }
+    if (audioInputs.some((input) => input.stream.getAudioTracks().length)) {
+      audioContext = new AudioContext();
+      const destination = audioContext.createMediaStreamDestination();
+      masterGain = audioContext.createGain();
+      masterGain.gain.value = config.masterMuted ? 0 : config.masterVolume;
+      masterGain.connect(destination);
+      for (const input of audioInputs) {
+        if (!input.stream.getAudioTracks().length) continue;
+        const sourceConfig = programScene?.sources.find(
+          (source) => source.id === input.sourceId,
+        );
+        const node = audioContext.createMediaStreamSource(input.stream);
+        const gain = audioContext.createGain();
+        gain.gain.value = sourceConfig?.muted ? 0 : (sourceConfig?.volume ?? 1);
+        sourceGains.set(input.sourceId, gain);
+        node.connect(gain).connect(masterGain);
+      }
+      destination.stream
+        .getAudioTracks()
+        .forEach((track) => stream.addTrack(track));
+    }
+    return { stream, audioContext, sourceGains, masterGain };
+  };
+  useEffect(() => {
+    const capture = runtimeCapture.current;
+    if (!capture || !config) return;
+    capture.masterGain?.gain.setTargetAtTime(
+      config.masterMuted ? 0 : config.masterVolume,
+      capture.audioContext?.currentTime ?? 0,
+      0.015,
+    );
+    capture.sourceGains.forEach((gain, sourceId) => {
+      const source = programScene?.sources.find((item) => item.id === sourceId);
+      gain.gain.setTargetAtTime(
+        source?.muted ? 0 : (source?.volume ?? 1),
+        capture.audioContext?.currentTime ?? 0,
+        0.015,
+      );
+    });
+  }, [config?.masterMuted, config?.masterVolume, programScene]);
+  const beginOutput = async (outputMode: "stream" | "recording") => {
+    if (!studio || !config || runtimeCapture.current) return;
+    if (!captureAcknowledged)
+      return setMessage(
+        "Confirm that you have permission to capture guests and media first",
+      );
+    if (outputMode === "stream" && !destinationId)
+      return setMessage("Choose a destination before going live");
+    if (!MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus"))
+      return setMessage(
+        "This browser cannot produce the required live WebM feed",
+      );
+    setBusy(outputMode);
+    try {
+      const created = (await (
+        await apiRequest(
+          "POST",
+          `/api/broadcast/studios/${studio.id}/sessions`,
+          {
+            destinationId: outputMode === "stream" ? destinationId : null,
+            outputMode,
+            sourceMode: "browser",
+            videoBitrateKbps: config.output.videoBitrateKbps,
+            audioBitrateKbps: config.output.audioBitrateKbps,
+          },
+        )
+      ).json()) as Session;
+      const mixed = compositeStream();
+      const recorder = new MediaRecorder(mixed.stream, {
+        mimeType: "video/webm;codecs=vp8,opus",
+        videoBitsPerSecond: 4_500_000,
+        audioBitsPerSecond: 128_000,
+      });
+      const capture: RuntimeCapture = {
+        recorder,
+        sessionId: created.id,
+        queue: Promise.resolve(),
+        stream: mixed.stream,
+        audioContext: mixed.audioContext,
+        sourceGains: mixed.sourceGains,
+        masterGain: mixed.masterGain,
+      };
+      runtimeCapture.current = capture;
+      recorder.ondataavailable = (event) => {
+        if (!event.data.size) return;
+        capture.queue = capture.queue
+          .then(async () => {
+            const response = await fetch(
+              `/api/broadcast/sessions/${created.id}/chunks`,
+              {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "video/webm" },
+                body: event.data,
+              },
+            );
+            if (!response.ok)
+              throw new Error(
+                (await response.json()).message ?? "Broadcast ingest failed",
+              );
+          })
+          .catch((error) =>
+            setMessage(
+              error instanceof Error
+                ? error.message
+                : "Broadcast ingest failed",
+            ),
+          );
+      };
+      recorder.start(1000);
+      setSession({ ...created, state: "live" });
+      setMessage(
+        outputMode === "stream" ? "You are live" : "Recording program output",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Broadcast could not start",
+      );
+    } finally {
+      setBusy("");
+    }
+  };
+  const stopOutput = async () => {
+    const capture = runtimeCapture.current;
+    if (!session) return;
+    setBusy("stop");
+    if (capture) {
+      capture.recorder.requestData();
+      await new Promise<void>((resolve) => {
+        capture.recorder.addEventListener("stop", () => resolve(), {
+          once: true,
+        });
+        capture.recorder.stop();
+      });
+      await capture.queue;
+      capture.stream.getTracks().forEach((track) => track.stop());
+      await capture.audioContext?.close();
+      runtimeCapture.current = null;
+    }
+    await apiRequest("POST", `/api/broadcast/sessions/${session.id}/stop`, {});
+    setSession({ ...session, state: "stopping" });
+    setBusy("");
+  };
+  const startEncoderTest = async () => {
+    if (!studio || activeSession) return;
+    setBusy("test");
+    try {
+      const created = (await (
+        await apiRequest(
+          "POST",
+          `/api/broadcast/studios/${studio.id}/sessions`,
+          {
+            destinationId: null,
+            outputMode: "recording",
+            sourceMode: "test_pattern",
+            videoBitrateKbps: 2500,
+            audioBitrateKbps: 96,
+          },
+        )
+      ).json()) as Session;
+      setSession({ ...created, state: "live" });
+      setMessage(
+        "Encoder test is recording a synthetic signal. Stop it when you have enough evidence.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Encoder test failed",
+      );
+    } finally {
+      setBusy("");
+    }
+  };
+  const startReplay = () => {
+    if (!config || replayCapture.current) return;
+    const mixed = compositeStream();
+    const recorder = new MediaRecorder(mixed.stream, {
+      mimeType: "video/webm;codecs=vp8,opus",
+      videoBitsPerSecond: 2_500_000,
+    });
+    replayCapture.current = {
+      recorder,
+      stream: mixed.stream,
+      audioContext: mixed.audioContext,
+    };
+    replayChunks.current = [];
+    recorder.ondataavailable = (event) => {
+      if (!event.data.size) return;
+      const now = Date.now();
+      replayChunks.current.push({ blob: event.data, at: now });
+      replayChunks.current = replayChunks.current.filter(
+        (chunk) => now - chunk.at <= (config.replayBufferSeconds + 3) * 1000,
+      );
+    };
+    recorder.start(1000);
+    setReplayActive(true);
+    setMessage(
+      `Replay buffer is holding the last ${config.replayBufferSeconds} seconds locally`,
+    );
+  };
+  const stopReplay = () => {
+    const capture = replayCapture.current;
+    if (!capture) return;
+    capture.recorder.stop();
+    capture.stream.getTracks().forEach((track) => track.stop());
+    void capture.audioContext?.close();
+    replayCapture.current = null;
+    replayChunks.current = [];
+    setReplayActive(false);
+    setMessage("Replay buffer stopped and cleared");
+  };
+  const saveReplay = async () => {
+    if (!studio || !replayChunks.current.length) return;
+    setBusy("replay");
+    try {
+      const blob = new Blob(
+        replayChunks.current.map((chunk) => chunk.blob),
+        { type: "video/webm" },
+      );
+      const filename = `broadcast-replay-${Date.now()}.webm`;
+      const intent = (await (
+        await apiRequest("POST", "/api/assets/upload-intents", {
+          kind: "video",
+          filename,
+          mimeType: blob.type,
+          sizeBytes: blob.size,
+          visibility: "private",
+        })
+      ).json()) as { asset: { id: string }; upload: { uploadUrl: string } };
+      const uploaded = await fetch(intent.upload.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      if (!uploaded.ok) throw new Error("Replay upload failed");
+      await apiRequest("POST", `/api/assets/${intent.asset.id}/complete`, {});
+      await apiRequest(
+        "POST",
+        `/api/broadcast/studios/${studio.id}/recordings`,
+        {
+          assetId: intent.asset.id,
+          durationMs:
+            Math.min(
+              config?.replayBufferSeconds ?? 30,
+              replayChunks.current.length,
+            ) * 1000,
+        },
+      );
+      setMessage("Replay saved privately");
+      await openStudio(studio.id);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Replay could not be saved",
+      );
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const onCanvasDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!previewScene || !config) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    const hit = [...previewScene.sources]
+      .reverse()
+      .find(
+        (source) =>
+          source.visible &&
+          !source.locked &&
+          x >= source.transform.x &&
+          x <= source.transform.x + source.transform.width &&
+          y >= source.transform.y &&
+          y <= source.transform.y + source.transform.height,
+      );
+    if (hit) {
+      setSelectedSourceId(hit.id);
+      drag.current = {
+        sourceId: hit.id,
+        offsetX: x - hit.transform.x,
+        offsetY: y - hit.transform.y,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  };
+  const onCanvasMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const active = drag.current;
+    const source = previewScene?.sources.find(
+      (item) => item.id === active?.sourceId,
+    );
+    if (!active || !source) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(
+      0,
+      Math.min(
+        1 - source.transform.width,
+        (event.clientX - rect.left) / rect.width - active.offsetX,
+      ),
+    );
+    const y = Math.max(
+      0,
+      Math.min(
+        1 - source.transform.height,
+        (event.clientY - rect.top) / rect.height - active.offsetY,
+      ),
+    );
+    updateSource(
+      source.id,
+      { transform: { ...source.transform, x, y } },
+      false,
+    );
+  };
+  const onCanvasUp = () => {
+    if (drag.current && config) void persist(config);
+    drag.current = null;
+  };
+
+  if (!studio)
+    return (
+      <main className="min-h-screen bg-black p-5 text-white">
+        <header className="flex items-center gap-3">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setLocation("/create")}
+            aria-label="Back"
+          >
+            <ArrowLeft />
+          </Button>
+          <div>
+            <h1 className="text-xl font-black">Broadcast Studio</h1>
+            <p className="text-sm text-zinc-500">
+              Build a production desk, then stream or record.
+            </p>
+          </div>
+        </header>
+        <section className="mx-auto mt-20 max-w-lg rounded-3xl border border-zinc-800 bg-zinc-950 p-8 text-center">
+          <Radio className="mx-auto h-10 w-10 text-[#1d9bf0]" />
+          <h2 className="mt-4 text-xl font-black">Create your first studio</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            Scenes, sources, audio, transitions, recording, replay, and live
+            outputs stay together.
+          </p>
+          <Button
+            className="mt-6 bg-[#1d9bf0] text-black"
+            onClick={async () => {
+              const created = (await (
+                await apiRequest("POST", "/api/broadcast/studios", {
+                  name: "My broadcast studio",
+                })
+              ).json()) as Studio;
+              queryClient.invalidateQueries({
+                queryKey: ["/api/broadcast/studios"],
+              });
+              await openStudio(created.id);
+            }}
+          >
+            Create studio
+          </Button>
+        </section>
+      </main>
+    );
+  if (!config || !previewScene || !programScene) return null;
+  const activeSession =
+    session && ["starting", "live", "stopping"].includes(session.state);
+
+  return (
+    <main className="min-h-screen bg-black pb-24 text-white">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-zinc-800 bg-black/95 px-3 backdrop-blur">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setLocation("/create")}
+          aria-label="Back to create"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <Radio className="h-5 w-5 text-[#1d9bf0]" />
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-black">{studio.name}</h1>
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+            Broadcast Studio ·{" "}
+            {saving ? "saving" : activeSession ? session?.state : "ready"}
+          </p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full ${activeSession ? "animate-pulse bg-red-500" : "bg-emerald-500"}`}
+          />
+          {activeSession ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy === "stop"}
+              onClick={() => void stopOutput()}
+            >
+              <CircleStop className="mr-1.5 h-4 w-4" />
+              Stop
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={Boolean(busy) || !captureAcknowledged}
+                onClick={() => void beginOutput("recording")}
+              >
+                <Square className="mr-1.5 h-3.5 w-3.5" />
+                Record
+              </Button>
+              <Button
+                size="sm"
+                className="bg-red-600 text-white hover:bg-red-500"
+                disabled={
+                  Boolean(busy) || !destinationId || !captureAcknowledged
+                }
+                onClick={() => void beginOutput("stream")}
+              >
+                <Radio className="mr-1.5 h-3.5 w-3.5" />
+                Go live
+              </Button>
+            </>
+          )}
+        </div>
+      </header>
+      <div className="grid gap-3 p-3 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+        <aside className="space-y-3">
+          <Panel title="Scenes" icon={Layers3}>
+            <div className="space-y-1">
+              {config.scenes.map((scene, index) => (
+                <button
+                  key={scene.id}
+                  onClick={() =>
+                    setConfig({ ...config, previewSceneId: scene.id })
+                  }
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs ${scene.id === config.previewSceneId ? "bg-[#1d9bf0] font-bold text-black" : "bg-zinc-900 text-zinc-300"}`}
+                >
+                  <span>{index + 1}</span>
+                  <span className="truncate">{scene.name}</span>
+                  {scene.id === config.programSceneId && (
+                    <span className="ml-auto rounded bg-red-600 px-1.5 py-.5 text-[9px] text-white">
+                      PGM
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-[1fr_42px] gap-2">
+              <Input
+                aria-label="Preview scene name"
+                className="h-9 border-zinc-800 bg-black text-xs"
+                value={previewScene.name}
+                onChange={(event) =>
+                  updatePreviewScene(
+                    (scene) => ({ ...scene, name: event.target.value }),
+                    false,
+                  )
+                }
+                onBlur={() => config && void persist(config)}
+              />
+              <Input
+                aria-label="Preview scene background"
+                type="color"
+                className="h-9 border-zinc-800 bg-black p-1"
+                value={previewScene.background}
+                onChange={(event) =>
+                  updatePreviewScene((scene) => ({
+                    ...scene,
+                    background: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="mt-2 flex gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  const id = safeId("scene");
+                  void persist({
+                    ...config,
+                    scenes: [
+                      ...config.scenes,
+                      {
+                        id,
+                        name: `Scene ${config.scenes.length + 1}`,
+                        background: "#09090b",
+                        sources: [],
+                      },
+                    ],
+                    previewSceneId: id,
+                  });
+                }}
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Scene
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label="Duplicate scene"
+                onClick={() =>
+                  void persist(
+                    duplicateBroadcastScene(
+                      config,
+                      previewScene.id,
+                      safeId("scene"),
+                    ),
+                  )
+                }
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label="Delete scene"
+                disabled={config.scenes.length === 1}
+                onClick={() => {
+                  const scenes = config.scenes.filter(
+                    (s) => s.id !== previewScene.id,
+                  );
+                  void persist({
+                    ...config,
+                    scenes,
+                    previewSceneId: scenes[0].id,
+                    programSceneId:
+                      config.programSceneId === previewScene.id
+                        ? scenes[0].id
+                        : config.programSceneId,
+                  });
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </Panel>
+          <Panel title="Sources" icon={Video}>
+            <div className="space-y-1">
+              {[...previewScene.sources]
+                .sort((a, b) => b.zOrder - a.zOrder)
+                .map((source) => (
+                  <div
+                    key={source.id}
+                    className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 ${source.id === selectedSourceId ? "border-[#1d9bf0] bg-[#1d9bf0]/10" : "border-zinc-800 bg-zinc-900"}`}
+                  >
+                    <button
+                      className="min-w-0 flex-1 truncate text-left text-xs"
+                      onClick={() => setSelectedSourceId(source.id)}
+                    >
+                      {source.name}
+                    </button>
+                    <button
+                      aria-label={`${source.visible ? "Hide" : "Show"} ${source.name}`}
+                      onClick={() =>
+                        updateSource(source.id, { visible: !source.visible })
+                      }
+                    >
+                      {source.visible ? (
+                        <Eye className="h-3.5 w-3.5" />
+                      ) : (
+                        <EyeOff className="h-3.5 w-3.5 text-zinc-600" />
+                      )}
+                    </button>
+                    <button
+                      aria-label={`${source.locked ? "Unlock" : "Lock"} ${source.name}`}
+                      onClick={() =>
+                        updateSource(source.id, { locked: !source.locked })
+                      }
+                    >
+                      {source.locked ? (
+                        <Lock className="h-3.5 w-3.5 text-amber-400" />
+                      ) : (
+                        <Unlock className="h-3.5 w-3.5 text-zinc-600" />
+                      )}
+                    </button>
+                    <button
+                      aria-label={`${source.muted ? "Unmute" : "Mute"} ${source.name}`}
+                      onClick={() =>
+                        updateSource(source.id, { muted: !source.muted })
+                      }
+                    >
+                      {source.muted ? (
+                        <VolumeX className="h-3.5 w-3.5 text-zinc-600" />
+                      ) : (
+                        <Volume2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-1">
+              {[
+                [Camera, "camera"],
+                [MonitorUp, "screen"],
+                [Mic, "microphone"],
+                [Type, "text"],
+                [Image, "media"],
+                [Wand2, "test_pattern"],
+              ].map(([Icon, type]) => (
+                <Button
+                  key={String(type)}
+                  size="icon"
+                  variant="outline"
+                  title={`Add ${type}`}
+                  aria-label={`Add ${type}`}
+                  onClick={() => addSource(type as BroadcastSource["type"])}
+                >
+                  <Icon className="h-4 w-4" />
+                </Button>
+              ))}
+            </div>
+            {selectedSource && (
+              <Button
+                className="mt-2 w-full"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  liveStreams.current
+                    .get(selectedSource.id)
+                    ?.getTracks()
+                    .forEach((t) => t.stop());
+                  mediaElements.current.delete(selectedSource.id);
+                  updatePreviewScene((scene) => ({
+                    ...scene,
+                    sources: scene.sources.filter(
+                      (source) => source.id !== selectedSource.id,
+                    ),
+                  }));
+                  setSelectedSourceId(null);
+                }}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Remove source
+              </Button>
+            )}
+          </Panel>
+        </aside>
+        <section className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <CanvasPanel label="PREVIEW">
+              <canvas
+                ref={previewCanvas}
+                className="aspect-video w-full bg-black"
+                onPointerDown={onCanvasDown}
+                onPointerMove={onCanvasMove}
+                onPointerUp={onCanvasUp}
+                onPointerCancel={onCanvasUp}
+              />
+            </CanvasPanel>
+            <CanvasPanel label="PROGRAM" live={Boolean(activeSession)}>
+              <canvas
+                ref={programCanvas}
+                className="aspect-video w-full bg-black"
+              />
+            </CanvasPanel>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+            <select
+              aria-label="Transition type"
+              value={config.transition.type}
+              onChange={(e) =>
+                void persist({
+                  ...config,
+                  transition: {
+                    ...config.transition,
+                    type: e.target.value as "cut" | "fade",
+                  },
+                })
+              }
+              className="h-9 rounded-lg border border-zinc-700 bg-black px-3 text-xs"
+            >
+              <option value="cut">Cut</option>
+              <option value="fade">Fade</option>
+            </select>
+            {config.transition.type === "fade" && (
+              <label className="flex items-center gap-2 text-xs text-zinc-500">
+                <span>Duration</span>
+                <Input
+                  aria-label="Fade duration milliseconds"
+                  className="h-9 w-24 border-zinc-700 bg-black"
+                  type="number"
+                  min={100}
+                  max={3000}
+                  step={100}
+                  value={config.transition.durationMs}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      transition: {
+                        ...config.transition,
+                        durationMs: Number(e.target.value),
+                      },
+                    })
+                  }
+                  onBlur={() => config && void persist(config)}
+                />
+                <span>ms</span>
+              </label>
+            )}
+            <Button
+              className="min-w-44 bg-[#1d9bf0] text-black"
+              disabled={config.previewSceneId === config.programSceneId}
+              onClick={performTransition}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Transition to program
+            </Button>
+            <label className="flex items-center gap-2 text-xs text-zinc-400">
+              Studio mode
+              <Switch
+                aria-label="Studio mode"
+                checked={config.studioMode}
+                onCheckedChange={(checked) =>
+                  void persist({ ...config, studioMode: checked })
+                }
+              />
+            </label>
+          </div>
+          <Panel title="Audio mixer" icon={Volume2}>
+            <div className="grid gap-2 md:grid-cols-2">
+              {programScene.sources
+                .filter((source) =>
+                  ["camera", "screen", "microphone", "media"].includes(
+                    source.type,
+                  ),
+                )
+                .map((source) => (
+                  <div key={source.id} className="rounded-xl bg-black p-3">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="truncate font-bold">{source.name}</span>
+                      <span className="ml-auto h-2 w-16 overflow-hidden rounded bg-zinc-800">
+                        <span
+                          className="block h-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-red-500 transition-[width]"
+                          style={{
+                            width: `${Math.round((audioLevels[source.id] ?? 0) * 100)}%`,
+                          }}
+                        />
+                      </span>
+                      <span className="w-8 text-right text-[9px] text-zinc-600">
+                        {Math.round((audioLevels[source.id] ?? 0) * 100)}
+                      </span>
+                      <button
+                        aria-label={`${source.muted ? "Unmute" : "Mute"} ${source.name}`}
+                        onClick={() =>
+                          updateProgramSource(source.id, {
+                            muted: !source.muted,
+                          })
+                        }
+                      >
+                        {source.muted ? (
+                          <VolumeX className="h-4 w-4" />
+                        ) : (
+                          <Volume2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                    <Slider
+                      aria-label={`${source.name} volume`}
+                      className="mt-3"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={[source.volume * 100]}
+                      onValueChange={(value) =>
+                        updateProgramSource(
+                          source.id,
+                          { volume: value[0] / 100 },
+                          false,
+                        )
+                      }
+                      onValueCommit={(value) =>
+                        updateProgramSource(source.id, {
+                          volume: value[0] / 100,
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+            </div>
+            <div className="mt-3 flex items-center gap-3 rounded-xl bg-black p-3">
+              <span className="text-xs font-bold">Master</span>
+              <Slider
+                aria-label="Master volume"
+                className="flex-1"
+                min={0}
+                max={200}
+                value={[config.masterVolume * 100]}
+                onValueChange={(value) =>
+                  setConfig({ ...config, masterVolume: value[0] / 100 })
+                }
+                onValueCommit={(value) =>
+                  void persist({ ...config, masterVolume: value[0] / 100 })
+                }
+              />
+              <button
+                aria-label={
+                  config.masterMuted ? "Unmute master" : "Mute master"
+                }
+                onClick={() =>
+                  void persist({ ...config, masterMuted: !config.masterMuted })
+                }
+              >
+                {config.masterMuted ? (
+                  <VolumeX className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </Panel>
+          <Panel title="Output health" icon={Radio}>
+            {activeSession ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-9">
+                {[
+                  ["State", session?.state],
+                  ["FPS", session?.health?.fps ?? 0],
+                  [
+                    "Bitrate",
+                    `${Number(session?.health?.bitrateKbps ?? 0).toFixed(0)} kbps`,
+                  ],
+                  ["Frames", session?.health?.frame ?? 0],
+                  ["Dropped", session?.health?.droppedFrames ?? 0],
+                  ["Uptime", formatUptime(session?.health?.uptimeSeconds)],
+                  ["Speed", session?.health?.speed ?? "—"],
+                  ["Encoded", formatBytes(session?.health?.totalSizeBytes)],
+                  ["Ingested", formatBytes(session?.health?.ingestBytes)],
+                ].map(([label, value]) => (
+                  <Metric
+                    key={String(label)}
+                    label={String(label)}
+                    value={String(value)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-zinc-500">
+                    No active output. Preview remains local until you explicitly
+                    record or go live.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={Boolean(busy)}
+                    onClick={() => void startEncoderTest()}
+                  >
+                    <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                    Run encoder test
+                  </Button>
+                </div>
+                <label className="flex items-start gap-2 rounded-xl border border-zinc-800 bg-black p-3 text-xs leading-5 text-zinc-400">
+                  <input
+                    className="mt-1 accent-[#1d9bf0]"
+                    type="checkbox"
+                    checked={captureAcknowledged}
+                    onChange={(e) => setCaptureAcknowledged(e.target.checked)}
+                  />
+                  <span>
+                    I have permission to capture and distribute the guests,
+                    voices, music, and media used in this production.
+                    CreativesOS will not start recording or streaming until this
+                    is confirmed.
+                  </span>
+                </label>
+              </div>
+            )}
+          </Panel>
+        </section>
+        <aside className="space-y-3">
+          <Panel title="Inspector" icon={Settings2}>
+            {selectedSource ? (
+              <div className="space-y-3">
+                <label className="block text-xs text-zinc-500">
+                  Name
+                  <Input
+                    className="mt-1 border-zinc-800 bg-black"
+                    value={selectedSource.name}
+                    onChange={(e) =>
+                      updateSource(
+                        selectedSource.id,
+                        { name: e.target.value },
+                        false,
+                      )
+                    }
+                    onBlur={() => config && void persist(config)}
+                  />
+                </label>
+                {["camera", "screen", "microphone"].includes(
+                  selectedSource.type,
+                ) && (
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => void attachMedia(selectedSource)}
+                  >
+                    Connect {selectedSource.type}
+                  </Button>
+                )}
+                {selectedSource.type === "media" && (
+                  <select
+                    aria-label="Media asset"
+                    className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs"
+                    value={selectedSource.assetId ?? ""}
+                    onChange={(e) =>
+                      void attachAsset(selectedSource.id, e.target.value)
+                    }
+                  >
+                    <option value="">Choose media asset</option>
+                    {assets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.originalFilename ?? asset.kind}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedSource.type === "text" && (
+                  <>
+                    <label className="block text-xs text-zinc-500">
+                      Text
+                      <Input
+                        className="mt-1 border-zinc-800 bg-black"
+                        value={selectedSource.text ?? ""}
+                        onChange={(e) =>
+                          updateSource(
+                            selectedSource.id,
+                            { text: e.target.value },
+                            false,
+                          )
+                        }
+                        onBlur={() => config && void persist(config)}
+                      />
+                    </label>
+                    <label className="block text-xs text-zinc-500">
+                      Color
+                      <Input
+                        aria-label="Text color"
+                        type="color"
+                        className="mt-1 h-10 border-zinc-800 bg-black"
+                        value={selectedSource.color ?? "#ffffff"}
+                        onChange={(e) =>
+                          updateSource(selectedSource.id, {
+                            color: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      selectedSource.zOrder >= previewScene.sources.length - 1
+                    }
+                    onClick={() => moveSourceLayer(selectedSource.id, 1)}
+                  >
+                    <ArrowUp className="mr-1 h-3.5 w-3.5" />
+                    Layer up
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedSource.zOrder <= 0}
+                    onClick={() => moveSourceLayer(selectedSource.id, -1)}
+                  >
+                    <ArrowDown className="mr-1 h-3.5 w-3.5" />
+                    Layer down
+                  </Button>
+                </div>
+                <label className="block text-xs text-zinc-500">
+                  Blend
+                  <select
+                    aria-label="Blend mode"
+                    className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3"
+                    value={selectedSource.blendMode}
+                    onChange={(e) =>
+                      updateSource(selectedSource.id, {
+                        blendMode: e.target
+                          .value as BroadcastSource["blendMode"],
+                      })
+                    }
+                  >
+                    <option value="source-over">Normal</option>
+                    <option value="screen">Screen</option>
+                    <option value="multiply">Multiply</option>
+                    <option value="overlay">Overlay</option>
+                  </select>
+                </label>
+                <Control
+                  label="X"
+                  value={selectedSource.transform.x}
+                  max={1 - selectedSource.transform.width}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      { transform: { ...selectedSource.transform, x: value } },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Y"
+                  value={selectedSource.transform.y}
+                  max={1 - selectedSource.transform.height}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      { transform: { ...selectedSource.transform, y: value } },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Width"
+                  value={selectedSource.transform.width}
+                  min={0.05}
+                  max={1 - selectedSource.transform.x}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          width: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Height"
+                  value={selectedSource.transform.height}
+                  min={0.05}
+                  max={1 - selectedSource.transform.y}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          height: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Rotation"
+                  value={selectedSource.transform.rotation}
+                  min={-180}
+                  max={180}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          rotation: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Opacity"
+                  value={selectedSource.transform.opacity}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          opacity: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Crop top"
+                  value={selectedSource.transform.cropTop}
+                  max={0.45}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          cropTop: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Crop right"
+                  value={selectedSource.transform.cropRight}
+                  max={0.45}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          cropRight: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Crop bottom"
+                  value={selectedSource.transform.cropBottom}
+                  max={0.45}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          cropBottom: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Crop left"
+                  value={selectedSource.transform.cropLeft}
+                  max={0.45}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        transform: {
+                          ...selectedSource.transform,
+                          cropLeft: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Brightness"
+                  value={selectedSource.filters.brightness}
+                  max={2}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        filters: {
+                          ...selectedSource.filters,
+                          brightness: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Contrast"
+                  value={selectedSource.filters.contrast}
+                  max={2}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        filters: { ...selectedSource.filters, contrast: value },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Saturation"
+                  value={selectedSource.filters.saturation}
+                  max={2}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      {
+                        filters: {
+                          ...selectedSource.filters,
+                          saturation: value,
+                        },
+                      },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+                <Control
+                  label="Blur"
+                  value={selectedSource.filters.blurPx}
+                  max={20}
+                  onChange={(value) =>
+                    updateSource(
+                      selectedSource.id,
+                      { filters: { ...selectedSource.filters, blurPx: value } },
+                      false,
+                    )
+                  }
+                  onCommit={() => config && void persist(config)}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-500">
+                Select a source to edit its transform, appearance, and audio.
+              </p>
+            )}
+          </Panel>
+          <Panel title="Production settings" icon={Settings2}>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Resolution
+                <select
+                  aria-label="Broadcast resolution"
+                  className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-2 text-xs text-white"
+                  value={`${config.canvas.width}x${config.canvas.height}`}
+                  onChange={(event) => {
+                    const fullHd = event.target.value === "1920x1080";
+                    void persist({
+                      ...config,
+                      canvas: {
+                        ...config.canvas,
+                        width: fullHd ? 1920 : 1280,
+                        height: fullHd ? 1080 : 720,
+                      },
+                    });
+                  }}
+                >
+                  <option value="1280x720">720p</option>
+                  <option value="1920x1080">1080p</option>
+                </select>
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Frame rate
+                <select
+                  aria-label="Broadcast frame rate"
+                  className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-2 text-xs text-white"
+                  value={config.canvas.fps}
+                  onChange={(event) =>
+                    void persist({
+                      ...config,
+                      canvas: {
+                        ...config.canvas,
+                        fps: Number(event.target.value) as 24 | 30 | 60,
+                      },
+                    })
+                  }
+                >
+                  <option value={24}>24 fps</option>
+                  <option value={30}>30 fps</option>
+                  <option value={60}>60 fps</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-3 space-y-3">
+              <Control
+                label="Video bitrate (kbps)"
+                value={config.output.videoBitrateKbps}
+                min={500}
+                max={12000}
+                onChange={(value) =>
+                  setConfig({
+                    ...config,
+                    output: {
+                      ...config.output,
+                      videoBitrateKbps: Math.round(value),
+                    },
+                  })
+                }
+                onCommit={() => config && void persist(config)}
+              />
+              <Control
+                label="Audio bitrate (kbps)"
+                value={config.output.audioBitrateKbps}
+                min={64}
+                max={320}
+                onChange={(value) =>
+                  setConfig({
+                    ...config,
+                    output: {
+                      ...config.output,
+                      audioBitrateKbps: Math.round(value),
+                    },
+                  })
+                }
+                onCommit={() => config && void persist(config)}
+              />
+              <Control
+                label="Replay buffer (seconds)"
+                value={config.replayBufferSeconds}
+                min={0}
+                max={120}
+                onChange={(value) =>
+                  setConfig({
+                    ...config,
+                    replayBufferSeconds: Math.round(value),
+                  })
+                }
+                onCommit={() => config && void persist(config)}
+              />
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-zinc-600">
+              Changes apply to the next output. Active output health remains
+              visible above.
+            </p>
+          </Panel>
+          <Panel title="Destinations" icon={Radio}>
+            <select
+              aria-label="Streaming destination"
+              className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs"
+              value={destinationId}
+              onChange={(e) => setDestinationId(e.target.value)}
+            >
+              <option value="">Choose destination</option>
+              {destinations.map((destination) => (
+                <option key={destination.id} value={destination.id}>
+                  {destination.name} · {destination.protocol.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setDestinationOpen(!destinationOpen)}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Destination
+              </Button>
+              {destinationId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const result = (await (
+                        await apiRequest(
+                          "POST",
+                          `/api/broadcast/destinations/${destinationId}/test`,
+                          {},
+                        )
+                      ).json()) as { detail: string };
+                      setMessage(result.detail);
+                    } catch (error) {
+                      setMessage(
+                        error instanceof Error ? error.message : "Test failed",
+                      );
+                    }
+                  }}
+                >
+                  Test
+                </Button>
+              )}
+            </div>
+            {destinationOpen && (
+              <form
+                className="mt-3 space-y-2 rounded-xl bg-black p-3"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    await apiRequest(
+                      "POST",
+                      "/api/broadcast/destinations",
+                      destinationForm,
+                    );
+                    setDestinationForm({
+                      name: "",
+                      protocol: "rtmps",
+                      ingestUrl: "",
+                      streamKey: "",
+                    });
+                    setDestinationOpen(false);
+                    destinationsQuery.refetch();
+                    setMessage("Destination stored securely");
+                  } catch (error) {
+                    setMessage(
+                      error instanceof Error
+                        ? error.message
+                        : "Destination failed",
+                    );
+                  }
+                }}
+              >
+                <Input
+                  required
+                  placeholder="Destination name"
+                  value={destinationForm.name}
+                  onChange={(e) =>
+                    setDestinationForm({
+                      ...destinationForm,
+                      name: e.target.value,
+                    })
+                  }
+                />
+                <select
+                  aria-label="Destination protocol"
+                  className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-xs"
+                  value={destinationForm.protocol}
+                  onChange={(e) =>
+                    setDestinationForm({
+                      ...destinationForm,
+                      protocol: e.target.value,
+                    })
+                  }
+                >
+                  <option value="rtmps">RTMPS</option>
+                  <option value="rtmp">RTMP</option>
+                  <option value="srt">SRT</option>
+                </select>
+                <Input
+                  required
+                  type="url"
+                  placeholder="rtmps://ingest.example/live"
+                  value={destinationForm.ingestUrl}
+                  onChange={(e) =>
+                    setDestinationForm({
+                      ...destinationForm,
+                      ingestUrl: e.target.value,
+                    })
+                  }
+                />
+                <Input
+                  required
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Stream key"
+                  value={destinationForm.streamKey}
+                  onChange={(e) =>
+                    setDestinationForm({
+                      ...destinationForm,
+                      streamKey: e.target.value,
+                    })
+                  }
+                />
+                <Button size="sm" className="w-full" type="submit">
+                  Save securely
+                </Button>
+                <p className="text-[10px] leading-4 text-zinc-600">
+                  Keys are encrypted, never returned to this browser, and
+                  excluded from logs.
+                </p>
+              </form>
+            )}
+          </Panel>
+          <Panel title="Replay & recordings" icon={Save}>
+            <div className="flex gap-2">
+              {!replayActive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={startReplay}
+                >
+                  Start replay buffer
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={busy === "replay"}
+                    onClick={() => void saveReplay()}
+                  >
+                    <Save className="mr-1.5 h-3.5 w-3.5" />
+                    Save last {config.replayBufferSeconds}s
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Stop and clear replay buffer"
+                    onClick={stopReplay}
+                  >
+                    <CircleStop className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+            <div className="mt-3 space-y-2">
+              {studio.sessions
+                ?.filter((item) => item.recordingAssetId)
+                .slice(0, 5)
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-lg bg-black p-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>{new Date(item.createdAt).toLocaleString()}</span>
+                      <span className="text-emerald-400">ready</span>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const access = (await (
+                            await apiRequest(
+                              "GET",
+                              `/api/broadcast/sessions/${item.id}/media`,
+                            )
+                          ).json()) as { url: string };
+                          window.open(
+                            access.url,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                        }}
+                      >
+                        Preview
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          await apiRequest(
+                            "POST",
+                            `/api/broadcast/sessions/${item.id}/distribute`,
+                            {},
+                          );
+                          setMessage("Recording added to Distribution Studio");
+                        }}
+                      >
+                        Distribute
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </Panel>
+          {message && (
+            <p
+              role="status"
+              className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs leading-5 text-zinc-300"
+            >
+              {message}
+            </p>
+          )}
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+function Panel({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: typeof Radio;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+      <h2 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-zinc-400">
+        <Icon className="h-3.5 w-3.5 text-[#1d9bf0]" />
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+function CanvasPanel({
+  label,
+  live,
+  children,
+}: {
+  label: string;
+  live?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border ${live ? "border-red-600" : "border-zinc-800"} bg-zinc-950`}
+    >
+      <div className="flex h-8 items-center gap-2 px-3 text-[10px] font-black tracking-widest text-zinc-500">
+        {live && (
+          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+        )}
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-black p-3">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-sm font-black">{value}</p>
+    </div>
+  );
+}
+function Control({
+  label,
+  value,
+  min = 0,
+  max = 1,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  onChange: (value: number) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+      <span className="flex justify-between">
+        <span>{label}</span>
+        <span>{value.toFixed(2)}</span>
+      </span>
+      <Slider
+        className="mt-2"
+        min={min * 100}
+        max={Math.max(min, max) * 100}
+        step={1}
+        value={[value * 100]}
+        onValueChange={(values) => onChange(values[0] / 100)}
+        onValueCommit={onCommit}
+      />
+    </label>
+  );
+}

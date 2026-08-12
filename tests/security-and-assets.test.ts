@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { directUploadStorageKey, assetStorageReadiness, persistUpload } from "../server/asset-storage";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistUpload } from "../server/asset-storage";
 import { monthlyAssetQuotaFor, normalizeAssetVisibility, validateAssetUpload } from "../server/asset-policy";
 import { apiRateLimiter, assetUploadRateLimiter, securityHeaders } from "../server/security";
 
@@ -61,6 +64,31 @@ describe("production safety boundaries", () => {
     expect(assetStorageReadiness()).toEqual({ provider: "local", configured: true });
     await expect(persistUpload({ filename: "image-123.png" } as Express.Multer.File, 42, "photo"))
       .resolves.toEqual({ storageKey: "uploads/image-123.png", publicUrl: "/uploads/image-123.png" });
+  });
+
+  it("keeps development private assets inside the configured managed directory", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-assets-"));
+    process.env.NODE_ENV = "development";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = root;
+    try {
+      const stored = await persistPrivateBuffer({
+        body: Buffer.from("private broadcast qualification"),
+        ownerUserId: 42,
+        kind: "broadcast",
+        filename: "qualification.mp4",
+        mimeType: "video/mp4",
+      });
+      const expected = path.resolve(root, stored.storageKey);
+      expect(expected.startsWith(`${path.resolve(root)}${path.sep}`)).toBe(true);
+      await expect(fs.readFile(expected, "utf8")).resolves.toBe("private broadcast qualification");
+
+      const materialized = path.join(root, "materialized.mp4");
+      await materializePrivateAsset(stored.storageKey, materialized);
+      await expect(fs.readFile(materialized, "utf8")).resolves.toBe("private broadcast qualification");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("enforces visibility, type, size, and conservative monthly asset quotas", () => {

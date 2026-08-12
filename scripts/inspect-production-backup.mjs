@@ -60,7 +60,7 @@ try {
   }
 
   const { stdout: archiveList } = await execFileAsync("pg_restore", ["--list", dumpPath], { maxBuffer: 10 * 1024 * 1024 });
-  const requiredArchiveTables = ["users", "posts", "orders", "production_backups"];
+  const requiredArchiveTables = ["users", "posts", "orders", "production_backups", "broadcast_studios", "broadcast_destinations", "broadcast_sessions"];
   const missingArchiveTables = requiredArchiveTables.filter((table) => !new RegExp(`TABLE public ${table}(?:\\r?\\n|\\s)`).test(archiveList));
   if (missingArchiveTables.length) throw new Error(`Production archive is missing required tables: ${missingArchiveTables.join(", ")}`);
 

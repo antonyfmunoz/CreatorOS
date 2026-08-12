@@ -8,7 +8,11 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  workers: 2,
+  // Qualification projects share seeded actors and intentionally exercise
+  // cross-route persistence. Run serially so a parallel file cannot create a
+  // notification, membership, or session while another file is asserting its
+  // lifecycle boundary.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",

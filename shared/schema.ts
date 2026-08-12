@@ -2568,6 +2568,65 @@ export const cutStudioJobs = pgTable(
   }),
 );
 
+export const broadcastStudios = pgTable(
+  "broadcast_studios",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    config: json("config").$type<import("./broadcast-studio").BroadcastStudioConfig>().notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ ownerUpdatedIdx: index("broadcast_studios_owner_updated_idx").on(table.ownerUserId, table.updatedAt) }),
+);
+
+export const broadcastDestinations = pgTable(
+  "broadcast_destinations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    protocol: text("protocol").notNull(),
+    ingestUrl: text("ingest_url").notNull(),
+    streamKeyCiphertext: text("stream_key_ciphertext").notNull(),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ ownerUpdatedIdx: index("broadcast_destinations_owner_updated_idx").on(table.ownerUserId, table.updatedAt) }),
+);
+
+export const broadcastSessions = pgTable(
+  "broadcast_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studioId: uuid("studio_id").references(() => broadcastStudios.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    destinationId: uuid("destination_id").references(() => broadcastDestinations.id, { onDelete: "set null" }),
+    recordingAssetId: uuid("recording_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    outputMode: text("output_mode").notNull(),
+    sourceMode: text("source_mode").notNull(),
+    state: text("state").notNull().default("starting"),
+    runtimeMachineId: text("runtime_machine_id"),
+    health: json("health").$type<Record<string, unknown>>().notNull().default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    studioCreatedIdx: index("broadcast_sessions_studio_created_idx").on(table.studioId, table.createdAt),
+    ownerCreatedIdx: index("broadcast_sessions_owner_created_idx").on(table.ownerUserId, table.createdAt),
+  }),
+);
+
 // A private asset can be fulfilled through one or more paid products without
 // copying the bytes or exposing a permanent download URL.
 export const assetProductAccess = pgTable(
@@ -4257,6 +4316,9 @@ export type Asset = typeof assets.$inferSelect;
 export type ContentDraft = typeof contentDrafts.$inferSelect;
 export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
 export type CutStudioJob = typeof cutStudioJobs.$inferSelect;
+export type BroadcastStudio = typeof broadcastStudios.$inferSelect;
+export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
+export type BroadcastSession = typeof broadcastSessions.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type CampaignDeliverable = typeof campaignDeliverables.$inferSelect;

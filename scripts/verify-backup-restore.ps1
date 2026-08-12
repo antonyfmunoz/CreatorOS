@@ -30,7 +30,7 @@ try {
   & pg_restore --host 127.0.0.1 --port $restorePort --username postgres --dbname creativesos_restore --no-owner --no-acl $backupPath
   if ($LASTEXITCODE -ne 0) { throw "pg_restore failed" }
 
-  $required = @("users", "businesses", "posts", "products", "communities", "orders", "automation_definitions", "relationships", "account_privacy_requests", "production_backups")
+  $required = @("users", "businesses", "posts", "products", "communities", "orders", "automation_definitions", "relationships", "account_privacy_requests", "production_backups", "broadcast_studios", "broadcast_destinations", "broadcast_sessions")
   $quoted = ($required | ForEach-Object { "'$_'" }) -join ","
   $present = & psql -h 127.0.0.1 -p $restorePort -U postgres -d creativesos_restore -Atc "select count(*) from information_schema.tables where table_schema='public' and table_name in ($quoted)"
   if ($LASTEXITCODE -ne 0 -or [int]$present -ne $required.Count) { throw "Restored database is missing required tables" }

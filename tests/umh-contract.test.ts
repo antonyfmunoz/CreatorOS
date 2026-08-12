@@ -90,6 +90,8 @@ describe("CreativesOS UMH federation contract", () => {
     expect(manifest.capabilities.find((capability) => capability.id === "community.room.ai_participant")?.health).toBe("agent_runtime_required");
     expect(manifest.capabilities.find((capability) => capability.id === "cutstudio.edit")?.proof).toBe("revisioned_edl_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "cutstudio.render")?.approval).toBe("explicit_distribution_promotion");
+    expect(manifest.capabilities.find((capability) => capability.id === "broadcast.direct")?.proof).toBe("revisioned_scene_graph_durable_session_and_health");
+    expect(manifest.capabilities.find((capability) => capability.id === "broadcast.stream")?.approval).toBe("explicit_go_live");
     expect(manifest.commands.map((command) => command.commandType)).toEqual([
       "creativesos.content_draft.create.v1",
       "creativesos.campaign.create.v1",
@@ -99,6 +101,9 @@ describe("CreativesOS UMH federation contract", () => {
     expect(manifest.emittedEvents).toEqual(expect.arrayContaining([
       "cutstudio.project.created",
       "cutstudio.render.ready",
+      "broadcast.studio.created",
+      "broadcast.stream.started",
+      "broadcast.recording.ready",
       "community.room.scheduled",
       "community.room.live",
       "community.room.ended",

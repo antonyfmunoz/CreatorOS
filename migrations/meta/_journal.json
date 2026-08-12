@@ -456,6 +456,13 @@
       "when": 1786555897533,
       "tag": "0064_cut_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786561200000,
+      "tag": "0065_broadcast_studio",
+      "breakpoints": true
     }
   ]
 }

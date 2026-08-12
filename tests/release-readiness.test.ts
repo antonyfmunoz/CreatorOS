@@ -40,7 +40,11 @@ describe("CreativesOS release readiness", () => {
       blockers: [],
       authentication: { configured: true, mode: "production" },
       assetDelivery: { private: "configured" },
-      automations: { kernel: "configured", scheduler: "embedded", authority: "native" },
+      automations: {
+        kernel: "configured",
+        scheduler: "embedded",
+        authority: "native",
+      },
       relationshipHub: {
         kernel: "configured",
         nativeInbox: "configured",
@@ -54,13 +58,26 @@ describe("CreativesOS release readiness", () => {
         whatsapp: "configured",
         x: "configured",
       },
-      federation: { installation: "bound", inboundCommands: true, outboundEvents: true, qualification: "pending_shared_round_trip" },
+      federation: {
+        installation: "bound",
+        inboundCommands: true,
+        outboundEvents: true,
+        qualification: "pending_shared_round_trip",
+      },
       communityRooms: {
         liveMedia: "configured",
         recording: "configured",
         transcription: "configured",
         transcriptIngest: "configured",
         realtimeAi: "configured",
+      },
+      broadcastStudio: {
+        sceneComposer: "configured",
+        browserCapture: "configured",
+        serverEncoder: "configured",
+        privateRecording: "configured",
+        destinationSecurity: "configured",
+        liveDestination: "provider_pending",
       },
     });
   });
@@ -72,7 +89,10 @@ describe("CreativesOS release readiness", () => {
       ASSET_STORAGE_PROVIDER: "r2",
     });
     expect(result.status).toBe("release_gated");
-    expect(result.blockers).toEqual(["clerk_test_mode", "private_asset_delivery_unconfigured"]);
+    expect(result.blockers).toEqual([
+      "clerk_test_mode",
+      "private_asset_delivery_unconfigured",
+    ]);
     expect(result.authentication.mode).toBe("test");
     expect(result.federation.qualification).toBe("not_configured");
     expect(result.relationshipHub).toEqual({
@@ -94,6 +114,14 @@ describe("CreativesOS release readiness", () => {
       transcription: "provider_pending",
       transcriptIngest: "provider_pending",
       realtimeAi: "provider_pending",
+    });
+    expect(result.broadcastStudio).toEqual({
+      sceneComposer: "configured",
+      browserCapture: "configured",
+      serverEncoder: "configured",
+      privateRecording: "unconfigured",
+      destinationSecurity: "unconfigured",
+      liveDestination: "provider_pending",
     });
   });
 

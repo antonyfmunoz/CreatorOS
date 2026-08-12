@@ -15,6 +15,7 @@ import { apiRateLimiter, sameOriginMutationGuard, securityHeaders } from "./secu
 import { captureServerException, requestObservability, structuredLog } from "./observability";
 import { closeDatabase } from "./db";
 import { shutdownPostHog } from "./posthog";
+import { scheduleBroadcastRecovery } from "./broadcast-studio";
 
 const app = express();
 if (process.env.CREATOROS_QUALIFICATION_MODE === "true" && process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
@@ -80,6 +81,7 @@ app.use("/uploads", express.static(uploadDirectory, {
     scheduleInstagramRelationshipTokenRefresh();
     scheduleXRelationshipTokenRefresh();
     scheduleStripeCommerceRecovery();
+    scheduleBroadcastRecovery();
     log("background workers scheduled");
   });
 

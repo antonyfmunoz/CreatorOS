@@ -42,15 +42,24 @@ function safeExtension(filename: string) {
   return extension && /^[.a-z0-9]{1,12}$/.test(extension) ? extension : "";
 }
 
-function safeLocalUploadPath(candidate: string) {
-  const uploadRoot = process.env.CREATOROS_UPLOAD_DIR
+function managedUploadRoot() {
+  return process.env.CREATOROS_UPLOAD_DIR
     ? path.resolve(process.env.CREATOROS_UPLOAD_DIR)
     : path.resolve(process.cwd(), "uploads");
+}
+
+function safeLocalUploadPath(candidate: string) {
+  const uploadRoot = managedUploadRoot();
   const resolved = path.resolve(candidate);
   if (resolved !== uploadRoot && !resolved.startsWith(`${uploadRoot}${path.sep}`)) {
     throw new Error("Upload path escaped the managed upload directory");
   }
   return resolved;
+}
+
+function localStoragePath(storageKey: string) {
+  if (path.isAbsolute(storageKey)) throw new Error("Local storage key must be relative");
+  return safeLocalUploadPath(path.resolve(managedUploadRoot(), storageKey));
 }
 
 export function directUploadStorageKey(ownerUserId: number, kind: string, filename: string, visibility: AssetVisibility) {
@@ -116,7 +125,7 @@ export async function persistPrivateBuffer(input: {
   const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "private");
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
-    const localPath = path.resolve(process.cwd(), key);
+    const localPath = localStoragePath(key);
     await fs.mkdir(path.dirname(localPath), { recursive: true });
     await fs.writeFile(localPath, input.body, { flag: "wx" });
     return { storageKey: key, sizeBytes: input.body.byteLength };
@@ -146,7 +155,7 @@ export async function persistPrivateFile(input: {
   const file = await fs.stat(input.sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
-    const localPath = path.resolve(process.cwd(), key);
+    const localPath = localStoragePath(key);
     await fs.mkdir(path.dirname(localPath), { recursive: true });
     await fs.copyFile(input.sourcePath, localPath);
     return { storageKey: key, sizeBytes: file.size };
@@ -168,7 +177,7 @@ export async function persistPrivateFile(input: {
 export async function materializePrivateAsset(storageKey: string, destination: string) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider === "local") {
-    const source = path.resolve(process.cwd(), storageKey);
+    const source = localStoragePath(storageKey);
     await fs.copyFile(source, destination);
     return destination;
   }
