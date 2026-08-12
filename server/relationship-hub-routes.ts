@@ -345,13 +345,18 @@ async function auditRelationshipAction(input: { businessId: string; actorUserId:
   await db.insert(relationshipAuditEvents).values({ ...input, metadata: input.metadata ?? {} });
 }
 
+function sendWebhookChallenge(res: Response, challenge: string) {
+  if (!/^[A-Za-z0-9_-]{1,512}$/.test(challenge)) return res.status(400).type("text/plain").send("Invalid webhook challenge");
+  return res.status(200).type("text/plain").send(challenge);
+}
+
 export function registerRelationshipHubRoutes(app: Express) {
   initializeRelationshipProviderRegistry();
 
   app.get("/api/relationship-hub/webhooks/instagram", (req, res) => {
     const challenge = verifyInstagramWebhookChallenge({ mode: typeof req.query["hub.mode"] === "string" ? req.query["hub.mode"] : undefined, token: typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : undefined, challenge: typeof req.query["hub.challenge"] === "string" ? req.query["hub.challenge"] : undefined });
     if (!challenge) return res.status(403).send("Webhook verification failed");
-    res.status(200).send(challenge);
+    return sendWebhookChallenge(res, challenge);
   });
 
   app.post("/api/relationship-hub/webhooks/instagram", async (req, res) => {
@@ -374,7 +379,7 @@ export function registerRelationshipHubRoutes(app: Express) {
   app.get(["/api/relationship-hub/webhooks/messenger", "/api/relationship-hub/webhooks/whatsapp"], (req, res) => {
     const challenge = metaWebhookChallenge({ mode: typeof req.query["hub.mode"] === "string" ? req.query["hub.mode"] : undefined, token: typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : undefined, challenge: typeof req.query["hub.challenge"] === "string" ? req.query["hub.challenge"] : undefined });
     if (!challenge) return res.status(403).send("Webhook verification failed");
-    res.status(200).send(challenge);
+    return sendWebhookChallenge(res, challenge);
   });
 
   app.post("/api/relationship-hub/webhooks/messenger", async (req, res) => {

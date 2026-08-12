@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { db } from "../server/db";
 import {
   accountPrivacyRequests,
@@ -21,7 +22,7 @@ function assert(condition: unknown, message: string): asserts condition {
 async function qualify() {
   if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") throw new Error("Account privacy qualification requires an isolated disposable database");
   process.env.PRIVACY_SKIP_IDENTITY_PROVIDER = "true";
-  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const suffix = `${Date.now()}_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const [user, contact] = await db.insert(users).values([
     { clerkId: `privacy_${suffix}`, authEmail: `privacy_${suffix}@example.invalid`, username: `privacy_${suffix}`, displayName: "Privacy qualification" },
     { clerkId: `privacy_contact_${suffix}`, authEmail: `privacy_contact_${suffix}@example.invalid`, username: `privacy_contact_${suffix}`, displayName: "Privacy contact" },

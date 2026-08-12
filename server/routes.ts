@@ -1162,7 +1162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     assetUploadRateLimiter(),
     upload.any(),
     async (req, res) => {
-      const files = (req.files ?? []) as Express.Multer.File[];
+      const files = Array.isArray(req.files) ? req.files : [];
       try {
         const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
         const [file] = files;
@@ -1540,13 +1540,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const name =
         typeof req.body?.name === "string" ? req.body.name.trim() : "";
-      const rawHandle =
-        typeof req.body?.handle === "string" ? req.body.handle : name;
-      const handle = rawHandle
-        .toLowerCase()
-        .replace(/[^a-z0-9_]/g, "_")
-        .replace(/_+/g, "_")
-        .replace(/^_+|_+$/g, "");
+      const rawHandle = (typeof req.body?.handle === "string" ? req.body.handle : name).slice(0, 128).toLowerCase();
+      let handle = "";
+      for (const character of rawHandle) {
+        const isAsciiLetter = character >= "a" && character <= "z";
+        const isDigit = character >= "0" && character <= "9";
+        const normalized = isAsciiLetter || isDigit ? character : "_";
+        if (normalized !== "_" || (handle && !handle.endsWith("_"))) handle += normalized;
+      }
+      handle = handle.replace(/^_/, "").replace(/_$/, "");
       const description =
         typeof req.body?.description === "string"
           ? req.body.description.trim()
@@ -2431,9 +2433,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/posts/media", attachUser, upload.any(), async (req, res) => {
     try {
-      const { content, mediaType, isCarousel, addToStory } = req.body;
+      const content = typeof req.body?.content === "string" ? req.body.content : "";
+      const mediaType = typeof req.body?.mediaType === "string" ? req.body.mediaType : "";
+      const isCarousel = typeof req.body?.isCarousel === "string" ? req.body.isCarousel : "false";
+      const addToStory = typeof req.body?.addToStory === "string" ? req.body.addToStory : "false";
       const userId = req.dbUser!.id;
-      const files = (req.files ?? []) as Express.Multer.File[];
+      const files = Array.isArray(req.files) ? req.files : [];
 
       if (!content) {
         await discardUploadedFiles(files);
@@ -2605,10 +2610,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   `Successfully added tagged user ${taggedUser.id} to post ${post.id}`,
                 );
               } catch (insertError) {
-                console.error(
-                  `Error inserting tagged user ${taggedUser.id}:`,
-                  insertError,
-                );
+                console.error("Error inserting tagged user", {
+                  taggedUserId: Number(taggedUser.id),
+                  postId: post.id,
+                  errorType: insertError instanceof Error ? insertError.name : typeof insertError,
+                });
               }
             }
             console.log(
@@ -2627,7 +2633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(201).json({ ...post, assets: publishedAssets });
     } catch (error) {
-      await discardUploadedFiles((req.files ?? []) as Express.Multer.File[]);
+      await discardUploadedFiles(Array.isArray(req.files) ? req.files : []);
       console.error("Error creating media post:", error);
       res.status(500).json({ message: "Failed to create media post" });
     }

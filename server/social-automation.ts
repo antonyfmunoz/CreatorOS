@@ -20,7 +20,9 @@ function normalizedText(value: unknown) {
 }
 
 function normalizedCommand(value: unknown) {
-  return normalizedText(value).toLocaleLowerCase().replace(/[.!?,;:]+$/g, "");
+  let command = normalizedText(value).toLocaleLowerCase();
+  while (command && ".!?,;:".includes(command.at(-1)!)) command = command.slice(0, -1);
+  return command;
 }
 
 export function messagingConsentCommand(content: unknown): "opt_out" | "opt_in" | null {

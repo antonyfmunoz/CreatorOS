@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { db } from "../server/db";
 import {
   automationActionReceipts,
@@ -45,7 +46,7 @@ async function cleanupQualificationFixtures(userIds?: number[], definitionIds?: 
 }
 
 async function main() {
-  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const suffix = `${Date.now()}_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const createdUserIds: number[] = [];
   const createdDefinitionIds: string[] = [];
   let qualificationResult: Record<string, unknown> | null = null;
