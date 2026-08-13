@@ -17,6 +17,7 @@ const policies: Record<string, { maxBytes: number; mime: (value: string) => bool
   audio: { maxBytes: 50 * MEBIBYTE, mime: (value) => /^(audio\/(mpeg|wav|ogg|webm)|application\/octet-stream)$/i.test(value) },
   video: { maxBytes: 250 * MEBIBYTE, mime: (value) => /^video\/(mp4|webm|quicktime)$/i.test(value) },
   document: { maxBytes: 100 * MEBIBYTE, mime: (value) => /^(application\/pdf|text\/(plain|markdown|csv))$/i.test(value) },
+  "cut-lut": { maxBytes: 8 * MEBIBYTE, mime: (value) => /^(text\/plain|application\/(octet-stream|x-cube))$/i.test(value) },
   download: { maxBytes: 500 * MEBIBYTE, mime: () => true },
 };
 

@@ -17,6 +17,7 @@ import {
   cutTranscriptSchema,
   detectCutCandidates,
   removeCutRange,
+  parseCubeLut,
   validateCutEdl,
   type CutEdl,
   type CutTranscript,
@@ -46,6 +47,7 @@ const projectMediaSchema = z.object({
   duration: z.number().finite().positive().max(43_200),
   mediaKind: z.enum(["video", "audio"]),
 });
+const projectLutSchema = z.object({ assetId: z.string().uuid(), name: z.string().trim().min(1).max(160) });
 const createReviewSchema = z.object({
   jobId: z.string().uuid().optional(),
   label: z.string().trim().min(1).max(120).default("Client review"),
@@ -147,6 +149,29 @@ async function ownedAsset(userId: number, id: string) {
 
 async function projectMedia(projectId: string, userId: number) {
   return db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, projectId), eq(cutStudioProjectMedia.ownerUserId, userId))).orderBy(cutStudioProjectMedia.createdAt);
+}
+
+async function projectLuts(project: typeof cutStudioProjects.$inferSelect) {
+  return db.select({ id: assets.id, name: assets.originalFilename, sizeBytes: assets.sizeBytes, metadata: assets.metadata, createdAt: assets.createdAt }).from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready"))).orderBy(desc(assets.createdAt));
+}
+
+function escapeFfmpegFilterPath(value: string) {
+  return value.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect, clips: CutEdl["clips"], temp: string) {
+  const lutIds = Array.from(new Set(clips.flatMap((clip) => clip.lutAssetId ? [clip.lutAssetId] : [])));
+  const result = new Map<string, string>();
+  if (!lutIds.length) return result;
+  const rows = await db.select().from(assets).where(and(inArray(assets.id, lutIds), eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+  if (rows.length !== lutIds.length) throw new Error("One or more private LUTs are unavailable");
+  for (const asset of rows) {
+    const lutPath = path.join(temp, `lut-${asset.id}.cube`);
+    await materializePrivateAsset(asset.storageKey, lutPath);
+    parseCubeLut(await fs.readFile(lutPath, "utf8"));
+    result.set(asset.id, lutPath);
+  }
+  return result;
 }
 
 async function canStartJob(userId: number) {
@@ -282,6 +307,7 @@ async function renderMultitrack(
   clips: CutEdl["clips"],
   graphics: NonNullable<CutEdl["graphics"]>,
   trackSettings: NonNullable<CutEdl["tracks"]>,
+  lutPaths: Map<string, string>,
   temp: string,
   outputPath: string,
 ) {
@@ -321,7 +347,7 @@ async function renderMultitrack(
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
     const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip), `scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease`, `pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black`, `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), `scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease`, `pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black`, `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
@@ -374,7 +400,7 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
-      const overlayFilters = [...clipColorFilters(clip), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      const overlayFilters = [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
       filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[overlay${overlayIndex}]`);
@@ -429,7 +455,7 @@ function atempoFilters(speed: number) {
   return filters;
 }
 
-function clipColorFilters(clip: CutEdl["clips"][number]) {
+function clipColorFilters(clip: CutEdl["clips"][number], lutPaths: Map<string, string>) {
   const filters: string[] = [];
   if (clip.colorPreset === "cinematic") filters.push("eq=contrast=1.08:saturation=0.9:brightness=-0.02", "colorbalance=rs=-0.02:bs=0.04");
   else if (clip.colorPreset === "vivid") filters.push("eq=contrast=1.08:saturation=1.25");
@@ -437,6 +463,11 @@ function clipColorFilters(clip: CutEdl["clips"][number]) {
   if (clip.colorAdjust) {
     filters.push(`eq=brightness=${clip.colorAdjust.brightness}:contrast=${clip.colorAdjust.contrast}:saturation=${clip.colorAdjust.saturation}`);
     if (clip.colorAdjust.temperature !== 0) filters.push(`colorbalance=rs=${clip.colorAdjust.temperature * 0.1}:bs=${clip.colorAdjust.temperature * -0.1}`);
+  }
+  if (clip.lutAssetId) {
+    const lutPath = lutPaths.get(clip.lutAssetId);
+    if (!lutPath) throw new Error("The selected private LUT is unavailable");
+    filters.push(`lut3d=file='${escapeFfmpegFilterPath(lutPath)}':interp=tetrahedral`);
   }
   return filters;
 }
@@ -465,9 +496,10 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       });
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
+    const lutPaths = await materializeCutLuts(project, clips, temp);
     if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
-      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], temp, outputPath);
+      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
@@ -485,7 +517,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
       const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < clips.length - 1 ? transitionFade : 0), outputDuration / 2);
       if (media.hasVideo) {
-        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip)];
+        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths)];
         if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
         if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
         filters.push(`[0:v]${videoFilters.join(",")}[v${index}]`);
@@ -683,11 +715,37 @@ export function registerCutStudioRoutes(app: Express) {
   cut.get("/api/cut/projects/:id", attachUser, async (req, res) => {
     noStore(res); const id = idSchema.safeParse(req.params.id); if (!id.success) return res.status(404).json({ message: "Project not found" });
     const project = await ownedProject(req.dbUser!.id, id.data); if (!project) return res.status(404).json({ message: "Project not found" });
-    const [jobs, media] = await Promise.all([
+    const [jobs, media, luts] = await Promise.all([
       db.select().from(cutStudioJobs).where(eq(cutStudioJobs.projectId, project.id)).orderBy(desc(cutStudioJobs.createdAt)).limit(20),
       projectMedia(project.id, req.dbUser!.id),
+      projectLuts(project),
     ]);
-    res.json({ ...project, jobs, media });
+    res.json({ ...project, jobs, media, luts });
+  });
+  cut.post("/api/cut/projects/:id/luts", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = projectLutSchema.safeParse(req.body);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!parsed.success || !project) return res.status(404).json({ message: "Project or LUT not found" });
+    const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);
+    if (!asset || asset.kind !== "cut-lut" || asset.visibility !== "private" || asset.status !== "ready" || (asset.businessId && asset.businessId !== project.businessId)) return res.status(400).json({ message: "The private LUT asset is not ready" });
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-lut-validate-"));
+    const lutPath = path.join(temp, "candidate.cube");
+    try {
+      await materializePrivateAsset(asset.storageKey, lutPath);
+      const descriptor = parseCubeLut(await fs.readFile(lutPath, "utf8"));
+      const priorMetadata = asset.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {};
+      const [registered] = await db.update(assets).set({ businessId: project.businessId, originalFilename: parsed.data.name.endsWith(".cube") ? parsed.data.name : `${parsed.data.name}.cube`, metadata: { ...priorMetadata, cubeLut: descriptor, validatedAt: new Date().toISOString() } }).where(and(eq(assets.id, asset.id), eq(assets.ownerUserId, req.dbUser!.id))).returning();
+      await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.lut.registered", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, lutAssetId: registered.id, size: descriptor.size, entryCount: descriptor.entryCount }, idempotencyKey: `cutstudio:${project.id}:lut:${registered.id}` });
+      return res.status(201).json({ id: registered.id, name: registered.originalFilename, sizeBytes: registered.sizeBytes, metadata: registered.metadata, createdAt: registered.createdAt });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The LUT file is invalid";
+      await removeStoredAsset(asset.storageKey, "private").catch(() => undefined);
+      await db.update(assets).set({ status: "rejected", metadata: { rejectionReason: message } }).where(eq(assets.id, asset.id));
+      return res.status(400).json({ message });
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
   });
   cut.get("/api/cut/projects/:id/reviews", attachUser, async (req, res) => {
     noStore(res);

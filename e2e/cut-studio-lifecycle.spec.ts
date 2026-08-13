@@ -26,7 +26,7 @@ function generateFixtures(testInfo: TestInfo) {
   return { primary, broll, music };
 }
 
-async function uploadPrivate(page: Page, owner: number, filePath: string, name: string, mimeType: string, kind: "video" | "audio") {
+async function uploadPrivate(page: Page, owner: number, filePath: string, name: string, mimeType: string, kind: "video" | "audio" | "cut-lut") {
   const response = await page.request.post("/api/assets/upload-proxy", {
     headers: { "x-creativesos-demo-user": String(owner) },
     multipart: {
@@ -38,6 +38,56 @@ async function uploadPrivate(page: Page, owner: number, filePath: string, name: 
   await expectOk(response);
   return (await response.json()).asset as { id: string };
 }
+
+test("CutStudio validates and renders a private cube LUT", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const directory = testInfo.outputPath("cube-lut-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/red-source.mp4`;
+  const lutPath = `${directory}/green-transform.cube`;
+  const outputPath = `${directory}/lut-output.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=640x360:rate=24:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", sourcePath]);
+  writeFileSync(lutPath, `TITLE "Green transform"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n${Array.from({ length: 8 }, () => "0 1 0").join("\n")}\n`);
+  const source = await uploadPrivate(page, owner, sourcePath, "red-source.mp4", "video/mp4", "video");
+  const lut = await uploadPrivate(page, owner, lutPath, "green-transform.cube", "text/plain", "cut-lut");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Private LUT ${Date.now()}`, duration: 1, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  const registerResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/luts`, { assetId: lut.id, name: "Green transform.cube" });
+  await expectOk(registerResponse);
+  expect((await api(page, peer, "POST", `/api/cut/projects/${project.id}/luts`, { assetId: lut.id, name: "Stolen.cube" })).status()).toBe(404);
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  expect(loaded.luts).toEqual(expect.arrayContaining([expect.objectContaining({ id: lut.id, name: "Green transform.cube" })]));
+  const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { ...loaded.edl, clips: loaded.edl.clips.map((clip: Record<string, unknown>) => ({ ...clip, lutAssetId: lut.id })) }, { "If-Match": String(loaded.revision) });
+  await expectOk(savedResponse);
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String) });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "LUT qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const token = new URL((await reviewResponse.json()).reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${token}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const pixel = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", "0.5", "-i", outputPath, "-vf", "scale=1:1", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  expect(pixel[1]).toBeGreaterThan(150);
+  expect(pixel[0]).toBeLessThan(80);
+  expect(pixel[2]).toBeLessThan(80);
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await expect(page.getByLabel("Clip LUT")).toHaveValue(lut.id);
+});
 
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
   test.setTimeout(90_000);

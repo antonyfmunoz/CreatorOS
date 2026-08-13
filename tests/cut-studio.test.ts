@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -66,6 +66,13 @@ describe("CutStudio edit decision list", () => {
     expect(result).toContain("\\fscx68");
     expect(result).toContain("Dialogue: 0,0:00:00.00,0:00:00.50");
     expect(result).toContain("Dialogue: 0,0:00:01.00,0:00:02.00");
+  });
+
+  it("validates bounded three-dimensional cube LUTs", () => {
+    const cube = `TITLE "Green transform"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n${Array.from({ length: 8 }, () => "0 1 0").join("\n")}`;
+    expect(parseCubeLut(cube)).toEqual({ title: "Green transform", size: 2, entryCount: 8 });
+    expect(() => parseCubeLut("LUT_3D_SIZE 2\n0 0 0")).toThrow(/expected 8/i);
+    expect(() => parseCubeLut("LUT_3D_SIZE 2\n<script>")).toThrow(/unsupported/i);
   });
 
   it("gives conservative render estimates for production profiles", () => {

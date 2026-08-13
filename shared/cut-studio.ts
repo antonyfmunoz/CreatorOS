@@ -16,6 +16,7 @@ export const cutClipSchema = z.object({
   groupId: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
   duckUnderVoice: z.boolean().optional(),
   colorPreset: z.enum(["original", "cinematic", "vivid", "monochrome"]).optional(),
+  lutAssetId: z.string().uuid().optional(),
   colorAdjust: z.object({
     brightness: z.number().finite().min(-1).max(1),
     contrast: z.number().finite().min(0.5).max(2),
@@ -126,6 +127,36 @@ export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
 export type CutRippleMode = "off" | "track" | "linked";
+
+export function parseCubeLut(value: string) {
+  const lines = value.split(/\r?\n/).map((line) => line.replace(/#.*$/, "").trim()).filter(Boolean);
+  let title: string | null = null;
+  let size: number | null = null;
+  const entries: number[][] = [];
+  for (const line of lines) {
+    if (/^TITLE\s+/i.test(line)) {
+      title = line.replace(/^TITLE\s+/i, "").replace(/^"|"$/g, "").trim().slice(0, 120) || null;
+      continue;
+    }
+    const sizeMatch = line.match(/^LUT_3D_SIZE\s+(\d+)$/i);
+    if (sizeMatch) {
+      size = Number(sizeMatch[1]);
+      if (!Number.isInteger(size) || size < 2 || size > 65) throw new Error("3D LUT size must be between 2 and 65");
+      continue;
+    }
+    if (/^DOMAIN_(?:MIN|MAX)\s+/i.test(line)) {
+      const values = line.split(/\s+/).slice(1).map(Number);
+      if (values.length !== 3 || values.some((item) => !Number.isFinite(item))) throw new Error("LUT domain values are invalid");
+      continue;
+    }
+    const values = line.split(/\s+/).map(Number);
+    if (values.length !== 3 || values.some((item) => !Number.isFinite(item) || item < -16 || item > 16)) throw new Error("LUT contains an unsupported directive or color value");
+    entries.push(values);
+  }
+  if (!size) throw new Error("LUT_3D_SIZE is required");
+  if (entries.length !== size ** 3) throw new Error(`Expected ${size ** 3} LUT color entries but received ${entries.length}`);
+  return { title, size, entryCount: entries.length };
+}
 
 function reconcileCutCompounds(compounds: CutCompound[] | undefined, clips: CutClip[], replacements: Map<string, string[]> = new Map()) {
   const validClipIds = new Set(clips.flatMap((clip) => clip.id ? [clip.id] : []));

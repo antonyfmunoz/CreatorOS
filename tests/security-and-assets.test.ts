@@ -97,6 +97,8 @@ describe("production safety boundaries", () => {
     expect(validateAssetUpload({ kind: "profile", mimeType: "image/png", sizeBytes: 1_024, visibility: "public" })).toBeNull();
     expect(validateAssetUpload({ kind: "profile", mimeType: "application/pdf", sizeBytes: 1_024, visibility: "public" })).toMatch(/not allowed/i);
     expect(validateAssetUpload({ kind: "video", mimeType: "video/mp4", sizeBytes: 251 * 1024 * 1024, visibility: "private" })).toMatch(/exceeds/i);
+    expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/plain", sizeBytes: 2_048, visibility: "private" })).toBeNull();
+    expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/html", sizeBytes: 2_048, visibility: "private" })).toMatch(/not allowed/i);
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
   });
 

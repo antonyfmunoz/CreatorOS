@@ -32,6 +32,8 @@ const storage = multer.diskStorage({
       prefix = 'audio';
     } else if (file.fieldname === 'video') {
       prefix = 'video';
+    } else if (file.fieldname === 'cut-lut') {
+      prefix = 'cut-lut';
     } else if (file.fieldname === 'media') {
       // For story uploads
       prefix = file.mimetype.startsWith('video/') ? 'story-video' : 'story-image';
@@ -97,6 +99,11 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     } else {
       cb(new Error('Only audio files are allowed!'));
     }
+  } else if (file.fieldname === 'cut-lut') {
+    const isCube = path.extname(file.originalname).toLowerCase() === '.cube';
+    const isText = file.mimetype === 'text/plain' || file.mimetype === 'application/octet-stream' || file.mimetype === 'application/x-cube';
+    if (isCube && isText) return cb(null, true);
+    cb(new Error('Only .cube 3D LUT files are allowed!'));
   } else if (file.fieldname === 'video') {
     // For video uploads
     const allowedTypes = /mp4|webm|mov|avi/;

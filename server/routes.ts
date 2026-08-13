@@ -1188,7 +1188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res
             .status(400)
             .json({ message: "Upload exactly one media file" });
-        if (!["photo", "video", "audio"].includes(kind) || !visibility) {
+        if (!["photo", "video", "audio", "cut-lut"].includes(kind) || !visibility) {
           await discardUploadedFiles(files);
           return res
             .status(400)
