@@ -14,6 +14,7 @@ import {
   defaultBroadcastStudioConfig,
   validateBroadcastStudioConfig,
 } from "@shared/broadcast-studio";
+import { validateCutEdl } from "@shared/cut-studio";
 import {
   assets,
   broadcastBrandKits,
@@ -24,6 +25,8 @@ import {
   broadcastSessions,
   broadcastStudioCollaborators,
   broadcastStudios,
+  cutStudioProjectMedia,
+  cutStudioProjects,
   notifications,
   users,
 } from "@shared/schema";
@@ -1260,6 +1263,84 @@ export function registerBroadcastStudioRoutes(app: Express) {
         .status(503)
         .json({ message: "Private recording delivery is not configured" });
     }
+  });
+  app.post("/api/broadcast/sessions/:id/cut-studio", attachUser, async (req, res) => {
+    noStore(res);
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    if (!session.recordingAssetId || session.state !== "complete")
+      return res.status(409).json({ message: "A completed recording is required" });
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from assets where id = ${session.recordingAssetId} and owner_user_id = ${req.dbUser!.id} for update`);
+      const [recording] = await tx.select().from(assets).where(and(
+        eq(assets.id, session.recordingAssetId!),
+        eq(assets.ownerUserId, req.dbUser!.id),
+        eq(assets.visibility, "private"),
+        eq(assets.status, "ready"),
+      )).limit(1);
+      if (!recording || !recording.mimeType?.startsWith("video/")) return null;
+      const existingProjectId = typeof recording.metadata?.cutStudioProjectId === "string" ? recording.metadata.cutStudioProjectId : null;
+      if (existingProjectId) {
+        const [existing] = await tx.select().from(cutStudioProjects).where(and(eq(cutStudioProjects.id, existingProjectId), eq(cutStudioProjects.ownerUserId, req.dbUser!.id))).limit(1);
+        if (existing) return { project: existing, reused: true, importedTrackCount: 0, omittedTimelineTrackCount: 0 };
+      }
+      const [studio, markers, tracks] = await Promise.all([
+        tx.select({ name: broadcastStudios.name }).from(broadcastStudios).where(eq(broadcastStudios.id, session.studioId)).limit(1).then((rows) => rows[0]),
+        tx.select().from(broadcastSessionMarkers).where(and(eq(broadcastSessionMarkers.sessionId, session.id), eq(broadcastSessionMarkers.ownerUserId, req.dbUser!.id))).orderBy(broadcastSessionMarkers.positionMs),
+        tx.select().from(broadcastSessionTracks).where(and(eq(broadcastSessionTracks.sessionId, session.id), eq(broadcastSessionTracks.ownerUserId, req.dbUser!.id))).orderBy(broadcastSessionTracks.createdAt),
+      ]);
+      const duration = Math.max(0.1, Number(session.health?.durationMs ?? 0) / 1_000 || ((session.endedAt?.getTime() ?? Date.now()) - (session.startedAt?.getTime() ?? Date.now())) / 1_000);
+      const trackAssetIds = Array.from(new Set(tracks.map((track) => track.assetId).filter((id) => id !== recording.id)));
+      const trackAssets = trackAssetIds.length ? await tx.select().from(assets).where(and(inArray(assets.id, trackAssetIds), eq(assets.ownerUserId, req.dbUser!.id), eq(assets.visibility, "private"), eq(assets.status, "ready"))) : [];
+      const assetById = new Map(trackAssets.map((asset) => [asset.id, asset]));
+      let videoTrack = 2;
+      let audioTrack = 1;
+      let omittedTimelineTrackCount = 0;
+      const importedClips = tracks.flatMap((track) => {
+        const asset = assetById.get(track.assetId);
+        if (!asset) return [];
+        const mediaKind = asset.mimeType?.startsWith("audio/") ? "audio" : asset.mimeType?.startsWith("video/") ? "video" : null;
+        if (!mediaKind) return [];
+        const timelineTrack = mediaKind === "video" ? (videoTrack <= 8 ? `v${videoTrack++}` : null) : (audioTrack <= 8 ? `a${audioTrack++}` : null);
+        if (!timelineTrack) { omittedTimelineTrackCount += 1; return []; }
+        return [{
+          id: `broadcast_${track.id}`,
+          assetId: asset.id,
+          label: track.sourceName.slice(0, 80),
+          start: 0,
+          end: Math.max(0.05, Math.min(duration, track.durationMs / 1_000)),
+          speed: 1,
+          volume: 0,
+          fadeIn: 0,
+          fadeOut: 0,
+          transition: "cut" as const,
+          track: timelineTrack,
+          timelineStart: 0,
+          groupId: "broadcast_sources",
+          transform: { x: 0, y: 0, width: 1, height: 1, opacity: mediaKind === "video" ? 0 : 1 },
+        }];
+      });
+      const edl = validateCutEdl({
+        version: 3,
+        clips: [{ id: "broadcast_program", label: "Program recording", start: 0, end: duration, speed: 1, volume: 1, fadeIn: 0, fadeOut: 0, transition: "cut", track: "v1", timelineStart: 0, transform: { x: 0, y: 0, width: 1, height: 1, opacity: 1 } }, ...importedClips],
+        markers: markers.map((marker) => ({ id: `broadcast_${marker.id}`, label: marker.label.slice(0, 80), position: Math.min(duration, marker.positionMs / 1_000), kind: marker.kind === "highlight" ? "beat" : "note", color: marker.kind === "issue" ? "#f59e0b" : marker.kind === "highlight" ? "#1d9bf0" : "#f43f5e" })),
+        tracks: Array.from(new Set(["v1", ...importedClips.map((clip) => clip.track)])).map((track) => ({ track, locked: false, hidden: false, muted: false, solo: false, gain: 1 })),
+      }, duration);
+      const projectName = `${studio?.name ?? "Broadcast"} recording · ${session.createdAt.toISOString().slice(0, 10)}`;
+      const [project] = await tx.insert(cutStudioProjects).values({ ownerUserId: req.dbUser!.id, businessId: session.businessId, sourceAssetId: recording.id, name: projectName, duration, mediaKind: "video", edl }).returning();
+      const mediaRows = [{ projectId: project.id, assetId: recording.id, ownerUserId: req.dbUser!.id, name: recording.originalFilename ?? "Broadcast program recording", mediaKind: "video", duration }, ...tracks.flatMap((track) => {
+        const asset = assetById.get(track.assetId);
+        if (!asset) return [];
+        const mediaKind = asset.mimeType?.startsWith("audio/") ? "audio" : asset.mimeType?.startsWith("video/") ? "video" : null;
+        return mediaKind ? [{ projectId: project.id, assetId: asset.id, ownerUserId: req.dbUser!.id, name: track.sourceName, mediaKind, duration: Math.max(0.05, track.durationMs / 1_000) }] : [];
+      })];
+      await tx.insert(cutStudioProjectMedia).values(mediaRows).onConflictDoNothing();
+      await tx.update(assets).set({ metadata: { ...recording.metadata, cutStudioProjectId: project.id, broadcastSessionId: session.id } }).where(eq(assets.id, recording.id));
+      return { project, reused: false, importedTrackCount: mediaRows.length - 1, omittedTimelineTrackCount };
+    });
+    if (!result) return res.status(404).json({ message: "Private recording not found" });
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: session.studioId, eventType: "broadcast.cutstudio.project.created", actorUserId: req.dbUser!.id, payload: { businessId: session.businessId, sessionId: session.id, projectId: result.project.id, importedTrackCount: result.importedTrackCount, omittedTimelineTrackCount: result.omittedTimelineTrackCount }, idempotencyKey: `broadcast:${session.id}:cutstudio:${result.project.id}` });
+    res.status(result.reused ? 200 : 201).json(result);
   });
   app.post(
     "/api/broadcast/sessions/:id/distribute",

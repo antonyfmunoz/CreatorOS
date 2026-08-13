@@ -5,6 +5,8 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
 import { createBroadcastSceneFromTemplate } from "../shared/broadcast-studio";
 
 function ownerFor(testInfo: TestInfo) {
@@ -31,6 +33,22 @@ async function expectOk(response: APIResponse) {
     response.ok(),
     `${response.status()} ${response.url()}: ${await response.text()}`,
   ).toBeTruthy();
+}
+
+function generateBroadcastHandoffFixtures(testInfo: TestInfo) {
+  const directory = testInfo.outputPath("broadcast-handoff-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const program = `${directory}/program.mp4`;
+  const camera = `${directory}/camera.webm`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", program]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x1d9bf0:size=640x360:rate=24:duration=2", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus", "-shortest", camera]);
+  return { program, camera };
+}
+
+async function uploadPrivateBroadcastFixture(page: Page, owner: number, filePath: string, name: string, mimeType: string) {
+  const response = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "video", visibility: "private", video: { name, mimeType, buffer: readFileSync(filePath) } } });
+  await expectOk(response);
+  return (await response.json()).asset as { id: string };
 }
 
 test("Broadcast Studio completes an owner-scoped encoder and private recording lifecycle", async ({
@@ -183,6 +201,17 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
     frame: expect.any(Number),
     statusTier: "healthy",
   });
+  expect((await api(page, peer, "POST", `/api/broadcast/sessions/${started.id}/cut-studio`, {})).status()).toBe(404);
+  const cutProjectResponse = await api(page, owner, "POST", `/api/broadcast/sessions/${started.id}/cut-studio`, {});
+  await expectOk(cutProjectResponse);
+  const cutHandoff = await cutProjectResponse.json();
+  expect(cutHandoff).toMatchObject({ reused: false, importedTrackCount: 0, project: { sourceAssetId: completed.recordingAssetId, mediaKind: "video", edl: { version: 3, markers: [expect.objectContaining({ label: "Opening highlight", kind: "beat" })] } } });
+  const repeatedCutProjectResponse = await api(page, owner, "POST", `/api/broadcast/sessions/${started.id}/cut-studio`, {});
+  await expectOk(repeatedCutProjectResponse);
+  expect(await repeatedCutProjectResponse.json()).toMatchObject({ reused: true, project: { id: cutHandoff.project.id } });
+  const cutProjectDetailResponse = await api(page, owner, "GET", `/api/cut/projects/${cutHandoff.project.id}`);
+  await expectOk(cutProjectDetailResponse);
+  expect(await cutProjectDetailResponse.json()).toMatchObject({ media: [expect.objectContaining({ assetId: completed.recordingAssetId, mediaKind: "video" })] });
 });
 
 test("Broadcast Studio exposes independent operator controls and explicit capture consent", async ({
@@ -288,6 +317,42 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
 
+});
+
+test("Broadcast opens a durable multitrack recording directly in CutStudio", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const fixture = generateBroadcastHandoffFixtures(testInfo);
+  const program = await uploadPrivateBroadcastFixture(page, owner, fixture.program, "connected-program.mp4", "video/mp4");
+  const camera = await uploadPrivateBroadcastFixture(page, owner, fixture.camera, "connected-camera.webm", "video/webm");
+  const studioResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Connected production ${Date.now()}` });
+  await expectOk(studioResponse);
+  const studio = await studioResponse.json();
+  const sessionResponse = await api(page, owner, "POST", `/api/broadcast/studios/${studio.id}/recordings`, { assetId: program.id, durationMs: 2_000 });
+  await expectOk(sessionResponse);
+  const session = await sessionResponse.json();
+  const trackResponse = await api(page, owner, "POST", `/api/broadcast/sessions/${session.id}/tracks`, { assetId: camera.id, sourceId: "field_camera", sourceName: "Field camera", sourceType: "camera", mimeType: "video/webm", durationMs: 2_000, quality: { width: 640, height: 360, fps: 24, audioChannels: 1, sampleRate: 48_000 } });
+  await expectOk(trackResponse);
+  expect((await api(page, peer, "POST", `/api/broadcast/sessions/${session.id}/cut-studio`, {})).status()).toBe(404);
+
+  await page.goto("/broadcast");
+  await expect(page.locator("header h1")).toBeVisible();
+  const studioSwitcher = page.getByRole("combobox", { name: "Broadcast studio", exact: true });
+  if (await studioSwitcher.count()) await studioSwitcher.selectOption(studio.id);
+  await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
+  await expect(page.getByText("Isolated source recordings", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Edit in CutStudio" }).click();
+  await expect(page).toHaveURL(/\/cut-studio\?project=[0-9a-f-]+$/);
+  await expect(page.getByRole("heading", { name: /Connected production.*recording/ })).toBeVisible();
+  await expect(page.getByRole("complementary").getByText("Field camera", { exact: true })).toBeVisible();
+  const projectId = new URL(page.url()).searchParams.get("project")!;
+  const projectResponse = await api(page, owner, "GET", `/api/cut/projects/${projectId}`);
+  await expectOk(projectResponse);
+  expect(await projectResponse.json()).toMatchObject({ sourceAssetId: program.id, edl: { version: 3, clips: expect.arrayContaining([expect.objectContaining({ id: "broadcast_program", track: "v1", volume: 1 }), expect.objectContaining({ assetId: camera.id, track: "v2", groupId: "broadcast_sources", volume: 0, transform: { opacity: 0 } })]) }, media: expect.arrayContaining([expect.objectContaining({ assetId: program.id }), expect.objectContaining({ assetId: camera.id, name: "Field camera" })]) });
+  const repeated = await api(page, owner, "POST", `/api/broadcast/sessions/${session.id}/cut-studio`, {});
+  await expectOk(repeated);
+  expect(await repeated.json()).toMatchObject({ reused: true, project: { id: projectId } });
 });
 
 test("Broadcast routes program and monitor audio with persisted sync and balance", async ({ page }, testInfo) => {

@@ -56,6 +56,7 @@ export default function CutStudioPage() {
   const trimRef = useRef<{ clipId: string; edge: "start" | "end"; startX: number; trackWidth: number; sourceDuration: number; origin: CutEdl; moved: boolean; rolling: boolean } | null>(null);
   const suppressClipClickRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const initialProjectOpened = useRef(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [edl, setEdl] = useState<CutEdl | null>(null);
@@ -116,6 +117,14 @@ export default function CutStudioPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { setBusy(""); }
   }, []);
+
+  useEffect(() => {
+    if (initialProjectOpened.current) return;
+    const requestedProject = new URLSearchParams(window.location.search).get("project");
+    if (!requestedProject || !/^[0-9a-f-]{36}$/i.test(requestedProject)) return;
+    initialProjectOpened.current = true;
+    void openProject(requestedProject);
+  }, [openProject]);
 
   const applyEdit = useCallback((next: CutEdl) => {
     if (!edl) return;

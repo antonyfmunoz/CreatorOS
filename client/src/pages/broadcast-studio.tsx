@@ -2928,6 +2928,16 @@ export default function BroadcastStudioPage() {
                       >
                         Distribute
                       </Button>
+                      {canOperateStudio && <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const result = (await (await apiRequest("POST", `/api/broadcast/sessions/${item.id}/cut-studio`, {})).json()) as { project: { id: string } };
+                          window.location.href = `/cut-studio?project=${encodeURIComponent(result.project.id)}`;
+                        }}
+                      >
+                        Edit in CutStudio
+                      </Button>}
                     </div>
                     {(item.tracks?.length ?? 0) > 0 && <div className="mt-2 space-y-1 border-t border-zinc-900 pt-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Isolated source recordings</p>
