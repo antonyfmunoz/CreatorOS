@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -218,5 +218,23 @@ describe("CutStudio edit decision list", () => {
       { id: "mic", start: 0, end: 4, track: "a1", timelineStart: 0 },
     ] }, 4), ["primary", "mic"], "Linked take", "compound_take");
     expect(splitCutAt(splitSource, 2).compounds?.[0].clipIds).toEqual(["primary_a", "primary_b", "mic"]);
+  });
+
+  it("turns speaker-labeled transcript order into the primary story timeline", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "primary", label: "Primary", start: 0, end: 10, track: "v1", timelineStart: 0, colorPreset: "cinematic" },
+      { id: "music", start: 0, end: 5, track: "a1", timelineStart: 0 },
+    ] }, 10);
+    const transcript = { duration: 10, language: "en", segments: [
+      { id: "close", start: 6, end: 9, text: "Call to action", speaker: "Host", words: [] },
+      { id: "hook", start: 1, end: 3, text: "The hook", speaker: "Guest", words: [] },
+    ] };
+    const result = applyTranscriptStoryOrder(initial, transcript);
+    expect(result.clips.slice(0, 2)).toMatchObject([
+      { id: "story_close_0", start: 6, end: 9, timelineStart: 0, label: "Host: Call to action", colorPreset: "cinematic" },
+      { id: "story_hook_1", start: 1, end: 3, timelineStart: 3, label: "Guest: The hook", colorPreset: "cinematic" },
+    ]);
+    expect(result.clips[2]).toMatchObject({ id: "music", track: "a1", timelineStart: 0 });
+    expect(buildSrtCaptions(transcript, result)).toContain("Host: Call to action");
   });
 });

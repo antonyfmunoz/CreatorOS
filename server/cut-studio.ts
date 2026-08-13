@@ -10,6 +10,7 @@ import { assets, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStu
 import {
   buildCmx3600Edl,
   buildSrtCaptions,
+  applyTranscriptStoryOrder,
   cutDuration,
   cutRenderRequestSchema,
   cutTranscriptSchema,
@@ -783,6 +784,22 @@ export function registerCutStudioRoutes(app: Express) {
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: updated.id, eventType: "cutstudio.transcript.corrected", actorUserId: req.dbUser!.id, payload: { businessId: updated.businessId, revision: updated.revision, segmentCount: parsed.data.segments.length }, idempotencyKey: `cutstudio:${updated.id}:transcript:${updated.revision}` });
     res.setHeader("X-Cut-Rev", String(updated.revision));
     res.json(updated.transcript);
+  });
+  cut.put("/api/cut/projects/:id/story-order", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const expected = Number(req.get("if-match")?.replace(/\"/g, ""));
+    if (!Number.isInteger(expected)) return res.status(428).json({ message: "Project revision is required" });
+    const parsed = cutTranscriptSchema.safeParse(req.body?.transcript);
+    if (!parsed.success || parsed.data.segments.some((segment) => segment.end < segment.start || segment.end > project.duration + 1)) return res.status(400).json({ message: "The story transcript is invalid" });
+    const edl = applyTranscriptStoryOrder(project.edl, parsed.data);
+    if (edl === project.edl) return res.status(409).json({ message: "This project needs a primary multitrack clip before story order can be applied" });
+    const [updated] = await db.update(cutStudioProjects).set({ transcript: parsed.data, edl, revision: sql`${cutStudioProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioProjects.id, project.id), eq(cutStudioProjects.revision, expected))).returning();
+    if (!updated) return res.status(409).json({ message: "This project changed elsewhere. Reload before applying story order." });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: updated.id, eventType: "cutstudio.story.reordered", actorUserId: req.dbUser!.id, payload: { businessId: updated.businessId, revision: updated.revision, segmentCount: parsed.data.segments.length }, idempotencyKey: `cutstudio:${updated.id}:story:${updated.revision}` });
+    res.setHeader("X-Cut-Rev", String(updated.revision));
+    res.json({ edl: updated.edl, transcript: updated.transcript, revision: updated.revision });
   });
   cut.get("/api/cut/projects/:id/captions.srt", attachUser, async (req, res) => {
     noStore(res);

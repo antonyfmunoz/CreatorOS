@@ -86,6 +86,11 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
   expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v1", colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) }), expect.objectContaining({ track: "v2", assetId: broll.id, groupId: "launch_layers", colorPreset: "vivid", chromaKey: expect.objectContaining({ enabled: true }) }), expect.objectContaining({ track: "a1", assetId: music.id, groupId: "launch_layers", duckUnderVoice: true })]), graphics: expect.arrayContaining([expect.objectContaining({ text: "CreativesOS Launch" })]), markers: expect.arrayContaining([expect.objectContaining({ label: "Opening beat", position: 0.5 })]) });
+  const transcriptResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/transcript`, { duration: 3, language: "en", segments: [
+    { id: "hook", start: 0.1, end: 1.2, text: "Start with the hook", words: [{ word: "Start", start: 0.1, end: 0.4 }, { word: "hook", start: 0.8, end: 1.2 }] },
+    { id: "close", start: 1.2, end: 2.8, text: "Close with the action", words: [{ word: "Close", start: 1.2, end: 1.6 }, { word: "action", start: 2.3, end: 2.8 }] },
+  ] }, { "If-Match": savedResponse.headers()["x-edl-rev"] });
+  await expectOk(transcriptResponse);
 
   await page.goto("/cut-studio");
   await page.getByText(project.name, { exact: true }).click();
@@ -252,4 +257,18 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(cancelledResponse);
   expect(await cancelledResponse.json()).toMatchObject({ state: "cancelled", artifactAssetId: null });
   expect((await api(page, peer, "POST", `/api/cut/jobs/${cancellable.id}/cancel`, {})).status()).toBe(404);
+
+  await page.goto("/cut-studio");
+  await page.getByText(project.name, { exact: true }).click();
+  await page.getByLabel("Speaker for segment hook").fill("Host");
+  await page.getByLabel("Speaker for segment close").fill("Guest");
+  await page.getByRole("button", { name: "Move segment close earlier" }).click();
+  await page.getByRole("button", { name: "Apply story order" }).click();
+  await expect(page.getByText("Transcript order and speaker labels applied to the timeline", { exact: true })).toBeVisible();
+  const storyResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(storyResponse);
+  const story = await storyResponse.json();
+  expect(story.transcript.segments.map((segment: { id: string; speaker?: string }) => [segment.id, segment.speaker])).toEqual([["close", "Guest"], ["hook", "Host"]]);
+  expect(story.edl.clips.slice(0, 2)).toMatchObject([{ id: "story_close_0", timelineStart: 0, start: 1.2, end: 2.8 }, { id: "story_hook_1", start: 0.1, end: 1.2 }]);
+  expect(story.edl.clips[1].timelineStart).toBeCloseTo(1.6, 6);
 });

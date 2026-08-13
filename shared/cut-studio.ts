@@ -88,6 +88,7 @@ export const cutTranscriptSchema = z.object({
     start: z.number().finite().min(0),
     end: z.number().finite().min(0),
     text: z.string().max(20_000),
+    speaker: z.string().trim().max(80).optional(),
     words: z.array(cutTranscriptWordSchema),
   })).max(10_000),
 });
@@ -416,6 +417,32 @@ export function slipCutClip(edl: CutEdl, clipId: string, requestedSourceDelta: n
   };
 }
 
+export function applyTranscriptStoryOrder(edl: CutEdl, transcript: CutTranscript): CutEdl {
+  if (edl.version !== 3) return edl;
+  const base = edl.clips.find((clip) => (clip.track ?? "v1") === "v1" && !clip.assetId);
+  if (!base) return edl;
+  let cursor = 0;
+  const storyClips = transcript.segments.flatMap((segment, index) => {
+    if (segment.end - segment.start < 0.05) return [];
+    const speed = base.speed ?? 1;
+    const clip: CutClip = {
+      ...base,
+      id: `story_${segment.id.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 50)}_${index}`,
+      label: `${segment.speaker ? `${segment.speaker}: ` : ""}${segment.text || `Segment ${index + 1}`}`.slice(0, 80),
+      start: segment.start,
+      end: segment.end,
+      timelineStart: cursor,
+      groupId: undefined,
+    };
+    cursor += (segment.end - segment.start) / speed;
+    return [clip];
+  });
+  if (!storyClips.length) return edl;
+  const overlays = edl.clips.filter((clip) => clip !== base && ((clip.track ?? "v1") !== "v1" || clip.assetId));
+  const clips = [...storyClips, ...overlays];
+  return { ...edl, clips, compounds: reconcileCutCompounds(edl.compounds, clips) };
+}
+
 export function audioRmsDb(samples: Uint8Array, floorDb = -60) {
   if (!samples.length) return floorDb;
   let sumSquares = 0;
@@ -460,7 +487,7 @@ export function buildSrtCaptions(transcript: CutTranscript, edl: CutEdl) {
     const end = sourceToOutput(edl, Math.max(segment.start, segment.end - 0.001));
     if (start === null || end === null || end <= start || !segment.text.trim()) continue;
     sequence += 1;
-    blocks.push(`${sequence}\n${srtTimestamp(start)} --> ${srtTimestamp(end)}\n${segment.text.trim()}\n`);
+    blocks.push(`${sequence}\n${srtTimestamp(start)} --> ${srtTimestamp(end)}\n${segment.speaker ? `${segment.speaker}: ` : ""}${segment.text.trim()}\n`);
   }
   return blocks.join("\n");
 }

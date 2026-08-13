@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeft, Captions, Check, CheckCircle2, ChevronRight, Copy, Download, Film, FileText, Flag, Link2, Loader2, Magnet, MessageSquare, Play, Plus, Redo2, RefreshCw, Save, Scissors, Search, Share2, Sparkles, Square, Trash2, Undo2, Unlink2, Upload, WandSparkles, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Captions, Check, CheckCircle2, ChevronRight, Copy, Download, Film, FileText, Flag, Link2, Loader2, Magnet, MessageSquare, Play, Plus, Redo2, RefreshCw, Save, Scissors, Search, Share2, Sparkles, Square, Trash2, Undo2, Unlink2, Upload, WandSparkles, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -264,6 +264,33 @@ export default function CutStudioPage() {
       setMessage("Transcript corrections saved");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save transcript corrections"); }
     finally { setSavingTranscript(false); }
+  };
+
+  const moveTranscriptSegment = (segmentId: string, direction: -1 | 1) => setTranscriptDraft((current) => {
+    if (!current) return current;
+    const index = current.segments.findIndex((segment) => segment.id === segmentId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= current.segments.length) return current;
+    const segments = [...current.segments];
+    [segments[index], segments[target]] = [segments[target], segments[index]];
+    return { ...current, segments };
+  });
+
+  const applyStoryOrder = async () => {
+    if (!project || !edl || !transcriptDraft) return;
+    setBusy("story");
+    try {
+      const response = await apiRequest("PUT", `/api/cut/projects/${project.id}/story-order`, { transcript: transcriptDraft }, { "If-Match": String(revision) });
+      const saved = await response.json() as { edl: CutEdl; transcript: CutTranscript; revision: number };
+      setHistory((items) => [...items.slice(-49), edl]);
+      setFuture([]);
+      setEdl(saved.edl);
+      setTranscriptDraft(saved.transcript);
+      setRevision(saved.revision);
+      setProject((value) => value ? { ...value, edl: saved.edl, transcript: saved.transcript, revision: saved.revision } : value);
+      setMessage("Transcript order and speaker labels applied to the timeline");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not apply story order"); }
+    finally { setBusy(""); }
   };
 
   const retryJob = async (job: Job) => {
@@ -591,7 +618,10 @@ export default function CutStudioPage() {
              {transcriptJob && <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-xs ${transcriptJob.state === "error" ? "bg-red-950 text-red-300" : "bg-zinc-900 text-zinc-400"}`}>{transcriptJob.detail}</p>}
              {transcriptDraft && <div className="relative mt-4"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-600"/><input aria-label="Search transcript" value={transcriptSearch} onChange={(event) => setTranscriptSearch(event.target.value)} placeholder="Search transcript" className="h-9 w-full rounded-lg border border-zinc-800 bg-black pl-9 pr-3 text-sm outline-none focus:border-[#1d9bf0]"/></div>}
              <div className="mt-4 max-h-64 overflow-y-auto leading-8">{words.length ? words.map((word, index) => { const retained = edl.clips.some((item) => word.start >= item.start && word.end <= item.end); return <button key={`${word.start}-${index}`} className={`mr-1 rounded px-1 text-sm ${retained ? "hover:bg-zinc-800" : "text-zinc-600 line-through"}`} onClick={() => applyEdit(retained ? removeCutRange(edl, Math.max(0, word.start - .03), Math.min(project.duration, word.end + .03), project.duration) : restoreCutRange(edl, word.start, word.end, project.duration))}>{word.word}</button>; }) : <p className="py-8 text-center text-sm text-zinc-500">Create a transcript to edit by text, detect filler words, and generate captions.</p>}</div>
-             {transcriptDraft && <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold">Transcript corrections</p><p className="mt-1 text-[11px] text-zinc-600">{transcriptMatches.length} of {transcriptDraft.segments.length} timed segments</p></div><Button size="sm" disabled={savingTranscript || JSON.stringify(transcriptDraft) === JSON.stringify(project.transcript)} onClick={() => void saveTranscript()}>{savingTranscript ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Save className="mr-1.5 h-3.5 w-3.5"/>}Save corrections</Button></div><div className="mt-3 max-h-72 space-y-2 overflow-y-auto">{transcriptMatches.map((segment) => <div key={segment.id} className="rounded-lg bg-zinc-950 p-2"><button type="button" className="text-[10px] font-bold text-[#1d9bf0]" onClick={() => seek(segment.start)}>{formatTime(segment.start)}–{formatTime(segment.end)}</button><textarea aria-label={`Transcript segment ${segment.id}`} value={segment.text} onChange={(event) => setTranscriptDraft((current) => current ? { ...current, segments: current.segments.map((item) => item.id === segment.id ? { ...item, text: event.target.value } : item) } : current)} className="mt-1 min-h-16 w-full resize-y rounded-md border border-zinc-800 bg-black p-2 text-sm leading-5 outline-none focus:border-[#1d9bf0]"/></div>)}</div></div>}
+             {transcriptDraft && <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-3">
+               <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold">Transcript story order</p><p className="mt-1 text-[11px] text-zinc-600">{transcriptMatches.length} of {transcriptDraft.segments.length} timed segments · label speakers, reorder scenes, then apply the story</p></div><div className="flex gap-2"><Button size="sm" variant="outline" disabled={savingTranscript || JSON.stringify(transcriptDraft) === JSON.stringify(project.transcript)} onClick={() => void saveTranscript()}>{savingTranscript ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Save className="mr-1.5 h-3.5 w-3.5"/>}Save transcript</Button><Button size="sm" disabled={busy === "story" || !transcriptDraft.segments.length} onClick={() => void applyStoryOrder()}>{busy === "story" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Scissors className="mr-1.5 h-3.5 w-3.5"/>}Apply story order</Button></div></div>
+               <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">{transcriptMatches.map((segment) => { const index = transcriptDraft.segments.findIndex((item) => item.id === segment.id); return <div key={segment.id} className="rounded-lg bg-zinc-950 p-2"><div className="flex flex-wrap items-center gap-2"><button type="button" className="text-[10px] font-bold text-[#1d9bf0]" onClick={() => seek(segment.start)}>{formatTime(segment.start)}–{formatTime(segment.end)}</button><input aria-label={`Speaker for segment ${segment.id}`} value={segment.speaker ?? ""} maxLength={80} placeholder="Speaker" className="h-8 min-w-28 flex-1 rounded-md border border-zinc-800 bg-black px-2 text-xs outline-none focus:border-[#1d9bf0]" onChange={(event) => setTranscriptDraft((current) => current ? { ...current, segments: current.segments.map((item) => item.id === segment.id ? { ...item, speaker: event.target.value } : item) } : current)}/><Button size="icon" variant="ghost" className="h-8 w-8" disabled={index <= 0} aria-label={`Move segment ${segment.id} earlier`} onClick={() => moveTranscriptSegment(segment.id, -1)}><ArrowUp className="h-3.5 w-3.5"/></Button><Button size="icon" variant="ghost" className="h-8 w-8" disabled={index >= transcriptDraft.segments.length - 1} aria-label={`Move segment ${segment.id} later`} onClick={() => moveTranscriptSegment(segment.id, 1)}><ArrowDown className="h-3.5 w-3.5"/></Button></div><textarea aria-label={`Transcript segment ${segment.id}`} value={segment.text} onChange={(event) => setTranscriptDraft((current) => current ? { ...current, segments: current.segments.map((item) => item.id === segment.id ? { ...item, text: event.target.value } : item) } : current)} className="mt-2 min-h-16 w-full resize-y rounded-md border border-zinc-800 bg-black p-2 text-sm leading-5 outline-none focus:border-[#1d9bf0]"/></div>; })}</div>
+             </div>}
              {project.transcript && <div className="mt-3 rounded-xl bg-zinc-900 p-3"><div className="flex items-center justify-between"><p className="text-xs font-bold">Smart cleanup</p><Button size="sm" variant="outline" disabled={busy === "detect"} onClick={() => void detectCleanup()}>{busy === "detect" ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <WandSparkles className="mr-1 h-3 w-3"/>}Analyze</Button></div>{candidates && <div className="mt-3 grid gap-2 sm:grid-cols-2"><Button size="sm" variant="outline" disabled={!candidates.fillerWords.length} onClick={() => applyCandidates(candidates.fillerWords)}>Remove {candidates.fillerWords.length} filler words</Button><Button size="sm" variant="outline" disabled={!candidates.silenceGaps.length} onClick={() => applyCandidates(candidates.silenceGaps)}>Tighten {candidates.silenceGaps.length} pauses</Button></div>}</div>}
           </div>
         </section>
