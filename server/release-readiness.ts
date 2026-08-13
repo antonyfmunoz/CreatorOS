@@ -170,6 +170,7 @@ export function getReleaseReadiness(
       kineticCaptions: "configured",
       privateLutImport: "configured",
       calibratedLoudnessAnalysis: "configured",
+      renderEffectivePositionKeyframes: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",

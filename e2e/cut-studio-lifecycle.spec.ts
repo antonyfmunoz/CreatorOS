@@ -117,6 +117,73 @@ test("CutStudio measures calibrated private-source loudness", async ({ page }, t
   await expect(page.getByText(/Measured -?\d+\.\d LUFS/)).toBeVisible();
 });
 
+test("CutStudio renders position keyframes into private multitrack output", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("motion-keyframe-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const primaryPath = `${directory}/black-primary.mp4`;
+  const overlayPath = `${directory}/red-overlay.mp4`;
+  const outputPath = `${directory}/motion-output.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", primaryPath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=320x180:rate=24:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", overlayPath]);
+  const primary = await uploadPrivate(page, owner, primaryPath, "black-primary.mp4", "video/mp4", "video");
+  const overlay = await uploadPrivate(page, owner, overlayPath, "red-overlay.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name: `Motion keyframes ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: overlay.id, name: "Red overlay", duration: 2, mediaKind: "video" }));
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
+    { id: "primary", start: 0, end: 2, track: "v1", timelineStart: 0 },
+    { id: "moving_overlay", assetId: overlay.id, start: 0, end: 2, track: "v2", timelineStart: 0, transform: { x: .05, y: .35, width: .2, height: .3, opacity: 1 }, motionKeyframes: [{ at: 1.5, x: .7, y: .35 }] },
+  ] }, { "If-Match": String(loaded.revision) });
+  await expectOk(savedResponse);
+  expect(await savedResponse.json()).toMatchObject({ clips: expect.arrayContaining([expect.objectContaining({ id: "moving_overlay", motionKeyframes: [{ at: 1.5, x: .7, y: .35 }] })]) });
+
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "V2 clip 2" }).click();
+  await expect(page.getByLabel("Clip motion keyframes")).toContainText("0:01");
+  await page.getByLabel("Clip position X").fill("0.6");
+  await page.locator("video").evaluate((element: HTMLVideoElement) => { element.currentTime = 1; element.dispatchEvent(new Event("timeupdate")); });
+  await page.getByRole("button", { name: "Add keyframe" }).click();
+  await expect(page.getByText("Motion keyframe added at 0:01 inside the clip")).toBeVisible();
+  await page.getByLabel("Clip position X").fill("0.05");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  await expect.poll(async () => {
+    const currentResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(currentResponse);
+    return (await currentResponse.json()).edl.clips.find((item: { id: string }) => item.id === "moving_overlay");
+  }).toMatchObject({ transform: { x: .05 }, motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .6 }), expect.objectContaining({ at: 1.5, x: .7 })]) });
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String) });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Motion qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const token = new URL((await reviewResponse.json()).reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${token}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const sample = (seconds: number, x: number) => execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(seconds), "-i", outputPath, "-vf", `crop=2:2:${x}:300,scale=1:1`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  const opening = sample(.2, 300);
+  const closing = sample(1.8, 930);
+  expect(opening[0]).toBeGreaterThan(150);
+  expect(opening[1]).toBeLessThan(80);
+  expect(closing[0]).toBeGreaterThan(150);
+  expect(closing[1]).toBeLessThan(80);
+});
+
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

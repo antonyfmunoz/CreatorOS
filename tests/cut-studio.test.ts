@@ -94,15 +94,17 @@ describe("CutStudio edit decision list", () => {
     const musicId = "00000000-0000-4000-8000-000000000002";
     const result = validateCutEdl({ version: 3, clips: [
       { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0, colorPreset: "cinematic", colorAdjust: { brightness: .1, contrast: 1.1, saturation: .9, temperature: .2 } },
-      { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .68, y: .62, width: .28, height: .32, opacity: .9 }, chromaKey: { enabled: true, color: "#00ff00", similarity: .12, blend: .05 } },
+      { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .1, y: .1, width: .28, height: .32, opacity: .9 }, motionKeyframes: [{ at: 4, x: .68, y: .62 }, { at: 1, x: .2, y: .2 }], chromaKey: { enabled: true, color: "#00ff00", similarity: .12, blend: .05 } },
       { id: "music", assetId: musicId, start: 0, end: 12, track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true },
     ] }, 20);
     expect(result.version).toBe(3);
     expect(result.clips[0]).toMatchObject({ colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) });
-    expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: expect.objectContaining({ opacity: .9 }), chromaKey: expect.objectContaining({ enabled: true }) });
+    expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: expect.objectContaining({ opacity: .9 }), motionKeyframes: [{ at: 1, x: .2, y: .2 }, { at: 4, x: .68, y: .62 }], chromaKey: expect.objectContaining({ enabled: true }) });
     expect(result.clips[2]).toMatchObject({ track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true });
     expect(cutDuration(result)).toBe(20);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: .9, y: 0, width: .5, height: 1, opacity: 1 } }] }, 2)).toThrow(/inside the frame/i);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: 0, y: 0, width: .5, height: .5, opacity: 1 }, motionKeyframes: [{ at: 3, x: .1, y: .1 }] }] }, 3)).toThrow(/inside its clip/i);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: 0, y: 0, width: .5, height: .5, opacity: 1 }, motionKeyframes: [{ at: 1, x: .7, y: .1 }] }] }, 2)).toThrow(/inside the frame/i);
   });
 
   it("constrains professional audio finishing controls", () => {

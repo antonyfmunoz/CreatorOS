@@ -48,6 +48,28 @@ const projectMediaSchema = z.object({
   duration: z.number().finite().positive().max(43_200),
   mediaKind: z.enum(["video", "audio"]),
 });
+
+function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y", canvasSize: number) {
+  const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
+  const timelineStart = clip.timelineStart ?? 0;
+  const points = [{ at: 0, value: transform[axis] }, ...(clip.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[axis] }))]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const pixel = (value: number) => Number((value * canvasSize).toFixed(3));
+  if (points.length === 1) return String(pixel(points[0].value));
+  let expression = String(pixel(points.at(-1)!.value));
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const left = points[index];
+    const right = points[index + 1];
+    const start = Number((timelineStart + left.at).toFixed(3));
+    const end = Number((timelineStart + right.at).toFixed(3));
+    const from = pixel(left.value);
+    const delta = Number((pixel(right.value) - from).toFixed(3));
+    const interpolated = `${from}+${delta}*(t-${start})/${Number((right.at - left.at).toFixed(3))}`;
+    expression = `if(lt(t\\,${end})\\,${interpolated}\\,${expression})`;
+  }
+  return expression;
+}
 const projectLutSchema = z.object({ assetId: z.string().uuid(), name: z.string().trim().min(1).max(160) });
 const createReviewSchema = z.object({
   jobId: z.string().uuid().optional(),
@@ -405,7 +427,9 @@ async function renderMultitrack(
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
       filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[overlay${overlayIndex}]`);
-      filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x=${Math.round(size[0] * transform.x)}:y=${Math.round(size[1] * transform.y)}:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
+      const overlayX = motionOverlayExpression(clip, "x", size[0]);
+      const overlayY = motionOverlayExpression(clip, "y", size[1]);
+      filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
     }

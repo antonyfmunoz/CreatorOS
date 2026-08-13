@@ -36,6 +36,11 @@ export const cutClipSchema = z.object({
     height: z.number().finite().positive().max(1),
     opacity: z.number().finite().min(0).max(1),
   }).optional(),
+  motionKeyframes: z.array(z.object({
+    at: z.number().finite().min(0).max(43_200),
+    x: z.number().finite().min(0).max(1),
+    y: z.number().finite().min(0).max(1),
+  })).max(50).optional(),
 });
 
 export const cutGraphicSchema = z.object({
@@ -217,6 +222,7 @@ export function normalizeCutClips(clips: CutClip[], duration?: number, version: 
       id: clip.id ?? `clip_${String(index).padStart(2, "0")}_${Math.round(clip.start * 1000)}`,
       label: clip.label ?? `clip${String(index).padStart(2, "0")}`,
       ...(version === 3 ? { track, timelineStart, transform: clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 } } : {}),
+      ...(version === 3 && clip.motionKeyframes ? { motionKeyframes: [...clip.motionKeyframes].sort((left, right) => left.at - right.at) } : {}),
     };
   });
 }
@@ -228,6 +234,15 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
   for (const clip of clips) {
     const transform = clip.transform;
     if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
+    const clipDuration = (clip.end - clip.start) / (clip.speed ?? 1);
+    const keyframeTimes = new Set<number>();
+    for (const keyframe of clip.motionKeyframes ?? []) {
+      if (keyframe.at > clipDuration + 0.001) throw new Error("A motion keyframe must remain inside its clip");
+      if (transform && (keyframe.x + transform.width > 1.001 || keyframe.y + transform.height > 1.001)) throw new Error("A motion keyframe must remain inside the frame");
+      const roundedTime = Math.round(keyframe.at * 1_000);
+      if (keyframeTimes.has(roundedTime)) throw new Error("Motion keyframes must use unique times");
+      keyframeTimes.add(roundedTime);
+    }
   }
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];
   const usedTracks = new Set(clips.map((clip) => clip.track ?? "v1"));
