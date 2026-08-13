@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audioRmsDb, buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -160,5 +160,63 @@ describe("CutStudio edit decision list", () => {
     expect(rippleOut.clips[0].end).toBe(3);
     expect(rippleOut.clips[1].timelineStart).toBe(3);
     expect(rippleOut.clips[2].timelineStart).toBe(4);
+  });
+
+  it("ripples linked tracks, graphics and markers after the edited boundary", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "intro", start: 0, end: 4, track: "v1", timelineStart: 0 },
+      { id: "main", start: 4, end: 8, track: "v1", timelineStart: 4 },
+      { id: "camera", start: 0, end: 2, track: "v2", timelineStart: 4 },
+      { id: "overlap", start: 0, end: 5, track: "a1", timelineStart: 1 },
+    ], graphics: [{ id: "title", text: "Next", timelineStart: 4, duration: 1 }], markers: [{ id: "chapter", label: "Next", position: 4, kind: "chapter", color: "#1d9bf0" }] }, 10);
+    const result = trimCutClip(initial, "intro", "end", 3, { rippleMode: "linked", sourceDuration: 10 });
+    expect(result.clips.find((clip) => clip.id === "main")?.timelineStart).toBe(3);
+    expect(result.clips.find((clip) => clip.id === "camera")?.timelineStart).toBe(3);
+    expect(result.clips.find((clip) => clip.id === "overlap")?.timelineStart).toBe(1);
+    expect(result.graphics?.[0].timelineStart).toBe(3);
+    expect(result.markers?.[0].position).toBe(3);
+  });
+
+  it("rolls an adjacent edit point without changing the pair's outer duration", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "left", start: 1, end: 5, track: "v1", timelineStart: 0 },
+      { id: "right", start: 2, end: 8, track: "v1", timelineStart: 4 },
+      { id: "other", start: 0, end: 3, track: "a1", timelineStart: 4 },
+    ] }, 10);
+    const result = rollCutEdit(initial, "left", 5, { leftSourceDuration: 10 });
+    expect(result.clips.find((clip) => clip.id === "left")).toMatchObject({ start: 1, end: 6, timelineStart: 0 });
+    expect(result.clips.find((clip) => clip.id === "right")).toMatchObject({ start: 3, end: 8, timelineStart: 5 });
+    expect(result.clips.find((clip) => clip.id === "other")?.timelineStart).toBe(4);
+    expect(cutDuration(result)).toBe(cutDuration(initial));
+  });
+
+  it("slips source media while preserving placement and output duration", () => {
+    const initial = validateCutEdl({ version: 3, clips: [{ id: "take", start: 2, end: 6, track: "v2", timelineStart: 8 }] }, 12);
+    const slipped = slipCutClip(initial, "take", 3, 12);
+    expect(slipped.clips[0]).toMatchObject({ start: 5, end: 9, timelineStart: 8 });
+    expect(cutDuration(slipped)).toBe(cutDuration(initial));
+    expect(slipCutClip(slipped, "take", 10, 12).clips[0]).toMatchObject({ start: 8, end: 12, timelineStart: 8 });
+    expect(slipCutClip(initial, "take", -10, 12).clips[0]).toMatchObject({ start: 0, end: 4, timelineStart: 8 });
+  });
+
+  it("persists compound clips and moves their flattened render members together", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "camera", start: 0, end: 4, track: "v2", timelineStart: 2 },
+      { id: "mic", start: 0, end: 4, track: "a1", timelineStart: 2 },
+      { id: "music", start: 0, end: 8, track: "a2", timelineStart: 0 },
+    ] }, 8);
+    const compound = createCutCompound(initial, ["camera", "mic"], "Interview angle", "compound_interview");
+    expect(validateCutEdl(compound, 8).compounds).toEqual([{ id: "compound_interview", label: "Interview angle", clipIds: ["camera", "mic"], collapsed: true }]);
+    const moved = moveCutClipGroup(compound, "camera", 4, false);
+    expect(moved.clips.find((clip) => clip.id === "camera")?.timelineStart).toBe(4);
+    expect(moved.clips.find((clip) => clip.id === "mic")?.timelineStart).toBe(4);
+    expect(moved.clips.find((clip) => clip.id === "music")?.timelineStart).toBe(0);
+    expect(breakApartCutCompound(moved, ["mic"]).compounds).toEqual([]);
+
+    const splitSource = createCutCompound(validateCutEdl({ version: 3, clips: [
+      { id: "primary", start: 0, end: 4, track: "v1", timelineStart: 0 },
+      { id: "mic", start: 0, end: 4, track: "a1", timelineStart: 0 },
+    ] }, 4), ["primary", "mic"], "Linked take", "compound_take");
+    expect(splitCutAt(splitSource, 2).compounds?.[0].clipIds).toEqual(["primary_a", "primary_b", "mic"]);
   });
 });

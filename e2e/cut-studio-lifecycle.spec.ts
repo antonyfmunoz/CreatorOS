@@ -80,12 +80,12 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
       { id: "music", assetId: music.id, label: "Music bed", start: 0, end: 2, speed: 1, volume: 0.2, track: "a1", timelineStart: 0.25, groupId: "launch_layers", duckUnderVoice: true },
       { id: "music_outro", assetId: music.id, label: "Music outro", start: 0, end: 0.5, speed: 1, volume: 0.2, track: "a1", timelineStart: 2.5 },
     ],
-    graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }],
-    markers: [{ id: "opening_beat", label: "Opening beat", position: 0.5, kind: "beat", color: "#f43f5e" }],
+    graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }, { id: "outro_title", kind: "title", text: "Next", timelineStart: 2.5, duration: 0.25, x: 0.1, y: 0.2, fontSize: 24, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.5 }],
+    markers: [{ id: "opening_beat", label: "Opening beat", position: 0.5, kind: "beat", color: "#f43f5e" }, { id: "outro_beat", label: "Outro beat", position: 2.5, kind: "beat", color: "#1d9bf0" }],
   };
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
-  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v1", colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) }), expect.objectContaining({ track: "v2", assetId: broll.id, groupId: "launch_layers", colorPreset: "vivid", chromaKey: expect.objectContaining({ enabled: true }) }), expect.objectContaining({ track: "a1", assetId: music.id, groupId: "launch_layers", duckUnderVoice: true })]), graphics: [expect.objectContaining({ text: "CreativesOS Launch" })], markers: [expect.objectContaining({ label: "Opening beat", position: 0.5 })] });
+  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v1", colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) }), expect.objectContaining({ track: "v2", assetId: broll.id, groupId: "launch_layers", colorPreset: "vivid", chromaKey: expect.objectContaining({ enabled: true }) }), expect.objectContaining({ track: "a1", assetId: music.id, groupId: "launch_layers", duckUnderVoice: true })]), graphics: expect.arrayContaining([expect.objectContaining({ text: "CreativesOS Launch" })]), markers: expect.arrayContaining([expect.objectContaining({ label: "Opening beat", position: 0.5 })]) });
 
   await page.goto("/cut-studio");
   await page.getByText(project.name, { exact: true }).click();
@@ -104,6 +104,13 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await page.getByRole("button", { name: "A1 clip 3" }).click({ modifiers: ["Shift"] });
   await expect(page.getByRole("button", { name: "Group", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Ungroup", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Make compound" }).click();
+  await expect(page.getByLabel("Rename Compound 1")).toBeVisible();
+  await expect(page.getByText("2 clips combined into a durable compound", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const compoundResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(compoundResponse);
+  expect((await compoundResponse.json()).edl.compounds).toEqual([expect.objectContaining({ label: "Compound 1", clipIds: ["broll", "music"] })]);
   const audioClip = page.getByRole("button", { name: "A1 clip 3" });
   const audioBox = await audioClip.boundingBox();
   const trackBox = await audioClip.locator("..").boundingBox();
@@ -121,8 +128,9 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   expect(moved.edl.clips.find((item: { id: string }) => item.id === "music").timelineStart).toBeCloseTo(.5, 2);
   expect(moved.edl.clips.find((item: { id: string }) => item.id === "broll").timelineStart).toBeCloseTo(.75, 2);
   expect(moved.edl.clips.find((item: { id: string }) => item.id === "music_outro").timelineStart).toBeCloseTo(2.5, 2);
+  await page.getByRole("button", { name: "Ripple off" }).click();
   await page.getByRole("button", { name: "Ripple track" }).click();
-  await expect(page.getByRole("button", { name: "Ripple track" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Ripple linked" })).toHaveAttribute("aria-pressed", "true");
   const trimEnd = page.getByLabel("Trim end A1 clip 3");
   const trimBox = await trimEnd.boundingBox();
   expect(trimBox).toBeTruthy();
@@ -130,20 +138,42 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await page.mouse.down();
   await page.mouse.move(trimBox!.x + trimBox!.width / 2 - trackBox!.width * .1, trimBox!.y + trimBox!.height / 2, { steps: 5 });
   await page.mouse.up();
-  await expect(page.getByText("Clip trimmed with track ripple and snapping", { exact: true })).toBeVisible();
+  await expect(page.getByText("Clip trimmed with linked ripple and snapping", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   const trimmedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
   await expectOk(trimmedResponse);
   const trimmed = await trimmedResponse.json();
   expect(trimmed.edl.clips.find((item: { id: string }) => item.id === "music").end).toBeCloseTo(1.7, 1);
   expect(trimmed.edl.clips.find((item: { id: string }) => item.id === "music_outro").timelineStart).toBeCloseTo(2.2, 1);
+  expect(trimmed.edl.graphics.find((item: { id: string }) => item.id === "outro_title").timelineStart).toBeCloseTo(2.2, 1);
+  expect(trimmed.edl.markers.find((item: { id: string }) => item.id === "outro_beat").position).toBeCloseTo(2.2, 1);
   await page.getByLabel("Trim end A1 clip 4").focus();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByText("Clip out point adjusted with track ripple", { exact: true })).toBeVisible();
+  await expect(page.getByText("Clip out point adjusted with linked ripple", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   const keyboardTrimResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
   await expectOk(keyboardTrimResponse);
   expect((await keyboardTrimResponse.json()).edl.clips.find((item: { id: string }) => item.id === "music_outro").end).toBeCloseTo(.4, 2);
+  await page.getByRole("button", { name: "Roll edit" }).click();
+  await page.getByLabel("Trim end A1 clip 3").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByText("Clip out point adjusted with rolling edit", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const rolledResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(rolledResponse);
+  const rolled = await rolledResponse.json();
+  expect(rolled.edl.clips.find((item: { id: string }) => item.id === "music").end).toBeCloseTo(1.8, 2);
+  expect(rolled.edl.clips.find((item: { id: string }) => item.id === "music_outro").start).toBeCloseTo(.1, 2);
+  expect(rolled.edl.clips.find((item: { id: string }) => item.id === "music_outro").timelineStart).toBeCloseTo(2.3, 2);
+  await page.getByRole("button", { name: "Slip source forward 0.1 seconds" }).click();
+  await expect(page.getByText("Source slipped forward 0.1 seconds without moving the clip", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const slippedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(slippedResponse);
+  const slipped = await slippedResponse.json();
+  expect(slipped.edl.clips.find((item: { id: string }) => item.id === "music").start).toBeCloseTo(.1, 2);
+  expect(slipped.edl.clips.find((item: { id: string }) => item.id === "music").end).toBeCloseTo(1.9, 2);
+  expect(slipped.edl.clips.find((item: { id: string }) => item.id === "music").timelineStart).toBeCloseTo(.5, 2);
   await page.getByRole("button", { name: "Marker", exact: true }).click();
   await expect(page.getByLabel("Rename marker at 0:00")).toHaveCount(2);
   await expect(page.getByText("Marker added at 0:00")).toBeVisible();

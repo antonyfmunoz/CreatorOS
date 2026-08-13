@@ -59,11 +59,19 @@ export const cutMarkerSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#f43f5e"),
 });
 
+export const cutCompoundSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  label: z.string().trim().min(1).max(80),
+  clipIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,80}$/)).min(2).max(100),
+  collapsed: z.boolean().default(true),
+});
+
 export const cutEdlSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   clips: z.array(cutClipSchema).min(1).max(200),
   graphics: z.array(cutGraphicSchema).max(50).optional(),
   markers: z.array(cutMarkerSchema).max(200).optional(),
+  compounds: z.array(cutCompoundSchema).max(50).optional(),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -101,9 +109,23 @@ export type CutClip = z.infer<typeof cutClipSchema>;
 export type CutEdl = z.infer<typeof cutEdlSchema>;
 export type CutGraphic = z.infer<typeof cutGraphicSchema>;
 export type CutMarker = z.infer<typeof cutMarkerSchema>;
+export type CutCompound = z.infer<typeof cutCompoundSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
+export type CutRippleMode = "off" | "track" | "linked";
+
+function reconcileCutCompounds(compounds: CutCompound[] | undefined, clips: CutClip[], replacements: Map<string, string[]> = new Map()) {
+  const validClipIds = new Set(clips.flatMap((clip) => clip.id ? [clip.id] : []));
+  const claimedClipIds = new Set<string>();
+  return (compounds ?? []).flatMap((compound) => {
+    const clipIds = Array.from(new Set(compound.clipIds.flatMap((id) => replacements.has(id) ? replacements.get(id)! : [id])))
+      .filter((id) => validClipIds.has(id) && !claimedClipIds.has(id));
+    if (clipIds.length < 2) return [];
+    clipIds.forEach((id) => claimedClipIds.add(id));
+    return [{ ...compound, clipIds }];
+  });
+}
 
 export function estimateCutRenderSeconds(duration: number, request: CutRenderRequest) {
   const resolutionFactor = request.resolution === "2160p" ? 4 : request.resolution === "1080p" ? 1.8 : 1;
@@ -155,7 +177,8 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     const transform = clip.transform;
     if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
   }
-  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [] };
+  const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
@@ -170,16 +193,19 @@ export function cutDuration(edl: CutEdl | null | undefined) {
 export function removeCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
   if (end <= start) return edl;
   const clips: CutClip[] = [];
+  const replacements = new Map<string, string[]>();
   for (const clip of edl.clips) {
     if (edl.version === 3 && ((clip.track ?? "v1") !== "v1" || clip.assetId)) { clips.push(clip); continue; }
     if (clip.end <= start || clip.start >= end) clips.push(clip);
     else {
-      if (clip.start < start) clips.push({ ...clip, id: `${clip.id ?? "clip"}_a`, start: clip.start, end: start });
-      if (clip.end > end) clips.push({ ...clip, id: `${clip.id ?? "clip"}_b`, start: end, end: clip.end });
+      const replacementIds: string[] = [];
+      if (clip.start < start) { const id = `${clip.id ?? "clip"}_a`; clips.push({ ...clip, id, start: clip.start, end: start }); replacementIds.push(id); }
+      if (clip.end > end) { const id = `${clip.id ?? "clip"}_b`; clips.push({ ...clip, id, start: end, end: clip.end }); replacementIds.push(id); }
+      if (clip.id) replacements.set(clip.id, replacementIds);
     }
   }
   const normalized = normalizeCutClips(clips, duration, edl.version);
-  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers } : edl;
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements) } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
@@ -192,19 +218,23 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     if (prior && range.start <= prior.end + 0.001) prior.end = Math.max(prior.end, range.end);
     else merged.push({ ...range });
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version), graphics: edl.graphics, markers: edl.markers };
+  const normalized = normalizeCutClips([...merged, ...overlays], duration, edl.version);
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized) };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
   const clips: CutClip[] = [];
+  const replacements = new Map<string, string[]>();
   for (const clip of edl.clips) {
-    if ((edl.version !== 3 || (clip.track ?? "v1") === "v1") && seconds > clip.start + 0.05 && seconds < clip.end - 0.05) clips.push(
-      { ...clip, id: `${clip.id ?? "clip"}_a`, start: clip.start, end: seconds },
-      { ...clip, id: `${clip.id ?? "clip"}_b`, start: seconds, end: clip.end },
-    );
+    if ((edl.version !== 3 || (clip.track ?? "v1") === "v1") && seconds > clip.start + 0.05 && seconds < clip.end - 0.05) {
+      const ids = [`${clip.id ?? "clip"}_a`, `${clip.id ?? "clip"}_b`];
+      clips.push({ ...clip, id: ids[0], start: clip.start, end: seconds }, { ...clip, id: ids[1], start: seconds, end: clip.end });
+      if (clip.id) replacements.set(clip.id, ids);
+    }
     else clips.push(clip);
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version), graphics: edl.graphics, markers: edl.markers };
+  const normalized = normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version);
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements) };
 }
 
 export function cutTimelinePoints(edl: CutEdl, excludeClipIds: string[] = []) {
@@ -242,11 +272,32 @@ export function ungroupCutClips(edl: CutEdl, clipIds: string[]): CutEdl {
   return { ...edl, clips: edl.clips.map((clip) => clip.groupId && selectedGroups.has(clip.groupId) ? { ...clip, groupId: undefined } : clip) };
 }
 
+export function createCutCompound(edl: CutEdl, clipIds: string[], label = "Compound clip", compoundId = `compound_${Date.now()}`): CutEdl {
+  if (edl.version !== 3) return edl;
+  const validIds = new Set(edl.clips.flatMap((clip) => clip.id ? [clip.id] : []));
+  const selected = Array.from(new Set(clipIds)).filter((id) => validIds.has(id));
+  if (selected.length < 2) return edl;
+  const selectedSet = new Set(selected);
+  const retained = (edl.compounds ?? []).flatMap((compound) => {
+    const remaining = compound.clipIds.filter((id) => !selectedSet.has(id));
+    return remaining.length >= 2 ? [{ ...compound, clipIds: remaining }] : [];
+  });
+  return { ...edl, compounds: [...retained, { id: compoundId, label: label.trim() || "Compound clip", clipIds: selected, collapsed: true }] };
+}
+
+export function breakApartCutCompound(edl: CutEdl, clipIds: string[]): CutEdl {
+  if (edl.version !== 3) return edl;
+  const selected = new Set(clipIds);
+  return { ...edl, compounds: (edl.compounds ?? []).filter((compound) => !compound.clipIds.some((id) => selected.has(id))) };
+}
+
 export function moveCutClipGroup(edl: CutEdl, clipId: string, requestedStart: number, snap = true, threshold = 0.15): CutEdl {
   if (edl.version !== 3) return edl;
   const anchor = edl.clips.find((clip) => clip.id === clipId);
   if (!anchor) return edl;
-  const moving = anchor.groupId ? edl.clips.filter((clip) => clip.groupId === anchor.groupId) : [anchor];
+  const compound = (edl.compounds ?? []).find((item) => anchor.id && item.clipIds.includes(anchor.id));
+  const compoundIds = new Set(compound?.clipIds ?? []);
+  const moving = compound ? edl.clips.filter((clip) => clip.id && compoundIds.has(clip.id)) : anchor.groupId ? edl.clips.filter((clip) => clip.groupId === anchor.groupId) : [anchor];
   const movingIds = moving.flatMap((clip) => clip.id ? [clip.id] : []);
   const anchorStart = anchor.timelineStart ?? 0;
   const earliestStart = Math.min(...moving.map((clip) => clip.timelineStart ?? 0));
@@ -264,7 +315,7 @@ export function trimCutClip(
   clipId: string,
   edge: "start" | "end",
   requestedTimelineTime: number,
-  options: { rippleTrack?: boolean; sourceDuration?: number; minimumDuration?: number } = {},
+  options: { rippleMode?: CutRippleMode; rippleTrack?: boolean; sourceDuration?: number; minimumDuration?: number } = {},
 ): CutEdl {
   if (edl.version !== 3) return edl;
   const anchor = edl.clips.find((clip) => clip.id === clipId);
@@ -288,13 +339,80 @@ export function trimCutClip(
   const nextDuration = (sourceEnd - anchor.start) / speed;
   const durationDelta = nextDuration - originalDuration;
   const track = anchor.track ?? "v1";
+  const rippleMode = options.rippleMode ?? (options.rippleTrack ? "track" : "off");
+  const shouldRippleClip = (clip: CutClip) => {
+    if (rippleMode === "off" || (clip.timelineStart ?? 0) < timelineEnd - 0.001) return false;
+    return rippleMode === "linked" || (clip.track ?? "v1") === track;
+  };
   return {
     ...edl,
     clips: edl.clips.map((clip) => {
       if (clip === anchor) return { ...clip, end: sourceEnd };
-      if (!options.rippleTrack || (clip.track ?? "v1") !== track || (clip.timelineStart ?? 0) < timelineEnd - 0.001) return clip;
+      if (!shouldRippleClip(clip)) return clip;
       return { ...clip, timelineStart: Math.max(0, (clip.timelineStart ?? 0) + durationDelta) };
     }),
+    graphics: rippleMode === "linked" ? (edl.graphics ?? []).map((graphic) => graphic.timelineStart < timelineEnd - 0.001 ? graphic : { ...graphic, timelineStart: Math.max(0, graphic.timelineStart + durationDelta) }) : edl.graphics,
+    markers: rippleMode === "linked" ? (edl.markers ?? []).map((marker) => marker.position < timelineEnd - 0.001 ? marker : { ...marker, position: Math.max(0, marker.position + durationDelta) }) : edl.markers,
+  };
+}
+
+export function rollCutEdit(
+  edl: CutEdl,
+  leftClipId: string,
+  requestedTimelineTime: number,
+  options: { leftSourceDuration?: number; minimumDuration?: number; adjacencyTolerance?: number } = {},
+): CutEdl {
+  if (edl.version !== 3) return edl;
+  const left = edl.clips.find((clip) => clip.id === leftClipId);
+  if (!left) return edl;
+  const leftSpeed = left.speed ?? 1;
+  const leftTimelineStart = left.timelineStart ?? 0;
+  const boundary = leftTimelineStart + (left.end - left.start) / leftSpeed;
+  const tolerance = Math.max(0.001, options.adjacencyTolerance ?? 0.02);
+  const right = edl.clips
+    .filter((clip) => clip !== left && (clip.track ?? "v1") === (left.track ?? "v1"))
+    .map((clip) => ({ clip, distance: Math.abs((clip.timelineStart ?? 0) - boundary) }))
+    .filter((candidate) => candidate.distance <= tolerance)
+    .sort((a, b) => a.distance - b.distance)[0]?.clip;
+  if (!right) return edl;
+
+  const rightSpeed = right.speed ?? 1;
+  const rightTimelineStart = right.timelineStart ?? boundary;
+  const minimumDuration = Math.max(0.05, options.minimumDuration ?? 0.05);
+  const leftSourceDuration = Math.max(left.end, options.leftSourceDuration ?? 43_200);
+  const lowerBound = Math.max(
+    leftTimelineStart + minimumDuration,
+    rightTimelineStart - right.start / rightSpeed,
+  );
+  const upperBound = Math.min(
+    leftTimelineStart + (leftSourceDuration - left.start) / leftSpeed,
+    rightTimelineStart + (right.end - right.start) / rightSpeed - minimumDuration,
+  );
+  if (upperBound < lowerBound) return edl;
+  const nextBoundary = Math.max(lowerBound, Math.min(upperBound, requestedTimelineTime));
+  const boundaryDelta = nextBoundary - rightTimelineStart;
+  const nextLeftEnd = left.start + (nextBoundary - leftTimelineStart) * leftSpeed;
+  const nextRightStart = right.start + boundaryDelta * rightSpeed;
+  return {
+    ...edl,
+    clips: edl.clips.map((clip) => {
+      if (clip === left) return { ...clip, end: nextLeftEnd };
+      if (clip === right) return { ...clip, start: nextRightStart, timelineStart: nextBoundary };
+      return clip;
+    }),
+  };
+}
+
+export function slipCutClip(edl: CutEdl, clipId: string, requestedSourceDelta: number, sourceDuration: number): CutEdl {
+  if (edl.version !== 3 || !Number.isFinite(requestedSourceDelta)) return edl;
+  const anchor = edl.clips.find((clip) => clip.id === clipId);
+  if (!anchor) return edl;
+  const maximumSource = Math.max(anchor.end, sourceDuration);
+  const delta = Math.max(-anchor.start, Math.min(maximumSource - anchor.end, requestedSourceDelta));
+  if (Math.abs(delta) < 0.000001) return edl;
+  return {
+    ...edl,
+    clips: edl.clips.map((clip) => clip === anchor ? { ...clip, start: clip.start + delta, end: clip.end + delta } : clip),
   };
 }
 

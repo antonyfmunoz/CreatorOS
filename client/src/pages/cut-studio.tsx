@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { audioRmsDb, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutTranscript } from "@shared/cut-studio";
+import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio"; createdAt: string };
 type Project = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; edl: CutEdl; transcript: CutTranscript | null; revision: number; updatedAt: string; jobs?: Job[]; media?: ProjectMedia[] };
@@ -49,7 +49,7 @@ export default function CutStudioPage() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFrameRef = useRef<number>();
   const dragRef = useRef<{ clipId: string; startX: number; trackWidth: number; origin: CutEdl; moved: boolean } | null>(null);
-  const trimRef = useRef<{ clipId: string; edge: "start" | "end"; startX: number; trackWidth: number; sourceDuration: number; origin: CutEdl; moved: boolean } | null>(null);
+  const trimRef = useRef<{ clipId: string; edge: "start" | "end"; startX: number; trackWidth: number; sourceDuration: number; origin: CutEdl; moved: boolean; rolling: boolean } | null>(null);
   const suppressClipClickRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,7 +63,8 @@ export default function CutStudioPage() {
   const [selectedClip, setSelectedClip] = useState(0);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
   const [snapEnabled, setSnapEnabled] = useState(true);
-  const [rippleEnabled, setRippleEnabled] = useState(false);
+  const [rippleMode, setRippleMode] = useState<CutRippleMode>("off");
+  const [rollingEnabled, setRollingEnabled] = useState(false);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -109,7 +110,12 @@ export default function CutStudioPage() {
 
   const applyEdit = useCallback((next: CutEdl) => {
     if (!edl) return;
-    const complete = { ...next, graphics: next.graphics ?? edl.graphics, markers: next.markers ?? edl.markers };
+    const validClipIds = new Set(next.clips.flatMap((item) => item.id ? [item.id] : []));
+    const compounds = (next.compounds ?? edl.compounds ?? []).flatMap((compound) => {
+      const clipIds = compound.clipIds.filter((id) => validClipIds.has(id));
+      return clipIds.length >= 2 ? [{ ...compound, clipIds }] : [];
+    });
+    const complete = { ...next, graphics: next.graphics ?? edl.graphics, markers: next.markers ?? edl.markers, compounds };
     setHistory((items) => [...items.slice(-49), edl]); setFuture([]); setEdl(complete);
   }, [edl]);
 
@@ -213,7 +219,7 @@ export default function CutStudioPage() {
     const next = validateCutEdl({ version: 3, clips: [
       ...edl.clips,
       { id: `clip_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`, assetId: media.assetId, label: media.name.slice(0, 80), start: 0, end: media.duration, speed: 1, volume: 1, fadeIn: 0, fadeOut: 0, track, timelineStart: Math.min(playhead, cutDuration(edl)), transform: { x: 0, y: 0, width: 1, height: 1, opacity: 1 } },
-    ], graphics: edl.graphics }, timelineDuration);
+    ], graphics: edl.graphics, markers: edl.markers, compounds: edl.compounds }, timelineDuration);
     applyEdit(next);
     setSelectedClip(next.clips.length - 1);
     setSelectedClipIds(next.clips.at(-1)?.id ? [next.clips.at(-1)!.id!] : []);
@@ -355,7 +361,7 @@ export default function CutStudioPage() {
   const addGraphic = () => {
     if (!edl) return;
     if (project?.mediaKind !== "video") return setMessage("Titles require a video project");
-    const next = validateCutEdl({ version: 3, clips: edl.clips, graphics: [...(edl.graphics ?? []), { id: `graphic_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`, kind: "lower_third", text: "Your title", timelineStart: Math.min(playhead, cutDuration(edl)), duration: 4, x: .08, y: .78, fontSize: 48, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: .72 }] }, Math.max(project?.duration ?? 0, cutDuration(edl)));
+    const next = validateCutEdl({ version: 3, clips: edl.clips, graphics: [...(edl.graphics ?? []), { id: `graphic_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`, kind: "lower_third", text: "Your title", timelineStart: Math.min(playhead, cutDuration(edl)), duration: 4, x: .08, y: .78, fontSize: 48, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: .72 }], markers: edl.markers, compounds: edl.compounds }, Math.max(project?.duration ?? 0, cutDuration(edl)));
     applyEdit(next);
     setMessage("Title added at the playhead");
   };
@@ -377,6 +383,19 @@ export default function CutStudioPage() {
     if (!edl || !selectedClipIds.length) return;
     applyEdit(ungroupCutClips(edl, selectedClipIds));
     setMessage("Clip group released");
+  };
+
+  const compoundSelectedClips = () => {
+    if (!edl || selectedClipIds.length < 2) return;
+    const count = (edl.compounds?.length ?? 0) + 1;
+    applyEdit(createCutCompound(edl, selectedClipIds, `Compound ${count}`, `compound_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`));
+    setMessage(`${selectedClipIds.length} clips combined into a durable compound`);
+  };
+
+  const breakApartSelectedCompound = () => {
+    if (!edl || !selectedClipIds.length) return;
+    applyEdit(breakApartCutCompound(edl, selectedClipIds));
+    setMessage("Compound broken apart into its original clips");
   };
 
   const moveSelectionToPlayhead = () => {
@@ -437,7 +456,7 @@ export default function CutStudioPage() {
     event.stopPropagation();
     if (!edl || edl.version !== 3 || !item.id || event.button !== 0) return;
     const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project?.sourceAssetId));
-    trimRef.current = { clipId: item.id, edge, startX: event.clientX, trackWidth: event.currentTarget.parentElement?.parentElement?.getBoundingClientRect().width ?? 1, sourceDuration: media?.duration ?? project?.duration ?? item.end, origin: edl, moved: false };
+    trimRef.current = { clipId: item.id, edge, startX: event.clientX, trackWidth: event.currentTarget.parentElement?.parentElement?.getBoundingClientRect().width ?? 1, sourceDuration: media?.duration ?? project?.duration ?? item.end, origin: edl, moved: false, rolling: rollingEnabled && edge === "end" };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -454,7 +473,9 @@ export default function CutStudioPage() {
     const originalEdge = trim.edge === "start" ? start : start + (clip.end - clip.start) / (clip.speed ?? 1);
     const requested = originalEdge + (deltaPixels / trim.trackWidth) * timelineDuration;
     const snapped = snapEnabled ? snapCutTime(trim.origin, requested, .15, [trim.clipId]) : Math.max(0, requested);
-    setEdl(trimCutClip(trim.origin, trim.clipId, trim.edge, snapped, { rippleTrack: rippleEnabled && trim.edge === "end", sourceDuration: trim.sourceDuration }));
+    setEdl(trim.rolling
+      ? rollCutEdit(trim.origin, trim.clipId, snapped, { leftSourceDuration: trim.sourceDuration })
+      : trimCutClip(trim.origin, trim.clipId, trim.edge, snapped, { rippleMode: trim.edge === "end" ? rippleMode : "off", sourceDuration: trim.sourceDuration }));
   };
 
   const finishClipTrim = (event: ReactPointerEvent<HTMLSpanElement>) => {
@@ -465,7 +486,7 @@ export default function CutStudioPage() {
     if (!trim?.moved) return;
     setHistory((items) => [...items.slice(-49), trim.origin]);
     setFuture([]);
-    const modes = [rippleEnabled && trim.edge === "end" ? "track ripple" : "", snapEnabled ? "snapping" : ""].filter(Boolean);
+    const modes = [trim.rolling ? "rolling edit" : trim.edge === "end" && rippleMode !== "off" ? `${rippleMode} ripple` : "", snapEnabled ? "snapping" : ""].filter(Boolean);
     setMessage(`Clip trimmed${modes.length ? ` with ${modes.join(" and ")}` : ""}`);
   };
 
@@ -477,8 +498,22 @@ export default function CutStudioPage() {
     const currentEdge = edge === "start" ? timelineStart : timelineStart + (item.end - item.start) / (item.speed ?? 1);
     const requested = Math.max(0, currentEdge + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 1 : .1));
     const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project?.sourceAssetId));
-    applyEdit(trimCutClip(edl, item.id, edge, requested, { rippleTrack: rippleEnabled && edge === "end", sourceDuration: media?.duration ?? project?.duration ?? item.end }));
-    setMessage(`Clip ${edge === "start" ? "in" : "out"} point adjusted${rippleEnabled && edge === "end" ? " with track ripple" : ""}`);
+    const sourceDuration = media?.duration ?? project?.duration ?? item.end;
+    applyEdit(rollingEnabled && edge === "end"
+      ? rollCutEdit(edl, item.id, requested, { leftSourceDuration: sourceDuration })
+      : trimCutClip(edl, item.id, edge, requested, { rippleMode: edge === "end" ? rippleMode : "off", sourceDuration }));
+    setMessage(`Clip ${edge === "start" ? "in" : "out"} point adjusted${rollingEnabled && edge === "end" ? " with rolling edit" : rippleMode !== "off" && edge === "end" ? ` with ${rippleMode} ripple` : ""}`);
+  };
+
+  const cycleRippleMode = () => setRippleMode((mode) => mode === "off" ? "track" : mode === "track" ? "linked" : "off");
+
+  const slipSelectedClip = (delta: number) => {
+    if (!edl || edl.version !== 3) return;
+    const item = edl.clips[selectedClip];
+    if (!item?.id) return;
+    const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project?.sourceAssetId));
+    applyEdit(slipCutClip(edl, item.id, delta, media?.duration ?? project?.duration ?? item.end));
+    setMessage(`Source slipped ${delta > 0 ? "forward" : "back"} ${Math.abs(delta).toFixed(1)} seconds without moving the clip`);
   };
 
   if (!project || !edl) return (
@@ -519,14 +554,14 @@ export default function CutStudioPage() {
           </div>
           <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Audio RMS</span><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output></div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant={rippleEnabled ? "default" : "outline"} onClick={() => setRippleEnabled((value) => !value)} aria-pressed={rippleEnabled}>Ripple track</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers · {edl.compounds?.length ?? 0} compounds</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant={rippleMode !== "off" ? "default" : "outline"} onClick={cycleRippleMode} aria-label={`Ripple ${rippleMode}`} aria-pressed={rippleMode !== "off"}>Ripple {rippleMode}</Button><Button size="sm" variant={rollingEnabled ? "default" : "outline"} onClick={() => setRollingEnabled((value) => !value)} aria-pressed={rollingEnabled}>Roll edit</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={compoundSelectedClips}>Make compound</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.compounds?.some((compound) => compound.clipIds.includes(id)))} onClick={breakApartSelectedCompound}>Break apart</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
              <div className="space-y-1 rounded-xl bg-zinc-900 p-2" onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); seek(((event.clientX - box.left) / box.width) * timelineDuration); }}>
                {timelineTracks.map((track) => <div key={track} className="relative h-14 overflow-hidden rounded-lg bg-black">
                  <span className="pointer-events-none absolute left-1 top-1 z-10 rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-400">{track.toUpperCase()}</span>
                  {(edl.markers ?? []).map((marker) => <span key={`${track}-${marker.id}`} className="pointer-events-none absolute inset-y-0 z-10 w-px opacity-80" style={{ left: `${(marker.position / timelineDuration) * 100}%`, backgroundColor: marker.color }} title={marker.label}/>)}
                  {edl.clips.map((item, index) => (item.track ?? "v1") === track ? <button
                    key={item.id ?? `${item.start}-${item.end}`}
-                   className={`absolute bottom-1 top-1 overflow-hidden rounded-md border px-2 text-xs font-bold ${edl.version === 3 ? "touch-none select-none cursor-grab active:cursor-grabbing" : ""} ${item.id && selectedClipIds.includes(item.id) ? "border-white bg-[#1d9bf0] text-black" : track.startsWith("a") ? "border-emerald-700 bg-emerald-950 text-emerald-300" : "border-zinc-600 bg-zinc-700"}`}
+                   className={`absolute bottom-1 top-1 overflow-hidden rounded-md border px-2 text-xs font-bold ${edl.version === 3 ? "touch-none select-none cursor-grab active:cursor-grabbing" : ""} ${item.id && selectedClipIds.includes(item.id) ? "border-white bg-[#1d9bf0] text-black" : track.startsWith("a") ? "border-emerald-700 bg-emerald-950 text-emerald-300" : "border-zinc-600 bg-zinc-700"} ${item.id && edl.compounds?.some((compound) => compound.clipIds.includes(item.id!)) ? "ring-1 ring-fuchsia-400" : ""}`}
                    style={{ left: `${(((edl.version === 3 ? item.timelineStart : item.start) ?? 0) / timelineDuration) * 100}%`, width: `${Math.max(0.7, (((item.end - item.start) / (item.speed ?? 1)) / timelineDuration) * 100)}%` }}
                    onPointerDown={(event) => startClipDrag(event, item)}
                    onPointerMove={moveClipDrag}
@@ -540,14 +575,16 @@ export default function CutStudioPage() {
                      <span role="slider" tabIndex={0} aria-label={`Trim end ${track.toUpperCase()} clip ${index + 1}`} aria-valuemin={0} aria-valuemax={timelineDuration} aria-valuenow={(item.timelineStart ?? 0) + (item.end - item.start) / (item.speed ?? 1)} className="absolute inset-y-0 right-0 z-[3] w-2 cursor-ew-resize touch-none bg-white/40 opacity-60 hover:opacity-100 focus:opacity-100" onPointerDown={(event) => startClipTrim(event, item, "end")} onPointerMove={moveClipTrim} onPointerUp={finishClipTrim} onPointerCancel={finishClipTrim} onKeyDown={(event) => keyboardClipTrim(event, item, "end")} onClick={(event) => event.stopPropagation()}/>
                    </>}
                    {clipWaveformUrl(item) && <img data-testid={`waveform-${item.id ?? index}`} src={clipWaveformUrl(item)} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-45"/>}
-                   <span className="pointer-events-none relative z-[1]">{item.groupId && <Link2 className="mr-1 inline h-3 w-3"/>}{item.label ?? index + 1}{(item.speed ?? 1) !== 1 ? ` · ${item.speed}x` : ""}</span>
+                   <span className="pointer-events-none relative z-[1]">{item.groupId && <Link2 className="mr-1 inline h-3 w-3"/>}{item.id && edl.compounds?.find((compound) => compound.clipIds.includes(item.id!))?.label && <span className="mr-1 rounded bg-fuchsia-950/80 px-1 text-[9px] text-fuchsia-200">{edl.compounds.find((compound) => compound.clipIds.includes(item.id!))!.label}</span>}{item.label ?? index + 1}{(item.speed ?? 1) !== 1 ? ` · ${item.speed}x` : ""}</span>
                  </button> : null)}
                  <span className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-red-500" style={{ left: `${(playhead / timelineDuration) * 100}%` }}/>
                </div>)}
              </div>
              {(edl.markers?.length ?? 0) > 0 && <div className="mt-2 flex flex-wrap gap-2">{edl.markers!.map((marker) => <div key={marker.id} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-black px-2 py-1 text-[10px] text-zinc-300"><button aria-label={`Seek to ${marker.label}`} onClick={() => seek(marker.position)}><span className="block h-2 w-2 rounded-full" style={{ backgroundColor: marker.color }}/></button><input aria-label={`Rename marker at ${formatTime(marker.position)}`} value={marker.label} maxLength={80} className="w-24 bg-transparent outline-none focus:text-white" onChange={(event) => applyEdit({ ...edl, markers: edl.markers?.map((item) => item.id === marker.id ? { ...item, label: event.target.value || "Marker" } : item) })}/><button className="text-zinc-500 hover:text-white" onClick={() => seek(marker.position)}>{formatTime(marker.position)}</button><button aria-label={`Delete ${marker.label}`} onClick={() => applyEdit({ ...edl, markers: edl.markers?.filter((item) => item.id !== marker.id) })}><X className="h-3 w-3 text-zinc-600"/></button></div>)}</div>}
+             {(edl.compounds?.length ?? 0) > 0 && <div className="mt-2 flex flex-wrap gap-2" aria-label="Compound clips">{edl.compounds!.map((compound) => <div key={compound.id} className="inline-flex items-center gap-2 rounded-full border border-fuchsia-900 bg-fuchsia-950/30 px-2 py-1 text-[10px] text-fuchsia-200"><span>{compound.clipIds.length} clips</span><input aria-label={`Rename ${compound.label}`} value={compound.label} maxLength={80} className="w-28 bg-transparent font-bold outline-none focus:text-white" onChange={(event) => applyEdit({ ...edl, compounds: edl.compounds?.map((item) => item.id === compound.id ? { ...item, label: event.target.value || "Compound clip" } : item) })}/><button aria-label={`Select ${compound.label}`} onClick={() => setSelectedClipIds(compound.clipIds)}>Select</button><button aria-label={`Break apart ${compound.label}`} onClick={() => applyEdit(breakApartCutCompound(edl, compound.clipIds))}><X className="h-3 w-3"/></button></div>)}</div>}
             {clip && <><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs text-zinc-400">In · {formatTime(clip.start)}<input className="mt-2 w-full accent-[#1d9bf0]" type="range" min={0} max={clip.end - .05} step="0.05" value={clip.start} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, start: Number(event.target.value) } : item) })}/></label><label className="text-xs text-zinc-400">Out · {formatTime(clip.end)}<input className="mt-2 w-full accent-[#1d9bf0]" type="range" min={clip.start + .05} max={selectedMedia?.duration ?? project.duration} step="0.05" value={clip.end} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, end: Number(event.target.value) } : item) })}/></label></div><div className="mt-4 grid gap-3 sm:grid-cols-6"><label className="text-xs text-zinc-400">Speed<select aria-label="Clip speed" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.speed ?? 1} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, speed: Number(event.target.value) } : item) })}>{[.25,.5,.75,1,1.25,1.5,2,4].map((value) => <option key={value} value={value}>{value}x</option>)}</select></label><label className="text-xs text-zinc-400">Transition<select aria-label="Clip transition" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.transition ?? "cut"} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transition: event.target.value as "cut" | "fade_black" } : item) })}><option value="cut">Cut</option><option value="fade_black">Fade black</option></select></label><label className="text-xs text-zinc-400">Color<select aria-label="Clip color" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.colorPreset ?? "original"} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, colorPreset: event.target.value as "original" | "cinematic" | "vivid" | "monochrome" } : item) })}><option value="original">Original</option><option value="cinematic">Cinematic</option><option value="vivid">Vivid</option><option value="monochrome">Monochrome</option></select></label>{[["Volume", "volume", 0, 2, .05], ["Fade in", "fadeIn", 0, 10, .1], ["Fade out", "fadeOut", 0, 10, .1]].map(([label, key, min, max, step]) => <label key={String(key)} className="text-xs text-zinc-400">{label} · {Number(clip[key as "volume" | "fadeIn" | "fadeOut"] ?? (key === "volume" ? 1 : 0)).toFixed(1)}<input aria-label={String(label)} className="mt-2 w-full accent-[#1d9bf0]" type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={clip[key as "volume" | "fadeIn" | "fadeOut"] ?? (key === "volume" ? 1 : 0)} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, [String(key)]: Number(event.target.value) } : item) })}/></label>)}</div>{edl.version === 3 && clip.track !== "v1" && <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-xs text-zinc-400">Timeline start<input aria-label="Clip timeline start" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2" type="number" min={0} max={7200} step="0.1" value={clip.timelineStart ?? 0} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, timelineStart: Number(event.target.value) } : item) })}/></label>{clip.track?.startsWith("a") && <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400">Duck under voice<Switch aria-label="Duck under voice" checked={clip.duckUnderVoice ?? false} onCheckedChange={(checked) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, duckUnderVoice: checked } : item) })}/></label>}{clip.track?.startsWith("v") && <><label className="text-xs text-zinc-400">Layout<select aria-label="Clip layout" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2" value={(clip.transform?.width ?? 1) < .8 ? "pip" : "full"} onChange={(event) => { const pip = event.target.value === "pip"; applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transform: pip ? { x: .68, y: .62, width: .28, height: .32, opacity: 1 } : { x: 0, y: 0, width: 1, height: 1, opacity: 1 } } : item) }); }}><option value="full">Full frame</option><option value="pip">Picture in picture</option></select></label><label className="text-xs text-zinc-400">Opacity<input aria-label="Clip opacity" className="mt-2 w-full accent-[#1d9bf0]" type="range" min={0} max={1} step={.05} value={clip.transform?.opacity ?? 1} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transform: { ...(item.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 }), opacity: Number(event.target.value) } } : item) })}/></label></>}</div>}</>}
             {clip?.track?.startsWith("v") && <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-3"><p className="text-xs font-bold">Color correction</p><div className="mt-3 grid gap-3 sm:grid-cols-4">{[["Exposure", "brightness", -1, 1, .05], ["Contrast", "contrast", .5, 2, .05], ["Saturation", "saturation", 0, 3, .05], ["Temperature", "temperature", -1, 1, .05]].map(([label, key, min, max, step]) => { const defaults = { brightness: 0, contrast: 1, saturation: 1, temperature: 0 }; const value = clip.colorAdjust?.[key as keyof typeof defaults] ?? defaults[key as keyof typeof defaults]; return <label key={String(key)} className="text-[11px] text-zinc-400">{label} · {value.toFixed(2)}<input aria-label={String(label)} className="mt-2 w-full accent-[#1d9bf0]" type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={value} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, colorAdjust: { brightness: item.colorAdjust?.brightness ?? 0, contrast: item.colorAdjust?.contrast ?? 1, saturation: item.colorAdjust?.saturation ?? 1, temperature: item.colorAdjust?.temperature ?? 0, [String(key)]: Number(event.target.value) } } : item) })}/></label>; })}</div>{edl.version === 3 && clip.track !== "v1" && <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400">Chroma key<Switch aria-label="Chroma key" checked={clip.chromaKey?.enabled ?? false} onCheckedChange={(enabled) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, chromaKey: { enabled, color: item.chromaKey?.color ?? "#00ff00", similarity: item.chromaKey?.similarity ?? .12, blend: item.chromaKey?.blend ?? .05 } } : item) })}/></label>{clip.chromaKey?.enabled && <><label className="text-[11px] text-zinc-400">Key color<input aria-label="Chroma key color" type="color" className="mt-1 h-9 w-full rounded bg-black" value={clip.chromaKey.color} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, chromaKey: { ...item.chromaKey!, color: event.target.value } } : item) })}/></label><label className="text-[11px] text-zinc-400">Tolerance · {clip.chromaKey.similarity.toFixed(2)}<input aria-label="Chroma key tolerance" className="mt-2 w-full accent-[#1d9bf0]" type="range" min={.01} max={1} step={.01} value={clip.chromaKey.similarity} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, chromaKey: { ...item.chromaKey!, similarity: Number(event.target.value) } } : item) })}/></label></>}</div>}</div>}
+            {edl.version === 3 && clip && <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-black p-3"><span className="mr-1 text-xs font-bold text-zinc-400">Slip source</span><Button size="sm" variant="outline" onClick={() => slipSelectedClip(-.1)} aria-label="Slip source back 0.1 seconds">−0.1s</Button><Button size="sm" variant="outline" onClick={() => slipSelectedClip(.1)} aria-label="Slip source forward 0.1 seconds">+0.1s</Button><Button size="sm" variant="outline" onClick={() => slipSelectedClip(-1)} aria-label="Slip source back 1 second">−1s</Button><Button size="sm" variant="outline" onClick={() => slipSelectedClip(1)} aria-label="Slip source forward 1 second">+1s</Button><span className="text-[11px] text-zinc-500">Changes the source moment without moving or resizing the clip.</span></div>}
             <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="destructive" disabled={edl.clips.length === 1} onClick={() => { applyEdit({ version: edl.version, clips: edl.clips.filter((_, index) => index !== selectedClip) }); setSelectedClip(0); }}><Trash2 className="mr-2 h-4 w-4"/>Delete clip</Button><Button size="sm" variant="outline" disabled={edl.version === 3 || selectedClip === 0} onClick={() => { const clips = [...edl.clips]; [clips[selectedClip - 1], clips[selectedClip]] = [clips[selectedClip], clips[selectedClip - 1]]; applyEdit({ version: edl.version, clips }); setSelectedClip(selectedClip - 1); }}>Move earlier</Button><Button size="sm" variant="outline" disabled={edl.version === 3 || selectedClip >= edl.clips.length - 1} onClick={() => { const clips = [...edl.clips]; [clips[selectedClip + 1], clips[selectedClip]] = [clips[selectedClip], clips[selectedClip + 1]]; applyEdit({ version: edl.version, clips }); setSelectedClip(selectedClip + 1); }}>Move later</Button><Button size="sm" variant="outline" onClick={() => seek(edl.version === 3 ? (clip?.timelineStart ?? 0) : (clip?.start ?? 0))}><Play className="mr-2 h-4 w-4"/>Preview</Button></div>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Text-based edit</h2><p className="text-xs text-zinc-500">Search, correct, cut, restore, and export timed captions.</p></div><div className="flex gap-2">{project.transcript && <a className="inline-flex h-9 items-center rounded-lg border border-zinc-700 px-3 text-xs font-bold" href={`/api/cut/projects/${project.id}/captions.srt`}><FileText className="mr-1.5 h-3.5 w-3.5"/>SRT</a>}<Button size="sm" onClick={() => void transcribe()} disabled={busy === "transcribe" || transcriptJob?.state === "queued" || transcriptJob?.state === "running"}>{busy === "transcribe" || transcriptJob?.state === "queued" || transcriptJob?.state === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Captions className="mr-2 h-4 w-4"/>}{project.transcript ? "Re-transcribe" : "Transcribe"}</Button></div></div>
