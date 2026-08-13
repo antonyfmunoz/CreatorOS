@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -73,6 +73,12 @@ describe("CutStudio edit decision list", () => {
     expect(parseCubeLut(cube)).toEqual({ title: "Green transform", size: 2, entryCount: 8 });
     expect(() => parseCubeLut("LUT_3D_SIZE 2\n0 0 0")).toThrow(/expected 8/i);
     expect(() => parseCubeLut("LUT_3D_SIZE 2\n<script>")).toThrow(/unsupported/i);
+  });
+
+  it("extracts the final calibrated EBU R128 measurement", () => {
+    const summary = `Integrated loudness:\n I: -70.0 LUFS\nLoudness range:\n LRA: 0.0 LU\nTrue peak:\n Peak: -inf dBFS\nIntegrated loudness:\n I: -16.2 LUFS\nLoudness range:\n LRA: 1.7 LU\nTrue peak:\n Peak: -1.1 dBFS`;
+    expect(parseEbur128Summary(summary)).toEqual({ integratedLufs: -16.2, loudnessRangeLu: 1.7, truePeakDbfs: -1.1 });
+    expect(() => parseEbur128Summary("no summary")).toThrow(/invalid measurements/i);
   });
 
   it("gives conservative render estimates for production profiles", () => {

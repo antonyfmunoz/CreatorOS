@@ -158,6 +158,15 @@ export function parseCubeLut(value: string) {
   return { title, size, entryCount: entries.length };
 }
 
+export function parseEbur128Summary(value: string) {
+  const finalNumber = (pattern: RegExp) => Array.from(value.matchAll(pattern)).at(-1)?.[1];
+  const integratedLufs = Number(finalNumber(/\bI:\s*(-?[\d.]+) LUFS/g));
+  const loudnessRangeLu = Number(finalNumber(/\bLRA:\s*([\d.]+) LU/g));
+  const truePeakDbfs = Number(finalNumber(/\bPeak:\s*(-?[\d.]+) dBFS/g));
+  if (![integratedLufs, loudnessRangeLu, truePeakDbfs].every(Number.isFinite)) throw new Error("The loudness analyzer returned invalid measurements");
+  return { integratedLufs, loudnessRangeLu, truePeakDbfs };
+}
+
 function reconcileCutCompounds(compounds: CutCompound[] | undefined, clips: CutClip[], replacements: Map<string, string[]> = new Map()) {
   const validClipIds = new Set(clips.flatMap((clip) => clip.id ? [clip.id] : []));
   const claimedClipIds = new Set<string>();

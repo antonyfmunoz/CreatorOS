@@ -89,6 +89,34 @@ test("CutStudio validates and renders a private cube LUT", async ({ page }, test
   await expect(page.getByLabel("Clip LUT")).toHaveValue(lut.id);
 });
 
+test("CutStudio measures calibrated private-source loudness", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const directory = testInfo.outputPath("loudness-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/tone-source.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:duration=3", "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=3", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  const source = await uploadPrivate(page, owner, sourcePath, "tone-source.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Loudness analysis ${Date.now()}`, duration: 3, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  expect((await api(page, peer, "POST", `/api/cut/projects/${project.id}/audio-analysis`, {})).status()).toBe(404);
+  const analysisResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/audio-analysis`, {});
+  await expectOk(analysisResponse);
+  const analysis = await analysisResponse.json();
+  expect(analysis).toMatchObject({ standard: "EBU R128", analyzedSeconds: 3, integratedLufs: expect.any(Number), loudnessRangeLu: expect.any(Number), truePeakDbfs: expect.any(Number) });
+  expect(analysis.integratedLufs).toBeGreaterThan(-30);
+  expect(analysis.integratedLufs).toBeLessThan(-10);
+  expect(analysis.truePeakDbfs).toBeGreaterThan(-30);
+  expect(analysis.truePeakDbfs).toBeLessThan(0);
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "Analyze" }).click();
+  await expect(page.getByLabel("Calibrated loudness analysis").getByText("LUFS-I")).toBeVisible();
+  await expect(page.getByText(/Measured -?\d+\.\d LUFS/)).toBeVisible();
+});
+
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

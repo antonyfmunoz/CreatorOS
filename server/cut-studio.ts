@@ -18,6 +18,7 @@ import {
   detectCutCandidates,
   removeCutRange,
   parseCubeLut,
+  parseEbur128Summary,
   validateCutEdl,
   type CutEdl,
   type CutTranscript,
@@ -721,6 +722,26 @@ export function registerCutStudioRoutes(app: Express) {
       projectLuts(project),
     ]);
     res.json({ ...project, jobs, media, luts });
+  });
+  cut.post("/api/cut/projects/:id/audio-analysis", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const source = await ownedAsset(req.dbUser!.id, project.sourceAssetId);
+    if (!source || source.visibility !== "private" || source.status !== "ready") return res.status(404).json({ message: "Private project media not found" });
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-loudness-"));
+    const inputPath = path.join(temp, source.originalFilename || "source-media");
+    const analyzedSeconds = Math.min(project.duration, 120);
+    try {
+      await materializePrivateAsset(source.storageKey, inputPath);
+      const media = await probeMedia(inputPath);
+      if (!media.hasAudio) return res.status(409).json({ message: "This project source does not contain an audio track" });
+      const output = await runProcess("ffmpeg", ["-hide_banner", "-nostats", "-i", inputPath, "-t", String(analyzedSeconds), "-filter_complex", "ebur128=peak=true", "-f", "null", "-"], 3 * 60_000);
+      const measurement = parseEbur128Summary(output);
+      return res.json({ ...measurement, analyzedSeconds, standard: "EBU R128", measuredAt: new Date().toISOString() });
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
   });
   cut.post("/api/cut/projects/:id/luts", attachUser, async (req, res) => {
     noStore(res);
