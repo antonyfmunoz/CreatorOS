@@ -128,6 +128,7 @@ const sourceDefaults = {
   audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+  chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
   presentation: { style: "plain" as const, secondaryText: null, backgroundColor: null, fontScale: 1, align: "center" as const, scrollSpeed: 90, countdownEndsAt: null },
   transform: {
     x: 0.1,
@@ -211,6 +212,7 @@ export default function BroadcastStudioPage() {
     from: HTMLCanvasElement;
     to: HTMLCanvasElement;
   } | null>(null);
+  const chromaCanvases = useRef(new Map<string, HTMLCanvasElement>());
 
   const studiosQuery = useQuery<Studio[]>({
     queryKey: ["/api/broadcast/studios"],
@@ -473,7 +475,35 @@ export default function BroadcastStudioPage() {
             const sy = sh * t.cropTop;
             const sourceW = sw * (1 - t.cropLeft - t.cropRight);
             const sourceH = sh * (1 - t.cropTop - t.cropBottom);
-            ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
+            if (source.chromaKey.enabled) {
+              const scratch = chromaCanvases.current.get(source.id) ?? document.createElement("canvas");
+              chromaCanvases.current.set(source.id, scratch);
+              const scale = Math.min(1, 640 / Math.max(1, w), 360 / Math.max(1, h));
+              scratch.width = Math.max(1, Math.round(w * scale));
+              scratch.height = Math.max(1, Math.round(h * scale));
+              const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
+              if (scratchContext) {
+                scratchContext.clearRect(0, 0, scratch.width, scratch.height);
+                scratchContext.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, scratch.width, scratch.height);
+                try {
+                  const pixels = scratchContext.getImageData(0, 0, scratch.width, scratch.height);
+                  const key = source.chromaKey.color;
+                  const keyRed = Number.parseInt(key.slice(1, 3), 16);
+                  const keyGreen = Number.parseInt(key.slice(3, 5), 16);
+                  const keyBlue = Number.parseInt(key.slice(5, 7), 16);
+                  const featherEnd = source.chromaKey.similarity + source.chromaKey.smoothness;
+                  for (let index = 0; index < pixels.data.length; index += 4) {
+                    const distance = Math.hypot(pixels.data[index] - keyRed, pixels.data[index + 1] - keyGreen, pixels.data[index + 2] - keyBlue) / 441.673;
+                    const alpha = distance <= source.chromaKey.similarity ? 0 : distance >= featherEnd ? 1 : (distance - source.chromaKey.similarity) / source.chromaKey.smoothness;
+                    pixels.data[index + 3] = Math.round(pixels.data[index + 3] * alpha);
+                  }
+                  scratchContext.putImageData(pixels, 0, 0);
+                  ctx.drawImage(scratch, 0, 0, w, h);
+                } catch {
+                  ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
+                }
+              }
+            } else ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
           } else {
             ctx.fillStyle = "#18181b";
             ctx.fillRect(0, 0, w, h);
@@ -2154,6 +2184,19 @@ export default function BroadcastStudioPage() {
                   }
                   onCommit={() => config && void persist(config)}
                 />
+                {["camera", "screen", "media", "image"].includes(selectedSource.type) && (
+                  <div className="col-span-full rounded-xl border border-zinc-800 bg-black p-3">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span>Chroma key</span>
+                      <Switch aria-label="Enable chroma key" checked={selectedSource.chromaKey.enabled} onCheckedChange={(checked) => updateSource(selectedSource.id, { chromaKey: { ...selectedSource.chromaKey, enabled: checked } })}/>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <label className="text-[10px] text-zinc-500">Key color<Input aria-label="Chroma key color" type="color" className="mt-1 h-9 border-zinc-800 bg-zinc-950 p-1" value={selectedSource.chromaKey.color} onChange={(event) => updateSource(selectedSource.id, { chromaKey: { ...selectedSource.chromaKey, color: event.target.value } })}/></label>
+                      <Control label="Similarity" value={selectedSource.chromaKey.similarity} min={0.01} max={1} onChange={(value) => updateSource(selectedSource.id, { chromaKey: { ...selectedSource.chromaKey, similarity: value } }, false)} onCommit={() => config && void persist(config)}/>
+                      <Control label="Edge softness" value={selectedSource.chromaKey.smoothness} min={0.01} max={0.5} onChange={(value) => updateSource(selectedSource.id, { chromaKey: { ...selectedSource.chromaKey, smoothness: value } }, false)} onCommit={() => config && void persist(config)}/>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-zinc-500">

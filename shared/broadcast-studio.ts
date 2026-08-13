@@ -56,6 +56,12 @@ export const broadcastSourceSchema = z.object({
     saturation: z.number().finite().min(0).max(2).default(1),
     blurPx: z.number().finite().min(0).max(20).default(0),
   }),
+  chromaKey: z.object({
+    enabled: z.boolean().default(false),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#00ff00"),
+    similarity: z.number().finite().min(0.01).max(1).default(0.35),
+    smoothness: z.number().finite().min(0.01).max(0.5).default(0.1),
+  }).default({ enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 }),
   presentation: z.object({
     style: z.enum(["plain", "lower_third", "ticker", "countdown"]).default("plain"),
     secondaryText: z.string().max(300).nullable().default(null),
@@ -177,6 +183,7 @@ export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
             audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
             blendMode: "source-over",
             filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+            chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
           },
         ],
       },
@@ -276,6 +283,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
     audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
     blendMode: "source-over",
     filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+    chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
     presentation: { style: "plain", secondaryText: null, backgroundColor: null, fontScale: 1, align: "center", scrollSpeed: 90, countdownEndsAt: null },
     ...overrides,
   };

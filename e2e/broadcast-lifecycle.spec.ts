@@ -187,7 +187,7 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
 test("Broadcast Studio exposes independent operator controls and explicit capture consent", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(75_000);
+  test.setTimeout(110_000);
   const owner = ownerFor(testInfo);
   const studiosResponse = await api(
     page,
@@ -248,6 +248,10 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await page.getByLabel("Host camera audio monitoring").click();
   await expect(page.getByLabel("Host camera compressor")).toBeChecked();
   await expect(page.getByLabel("Host camera audio monitoring")).toBeChecked();
+  await page.getByRole("button", { name: "Host camera", exact: true }).click();
+  await page.getByLabel("Enable chroma key").click();
+  await page.getByLabel("Chroma key color").fill("#00ee22");
+  await expect(page.getByLabel("Enable chroma key")).toBeChecked();
   await page.getByLabel("Surface brand color").fill("#112233");
   await page.getByRole("button", { name: "Apply to branded graphics" }).click();
   await expect(page.getByText(/Operator keys:/)).toBeVisible();
@@ -262,6 +266,9 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; audioProcessing?: { compressor: boolean; monitor: boolean } }> }> } }) =>
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.audioProcessing?.compressor && source.audioProcessing.monitor)),
+  )).toBe(true);
+  expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; chromaKey?: { enabled: boolean; color: string } }> }> } }) =>
+    studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.chromaKey?.enabled && source.chromaKey.color === "#00ee22")),
   )).toBe(true);
 
 });
