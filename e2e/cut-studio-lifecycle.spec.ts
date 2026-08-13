@@ -97,6 +97,46 @@ test("CutStudio renders a durable cross dissolve between differently sized sourc
   await expect(page.getByLabel("Clip transition")).toHaveValue("cross_dissolve");
 });
 
+test("CutStudio burns animated word-level captions into the output", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("kinetic-caption-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/caption-source.mp4`;
+  const outputPath = `${directory}/caption-output.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=640x360:rate=24:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", sourcePath]);
+  const source = await uploadPrivate(page, owner, sourcePath, "caption-source.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Kinetic captions ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  const transcriptResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/transcript`, { duration: 2, language: "en", segments: [{ id: "caption", start: 0.1, end: 1.8, text: "Create better", words: [{ word: "Create", start: 0.1, end: 0.9 }, { word: "better", start: 1, end: 1.8 }] }] }, { "If-Match": String(project.revision) });
+  await expectOk(transcriptResponse);
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: true, captionStyle: 4, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String) });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Kinetic caption qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const reviewToken = new URL((await reviewResponse.json()).reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${reviewToken}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const frame = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", "0.5", "-i", outputPath, "-vf", "scale=640:360", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  let lightPixels = 0;
+  for (let index = 0; index < frame.length; index += 3) if (frame[index] > 200 && frame[index + 1] > 200 && frame[index + 2] > 200) lightPixels += 1;
+  expect(lightPixels).toBeGreaterThan(100);
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByLabel("Caption style").selectOption("4");
+  await expect(page.getByLabel("Caption style")).toHaveValue("4");
+});
+
 test("CutStudio renders an owner-scoped private multitrack artifact", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

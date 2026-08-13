@@ -106,7 +106,7 @@ export const cutTranscriptSchema = z.object({
 export const cutRenderRequestSchema = z.object({
   aspect: z.enum(["source", "9:16", "1:1", "16:9"]).default("9:16"),
   captions: z.boolean().default(true),
-  captionStyle: z.number().int().min(1).max(3).default(1),
+  captionStyle: z.number().int().min(1).max(4).default(1),
   cleanAudio: z.boolean().default(false),
   audioPreset: z.enum(["original", "voice", "broadcast", "music"]).default("original"),
   masterGainDb: z.number().finite().min(-12).max(12).default(0),
@@ -503,6 +503,34 @@ export function buildSrtCaptions(transcript: CutTranscript, edl: CutEdl) {
     blocks.push(`${sequence}\n${srtTimestamp(start)} --> ${srtTimestamp(end)}\n${segment.speaker ? `${segment.speaker}: ` : ""}${segment.text.trim()}\n`);
   }
   return blocks.join("\n");
+}
+
+function assTimestamp(seconds: number) {
+  const centiseconds = Math.max(0, Math.round(seconds * 100));
+  const hh = Math.floor(centiseconds / 360_000);
+  const mm = Math.floor((centiseconds % 360_000) / 6_000);
+  const ss = Math.floor((centiseconds % 6_000) / 100);
+  const cs = centiseconds % 100;
+  return `${hh}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function escapeAssText(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/[{}]/g, "").replace(/[\r\n]+/g, " ").trim();
+}
+
+export function buildKineticAssCaptions(transcript: CutTranscript, edl: CutEdl) {
+  const events: string[] = [];
+  for (const segment of transcript.segments) {
+    const timedWords = segment.words.length ? segment.words : [{ word: segment.text, start: segment.start, end: segment.end }];
+    for (const word of timedWords) {
+      const start = sourceToOutput(edl, word.start);
+      const end = sourceToOutput(edl, Math.max(word.start, word.end - 0.001));
+      const text = escapeAssText(word.word);
+      if (start === null || end === null || end <= start || !text) continue;
+      events.push(`Dialogue: 0,${assTimestamp(start)},${assTimestamp(end)},Kinetic,,0,0,0,,{\\an2\\fscx68\\fscy68\\t(0,120,\\fscx112\\fscy112)\\t(120,220,\\fscx100\\fscy100)}${text}`);
+    }
+  }
+  return `[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Kinetic,Arial,78,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,1,2,80,80,110,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events.join("\n")}\n`;
 }
 
 export function detectCutCandidates(transcript: CutTranscript, silenceThreshold = 1) {

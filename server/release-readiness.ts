@@ -167,6 +167,7 @@ export function getReleaseReadiness(
       transcriptStoryReordering: "configured",
       transcriptSpeakerLabels: "configured",
       captionSidecars: "configured",
+      kineticCaptions: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",

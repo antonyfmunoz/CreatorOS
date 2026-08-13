@@ -9,6 +9,7 @@ import { z } from "zod";
 import { assets, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, notifications, users } from "@shared/schema";
 import {
   buildCmx3600Edl,
+  buildKineticAssCaptions,
   buildSrtCaptions,
   applyTranscriptStoryOrder,
   cutDuration,
@@ -257,6 +258,22 @@ function deterministicProposal(prompt: string, edl: CutEdl, duration: number, tr
   return null;
 }
 
+async function appendCaptionFilter(filters: string[], videoLabel: string, request: z.infer<typeof cutRenderRequestSchema>, transcript: CutTranscript, edl: CutEdl, temp: string) {
+  if (request.captionStyle === 4) {
+    const assPath = path.join(temp, "captions.ass");
+    await fs.writeFile(assPath, buildKineticAssCaptions(transcript, edl), "utf8");
+    const escaped = assPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+    filters.push(`[${videoLabel}]ass='${escaped}'[captioned]`);
+    return "captioned";
+  }
+  const srtPath = path.join(temp, "captions.srt");
+  await fs.writeFile(srtPath, buildSrtCaptions(transcript, edl), "utf8");
+  const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
+  filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
+  return "captioned";
+}
+
 async function renderMultitrack(
   jobId: string,
   project: typeof cutStudioProjects.$inferSelect,
@@ -393,12 +410,7 @@ async function renderMultitrack(
     audioLabel = "mixedaudio";
   } else if (audioLabels.length === 1) audioLabel = audioLabels[0].slice(1, -1);
   if (request.captions && project.transcript) {
-    const srtPath = path.join(temp, "captions.srt");
-    await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 3, clips, graphics }), "utf8");
-    const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
-    const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
-    filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
-    videoLabel = "captioned";
+    videoLabel = await appendCaptionFilter(filters, videoLabel, request, project.transcript, { version: 3, clips, graphics }, temp);
   }
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
@@ -506,12 +518,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       videoLabel = "framed";
     }
     if (media.hasVideo && request.captions && project.transcript) {
-      const srtPath = path.join(temp, "captions.srt");
-      await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 2, clips }), "utf8");
-      const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
-      const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
-      filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
-      videoLabel = "captioned";
+      videoLabel = await appendCaptionFilter(filters, videoLabel, request, project.transcript, { version: 2, clips }, temp);
     }
     const finishingFilters = masterAudioFilters(request);
     if (media.hasAudio && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -57,6 +57,15 @@ describe("CutStudio edit decision list", () => {
     ] }, 20));
     expect(result).toContain("00:00:00,000 --> 00:00:05,000\nCorrected opening");
     expect(result).toContain("00:00:05,000 --> 00:00:14,999\nCorrected ending");
+  });
+
+  it("builds animated word-level captions against the retimed output timeline", () => {
+    const transcript = { duration: 8, language: "en", segments: [{ id: "a", start: 0, end: 8, text: "Ship better", words: [{ word: "Ship", start: 0, end: 1 }, { word: "better", start: 2, end: 4 }] }] };
+    const result = buildKineticAssCaptions(transcript, validateCutEdl({ version: 3, clips: [{ id: "a", start: 0, end: 8, speed: 2 }] }, 8));
+    expect(result).toContain("[V4+ Styles]");
+    expect(result).toContain("\\fscx68");
+    expect(result).toContain("Dialogue: 0,0:00:00.00,0:00:00.50");
+    expect(result).toContain("Dialogue: 0,0:00:01.00,0:00:02.00");
   });
 
   it("gives conservative render estimates for production profiles", () => {
