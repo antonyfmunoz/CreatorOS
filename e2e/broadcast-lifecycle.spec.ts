@@ -238,12 +238,15 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByRole("button", { name: "Apply Reusable headline source preset" })).toBeVisible();
   await page.getByRole("button", { name: "Apply Reusable headline source preset" }).click();
   await expect(page.getByRole("button", { name: "Reusable headline", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Lower third", exact: true }).click();
+  await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "Lower third", exact: true })).toHaveCount(2);
   await page.getByLabel("Scene template").selectOption("interview");
   await page.getByRole("button", { name: "Add template" }).click();
   await expect(page.getByRole("button", { name: /Two-person interview/ })).toBeVisible();
   await page.getByRole("button", { name: "Transition to program" }).click();
+  await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
+  await page.getByLabel("Overlay motion").selectOption("fade");
+  await expect(page.getByLabel("Overlay motion")).toHaveValue("fade");
   await page.getByLabel("Host camera compressor").click();
   await page.getByLabel("Host camera audio monitoring").click();
   await expect(page.getByLabel("Host camera compressor")).toBeChecked();
@@ -269,6 +272,9 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; chromaKey?: { enabled: boolean; color: string } }> }> } }) =>
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.chromaKey?.enabled && source.chromaKey.color === "#00ee22")),
+  )).toBe(true);
+  expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; presentation?: { animation: string } }> }> } }) =>
+    studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Lower third" && source.presentation?.animation === "fade")),
   )).toBe(true);
 
 });

@@ -182,6 +182,7 @@ export function getReleaseReadiness(
       renderEffectiveAudioProcessing: "configured",
       localAudioMonitoring: "configured",
       chromaKey: "configured",
+      animatedOverlays: "configured",
       brandKit: "configured",
       multiAspect: "configured",
       multiDestination: "configured",

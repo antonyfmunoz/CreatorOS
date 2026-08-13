@@ -74,6 +74,7 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(scene.sources.find((source) => source.presentation?.style === "lower_third")).toMatchObject({ color: "#fefefe", presentation: { backgroundColor: "#221122" } });
     const branded = applyBroadcastBrandKit(validateBroadcastStudioConfig({ ...interview, brandKit: { ...interview.brandKit, surfaceColor: "#0055ff" } }));
     expect(branded.scenes.at(-1)?.sources.find((source) => source.presentation?.style === "lower_third")?.presentation?.backgroundColor).toBe("#0055ff");
+    expect(scene.sources.find((source) => source.presentation?.style === "lower_third")?.presentation).toMatchObject({ animation: "slide", animationSpeed: 1 });
   });
 
   it("saves, reapplies, and removes render-effective source presets", () => {

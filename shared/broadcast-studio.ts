@@ -70,6 +70,8 @@ export const broadcastSourceSchema = z.object({
     align: z.enum(["left", "center", "right"]).default("center"),
     scrollSpeed: z.number().finite().min(10).max(400).default(90),
     countdownEndsAt: z.number().finite().nullable().default(null),
+    animation: z.enum(["none", "fade", "slide", "pulse"]).default("none"),
+    animationSpeed: z.number().finite().min(0.25).max(3).default(1),
   }).optional(),
 });
 
@@ -284,7 +286,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
     blendMode: "source-over",
     filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
     chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
-    presentation: { style: "plain", secondaryText: null, backgroundColor: null, fontScale: 1, align: "center", scrollSpeed: 90, countdownEndsAt: null },
+    presentation: { style: "plain", secondaryText: null, backgroundColor: null, fontScale: 1, align: "center", scrollSpeed: 90, countdownEndsAt: null, animation: "none", animationSpeed: 1 },
     ...overrides,
   };
 }
@@ -292,7 +294,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
 export function createBroadcastSceneFromTemplate(config: BroadcastStudioConfig, template: BroadcastSceneTemplate, sceneId: string): BroadcastStudioConfig {
   const kit = config.brandKit;
   const full = { x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 };
-  const lowerThird = templateSource(`${sceneId}_lower`.slice(0, 32), "Lower third", "text", { ...full, x: 0.05, y: 0.78, width: 0.62, height: 0.16 }, 10, { text: "Guest or headline", color: kit.textColor, presentation: { style: "lower_third", secondaryText: "Role or call to action", backgroundColor: kit.surfaceColor, fontScale: 1, align: "left", scrollSpeed: 90, countdownEndsAt: null } });
+  const lowerThird = templateSource(`${sceneId}_lower`.slice(0, 32), "Lower third", "text", { ...full, x: 0.05, y: 0.78, width: 0.62, height: 0.16 }, 10, { text: "Guest or headline", color: kit.textColor, presentation: { style: "lower_third", secondaryText: "Role or call to action", backgroundColor: kit.surfaceColor, fontScale: 1, align: "left", scrollSpeed: 90, countdownEndsAt: null, animation: "slide", animationSpeed: 1 } });
   let name = "Solo creator";
   let sources: BroadcastSource[] = [];
   if (template === "solo") {
@@ -313,7 +315,7 @@ export function createBroadcastSceneFromTemplate(config: BroadcastStudioConfig, 
     ];
   } else {
     name = "Countdown opener";
-    sources = [templateSource(`${sceneId}_count`.slice(0, 32), "Countdown", "text", { ...full, x: 0.15, y: 0.25, width: 0.7, height: 0.5 }, 0, { text: "Starting soon", color: kit.textColor, presentation: { style: "countdown", secondaryText: null, backgroundColor: kit.surfaceColor, fontScale: 1.5, align: "center", scrollSpeed: 90, countdownEndsAt: Date.now() + 300_000 } })];
+    sources = [templateSource(`${sceneId}_count`.slice(0, 32), "Countdown", "text", { ...full, x: 0.15, y: 0.25, width: 0.7, height: 0.5 }, 0, { text: "Starting soon", color: kit.textColor, presentation: { style: "countdown", secondaryText: null, backgroundColor: kit.surfaceColor, fontScale: 1.5, align: "center", scrollSpeed: 90, countdownEndsAt: Date.now() + 300_000, animation: "pulse", animationSpeed: 0.5 } })];
   }
   if (kit.logoAssetId) sources.push(templateSource(`${sceneId}_logo`.slice(0, 32), "Brand logo", "image", { ...full, x: 0.82, y: 0.04, width: 0.14, height: 0.14 }, 20, { assetId: kit.logoAssetId }));
   return validateBroadcastStudioConfig({ ...config, scenes: [...config.scenes, { id: sceneId, name, background: "#09090b", sources }], previewSceneId: sceneId });

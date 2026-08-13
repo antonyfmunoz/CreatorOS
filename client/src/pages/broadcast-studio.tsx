@@ -129,7 +129,7 @@ const sourceDefaults = {
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
   chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
-  presentation: { style: "plain" as const, secondaryText: null, backgroundColor: null, fontScale: 1, align: "center" as const, scrollSpeed: 90, countdownEndsAt: null },
+  presentation: { style: "plain" as const, secondaryText: null, backgroundColor: null, fontScale: 1, align: "center" as const, scrollSpeed: 90, countdownEndsAt: null, animation: "none" as const, animationSpeed: 1 },
   transform: {
     x: 0.1,
     y: 0.1,
@@ -411,6 +411,15 @@ export default function BroadcastStudioPage() {
         ctx.translate(-w / 2, -h / 2);
         if (source.type === "text") {
           const presentation = source.presentation ?? sourceDefaults.presentation;
+          const animationPhase = (performance.now() / 1000 * presentation.animationSpeed) % 1;
+          if (presentation.animation === "fade") ctx.globalAlpha *= 0.35 + Math.abs(Math.sin(animationPhase * Math.PI)) * 0.65;
+          else if (presentation.animation === "slide") ctx.translate(-(1 - Math.min(1, animationPhase * 4)) * w, 0);
+          else if (presentation.animation === "pulse") {
+            const scale = 1 + Math.sin(animationPhase * Math.PI * 2) * 0.025;
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale, scale);
+            ctx.translate(-w / 2, -h / 2);
+          }
           const style = presentation.style;
           const align = presentation.align;
           const padding = Math.max(12, h * 0.12);
@@ -1901,6 +1910,8 @@ export default function BroadcastStudioPage() {
                       />
                     </label>
                     <label className="block text-xs text-zinc-500">Graphic style<select aria-label="Text graphic style" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).style} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), style: event.target.value as "plain" | "lower_third" | "ticker" | "countdown" } })}><option value="plain">Plain text</option><option value="lower_third">Lower third</option><option value="ticker">Scrolling ticker</option><option value="countdown">Countdown</option></select></label>
+                    <label className="block text-xs text-zinc-500">Overlay motion<select aria-label="Overlay motion" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).animation} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), animation: event.target.value as "none" | "fade" | "slide" | "pulse" } })}><option value="none">Static</option><option value="fade">Fade</option><option value="slide">Slide in</option><option value="pulse">Pulse</option></select></label>
+                    {(selectedSource.presentation ?? sourceDefaults.presentation).animation !== "none" && <Control label="Motion speed" value={(selectedSource.presentation ?? sourceDefaults.presentation).animationSpeed} min={0.25} max={3} onChange={(value) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), animationSpeed: value } }, false)} onCommit={() => config && void persist(config)}/>}
                     {(selectedSource.presentation ?? sourceDefaults.presentation).style === "lower_third" && <label className="block text-xs text-zinc-500">Secondary text<Input className="mt-1 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).secondaryText ?? ""} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), secondaryText: event.target.value } }, false)} onBlur={() => config && void persist(config)}/></label>}
                     {(selectedSource.presentation ?? sourceDefaults.presentation).style !== "plain" && <label className="block text-xs text-zinc-500">Graphic background<Input aria-label="Graphic background" type="color" className="mt-1 h-10 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).backgroundColor ?? "#101014"} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), backgroundColor: event.target.value } })}/></label>}
                     {(selectedSource.presentation ?? sourceDefaults.presentation).style === "countdown" && <Button size="sm" variant="outline" className="w-full" onClick={() => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), countdownEndsAt: Date.now() + 300_000 } })}>Reset to 5:00</Button>}
