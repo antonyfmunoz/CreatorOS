@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -186,6 +186,9 @@ describe("CutStudio edit decision list", () => {
     expect(audioRmsDb(new Uint8Array([0, 255]))).toBeCloseTo(-0.03, 1);
     expect(audioRmsDb(new Uint8Array([96, 160]))).toBeCloseTo(-12.04, 1);
     expect(audioRmsDb(new Uint8Array())).toBe(-60);
+    expect(shortTermLufs([])).toBe(-70);
+    expect(shortTermLufs([.01, .01])).toBeCloseTo(-20.691, 3);
+    expect(shortTermLufs([0])).toBe(-70);
   });
 
   it("performs precise edge trims and track-local ripple edits", () => {

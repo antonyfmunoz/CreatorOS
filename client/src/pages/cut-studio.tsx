@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
+import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio"; createdAt: string };
 type ProjectLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } } };
@@ -53,6 +53,8 @@ export default function CutStudioPage() {
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const audioSourceElementRef = useRef<HTMLMediaElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterFilterRefs = useRef<{ highPass: BiquadFilterNode; shelf: BiquadFilterNode; sink: GainNode } | null>(null);
+  const loudnessEnergyRef = useRef<Array<{ at: number; energy: number }>>([]);
   const meterFrameRef = useRef<number>();
   const comparisonVideoRefs = useRef<Array<HTMLVideoElement | null>>([]);
   const dragRef = useRef<{ clipId: string; startX: number; trackWidth: number; origin: CutEdl; moved: boolean } | null>(null);
@@ -107,6 +109,7 @@ export default function CutStudioPage() {
   const [collaboratorUsername, setCollaboratorUsername] = useState("");
   const [workspaceNote, setWorkspaceNote] = useState("");
   const [audioLevelDb, setAudioLevelDb] = useState(-60);
+  const [liveLufs, setLiveLufs] = useState(-70);
   const [loudnessMeasurement, setLoudnessMeasurement] = useState<LoudnessMeasurement | null>(null);
 
   const refreshProjects = useCallback(async () => {
@@ -457,6 +460,8 @@ export default function CutStudioPage() {
     if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
     meterFrameRef.current = undefined;
     setAudioLevelDb(-60);
+    setLiveLufs(-70);
+    loudnessEnergyRef.current = [];
   };
   const startAudioMeter = async () => {
     const media = mediaRef.current;
@@ -466,25 +471,42 @@ export default function CutStudioPage() {
       if (audioSourceElementRef.current && audioSourceElementRef.current !== media) {
         audioSourceRef.current?.disconnect();
         analyserRef.current?.disconnect();
+        meterFilterRefs.current?.highPass.disconnect();
+        meterFilterRefs.current?.shelf.disconnect();
+        meterFilterRefs.current?.sink.disconnect();
         await audioContextRef.current?.close();
         audioContextRef.current = null;
         audioSourceRef.current = null;
         analyserRef.current = null;
+        meterFilterRefs.current = null;
       }
       if (!audioContextRef.current || audioContextRef.current.state === "closed") audioContextRef.current = new AudioContextClass();
       if (!audioSourceRef.current) {
         audioSourceRef.current = audioContextRef.current.createMediaElementSource(media);
         audioSourceElementRef.current = media;
+        const highPass = audioContextRef.current.createBiquadFilter();
+        highPass.type = "highpass"; highPass.frequency.value = 38; highPass.Q.value = .5;
+        const shelf = audioContextRef.current.createBiquadFilter();
+        shelf.type = "highshelf"; shelf.frequency.value = 1_500; shelf.gain.value = 4;
         analyserRef.current = audioContextRef.current.createAnalyser();
         analyserRef.current.fftSize = 1024;
-        audioSourceRef.current.connect(analyserRef.current);
-        analyserRef.current.connect(audioContextRef.current.destination);
+        const sink = audioContextRef.current.createGain(); sink.gain.value = 0;
+        audioSourceRef.current.connect(audioContextRef.current.destination);
+        audioSourceRef.current.connect(highPass).connect(shelf).connect(analyserRef.current).connect(sink).connect(audioContextRef.current.destination);
+        meterFilterRefs.current = { highPass, shelf, sink };
       }
       await audioContextRef.current.resume();
       const samples = new Uint8Array(analyserRef.current!.fftSize);
+      const weightedSamples = new Float32Array(analyserRef.current!.fftSize);
       const measure = () => {
         analyserRef.current!.getByteTimeDomainData(samples);
+        analyserRef.current!.getFloatTimeDomainData(weightedSamples);
         setAudioLevelDb(audioRmsDb(samples));
+        const energy = weightedSamples.reduce((sum, sample) => sum + sample * sample, 0) / weightedSamples.length;
+        const now = performance.now();
+        loudnessEnergyRef.current.push({ at: now, energy });
+        loudnessEnergyRef.current = loudnessEnergyRef.current.filter((item) => now - item.at <= 3_000);
+        setLiveLufs(shortTermLufs(loudnessEnergyRef.current.map((item) => item.energy)));
         meterFrameRef.current = requestAnimationFrame(measure);
       };
       stopAudioMeter();
@@ -819,7 +841,7 @@ export default function CutStudioPage() {
             {(edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} className="pointer-events-none absolute max-w-[80%] rounded px-3 py-2 font-bold" style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
           </div>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Audio RMS</span><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output></div><div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Calibrated loudness analysis"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">EBU R128 loudness</p><p className="mt-1 text-[10px] text-zinc-600">Measures up to the first two minutes of the private source.</p></div><Button size="sm" variant="outline" disabled={busy === "loudness"} onClick={() => void analyzeLoudness()}>{busy === "loudness" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Volume2 className="mr-1.5 h-3.5 w-3.5"/>}Analyze</Button></div>{loudnessMeasurement && <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.integratedLufs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LUFS-I</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.truePeakDbfs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">dBTP</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.loudnessRangeLu.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LRA · LU</span></div></div>}</div>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Live loudness</span><div className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output><output aria-label="Live short-term loudness" className="w-24 text-right font-mono text-xs font-bold text-[#1d9bf0]">{liveLufs.toFixed(1)} LUFS-S</output></div><div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Calibrated loudness analysis"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">EBU R128 loudness</p><p className="mt-1 text-[10px] text-zinc-600">Live LUFS-S uses a rolling three-second K-weighted estimate. Analyze provides calibrated integrated evidence for the private source.</p></div><Button size="sm" variant="outline" disabled={busy === "loudness"} onClick={() => void analyzeLoudness()}>{busy === "loudness" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Volume2 className="mr-1.5 h-3.5 w-3.5"/>}Analyze</Button></div>{loudnessMeasurement && <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.integratedLufs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LUFS-I</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.truePeakDbfs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">dBTP</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.loudnessRangeLu.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LRA · LU</span></div></div>}</div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers · {edl.compounds?.length ?? 0} compounds</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant={rippleMode !== "off" ? "default" : "outline"} onClick={cycleRippleMode} aria-label={`Ripple ${rippleMode}`} aria-pressed={rippleMode !== "off"}>Ripple {rippleMode}</Button><Button size="sm" variant={rollingEnabled ? "default" : "outline"} onClick={() => setRollingEnabled((value) => !value)} aria-pressed={rollingEnabled}>Roll edit</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={compoundSelectedClips}>Make compound</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.compounds?.some((compound) => compound.clipIds.includes(id)))} onClick={breakApartSelectedCompound}>Break apart</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
              {edl.version === 3 && timelineTracks.some((track) => track.startsWith("a")) && <div className="mb-3 rounded-xl border border-zinc-800 bg-black p-3" aria-label="Audio mix buses"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold">Audio buses</p><p className="mt-1 text-[10px] text-zinc-500">Route tracks once, then balance dialogue, music, and effects as reusable groups.</p></div><Button size="sm" variant="outline" onClick={applyAudioRoutingPreset}>Creator mix preset</Button></div><div className="mt-3 grid gap-2 sm:grid-cols-3">{(["dialogue", "music", "effects"] as const).map((id) => { const fallback = id[0].toUpperCase() + id.slice(1); const bus = edl.audioBuses?.find((item) => item.id === id) ?? { id, name: fallback, gain: 1, muted: false }; return <div key={id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2"><div className="flex items-center gap-2"><input aria-label={`${fallback} bus name`} maxLength={40} value={bus.name} className="min-w-0 flex-1 bg-transparent text-xs font-bold outline-none" onChange={(event) => updateAudioBus(id, { name: event.target.value || fallback })}/><button aria-label={`${bus.muted ? "Unmute" : "Mute"} ${fallback} bus`} onClick={() => updateAudioBus(id, { muted: !bus.muted })}>{bus.muted ? <VolumeX className="h-3.5 w-3.5 text-red-400"/> : <Volume2 className="h-3.5 w-3.5 text-zinc-400"/>}</button></div><label className="mt-2 flex items-center gap-2 text-[9px] text-zinc-500">Gain<input aria-label={`${fallback} bus gain`} type="range" min={0} max={2} step={.05} value={bus.gain} className="min-w-0 flex-1 accent-[#1d9bf0]" onChange={(event) => updateAudioBus(id, { gain: Number(event.target.value) })}/><span>{bus.gain.toFixed(2)}</span></label></div>; })}</div></div>}

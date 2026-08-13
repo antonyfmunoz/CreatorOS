@@ -139,6 +139,10 @@ test("CutStudio privately marks and inserts media from a dedicated source monito
   await page.goto(`/cut-studio?project=${project.id}`);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await expect(page.getByLabel("Timeline monitor")).toBeVisible();
+  const timelineVideo = page.getByLabel("Timeline monitor").locator("video");
+  await timelineVideo.evaluate(async (element: HTMLVideoElement) => { element.muted = false; element.volume = .01; await element.play(); });
+  await expect.poll(async () => Number((await page.getByLabel("Live short-term loudness").textContent())?.split(" ")[0]), { timeout: 10_000 }).toBeGreaterThan(-70);
+  await timelineVideo.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = 0; element.dispatchEvent(new Event("timeupdate")); });
   await page.getByLabel("Open Source B-roll in source monitor").click();
   const sourceMonitor = page.getByLabel("Source monitor");
   await expect(sourceMonitor.getByText("Source B-roll")).toBeVisible();

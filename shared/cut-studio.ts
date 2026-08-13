@@ -558,6 +558,14 @@ export function audioRmsDb(samples: Uint8Array, floorDb = -60) {
   return Math.max(floorDb, Math.min(0, 20 * Math.log10(rms)));
 }
 
+export function shortTermLufs(energies: number[], floorLufs = -70) {
+  const valid = energies.filter((value) => Number.isFinite(value) && value >= 0);
+  if (!valid.length) return floorLufs;
+  const meanSquare = valid.reduce((sum, value) => sum + value, 0) / valid.length;
+  if (meanSquare <= 0) return floorLufs;
+  return Math.max(floorLufs, -0.691 + 10 * Math.log10(meanSquare));
+}
+
 export function transcriptWords(transcript: CutTranscript | null | undefined) {
   return transcript?.segments.flatMap((segment) => segment.words) ?? [];
 }
