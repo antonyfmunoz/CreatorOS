@@ -58,6 +58,7 @@ import {
 
 type Studio = {
   id: string;
+  businessId: string;
   name: string;
   config: BroadcastStudioConfig;
   revision: number;
@@ -115,6 +116,7 @@ type BrandLibraryKit = {
 };
 type AudienceMessage = { id: string; kind: "comment" | "cta"; authorName: string; body: string; actionUrl: string | null; status: "visible" | "hidden"; featured: boolean; createdAt: string };
 type AudiencePayload = { access: { productionTeam: boolean; canModerate: boolean }; messages: AudienceMessage[] };
+type TeamTemplate = { id: string; kind: "scene" | "source"; name: string; payload: BroadcastScene | BroadcastSource; access: { canDelete: boolean }; updatedAt: string };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -227,6 +229,7 @@ export default function BroadcastStudioPage() {
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [sourcePresetName, setSourcePresetName] = useState("");
   const [scenePresetName, setScenePresetName] = useState("");
+  const [teamTemplateName, setTeamTemplateName] = useState("");
   const [brandKitName, setBrandKitName] = useState("");
   const [studioNameDraft, setStudioNameDraft] = useState("");
   const [newStudioName, setNewStudioName] = useState("");
@@ -277,6 +280,11 @@ export default function BroadcastStudioPage() {
   const brandKitsQuery = useQuery<BrandLibraryKit[]>({
     queryKey: ["/api/broadcast/brand-kits"],
   });
+  const teamTemplatesQuery = useQuery<TeamTemplate[]>({
+    queryKey: ["/api/broadcast/templates", studio?.businessId],
+    queryFn: async () => (await apiRequest("GET", `/api/broadcast/templates?businessId=${studio!.businessId}`)).json(),
+    enabled: Boolean(studio?.businessId),
+  });
   const audienceQuery = useQuery<AudiencePayload>({
     queryKey: ["/api/broadcast/sessions", session?.id, "audience"],
     queryFn: async () => (await apiRequest("GET", `/api/broadcast/sessions/${session!.id}/audience`)).json(),
@@ -291,6 +299,7 @@ export default function BroadcastStudioPage() {
         asset.mimeType?.startsWith("image/")),
   );
   const brandKits = brandKitsQuery.data ?? [];
+  const teamTemplates = teamTemplatesQuery.data ?? [];
 
   const saveBrandKit = useCallback(async () => {
     if (!config || !brandKitName.trim()) return;
@@ -518,6 +527,39 @@ export default function BroadcastStudioPage() {
     await persist(branded);
     setMessage(`${kit.name} is active in this studio.`);
   }, [config, persist]);
+  const saveTeamTemplate = useCallback(async (kind: "scene" | "source") => {
+    const name = teamTemplateName.trim();
+    const payload = kind === "scene" ? previewScene : selectedSource;
+    if (!studio || !payload || !name) return;
+    setBusy(`team-template-save:${kind}`);
+    try {
+      await apiRequest("POST", "/api/broadcast/templates", { businessId: studio.businessId, kind, name, payload });
+      await teamTemplatesQuery.refetch();
+      setTeamTemplateName("");
+      setMessage(`${name} is available across this business's studios.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Team template could not be saved"); }
+    finally { setBusy(""); }
+  }, [previewScene, selectedSource, studio, teamTemplateName, teamTemplatesQuery]);
+  const applyTeamTemplate = useCallback(async (template: TeamTemplate) => {
+    if (!config || !previewScene) return;
+    if (template.kind === "scene") {
+      const source = template.payload as BroadcastScene;
+      const sceneId = safeId("scene");
+      const scene = { ...source, id: sceneId, name: template.name, sources: source.sources.map((item) => ({ ...item, id: safeId("source"), assetId: null })) };
+      await persist(validateBroadcastStudioConfig({ ...config, scenes: [...config.scenes, scene], previewSceneId: sceneId }));
+    } else {
+      const source = { ...(template.payload as BroadcastSource), id: safeId("source"), assetId: null };
+      await persist(validateBroadcastStudioConfig({ ...config, scenes: config.scenes.map((scene) => scene.id === previewScene.id ? { ...scene, sources: [...scene.sources, source] } : scene) }));
+      setSelectedSourceId(source.id);
+    }
+    setMessage(`${template.name} was added from the business library.`);
+  }, [config, persist, previewScene]);
+  const deleteTeamTemplate = useCallback(async (template: TeamTemplate) => {
+    setBusy(`team-template-delete:${template.id}`);
+    try { await apiRequest("DELETE", `/api/broadcast/templates/${template.id}`); await teamTemplatesQuery.refetch(); setMessage(`${template.name} was removed from the business library.`); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Team template could not be removed"); }
+    finally { setBusy(""); }
+  }, [teamTemplatesQuery]);
 
   const updatePreviewScene = useCallback(
     (change: (scene: BroadcastScene) => BroadcastScene, save = true) => {
@@ -1960,6 +2002,12 @@ export default function BroadcastStudioPage() {
               <Button aria-label="Save source preset" size="sm" variant="outline" disabled={!selectedSource || !sourcePresetName.trim() || config.sourcePresets.length >= 50} onClick={() => { if (!selectedSource) return; void persist(saveBroadcastSourcePreset(config, selectedSource.id, safeId("preset"), sourcePresetName.trim())); setSourcePresetName(""); }}><Save className="h-3.5 w-3.5"/></Button>
             </div>
             <div className="mt-3 space-y-2">{config.sourcePresets.length ? config.sourcePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{preset.name}</span><span className="text-[10px] text-zinc-600">{preset.source.type.replace("_", " ")}</span></span><Button size="sm" variant="outline" aria-label={`Apply ${preset.name} source preset`} onClick={() => { const sourceId = safeId("source"); void persist(applyBroadcastSourcePreset(config, previewScene.id, preset.id, sourceId)); setSelectedSourceId(sourceId); }}>Add</Button><button aria-label={`Delete ${preset.name} source preset`} onClick={() => void persist(removeBroadcastSourcePreset(config, preset.id))}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button></div>) : <p className="py-3 text-center text-xs text-zinc-600">No source presets yet.</p>}</div>
+          </Panel>
+          <Panel title="Business template library" icon={Layers3}>
+            <p className="text-[11px] leading-5 text-zinc-500">Promote a complete scene or selected source for reuse in every studio in this business. Private media attachments are intentionally left behind.</p>
+            <Input aria-label="Business template name" className="mt-3 h-9 border-zinc-800 bg-black text-xs" value={teamTemplateName} onChange={(event) => setTeamTemplateName(event.target.value)} placeholder="Weekly show layout" maxLength={80}/>
+            <div className="mt-2 grid grid-cols-2 gap-2"><Button size="sm" variant="outline" aria-label="Save scene to business library" disabled={!teamTemplateName.trim() || config.scenes.length >= 20} onClick={() => void saveTeamTemplate("scene")}><Save className="mr-1 h-3.5 w-3.5"/>Scene</Button><Button size="sm" variant="outline" aria-label="Save source to business library" disabled={!teamTemplateName.trim() || !selectedSource} onClick={() => void saveTeamTemplate("source")}><Save className="mr-1 h-3.5 w-3.5"/>Source</Button></div>
+            <div className="mt-3 space-y-2">{teamTemplates.length ? teamTemplates.map((template) => <div key={template.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{template.name}</span><span className="text-[10px] uppercase text-zinc-600">{template.kind}</span></span><Button size="sm" variant="outline" aria-label={`Apply ${template.name} business template`} disabled={template.kind === "scene" ? config.scenes.length >= 20 : previewScene.sources.length >= 32} onClick={() => void applyTeamTemplate(template)}>Add</Button>{template.access.canDelete && <button aria-label={`Delete ${template.name} business template`} disabled={busy === `team-template-delete:${template.id}`} onClick={() => void deleteTeamTemplate(template)}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button>}</div>) : <p className="py-3 text-center text-xs text-zinc-600">No business templates yet.</p>}</div>
           </Panel>
           <Panel title="Brand kit" icon={Palette}>
             <p className="mb-3 text-[11px] leading-5 text-zinc-500">Set this studio's identity or save it once for reuse across every broadcast studio in your account.</p>

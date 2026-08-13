@@ -190,6 +190,7 @@ export function getReleaseReadiness(
       animatedOverlays: "configured",
       brandKit: "configured",
       accountBrandLibrary: "configured",
+      organizationTemplateCatalog: "configured",
       multiStudioManagement: "configured",
       teamStudioCollaboration: "configured",
       broadcastToCutStudio: "configured",

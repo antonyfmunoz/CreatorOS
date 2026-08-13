@@ -10,7 +10,9 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   broadcastDestinationInputSchema,
+  broadcastSceneSchema,
   broadcastSessionStartSchema,
+  broadcastSourceSchema,
   defaultBroadcastStudioConfig,
   validateBroadcastStudioConfig,
 } from "@shared/broadcast-studio";
@@ -26,6 +28,7 @@ import {
   broadcastSessions,
   broadcastStudioCollaborators,
   broadcastStudios,
+  broadcastTemplateCatalog,
   cutStudioProjectMedia,
   cutStudioProjects,
   notifications,
@@ -37,7 +40,7 @@ import {
   persistPrivateFile,
   promotePrivateAsset,
 } from "./asset-storage";
-import { ensureDefaultBusiness } from "./businesses";
+import { businessRoleCanAdminister, businessRoleCanManage, ensureDefaultBusiness, userBusinessRole } from "./businesses";
 import { db } from "./db";
 import {
   decryptSocialToken,
@@ -91,6 +94,15 @@ const brandKitInputSchema = z.object({
   textColor: z.string().regex(/^#[0-9a-f]{6}$/i),
   logoAssetId: z.string().uuid().nullable().default(null),
 });
+const templateCatalogInputSchema = z.discriminatedUnion("kind", [
+  z.object({ businessId: z.string().uuid(), kind: z.literal("scene"), name: z.string().trim().min(1).max(80), payload: broadcastSceneSchema }),
+  z.object({ businessId: z.string().uuid(), kind: z.literal("source"), name: z.string().trim().min(1).max(80), payload: broadcastSourceSchema }),
+]);
+
+function portableTemplatePayload(input: z.infer<typeof templateCatalogInputSchema>) {
+  if (input.kind === "source") return { ...input.payload, assetId: null };
+  return { ...input.payload, sources: input.payload.sources.map((source) => ({ ...source, assetId: null })) };
+}
 const studioCollaboratorInputSchema = z.object({
   username: z.string().trim().min(1).max(64),
   role: z.enum(["viewer", "editor"]).default("viewer"),
@@ -633,6 +645,50 @@ export function registerBroadcastStudioRoutes(app: Express) {
       ))
       .returning({ id: broadcastBrandKits.id });
     if (!removed) return res.status(404).json({ message: "Brand kit not found" });
+    res.status(204).end();
+  });
+
+  app.get("/api/broadcast/templates", attachUser, async (req, res) => {
+    noStore(res);
+    const businessId = z.string().uuid().safeParse(req.query.businessId);
+    if (!businessId.success) return res.status(400).json({ message: "A valid business is required" });
+    const role = await userBusinessRole(req.dbUser!.id, businessId.data);
+    if (!role) return res.status(404).json({ message: "Template library not found" });
+    const templates = await db.select().from(broadcastTemplateCatalog)
+      .where(eq(broadcastTemplateCatalog.businessId, businessId.data))
+      .orderBy(desc(broadcastTemplateCatalog.updatedAt));
+    res.json(templates.map((template) => ({ ...template, access: { canDelete: template.ownerUserId === req.dbUser!.id || businessRoleCanAdminister(role) } })));
+  });
+
+  app.post("/api/broadcast/templates", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = templateCatalogInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid studio template" });
+    const role = await userBusinessRole(req.dbUser!.id, parsed.data.businessId);
+    if (!businessRoleCanManage(role)) return res.status(404).json({ message: "Template library not found" });
+    const payload = portableTemplatePayload(parsed.data);
+    const [template] = await db.insert(broadcastTemplateCatalog).values({
+      businessId: parsed.data.businessId,
+      ownerUserId: req.dbUser!.id,
+      kind: parsed.data.kind,
+      name: parsed.data.name,
+      payload,
+    }).onConflictDoUpdate({
+      target: [broadcastTemplateCatalog.businessId, broadcastTemplateCatalog.kind, broadcastTemplateCatalog.name],
+      set: { payload, ownerUserId: req.dbUser!.id, updatedAt: new Date() },
+    }).returning();
+    await emitProjectionEvent({ aggregateType: "broadcast_template", aggregateId: template.id, eventType: "broadcast.template.saved", actorUserId: req.dbUser!.id, payload: { businessId: template.businessId, kind: template.kind }, idempotencyKey: `broadcast:template:${template.id}:${template.updatedAt.getTime()}` });
+    res.status(201).json({ ...template, access: { canDelete: true } });
+  });
+
+  app.delete("/api/broadcast/templates/:id", attachUser, async (req, res) => {
+    const parsedId = idSchema.safeParse(req.params.id);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid studio template" });
+    const [template] = await db.select().from(broadcastTemplateCatalog).where(eq(broadcastTemplateCatalog.id, parsedId.data)).limit(1);
+    if (!template) return res.status(404).json({ message: "Studio template not found" });
+    const role = await userBusinessRole(req.dbUser!.id, template.businessId);
+    if (template.ownerUserId !== req.dbUser!.id && !businessRoleCanAdminister(role)) return res.status(404).json({ message: "Studio template not found" });
+    await db.delete(broadcastTemplateCatalog).where(eq(broadcastTemplateCatalog.id, template.id));
     res.status(204).end();
   });
 

@@ -334,7 +334,37 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Lower third" && source.presentation?.animation === "fade")),
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
+});
 
+test("Broadcast shares portable scene and source templates across a business", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Template catalog ${Date.now()}` });
+  await expectOk(createdResponse);
+  const studio = await createdResponse.json();
+  const source = { ...studio.config.scenes[0].sources[0], assetId: "00000000-0000-4000-8000-000000000001" };
+  const sourceName = `Shared source ${owner}`;
+  const sceneName = `Shared scene ${owner}`;
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/templates", { businessId: studio.businessId, kind: "source", name: sourceName, payload: source }));
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/templates", { businessId: studio.businessId, kind: "scene", name: sceneName, payload: { ...studio.config.scenes[0], sources: [source] } }));
+  expect((await api(page, peer, "GET", `/api/broadcast/templates?businessId=${studio.businessId}`)).status()).toBe(404);
+  const catalogResponse = await api(page, owner, "GET", `/api/broadcast/templates?businessId=${studio.businessId}`);
+  await expectOk(catalogResponse);
+  expect(await catalogResponse.json()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "source", name: sourceName, payload: expect.objectContaining({ assetId: null }) }),
+    expect.objectContaining({ kind: "scene", name: sceneName, payload: expect.objectContaining({ sources: [expect.objectContaining({ assetId: null })] }) }),
+  ]));
+  await page.goto("/broadcast");
+  const studioSwitcher = page.getByRole("combobox", { name: "Broadcast studio", exact: true });
+  if (await studioSwitcher.count()) await studioSwitcher.selectOption(studio.id);
+  await expect(page.getByRole("button", { name: `Apply ${sourceName} business template` })).toBeVisible();
+  await page.getByRole("button", { name: `Apply ${sourceName} business template` }).click();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}`);
+    await expectOk(response);
+    return (await response.json()).config.scenes[0].sources.length;
+  }).toBeGreaterThan(studio.config.scenes[0].sources.length);
 });
 
 test("Broadcast opens a durable multitrack recording directly in CutStudio", async ({ page }, testInfo) => {

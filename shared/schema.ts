@@ -2736,6 +2736,28 @@ export const broadcastBrandKits = pgTable(
   }),
 );
 
+// Complete scenes and source configurations can be promoted from one studio
+// into the business library, then instantiated with fresh runtime identifiers
+// in any other studio owned by that business.
+export const broadcastTemplateCatalog = pgTable(
+  "broadcast_template_catalog",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    payload: json("payload").$type<import("./broadcast-studio").BroadcastScene | import("./broadcast-studio").BroadcastSource>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessKindNameUnique: unique("broadcast_template_catalog_business_kind_name_unique").on(table.businessId, table.kind, table.name),
+    businessUpdatedIdx: index("broadcast_template_catalog_business_updated_idx").on(table.businessId, table.updatedAt),
+    ownerUpdatedIdx: index("broadcast_template_catalog_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+  }),
+);
+
 export const broadcastDestinations = pgTable(
   "broadcast_destinations",
   {

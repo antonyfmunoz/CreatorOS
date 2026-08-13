@@ -533,6 +533,13 @@
       "when": 1786618800000,
       "tag": "0075_broadcast_audience_control",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786622400000,
+      "tag": "0076_broadcast_template_catalog",
+      "breakpoints": true
     }
   ]
 }

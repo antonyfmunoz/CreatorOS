@@ -44,6 +44,9 @@ describe("Broadcast Studio migration", () => {
   it("persists a moderated provider-neutral audience timeline", () => {
     expect(audienceMigration).toContain('CREATE TABLE "broadcast_audience_messages"');
     expect(audienceMigration).toContain('broadcast_audience_messages_provider_external_unique');
+    const templateMigration = readFileSync("migrations/0076_broadcast_template_catalog.sql", "utf8");
+    expect(templateMigration).toContain('CREATE TABLE "broadcast_template_catalog"');
+    expect(templateMigration).toContain('broadcast_template_catalog_business_kind_name_unique');
     expect(audienceMigration).toContain("'comment', 'cta'");
     expect(audienceMigration).toContain("'visible', 'hidden'");
   });
