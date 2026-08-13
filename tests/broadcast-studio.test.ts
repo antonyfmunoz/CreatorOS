@@ -52,6 +52,15 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(() => validateBroadcastStudioConfig({ ...base, audioBuses: base.audioBuses.map((bus) => ({ ...bus, gain: 2.1 })) })).toThrow();
   });
 
+  it("accepts production overlay entrance presets", () => {
+    const base = defaultBroadcastStudioConfig();
+    const source = base.scenes[0].sources[0];
+    for (const animation of ["fade", "slide", "rise", "wipe", "pop", "pulse"] as const) {
+      const configured = validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, presentation: { ...source.presentation, animation } }] }] });
+      expect(configured.scenes[0].sources[0].presentation.animation).toBe(animation);
+    }
+  });
+
   it("rejects internal destination addresses and never exposes URL credentials", () => {
     expect(isPrivateBroadcastAddress("127.0.0.1")).toBe(true);
     expect(isPrivateBroadcastAddress("10.1.2.3")).toBe(true);

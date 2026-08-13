@@ -77,7 +77,7 @@ export const broadcastSourceSchema = z.object({
     align: z.enum(["left", "center", "right"]).default("center"),
     scrollSpeed: z.number().finite().min(10).max(400).default(90),
     countdownEndsAt: z.number().finite().nullable().default(null),
-    animation: z.enum(["none", "fade", "slide", "pulse"]).default("none"),
+    animation: z.enum(["none", "fade", "slide", "rise", "wipe", "pop", "pulse"]).default("none"),
     animationSpeed: z.number().finite().min(0.25).max(3).default(1),
   }).optional(),
 });

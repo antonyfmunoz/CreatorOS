@@ -199,6 +199,7 @@ export function getReleaseReadiness(
       audioSyncAndBalance: "configured",
       chromaKey: "configured",
       animatedOverlays: "configured",
+      expandedOverlayMotion: "configured",
       brandKit: "configured",
       accountBrandLibrary: "configured",
       organizationTemplateCatalog: "configured",

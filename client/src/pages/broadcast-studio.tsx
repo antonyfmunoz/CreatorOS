@@ -261,6 +261,7 @@ export default function BroadcastStudioPage() {
   const persistQueue = useRef<Promise<void>>(Promise.resolve());
   const pendingSaves = useRef(0);
   const transitionFrame = useRef<ActiveTransition | null>(null);
+  const sourceAnimationState = useRef(new Map<string, { visible: boolean; startedAt: number }>());
   const transitionCanvases = useRef<{
     from: HTMLCanvasElement;
     to: HTMLCanvasElement;
@@ -645,7 +646,14 @@ export default function BroadcastStudioPage() {
       for (const source of [...scene.sources].sort(
         (a, b) => a.zOrder - b.zOrder,
       )) {
-        if (!source.visible || source.type === "microphone") continue;
+        const animationKey = `${scene.id}:${source.id}`;
+        const priorAnimation = sourceAnimationState.current.get(animationKey);
+        if (!source.visible) {
+          sourceAnimationState.current.set(animationKey, { visible: false, startedAt: priorAnimation?.startedAt ?? performance.now() });
+          continue;
+        }
+        if (!priorAnimation?.visible) sourceAnimationState.current.set(animationKey, { visible: true, startedAt: performance.now() });
+        if (source.type === "microphone") continue;
         const t = source.transform;
         const x = t.x * canvas.width;
         const y = t.y * canvas.height;
@@ -660,10 +668,20 @@ export default function BroadcastStudioPage() {
         ctx.translate(-w / 2, -h / 2);
         if (source.type === "text") {
           const presentation = source.presentation ?? sourceDefaults.presentation;
+          const animationStartedAt = sourceAnimationState.current.get(animationKey)?.startedAt ?? performance.now();
+          const animationProgress = Math.min(1, Math.max(0, ((performance.now() - animationStartedAt) / 450) * presentation.animationSpeed));
+          const easedEntrance = 1 - Math.pow(1 - animationProgress, 3);
+          if (presentation.animation === "fade") ctx.globalAlpha *= easedEntrance;
+          else if (presentation.animation === "slide") ctx.translate(-(1 - easedEntrance) * w, 0);
+          else if (presentation.animation === "rise") ctx.translate(0, (1 - easedEntrance) * h);
+          else if (presentation.animation === "wipe") {
+            ctx.beginPath(); ctx.rect(0, 0, Math.max(1, w * easedEntrance), h); ctx.clip();
+          } else if (presentation.animation === "pop") {
+            const overshoot = animationProgress < .75 ? .82 + (animationProgress / .75) * .24 : 1.06 - ((animationProgress - .75) / .25) * .06;
+            ctx.translate(w / 2, h / 2); ctx.scale(overshoot, overshoot); ctx.translate(-w / 2, -h / 2);
+          }
           const animationPhase = (performance.now() / 1000 * presentation.animationSpeed) % 1;
-          if (presentation.animation === "fade") ctx.globalAlpha *= 0.35 + Math.abs(Math.sin(animationPhase * Math.PI)) * 0.65;
-          else if (presentation.animation === "slide") ctx.translate(-(1 - Math.min(1, animationPhase * 4)) * w, 0);
-          else if (presentation.animation === "pulse") {
+          if (presentation.animation === "pulse") {
             const scale = 1 + Math.sin(animationPhase * Math.PI * 2) * 0.025;
             ctx.translate(w / 2, h / 2);
             ctx.scale(scale, scale);
@@ -2466,7 +2484,7 @@ export default function BroadcastStudioPage() {
                       />
                     </label>
                     <label className="block text-xs text-zinc-500">Graphic style<select aria-label="Text graphic style" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).style} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), style: event.target.value as "plain" | "lower_third" | "ticker" | "countdown" } })}><option value="plain">Plain text</option><option value="lower_third">Lower third</option><option value="ticker">Scrolling ticker</option><option value="countdown">Countdown</option></select></label>
-                    <label className="block text-xs text-zinc-500">Overlay motion<select aria-label="Overlay motion" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).animation} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), animation: event.target.value as "none" | "fade" | "slide" | "pulse" } })}><option value="none">Static</option><option value="fade">Fade</option><option value="slide">Slide in</option><option value="pulse">Pulse</option></select></label>
+                    <label className="block text-xs text-zinc-500">Overlay motion<select aria-label="Overlay motion" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={(selectedSource.presentation ?? sourceDefaults.presentation).animation} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), animation: event.target.value as "none" | "fade" | "slide" | "rise" | "wipe" | "pop" | "pulse" } })}><option value="none">Static</option><option value="fade">Fade in</option><option value="slide">Slide in</option><option value="rise">Rise in</option><option value="wipe">Wipe on</option><option value="pop">Pop on</option><option value="pulse">Pulse</option></select></label>
                     {(selectedSource.presentation ?? sourceDefaults.presentation).animation !== "none" && <Control label="Motion speed" value={(selectedSource.presentation ?? sourceDefaults.presentation).animationSpeed} min={0.25} max={3} onChange={(value) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), animationSpeed: value } }, false)} onCommit={() => config && void persist(config)}/>}
                     {(selectedSource.presentation ?? sourceDefaults.presentation).style === "lower_third" && <label className="block text-xs text-zinc-500">Secondary text<Input className="mt-1 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).secondaryText ?? ""} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), secondaryText: event.target.value } }, false)} onBlur={() => config && void persist(config)}/></label>}
                     {(selectedSource.presentation ?? sourceDefaults.presentation).style !== "plain" && <label className="block text-xs text-zinc-500">Graphic background<Input aria-label="Graphic background" type="color" className="mt-1 h-10 border-zinc-800 bg-black" value={(selectedSource.presentation ?? sourceDefaults.presentation).backgroundColor ?? "#101014"} onChange={(event) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), backgroundColor: event.target.value } })}/></label>}

@@ -458,6 +458,34 @@ test("Broadcast routes program and monitor audio with persisted sync and balance
   await expect(page.getByLabel("Host camera audio monitoring")).not.toBeChecked();
 });
 
+test("Broadcast persists production overlay entrance presets", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Overlay motion ${Date.now()}` });
+  await expectOk(createdResponse);
+  const studio = await createdResponse.json();
+  const templated = createBroadcastSceneFromTemplate(studio.config, "interview", "scene_overlay_motion");
+  const config = { ...templated, previewSceneId: "scene_overlay_motion", programSceneId: "scene_overlay_motion" };
+  await expectOk(await api(page, owner, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config }, { "If-Match": String(studio.revision) }));
+
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
+  await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
+  for (const motion of ["rise", "wipe", "pop"] as const) {
+    await page.getByLabel("Overlay motion").selectOption(motion);
+    await expect(page.getByLabel("Overlay motion")).toHaveValue(motion);
+    await expect.poll(async () => {
+      const response = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}`);
+      await expectOk(response);
+      const current = await response.json();
+      return current.config.scenes.flatMap((scene: { sources: Array<{ name: string; presentation?: { animation: string } }> }) => scene.sources).find((source: { name: string }) => source.name === "Lower third")?.presentation?.animation;
+    }).toBe(motion);
+  }
+  await page.reload();
+  await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
+  await expect(page.getByLabel("Overlay motion")).toHaveValue("pop");
+});
+
 test("Broadcast owner shares an editable studio without delegating live authority", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);
