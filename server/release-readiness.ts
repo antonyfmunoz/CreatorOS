@@ -157,6 +157,7 @@ export function getReleaseReadiness(
       projectMediaLibrary: "configured",
       multitrackRender: "configured",
       reviewCollaboration: "configured",
+      sideBySideVersionComparison: "configured",
       nativeTitles: "configured",
       transitionPresets: "configured",
       transcriptCorrection: "configured",

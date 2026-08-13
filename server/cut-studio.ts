@@ -656,6 +656,30 @@ export function registerCutStudioRoutes(app: Express) {
       decisions: decisions.filter((decision) => decision.versionId === version.id),
     })));
   });
+  cut.get("/api/cut/projects/:id/versions/:versionId/media", attachUser, async (req, res) => {
+    noStore(res);
+    const [projectId, versionId] = [idSchema.safeParse(req.params.id), idSchema.safeParse(req.params.versionId)];
+    if (!projectId.success || !versionId.success) return res.status(404).json({ message: "Review version not found" });
+    const project = await ownedProject(req.dbUser!.id, projectId.data);
+    if (!project) return res.status(404).json({ message: "Review version not found" });
+    const [version] = await db.select().from(cutStudioVersions).where(and(eq(cutStudioVersions.id, versionId.data), eq(cutStudioVersions.projectId, project.id), eq(cutStudioVersions.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!version?.artifactAssetId) return res.status(404).json({ message: "Review media not found" });
+    const artifact = await ownedAsset(req.dbUser!.id, version.artifactAssetId);
+    if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Review media not found" });
+    res.json(await privateReadDescriptor(artifact, `/api/cut/projects/${encodeURIComponent(project.id)}/versions/${encodeURIComponent(version.id)}/media-file`));
+  });
+  cut.get("/api/cut/projects/:id/versions/:versionId/media-file", attachUser, async (req, res) => {
+    noStore(res);
+    const [projectId, versionId] = [idSchema.safeParse(req.params.id), idSchema.safeParse(req.params.versionId)];
+    if (!projectId.success || !versionId.success) return res.status(404).json({ message: "Review version not found" });
+    const project = await ownedProject(req.dbUser!.id, projectId.data);
+    if (!project) return res.status(404).json({ message: "Review version not found" });
+    const [version] = await db.select().from(cutStudioVersions).where(and(eq(cutStudioVersions.id, versionId.data), eq(cutStudioVersions.projectId, project.id), eq(cutStudioVersions.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!version?.artifactAssetId) return res.status(404).json({ message: "Review media not found" });
+    const artifact = await ownedAsset(req.dbUser!.id, version.artifactAssetId);
+    if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Review media not found" });
+    await streamPrivateAsset(res, artifact);
+  });
   cut.post("/api/cut/projects/:id/reviews", attachUser, async (req, res) => {
     noStore(res);
     const parsed = createReviewSchema.safeParse(req.body);

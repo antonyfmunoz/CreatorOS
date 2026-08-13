@@ -261,6 +261,13 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(ownerReviewsResponse);
   const ownerReviews = await ownerReviewsResponse.json();
   expect(ownerReviews[0]).toMatchObject({ reviewStatus: "changes_requested", comments: [expect.objectContaining({ id: comment.id, status: "open" })], decisions: [expect.objectContaining({ decision: "changes_requested" })] });
+  const secondReviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Comparison review", expiresDays: 7 });
+  await expectOk(secondReviewResponse);
+  const secondReview = await secondReviewResponse.json();
+  const comparisonMediaResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}/versions/${secondReview.version.id}/media`);
+  await expectOk(comparisonMediaResponse);
+  expect(await comparisonMediaResponse.json()).toMatchObject({ url: expect.any(String) });
+  expect((await api(page, peer, "GET", `/api/cut/projects/${project.id}/versions/${secondReview.version.id}/media`)).status()).toBe(404);
   await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/review-comments/${comment.id}/resolve`, {}));
   await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews/${review.link.id}/revoke`, {}));
   expect((await page.request.get(`/api/cut/reviews/${reviewToken}`)).status()).toBe(404);
@@ -300,4 +307,9 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   expect(story.transcript.segments.map((segment: { id: string; speaker?: string }) => [segment.id, segment.speaker])).toEqual([["close", "Guest"], ["hook", "Host"]]);
   expect(story.edl.clips.slice(0, 2)).toMatchObject([{ id: "story_close_0", timelineStart: 0, start: 1.2, end: 2.8 }, { id: "story_hook_1", start: 0.1, end: 1.2 }]);
   expect(story.edl.clips[1].timelineStart).toBeCloseTo(1.6, 6);
+  await page.getByLabel("Select Version 2 for comparison").click();
+  await page.getByLabel("Select Version 1 for comparison").click();
+  await expect(page.getByLabel("Review version comparison")).toBeVisible();
+  await expect(page.getByLabel(/comparison video$/)).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Play / pause both" })).toBeEnabled();
 });
