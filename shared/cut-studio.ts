@@ -80,6 +80,14 @@ export const cutTrackSettingsSchema = z.object({
   muted: z.boolean().default(false),
   solo: z.boolean().default(false),
   gain: z.number().finite().min(0).max(2).default(1),
+  bus: z.enum(["dialogue", "music", "effects"]).optional(),
+});
+
+export const cutAudioBusSchema = z.object({
+  id: z.enum(["dialogue", "music", "effects"]),
+  name: z.string().trim().min(1).max(40),
+  gain: z.number().finite().min(0).max(2).default(1),
+  muted: z.boolean().default(false),
 });
 
 export const cutEdlSchema = z.object({
@@ -89,6 +97,7 @@ export const cutEdlSchema = z.object({
   markers: z.array(cutMarkerSchema).max(200).optional(),
   compounds: z.array(cutCompoundSchema).max(50).optional(),
   tracks: z.array(cutTrackSettingsSchema).max(16).optional(),
+  audioBuses: z.array(cutAudioBusSchema).max(3).optional(),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -129,6 +138,7 @@ export type CutGraphic = z.infer<typeof cutGraphicSchema>;
 export type CutMarker = z.infer<typeof cutMarkerSchema>;
 export type CutCompound = z.infer<typeof cutCompoundSchema>;
 export type CutTrackSettings = z.infer<typeof cutTrackSettingsSchema>;
+export type CutAudioBus = z.infer<typeof cutAudioBusSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
@@ -194,6 +204,12 @@ export function estimateCutRenderSeconds(duration: number, request: CutRenderReq
   return Math.max(5, Math.ceil(Math.max(0, duration) * resolutionFactor * qualityFactor * frameFactor * captionFactor * audioFactor));
 }
 
+export function cutTrackEffectiveGain(track: string, tracks: CutTrackSettings[] = [], buses: CutAudioBus[] = []) {
+  const setting = tracks.find((item) => item.track === track);
+  const bus = setting?.bus ? buses.find((item) => item.id === setting.bus) : undefined;
+  return (setting?.gain ?? 1) * (bus?.muted ? 0 : bus?.gain ?? 1);
+}
+
 export function normalizeCutClips(clips: CutClip[], duration?: number, version: 1 | 2 | 3 = 2): CutClip[] {
   const maxDuration = typeof duration === "number" && Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
   const ordered = clips
@@ -248,7 +264,8 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];
   const usedTracks = new Set(clips.map((clip) => clip.track ?? "v1"));
   const tracks = parsed.version === 3 ? Array.from(new Map((parsed.tracks ?? []).filter((track) => usedTracks.has(track.track)).map((track) => [track.track, track])).values()) : [];
-  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds, tracks };
+  const audioBuses = parsed.version === 3 ? Array.from(new Map((parsed.audioBuses ?? []).map((bus) => [bus.id, bus])).values()) : [];
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds, tracks, audioBuses };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {

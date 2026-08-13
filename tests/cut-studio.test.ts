@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -111,6 +111,16 @@ describe("CutStudio edit decision list", () => {
     expect(cutRenderRequestSchema.parse({ audioPreset: "broadcast", masterGainDb: -2 })).toMatchObject({ audioPreset: "broadcast", masterGainDb: -2 });
     expect(() => cutRenderRequestSchema.parse({ audioPreset: "broadcast", masterGainDb: 13 })).toThrow();
     expect(() => cutRenderRequestSchema.parse({ audioPreset: "unsafe-filter" })).toThrow();
+  });
+
+  it("routes tracks through named audio buses with render-effective gain and mute", () => {
+    const tracks = [{ track: "a1", locked: false, hidden: false, muted: false, solo: false, gain: .8, bus: "music" as const }];
+    const buses = [{ id: "music" as const, name: "Music bed", gain: .5, muted: false }];
+    expect(cutTrackEffectiveGain("a1", tracks, buses)).toBeCloseTo(.4);
+    expect(cutTrackEffectiveGain("a1", tracks, [{ ...buses[0], muted: true }])).toBe(0);
+    const edl = validateCutEdl({ version: 3, clips: [{ id: "primary", start: 0, end: 2, track: "v1" }, { id: "music", start: 0, end: 2, track: "a1" }], tracks, audioBuses: buses }, 2);
+    expect(edl.tracks).toEqual([expect.objectContaining({ track: "a1", bus: "music" })]);
+    expect(edl.audioBuses).toEqual([expect.objectContaining({ id: "music", name: "Music bed", gain: .5 })]);
   });
 
   it("models native timed graphics and transition presets", () => {

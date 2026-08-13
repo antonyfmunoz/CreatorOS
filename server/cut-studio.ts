@@ -13,6 +13,7 @@ import {
   buildSrtCaptions,
   applyTranscriptStoryOrder,
   cutDuration,
+  cutTrackEffectiveGain,
   cutRenderRequestSchema,
   cutTranscriptSchema,
   detectCutCandidates,
@@ -333,6 +334,7 @@ async function renderMultitrack(
   clips: CutEdl["clips"],
   graphics: NonNullable<CutEdl["graphics"]>,
   trackSettings: NonNullable<CutEdl["tracks"]>,
+  audioBuses: NonNullable<CutEdl["audioBuses"]>,
   lutPaths: Map<string, string>,
   temp: string,
   outputPath: string,
@@ -352,7 +354,7 @@ async function renderMultitrack(
   const audioTracks = Array.from(new Set(clips.filter((clip) => (clip.track ?? "v1").startsWith("a")).map((clip) => clip.track ?? "a1")));
   const soloAudioTracks = new Set(audioTracks.filter((track) => settings.get(track)?.solo));
   const audioTrackEnabled = (track: string) => !settings.get(track)?.muted && (!soloAudioTracks.size || soloAudioTracks.has(track));
-  const trackGain = (track: string) => settings.get(track)?.gain ?? 1;
+  const trackGain = (track: string) => cutTrackEffectiveGain(track, trackSettings, audioBuses);
   const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
   if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
   const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
@@ -527,8 +529,8 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     const lutPaths = await materializeCutLuts(project, clips, temp);
     if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
-      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], lutPaths, temp, outputPath);
-      const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks });
+      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
+      const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
       return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };

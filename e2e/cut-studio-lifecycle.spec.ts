@@ -191,6 +191,49 @@ test("CutStudio renders position keyframes into private multitrack output", asyn
   }).toMatchObject({ transform: { x: .8 }, motionKeyframes: [{ at: 2, x: 0, y: .35, easing: "ease_in_out" }] });
 });
 
+test("CutStudio routes named audio buses into a private render", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("audio-bus-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const primaryPath = `${directory}/primary.mp4`;
+  const musicPath = `${directory}/music.mp3`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", primaryPath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2", "-c:a", "libmp3lame", musicPath]);
+  const primary = await uploadPrivate(page, owner, primaryPath, "primary.mp4", "video/mp4", "video");
+  const music = await uploadPrivate(page, owner, musicPath, "music.mp3", "audio/mpeg", "audio");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name: `Audio buses ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: music.id, name: "Music", duration: 2, mediaKind: "audio" }));
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  await expectOk(await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
+    { id: "primary", start: 0, end: 2, track: "v1", timelineStart: 0 },
+    { id: "music", assetId: music.id, start: 0, end: 2, track: "a1", timelineStart: 0, volume: 1 },
+  ] }, { "If-Match": String(loaded.revision) }));
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "Creator mix preset" }).click();
+  await page.getByLabel("A1 audio bus").selectOption("music");
+  await page.getByLabel("Music bus name").fill("Launch music");
+  await page.getByLabel("Music bus gain").fill("0.35");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return { track: current.edl.tracks.find((item: { track: string }) => item.track === "a1"), bus: current.edl.audioBuses.find((item: { id: string }) => item.id === "music") };
+  }).toMatchObject({ track: { bus: "music" }, bus: { name: "Launch music", gain: .35, muted: false } });
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  expect(await jobResponse.json()).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
+});
+
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);
@@ -375,6 +418,17 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Unsolo A1 track" }).click();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Creator mix preset" }).click();
+  await expect(page.getByText("Creator mix preset routed audio tracks to dialogue, music, and effects buses")).toBeVisible();
+  await page.getByLabel("A1 audio bus").selectOption("music");
+  await page.getByLabel("Music bus name").fill("Campaign music");
+  await page.getByLabel("Music bus gain").fill("0.4");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return { track: current.edl.tracks.find((item: { track: string }) => item.track === "a1"), bus: current.edl.audioBuses.find((item: { id: string }) => item.id === "music") };
+  }).toMatchObject({ track: { bus: "music" }, bus: { name: "Campaign music", gain: .4, muted: false } });
   const audioMeter = page.getByLabel("Realtime audio RMS meter");
   await expect(audioMeter).toBeVisible();
   await page.locator("video").evaluate(async (element: HTMLVideoElement) => { await element.play(); });
