@@ -20,6 +20,7 @@ import {
   broadcastDestinationReceipts,
   broadcastDestinations,
   broadcastSessionMarkers,
+  broadcastSessionTracks,
   broadcastSessions,
   broadcastStudios,
 } from "@shared/schema";
@@ -53,6 +54,28 @@ const recordingInputSchema = z.object({
 const markerInputSchema = z.object({
   kind: z.enum(["highlight", "issue", "note"]).default("highlight"),
   label: z.string().trim().min(1).max(160).default("Highlight"),
+});
+const isolatedTrackInputSchema = z.object({
+  assetId: z.string().uuid(),
+  sourceId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  sourceName: z.string().trim().min(1).max(120),
+  sourceType: z.enum(["camera", "screen", "microphone"]),
+  mimeType: z.enum([
+    "video/webm",
+    "video/webm;codecs=vp8,opus",
+    "audio/webm",
+    "audio/webm;codecs=opus",
+  ]),
+  durationMs: z.number().int().positive().max(8 * 60 * 60_000),
+  quality: z.object({
+    width: z.number().int().positive().max(7680).optional(),
+    height: z.number().int().positive().max(4320).optional(),
+    fps: z.number().positive().max(240).optional(),
+    audioChannels: z.number().int().positive().max(32).optional(),
+    sampleRate: z.number().int().positive().max(384_000).optional(),
+    videoBitsPerSecond: z.number().int().positive().max(100_000_000).optional(),
+    audioBitsPerSecond: z.number().int().positive().max(2_000_000).optional(),
+  }).strict().default({}),
 });
 const brandKitInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -619,7 +642,13 @@ export function registerBroadcastStudioRoutes(app: Express) {
       .where(eq(broadcastSessions.studioId, studio.id))
       .orderBy(desc(broadcastSessions.createdAt))
       .limit(20);
-    res.json({ ...studio, config: validateBroadcastStudioConfig(studio.config), sessions });
+    const tracks = sessions.length ? await db.select().from(broadcastSessionTracks).where(and(
+      inArray(broadcastSessionTracks.sessionId, sessions.map((session) => session.id)),
+      eq(broadcastSessionTracks.ownerUserId, req.dbUser!.id),
+    )).orderBy(broadcastSessionTracks.createdAt) : [];
+    const tracksBySession = new Map<string, typeof tracks>();
+    for (const track of tracks) tracksBySession.set(track.sessionId, [...(tracksBySession.get(track.sessionId) ?? []), track]);
+    res.json({ ...studio, config: validateBroadcastStudioConfig(studio.config), sessions: sessions.map((session) => ({ ...session, tracks: tracksBySession.get(session.id) ?? [] })) });
   });
   app.put("/api/broadcast/studios/:id", attachUser, async (req, res) => {
     noStore(res);
@@ -977,11 +1006,12 @@ export function registerBroadcastStudioRoutes(app: Express) {
     const session = await ownedSession(req.dbUser!.id, req.params.id);
     if (!session)
       return res.status(404).json({ message: "Broadcast not found" });
-    const [markers, destinationReceipts] = await Promise.all([
+    const [markers, tracks, destinationReceipts] = await Promise.all([
       db.select().from(broadcastSessionMarkers).where(and(eq(broadcastSessionMarkers.sessionId, session.id), eq(broadcastSessionMarkers.ownerUserId, req.dbUser!.id))).orderBy(broadcastSessionMarkers.positionMs),
+      db.select().from(broadcastSessionTracks).where(and(eq(broadcastSessionTracks.sessionId, session.id), eq(broadcastSessionTracks.ownerUserId, req.dbUser!.id))).orderBy(broadcastSessionTracks.createdAt),
       db.select().from(broadcastDestinationReceipts).where(and(eq(broadcastDestinationReceipts.sessionId, session.id), eq(broadcastDestinationReceipts.ownerUserId, req.dbUser!.id))).orderBy(broadcastDestinationReceipts.updatedAt),
     ]);
-    res.json({ ...session, markers, destinationReceipts });
+    res.json({ ...session, markers, tracks, destinationReceipts });
   });
   app.post("/api/broadcast/sessions/:id/markers", attachUser, async (req, res) => {
     noStore(res);
@@ -1006,6 +1036,74 @@ export function registerBroadcastStudioRoutes(app: Express) {
     const deleted = await db.delete(broadcastSessionMarkers).where(and(eq(broadcastSessionMarkers.id, req.params.markerId), eq(broadcastSessionMarkers.sessionId, session.id), eq(broadcastSessionMarkers.ownerUserId, req.dbUser!.id))).returning({ id: broadcastSessionMarkers.id });
     if (!deleted.length) return res.status(404).json({ message: "Marker not found" });
     res.status(204).end();
+  });
+  app.post("/api/broadcast/sessions/:id/tracks", attachUser, async (req, res) => {
+    noStore(res);
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    const parsed = isolatedTrackInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const [asset] = await db.select().from(assets).where(and(
+      eq(assets.id, parsed.data.assetId),
+      eq(assets.ownerUserId, req.dbUser!.id),
+      eq(assets.visibility, "private"),
+      eq(assets.status, "ready"),
+    )).limit(1);
+    if (!asset) return res.status(404).json({ message: "Private source recording asset not found" });
+    if (asset.mimeType !== parsed.data.mimeType || !asset.sizeBytes || asset.sizeBytes <= 0)
+      return res.status(409).json({ message: "Source recording metadata does not match its private asset" });
+    const [track] = await db.insert(broadcastSessionTracks).values({
+      sessionId: session.id,
+      ownerUserId: req.dbUser!.id,
+      assetId: asset.id,
+      sourceId: parsed.data.sourceId,
+      sourceName: parsed.data.sourceName,
+      sourceType: parsed.data.sourceType,
+      mimeType: parsed.data.mimeType,
+      durationMs: parsed.data.durationMs,
+      sizeBytes: asset.sizeBytes,
+      quality: parsed.data.quality,
+    }).onConflictDoUpdate({
+      target: [broadcastSessionTracks.sessionId, broadcastSessionTracks.sourceId],
+      set: {
+        assetId: asset.id,
+        sourceName: parsed.data.sourceName,
+        sourceType: parsed.data.sourceType,
+        mimeType: parsed.data.mimeType,
+        durationMs: parsed.data.durationMs,
+        sizeBytes: asset.sizeBytes,
+        quality: parsed.data.quality,
+      },
+    }).returning();
+    await emitProjectionEvent({
+      aggregateType: "broadcast_studio",
+      aggregateId: session.studioId,
+      eventType: "broadcast.track.ready",
+      actorUserId: req.dbUser!.id,
+      payload: { businessId: session.businessId, sessionId: session.id, trackId: track.id, sourceId: track.sourceId, assetId: track.assetId },
+      idempotencyKey: `broadcast:${session.id}:track:${track.sourceId}:${track.assetId}`,
+    });
+    res.status(201).json(track);
+  });
+  app.get("/api/broadcast/sessions/:id/tracks/:trackId/media", attachUser, async (req, res) => {
+    noStore(res);
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    const [track] = await db.select({ storageKey: assets.storageKey }).from(broadcastSessionTracks)
+      .innerJoin(assets, eq(assets.id, broadcastSessionTracks.assetId))
+      .where(and(
+        eq(broadcastSessionTracks.id, req.params.trackId),
+        eq(broadcastSessionTracks.sessionId, session.id),
+        eq(broadcastSessionTracks.ownerUserId, req.dbUser!.id),
+        eq(assets.ownerUserId, req.dbUser!.id),
+        eq(assets.visibility, "private"),
+      )).limit(1);
+    if (!track) return res.status(404).json({ message: "Source recording not found" });
+    try {
+      res.json(await createPrivateAssetReadUrl(track.storageKey));
+    } catch {
+      res.status(503).json({ message: "Private source recording delivery is not configured" });
+    }
   });
   app.post(
     "/api/broadcast/sessions/:id/chunks",

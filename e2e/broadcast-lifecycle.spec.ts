@@ -346,3 +346,68 @@ test("Broadcast studio library creates renames switches and guards deletion", as
   expect(studios.some((item: { name: string }) => item.name === "Field renamed studio")).toBe(false);
   expect(studios.some((item: { name: string }) => item.name === "Field second studio")).toBe(true);
 });
+
+test("Broadcast records and inventories a direct source-quality isolated track", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(testInfo);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 640;
+          canvas.height = 360;
+          const context = canvas.getContext("2d")!;
+          let frame = 0;
+          const draw = () => {
+            context.fillStyle = frame++ % 2 ? "#1d9bf0" : "#09090b";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.fillStyle = "#ffffff";
+            context.font = "bold 36px sans-serif";
+            context.fillText("CreativesOS source", 80, 190);
+            requestAnimationFrame(draw);
+          };
+          draw();
+          const stream = canvas.captureStream(15);
+          const audio = new AudioContext();
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          const destination = audio.createMediaStreamDestination();
+          gain.gain.value = 0.02;
+          oscillator.connect(gain).connect(destination);
+          oscillator.start();
+          destination.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+          Object.assign(globalThis, { __broadcastQualification: { canvas, audio, oscillator, stream } });
+          return stream;
+        },
+        getDisplayMedia: async () => { throw new Error("Screen capture is not part of this qualification"); },
+      },
+    });
+  });
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Isolated source studio ${Date.now()}` });
+  await expectOk(createdResponse);
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: /Isolated source studio/ })).toBeVisible();
+  await page.getByRole("button", { name: "Add camera" }).click();
+  await expect(page.getByText("camera connected", { exact: false })).toBeVisible();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("switch", { name: "Record isolated source tracks" }).check();
+  await page.getByRole("button", { name: "Record" }).click();
+  await expect(page.getByText(/isolated source track capturing locally/)).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(3_000);
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByText("Isolated source recordings", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /Preview camera isolated recording/ })).toBeVisible();
+
+  const studiosResponse = await api(page, owner, "GET", "/api/broadcast/studios");
+  await expectOk(studiosResponse);
+  const studio = (await studiosResponse.json()).find((item: { name: string }) => item.name.startsWith("Isolated source studio"));
+  const detailResponse = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}`);
+  await expectOk(detailResponse);
+  const detail = await detailResponse.json();
+  const track = detail.sessions.flatMap((item: { tracks?: unknown[] }) => item.tracks ?? [])[0];
+  expect(track).toMatchObject({ sourceType: "camera", mimeType: expect.stringContaining("video/webm"), sizeBytes: expect.any(Number) });
+  expect(track.sizeBytes).toBeGreaterThan(0);
+  expect((await api(page, owner === 1 ? 2 : 1, "GET", `/api/broadcast/sessions/${track.sessionId}`)).status()).toBe(404);
+});

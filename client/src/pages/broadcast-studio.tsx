@@ -82,6 +82,16 @@ type Session = {
   errorMessage: string | null;
   createdAt: string;
   markers?: Array<{ id: string; kind: string; label: string; positionMs: number }>;
+  tracks?: Array<{
+    id: string;
+    sourceId: string;
+    sourceName: string;
+    sourceType: "camera" | "screen" | "microphone";
+    mimeType: string;
+    durationMs: number;
+    sizeBytes: number;
+    quality: Record<string, unknown>;
+  }>;
   destinationReceipts?: Array<{ id: string; destinationName: string; state: string; detail: string }>;
 };
 type Asset = {
@@ -120,6 +130,16 @@ type ReplayCapture = {
   recorder: MediaRecorder;
   stream: MediaStream;
   audioContext: AudioContext | null;
+};
+type IsolatedTrackCapture = {
+  recorder: MediaRecorder;
+  sourceId: string;
+  sourceName: string;
+  sourceType: "camera" | "screen" | "microphone";
+  mimeType: "video/webm" | "video/webm;codecs=vp8,opus" | "audio/webm" | "audio/webm;codecs=opus";
+  chunks: Blob[];
+  startedAt: number;
+  quality: Record<string, number>;
 };
 type ActiveTransition = {
   from: BroadcastScene;
@@ -196,6 +216,7 @@ export default function BroadcastStudioPage() {
   const [replayActive, setReplayActive] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const [capturePaused, setCapturePaused] = useState(false);
+  const [isolatedTracksEnabled, setIsolatedTracksEnabled] = useState(false);
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [sourcePresetName, setSourcePresetName] = useState("");
   const [scenePresetName, setScenePresetName] = useState("");
@@ -213,6 +234,7 @@ export default function BroadcastStudioPage() {
   const loadingAssetSources = useRef(new Set<string>());
   const runtimeCapture = useRef<RuntimeCapture | null>(null);
   const replayCapture = useRef<ReplayCapture | null>(null);
+  const isolatedTrackCaptures = useRef<IsolatedTrackCapture[]>([]);
   const replayChunks = useRef<Array<{ blob: Blob; at: number }>>([]);
   const drag = useRef<{
     sourceId: string;
@@ -686,6 +708,9 @@ export default function BroadcastStudioPage() {
       );
       meterContexts.current.forEach((context) => void context.close());
       runtimeCapture.current?.recorder.stop();
+      isolatedTrackCaptures.current.forEach((capture) => {
+        if (capture.recorder.state !== "inactive") capture.recorder.stop();
+      });
       replayCapture.current?.recorder.stop();
       replayCapture.current?.stream
         .getTracks()
@@ -1003,6 +1028,116 @@ export default function BroadcastStudioPage() {
       }
     });
   }, [config?.masterMuted, config?.masterVolume, programScene]);
+  const startIsolatedTrackCaptures = () => {
+    if (!isolatedTracksEnabled || !config) return;
+    const sources = new Map(
+      config.scenes.flatMap((scene) => scene.sources).map((source) => [source.id, source]),
+    );
+    const captures: IsolatedTrackCapture[] = [];
+    for (const [sourceId, stream] of Array.from(liveStreams.current.entries())) {
+      const source = sources.get(sourceId);
+      if (!source || !["camera", "screen", "microphone"].includes(source.type)) continue;
+      const sourceType = source.type as IsolatedTrackCapture["sourceType"];
+      const hasVideo = stream.getVideoTracks().length > 0;
+      const preferred = hasVideo ? "video/webm;codecs=vp8,opus" : "audio/webm;codecs=opus";
+      const fallback = hasVideo ? "video/webm" : "audio/webm";
+      const recorderMimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : fallback;
+      if (!MediaRecorder.isTypeSupported(recorderMimeType)) continue;
+      const mimeType = (hasVideo ? "video/webm" : "audio/webm") as IsolatedTrackCapture["mimeType"];
+      const videoSettings = stream.getVideoTracks()[0]?.getSettings();
+      const audioSettings = stream.getAudioTracks()[0]?.getSettings();
+      const recorder = new MediaRecorder(stream, {
+        mimeType: recorderMimeType,
+        ...(hasVideo ? { videoBitsPerSecond: 8_000_000 } : {}),
+        ...(stream.getAudioTracks().length ? { audioBitsPerSecond: 192_000 } : {}),
+      });
+      const capture: IsolatedTrackCapture = {
+        recorder,
+        sourceId,
+        sourceName: source.name,
+        sourceType,
+        mimeType,
+        chunks: [],
+        startedAt: Date.now(),
+        quality: {
+          ...(videoSettings?.width ? { width: videoSettings.width } : {}),
+          ...(videoSettings?.height ? { height: videoSettings.height } : {}),
+          ...(videoSettings?.frameRate ? { fps: videoSettings.frameRate } : {}),
+          ...(audioSettings?.channelCount ? { audioChannels: audioSettings.channelCount } : {}),
+          ...(audioSettings?.sampleRate ? { sampleRate: audioSettings.sampleRate } : {}),
+          ...(hasVideo ? { videoBitsPerSecond: recorder.videoBitsPerSecond } : {}),
+          ...(stream.getAudioTracks().length ? { audioBitsPerSecond: recorder.audioBitsPerSecond } : {}),
+        },
+      };
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) capture.chunks.push(event.data);
+      };
+      recorder.start(5_000);
+      captures.push(capture);
+    }
+    isolatedTrackCaptures.current = captures;
+  };
+  const finishIsolatedTrackCaptures = async () => {
+    const captures = isolatedTrackCaptures.current;
+    isolatedTrackCaptures.current = [];
+    await Promise.all(captures.map((capture) => new Promise<void>((resolve) => {
+      if (capture.recorder.state === "inactive") return resolve();
+      capture.recorder.addEventListener("stop", () => resolve(), { once: true });
+      capture.recorder.requestData();
+      capture.recorder.stop();
+    })));
+    return captures;
+  };
+  const uploadIsolatedTrackCaptures = async (sessionId: string, captures: IsolatedTrackCapture[]) => {
+    const results = await Promise.allSettled(captures.map(async (capture) => {
+      const blob = new Blob(capture.chunks, { type: capture.mimeType });
+      if (!blob.size) throw new Error(`${capture.sourceName} did not produce a source recording`);
+      const safeName = capture.sourceName.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || capture.sourceType;
+      const kind = capture.sourceType === "microphone" ? "audio" : "video";
+      const filename = `broadcast-${safeName}-${Date.now()}.webm`;
+      let pendingAssetId: string | null = null;
+      let assetId: string;
+      try {
+        const intent = (await (await apiRequest("POST", "/api/assets/upload-intents", {
+          kind,
+          filename,
+          mimeType: capture.mimeType,
+          sizeBytes: blob.size,
+          visibility: "private",
+        })).json()) as { asset: { id: string }; upload: { uploadUrl: string } };
+        pendingAssetId = intent.asset.id;
+        const uploaded = await fetch(intent.upload.uploadUrl, { method: "PUT", headers: { "Content-Type": capture.mimeType }, body: blob });
+        if (!uploaded.ok) throw new Error(`${capture.sourceName} direct source recording upload failed`);
+        await apiRequest("POST", `/api/assets/${intent.asset.id}/complete`, {});
+        assetId = intent.asset.id;
+      } catch (directError) {
+        if (pendingAssetId) await apiRequest("DELETE", `/api/assets/${pendingAssetId}`, {}).catch(() => undefined);
+        const form = new FormData();
+        form.append("kind", kind);
+        form.append("visibility", "private");
+        form.append(kind, new File([blob], filename, { type: capture.mimeType }));
+        const uploaded = await fetch("/api/assets/upload-proxy", { method: "POST", credentials: "include", body: form });
+        if (!uploaded.ok) {
+          const body = await uploaded.json().catch(() => ({})) as { message?: string };
+          throw new Error(body.message ?? (directError instanceof Error ? directError.message : `${capture.sourceName} source recording upload failed`));
+        }
+        assetId = ((await uploaded.json()) as { asset: { id: string } }).asset.id;
+      }
+      await apiRequest("POST", `/api/broadcast/sessions/${sessionId}/tracks`, {
+        assetId,
+        sourceId: capture.sourceId,
+        sourceName: capture.sourceName,
+        sourceType: capture.sourceType,
+        mimeType: capture.mimeType,
+        durationMs: Math.max(1, Date.now() - capture.startedAt),
+        quality: capture.quality,
+      });
+    }));
+    return {
+      saved: results.filter((result) => result.status === "fulfilled").length,
+      failed: results.filter((result) => result.status === "rejected").length,
+    };
+  };
   const beginOutput = async (outputMode: "stream" | "recording") => {
     if (!studio || !config || runtimeCapture.current) return;
     if (!captureAcknowledged)
@@ -1075,6 +1210,7 @@ export default function BroadcastStudioPage() {
           );
       };
       recorder.start(1000);
+      startIsolatedTrackCaptures();
       setCapturePaused(false);
       setSession({ ...created, state: "live" });
       setMessage(
@@ -1092,33 +1228,49 @@ export default function BroadcastStudioPage() {
     const capture = runtimeCapture.current;
     if (!session) return;
     setBusy("stop");
-    if (capture) {
-      capture.recorder.requestData();
-      await new Promise<void>((resolve) => {
-        capture.recorder.addEventListener("stop", () => resolve(), {
-          once: true,
+    try {
+      const isolated = await finishIsolatedTrackCaptures();
+      if (capture) {
+        capture.recorder.requestData();
+        await new Promise<void>((resolve) => {
+          capture.recorder.addEventListener("stop", () => resolve(), { once: true });
+          capture.recorder.stop();
         });
-        capture.recorder.stop();
-      });
-      await capture.queue;
-      capture.stream.getTracks().forEach((track) => track.stop());
-      await capture.audioContext?.close();
-      runtimeCapture.current = null;
-      setCapturePaused(false);
+        await capture.queue;
+        capture.stream.getTracks().forEach((track) => track.stop());
+        await capture.audioContext?.close();
+        runtimeCapture.current = null;
+        setCapturePaused(false);
+      }
+      await apiRequest("POST", `/api/broadcast/sessions/${session.id}/stop`, {});
+      setSession({ ...session, state: "stopping" });
+      if (isolated.length) {
+        setMessage(`Program output stopped. Saving ${isolated.length} isolated source ${isolated.length === 1 ? "track" : "tracks"} privately…`);
+        const result = await uploadIsolatedTrackCaptures(session.id, isolated);
+        if (studio) await openStudio(studio.id);
+        setMessage(result.failed ? `${result.saved} isolated source tracks saved; ${result.failed} need another recording.` : `${result.saved} isolated source ${result.saved === 1 ? "track" : "tracks"} saved with the program recording.`);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Broadcast could not be stopped cleanly");
+    } finally {
+      setBusy("");
     }
-    await apiRequest("POST", `/api/broadcast/sessions/${session.id}/stop`, {});
-    setSession({ ...session, state: "stopping" });
-    setBusy("");
   };
   const toggleRecordingPause = () => {
     const capture = runtimeCapture.current;
     if (!capture || session?.outputMode !== "recording") return;
     if (capture.recorder.state === "recording") {
       capture.recorder.pause();
+      isolatedTrackCaptures.current.forEach((track) => {
+        if (track.recorder.state === "recording") track.recorder.pause();
+      });
       setCapturePaused(true);
       setMessage("Recording paused. Program preview remains active.");
     } else if (capture.recorder.state === "paused") {
       capture.recorder.resume();
+      isolatedTrackCaptures.current.forEach((track) => {
+        if (track.recorder.state === "paused") track.recorder.resume();
+      });
       setCapturePaused(false);
       setMessage("Recording resumed");
     }
@@ -1925,6 +2077,7 @@ export default function BroadcastStudioPage() {
                 <Button size="sm" variant="outline" onClick={() => void addProductionMarker("highlight")}>Mark highlight</Button>
                 <Button size="sm" variant="outline" onClick={() => void addProductionMarker("issue")}>Mark issue</Button>
                 <span className="text-[10px] text-zinc-500">{session?.markers?.length ?? 0} production markers</span>
+                {isolatedTrackCaptures.current.length > 0 && <span className="rounded-full bg-[#1d9bf0]/10 px-2 py-1 text-[10px] font-bold text-[#1d9bf0]">{isolatedTrackCaptures.current.length} isolated source {isolatedTrackCaptures.current.length === 1 ? "track" : "tracks"} capturing locally</span>}
               </div>
               {(session?.destinationReceipts?.length ?? 0) > 0 && <div className="grid gap-2 sm:grid-cols-2">{session!.destinationReceipts!.map((receipt) => <div key={receipt.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-xs"><span className={`h-2 w-2 rounded-full ${receipt.state === "live" ? "animate-pulse bg-emerald-400" : receipt.state === "error" || receipt.state === "interrupted" ? "bg-red-500" : "bg-zinc-500"}`}/><span className="truncate font-bold">{receipt.destinationName}</span><span className="ml-auto text-[10px] uppercase text-zinc-500">{receipt.state}</span></div>)}</div>}
               </div>
@@ -1957,6 +2110,18 @@ export default function BroadcastStudioPage() {
                     voices, music, and media used in this production.
                     CreativesOS will not start recording or streaming until this
                     is confirmed.
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-black p-3 text-xs leading-5 text-zinc-400">
+                  <Switch
+                    aria-label="Record isolated source tracks"
+                    className="mt-0.5"
+                    checked={isolatedTracksEnabled}
+                    onCheckedChange={setIsolatedTracksEnabled}
+                  />
+                  <span>
+                    <strong className="block text-zinc-200">Record isolated source tracks</strong>
+                    Keep each connected camera, screen, and microphone at its direct source quality for later editing. Tracks upload privately when output stops; keep this tab open until saving finishes.
                   </span>
                 </label>
               </div>
@@ -2652,6 +2817,16 @@ export default function BroadcastStudioPage() {
                         Distribute
                       </Button>
                     </div>
+                    {(item.tracks?.length ?? 0) > 0 && <div className="mt-2 space-y-1 border-t border-zinc-900 pt-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Isolated source recordings</p>
+                      {item.tracks!.map((track) => <div key={track.id} className="flex items-center gap-2 rounded-md bg-zinc-950 px-2 py-1.5">
+                        <span className="min-w-0 flex-1"><span className="block truncate font-bold">{track.sourceName}</span><span className="text-[10px] text-zinc-600">{track.sourceType} · {formatUptime(track.durationMs / 1000)} · {formatBytes(track.sizeBytes)}</span></span>
+                        <Button size="sm" variant="outline" aria-label={`Preview ${track.sourceName} isolated recording`} onClick={async () => {
+                          const access = (await (await apiRequest("GET", `/api/broadcast/sessions/${item.id}/tracks/${track.id}/media`)).json()) as { url: string };
+                          window.open(access.url, "_blank", "noopener,noreferrer");
+                        }}>Preview</Button>
+                      </div>)}
+                    </div>}
                   </div>
                 ))}
             </div>

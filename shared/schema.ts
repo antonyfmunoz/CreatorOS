@@ -2779,6 +2779,32 @@ export const broadcastSessionMarkers = pgTable(
   (table) => ({ sessionPositionIdx: index("broadcast_session_markers_session_position_idx").on(table.sessionId, table.positionMs) }),
 );
 
+// Isolated source recordings preserve the camera, screen, or microphone feed
+// alongside the composited program. Bytes remain private assets; this table is
+// the durable, owner-scoped recording manifest used by Broadcast and CutStudio.
+export const broadcastSessionTracks = pgTable(
+  "broadcast_session_tracks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => broadcastSessions.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceName: text("source_name").notNull(),
+    sourceType: text("source_type").notNull(),
+    mimeType: text("mime_type").notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    quality: json("quality").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionSourceUnique: unique("broadcast_session_tracks_session_source_unique").on(table.sessionId, table.sourceId),
+    sessionCreatedIdx: index("broadcast_session_tracks_session_created_idx").on(table.sessionId, table.createdAt),
+    ownerCreatedIdx: index("broadcast_session_tracks_owner_created_idx").on(table.ownerUserId, table.createdAt),
+  }),
+);
+
 export const broadcastDestinationReceipts = pgTable(
   "broadcast_destination_receipts",
   {
@@ -4498,6 +4524,7 @@ export type BroadcastBrandKit = typeof broadcastBrandKits.$inferSelect;
 export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;
 export type BroadcastSessionMarker = typeof broadcastSessionMarkers.$inferSelect;
+export type BroadcastSessionTrack = typeof broadcastSessionTracks.$inferSelect;
 export type BroadcastDestinationReceipt = typeof broadcastDestinationReceipts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;

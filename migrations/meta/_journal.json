@@ -512,6 +512,13 @@
       "when": 1786608000000,
       "tag": "0072_broadcast_brand_library",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786611600000,
+      "tag": "0073_broadcast_isolated_tracks",
+      "breakpoints": true
     }
   ]
 }
