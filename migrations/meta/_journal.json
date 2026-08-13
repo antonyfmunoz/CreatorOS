@@ -498,6 +498,13 @@
       "when": 1786597200000,
       "tag": "0070_cut_studio_job_cancellation",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786604400000,
+      "tag": "0071_cut_studio_workspace_collaboration",
+      "breakpoints": true
     }
   ]
 }

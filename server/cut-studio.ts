@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assets, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions } from "@shared/schema";
+import { assets, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, notifications, users } from "@shared/schema";
 import {
   buildCmx3600Edl,
   buildSrtCaptions,
@@ -60,6 +60,14 @@ const reviewDecisionSchema = z.object({
   decision: z.enum(["approved", "changes_requested"]),
   note: z.string().trim().max(2_000).optional(),
 });
+const collaboratorSchema = z.object({
+  username: z.string().trim().min(1).max(100),
+  role: z.enum(["reviewer", "editor"]).default("reviewer"),
+});
+const workspaceNoteSchema = z.object({
+  body: z.string().trim().min(1).max(2_000),
+  positionMs: z.number().int().min(0).max(43_200_000).default(0),
+});
 const idSchema = z.string().uuid();
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
@@ -111,6 +119,22 @@ async function ownedProject(userId: number, id: string) {
     .where(and(eq(cutStudioProjects.id, id), eq(cutStudioProjects.ownerUserId, userId)))
     .limit(1);
   return project;
+}
+
+async function workspaceProject(userId: number, id: string) {
+  const project = await ownedProject(userId, id);
+  if (project) return { project, role: "owner" as const };
+  const [collaborator] = await db.select().from(cutStudioCollaborators).where(and(eq(cutStudioCollaborators.projectId, id), eq(cutStudioCollaborators.userId, userId))).limit(1);
+  if (!collaborator) return null;
+  const [sharedProject] = await db.select().from(cutStudioProjects).where(eq(cutStudioProjects.id, id)).limit(1);
+  return sharedProject ? { project: sharedProject, role: collaborator.role as "reviewer" | "editor" } : null;
+}
+
+async function cutWorkspaceParticipants(project: typeof cutStudioProjects.$inferSelect) {
+  const collaborators = await db.select().from(cutStudioCollaborators).where(eq(cutStudioCollaborators.projectId, project.id)).orderBy(cutStudioCollaborators.createdAt);
+  const participantIds = Array.from(new Set([project.ownerUserId, ...collaborators.map((item) => item.userId)]));
+  const accounts = await db.select({ id: users.id, username: users.username, displayName: users.displayName, profileImageUrl: users.profileImageUrl }).from(users).where(inArray(users.id, participantIds));
+  return accounts.map((account) => ({ ...account, role: account.id === project.ownerUserId ? "owner" : collaborators.find((item) => item.userId === account.id)?.role ?? "reviewer" }));
 }
 
 async function ownedAsset(userId: number, id: string) {
@@ -655,6 +679,80 @@ export function registerCutStudioRoutes(app: Express) {
       comments: comments.filter((comment) => comment.versionId === version.id),
       decisions: decisions.filter((decision) => decision.versionId === version.id),
     })));
+  });
+  cut.get("/api/cut/workspace/projects/:id", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await workspaceProject(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Workspace project not found" });
+    const [versions, notes, participants] = await Promise.all([
+      db.select().from(cutStudioVersions).where(eq(cutStudioVersions.projectId, access.project.id)).orderBy(desc(cutStudioVersions.createdAt)),
+      db.select().from(cutStudioWorkspaceNotes).where(eq(cutStudioWorkspaceNotes.projectId, access.project.id)).orderBy(cutStudioWorkspaceNotes.positionMs, cutStudioWorkspaceNotes.createdAt),
+      cutWorkspaceParticipants(access.project),
+    ]);
+    const latestVersion = versions[0];
+    let media: { url: string; expiresAt?: string | null } | null = null;
+    if (latestVersion?.artifactAssetId) {
+      const artifact = await ownedAsset(access.project.ownerUserId, latestVersion.artifactAssetId);
+      if (artifact?.visibility === "private" && artifact.status === "ready") media = await privateReadDescriptor(artifact, `/api/cut/workspace/projects/${encodeURIComponent(access.project.id)}/media-file`);
+    }
+    const authorIds = Array.from(new Set(notes.map((note) => note.authorUserId)));
+    const authors = authorIds.length ? await db.select({ id: users.id, username: users.username, displayName: users.displayName, profileImageUrl: users.profileImageUrl }).from(users).where(inArray(users.id, authorIds)) : [];
+    res.json({
+      project: { id: access.project.id, name: access.project.name, duration: access.project.duration, mediaKind: access.project.mediaKind },
+      access: { role: access.role, canManage: access.role === "owner" },
+      version: latestVersion ? { id: latestVersion.id, label: latestVersion.label, revision: latestVersion.revision, reviewStatus: latestVersion.reviewStatus, createdAt: latestVersion.createdAt } : null,
+      media,
+      participants,
+      notes: notes.map((note) => ({ ...note, author: authors.find((author) => author.id === note.authorUserId) ?? null })),
+    });
+  });
+  cut.get("/api/cut/workspace/projects/:id/media-file", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await workspaceProject(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Workspace project not found" });
+    const [version] = await db.select().from(cutStudioVersions).where(eq(cutStudioVersions.projectId, access.project.id)).orderBy(desc(cutStudioVersions.createdAt)).limit(1);
+    if (!version?.artifactAssetId) return res.status(404).json({ message: "Workspace media not found" });
+    const artifact = await ownedAsset(access.project.ownerUserId, version.artifactAssetId);
+    if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Workspace media not found" });
+    await streamPrivateAsset(res, artifact);
+  });
+  cut.post("/api/cut/projects/:id/collaborators", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = collaboratorSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A valid collaborator username and role are required" });
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [account] = await db.select().from(users).where(eq(users.username, parsed.data.username)).limit(1);
+    if (!account || account.status !== "active" || account.deletedAt) return res.status(404).json({ message: "That active CreativesOS account was not found" });
+    if (account.id === project.ownerUserId) return res.status(409).json({ message: "The project owner already has workspace access" });
+    const [collaborator] = await db.insert(cutStudioCollaborators).values({ projectId: project.id, userId: account.id, invitedByUserId: req.dbUser!.id, role: parsed.data.role }).onConflictDoUpdate({ target: [cutStudioCollaborators.projectId, cutStudioCollaborators.userId], set: { role: parsed.data.role, invitedByUserId: req.dbUser!.id } }).returning();
+    await db.insert(notifications).values({ userId: account.id, type: "mention", message: `${req.dbUser!.displayName} invited you to collaborate on ${project.name}`, read: false, linkTo: `/cut-studio/workspace/${project.id}`, relatedUserId: req.dbUser!.id, relatedUserImage: req.dbUser!.profileImageUrl, sourceType: "cutstudio_collaborator", sourceId: collaborator.id }).onConflictDoNothing();
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.collaborator.added", actorUserId: req.dbUser!.id, payload: { collaboratorUserId: account.id, role: collaborator.role }, idempotencyKey: `cutstudio:${project.id}:collaborator:${account.id}:${collaborator.role}` });
+    res.status(201).json({ id: collaborator.id, userId: account.id, username: account.username, displayName: account.displayName, profileImageUrl: account.profileImageUrl, role: collaborator.role });
+  });
+  cut.delete("/api/cut/projects/:id/collaborators/:userId", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    const userId = Number(req.params.userId);
+    if (!project || !Number.isInteger(userId)) return res.status(404).json({ message: "Collaborator not found" });
+    const [removed] = await db.delete(cutStudioCollaborators).where(and(eq(cutStudioCollaborators.projectId, project.id), eq(cutStudioCollaborators.userId, userId))).returning();
+    if (!removed) return res.status(404).json({ message: "Collaborator not found" });
+    res.status(204).end();
+  });
+  cut.post("/api/cut/workspace/projects/:id/notes", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = workspaceNoteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A valid workspace note is required" });
+    const access = await workspaceProject(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Workspace project not found" });
+    if (parsed.data.positionMs > Math.ceil(access.project.duration * 1_000) + 1_000) return res.status(400).json({ message: "The timecode is outside this project" });
+    const [note] = await db.insert(cutStudioWorkspaceNotes).values({ projectId: access.project.id, authorUserId: req.dbUser!.id, body: parsed.data.body, positionMs: parsed.data.positionMs }).returning();
+    const participants = await cutWorkspaceParticipants(access.project);
+    const mentioned = new Set((parsed.data.body.match(/@[A-Za-z0-9_]+/g) ?? []).map((value) => value.slice(1).toLowerCase()));
+    const recipients = participants.filter((participant) => participant.id !== req.dbUser!.id && mentioned.has(participant.username.toLowerCase()));
+    if (recipients.length) await db.insert(notifications).values(recipients.map((recipient) => ({ userId: recipient.id, type: "mention", message: `${req.dbUser!.displayName} mentioned you in ${access.project.name}`, read: false, linkTo: `/cut-studio/workspace/${access.project.id}`, relatedUserId: req.dbUser!.id, relatedUserImage: req.dbUser!.profileImageUrl, sourceType: "cutstudio_workspace_note", sourceId: note.id }))).onConflictDoNothing();
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.workspace_note.created", actorUserId: req.dbUser!.id, payload: { noteId: note.id, positionMs: note.positionMs, mentionedUserIds: recipients.map((recipient) => recipient.id) }, idempotencyKey: `cutstudio:${note.id}:workspace_note.created` });
+    res.status(201).json({ ...note, author: { id: req.dbUser!.id, username: req.dbUser!.username, displayName: req.dbUser!.displayName, profileImageUrl: req.dbUser!.profileImageUrl } });
   });
   cut.get("/api/cut/projects/:id/versions/:versionId/media", attachUser, async (req, res) => {
     noStore(res);

@@ -158,6 +158,8 @@ export function getReleaseReadiness(
       multitrackRender: "configured",
       reviewCollaboration: "configured",
       sideBySideVersionComparison: "configured",
+      workspaceCollaborators: "configured",
+      mentionNotifications: "configured",
       nativeTitles: "configured",
       transitionPresets: "configured",
       transcriptCorrection: "configured",

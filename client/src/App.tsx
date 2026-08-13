@@ -61,6 +61,7 @@ const DistributionConnections = lazy(
 );
 const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
 const CutStudioReviewPage = lazy(() => import("@/pages/cut-studio-review"));
+const CutStudioWorkspacePage = lazy(() => import("@/pages/cut-studio-workspace"));
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
@@ -250,6 +251,7 @@ function Router() {
         component={DistributionConnections}
       />
       <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
+      <ProtectedRoute path="/cut-studio/workspace/:id" component={CutStudioWorkspacePage} />
       <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
       <ProtectedRoute path="/business/approvals" component={UmhApprovalsPage} />

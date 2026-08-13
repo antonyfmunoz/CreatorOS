@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const migration = readFileSync(new URL("../migrations/0064_cut_studio.sql", import.meta.url), "utf8");
 const multitrackMigration = readFileSync(new URL("../migrations/0067_cut_studio_multitrack.sql", import.meta.url), "utf8");
 const reviewMigration = readFileSync(new URL("../migrations/0069_cut_studio_review.sql", import.meta.url), "utf8");
+const collaborationMigration = readFileSync(new URL("../migrations/0071_cut_studio_workspace_collaboration.sql", import.meta.url), "utf8");
 
 describe("CutStudio persistence migration", () => {
   it("creates owner-scoped projects and durable jobs", () => {
@@ -30,5 +31,13 @@ describe("CutStudio persistence migration", () => {
     expect(reviewMigration).toContain('cut_studio_review_links_token_hash_unique');
     expect(reviewMigration).toContain('cut_studio_review_comments_position_check');
     expect(reviewMigration).toContain('cut_studio_review_decisions_decision_check');
+  });
+
+  it("adds project-scoped workspace collaborators and mentionable notes", () => {
+    expect(collaborationMigration).toContain('CREATE TABLE "cut_studio_collaborators"');
+    expect(collaborationMigration).toContain('CREATE TABLE "cut_studio_workspace_notes"');
+    expect(collaborationMigration).toContain('cut_studio_collaborators_project_user_unique');
+    expect(collaborationMigration).toContain('cut_studio_workspace_notes_body_check');
+    expect(collaborationMigration).toContain('cut_studio_workspace_notes_position_check');
   });
 });

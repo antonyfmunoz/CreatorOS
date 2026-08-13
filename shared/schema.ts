@@ -2604,6 +2604,34 @@ export const cutStudioVersions = pgTable(
   (table) => ({ projectCreatedIdx: index("cut_studio_versions_project_created_idx").on(table.projectId, table.createdAt) }),
 );
 
+export const cutStudioCollaborators = pgTable(
+  "cut_studio_collaborators",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    invitedByUserId: integer("invited_by_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    role: text("role").notNull().default("reviewer"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ projectUserUnique: unique("cut_studio_collaborators_project_user_unique").on(table.projectId, table.userId) }),
+);
+
+export const cutStudioWorkspaceNotes = pgTable(
+  "cut_studio_workspace_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    body: text("body").notNull(),
+    positionMs: integer("position_ms").notNull().default(0),
+    status: text("status").notNull().default("open"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at"),
+  },
+  (table) => ({ projectPositionIdx: index("cut_studio_workspace_notes_project_position_idx").on(table.projectId, table.positionMs) }),
+);
+
 export const cutStudioReviewLinks = pgTable(
   "cut_studio_review_links",
   {
