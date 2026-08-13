@@ -40,9 +40,9 @@ checked against primary product documentation before this scorecard is revised.
 | Captions | Three burn-in styles plus corrected SRT sidecar export | Animated and translated caption tracks | Product code; translation provider for translation |
 | Social reframing | Fixed aspect fit/pad | Landscape, square, portrait and subject-aware reframing | Product code; vision compute for subject tracking |
 | Audio repair | Basic denoise | Loudness, EQ, compression, ducking, fades and meters | Product code |
-| Multitrack edit | Private project media library plus real B-roll/PIP and audio-bed FFmpeg render implemented | Graphics tracks, compound clips and richer track controls | Product code |
-| Visual finishing | Per-clip position, size and opacity plus aspect render | Transitions, keyframes, color correction, LUT and chroma key | Product code |
-| Review/collaboration | Project owner only | Review link, time-coded comments, versions and approvals | Product code |
+| Multitrack edit | Private project media library plus real B-roll/PIP, audio beds and timed native title/lower-third/callout graphics rendered by FFmpeg | Compound clips and richer track controls | Product code |
+| Visual finishing | Per-clip position, size and opacity, aspect render and cut/fade-through-black transition presets | Dissolves, keyframes, color correction, LUT and chroma key | Product code |
+| Review/collaboration | Immutable versions, hashed expiring/revocable review links, private playback, time-coded comments, change requests, approvals and owner resolution implemented | Add workspace collaborators, mention notifications and side-by-side version comparison | Product code |
 | Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry and distribution promotion | True running-job cancellation and a scalable 4K worker tier | Product code and scalable compute |
 | AI assistance | Deterministic edit proposals and highlights | Provider-neutral assistance with human review | AI providers remain optional adapters |
 
@@ -56,11 +56,11 @@ checked against primary product documentation before this scorecard is revised.
 | Source control | Transform, crop, layer, blend, basic filters, mute/volume | Chroma key, LUT, audio filters, monitoring and source presets | Product code; device limitations apply |
 | Brand production | Lower thirds, tickers, countdowns, asset logos and persistent color kit | Reusable team-level brand kits and animated overlays | Product code |
 | Output formats | 720p/1080p landscape, portrait and square at 24/30/60 | Maintain and add destination-specific framing when justified | Product code |
-| Destinations | Secure simultaneous fan-out to as many as eight RTMP/RTMPS/SRT destinations with durable per-destination state receipts | Reconnect and independent failover | Product code; destination accounts remain providers |
+| Destinations | Secure simultaneous fan-out to as many as eight RTMP/RTMPS/SRT destinations with per-output failure isolation, bounded automatic FIFO recovery and durable destination receipts | Add fully independent regional encoder workers and provider-native health callbacks | Product code and scalable compute; destination accounts remain providers |
 | Recording | Private server or browser recording, replay buffer, browser pause/resume and durable production markers | Isolated participant tracks and local-quality capture | Product code; guest/device constraints apply |
 | Guests/roles | Realtime community-room foundation exists | Backstage, producer, host, guest and AI-role participation in the studio | Product code; realtime provider activation |
 | Audience | Not integrated into studio | Unified live comments, moderation, on-screen comments and calls to action | Product code; channel APIs remain providers |
-| Reliability | Encoder test, live health, durable destination status and interruption reconciliation | Automatic reconnect and independently supervised destination failover | Product code and production infrastructure |
+| Reliability | Encoder test, live health, interruption reconciliation, output isolation and bounded automatic reconnect implemented | Independently supervised regional encoder failover and chaos qualification against authorized provider sandboxes | Product code, production infrastructure and provider test destinations |
 
 ## CreativesOS advantage
 

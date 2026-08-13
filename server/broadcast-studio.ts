@@ -154,6 +154,14 @@ function destinationWithKey(row: typeof broadcastDestinations.$inferSelect) {
   else url.pathname = `${url.pathname.replace(/\/+$/, "")}/${key}`;
   return url.toString();
 }
+export function buildBroadcastTeeOutput(destinations: Array<{ protocol: string; url: string }>) {
+  if (!destinations.length) throw new Error("At least one stream destination is required");
+  return destinations.map((destination) => {
+    const format = destination.protocol === "srt" ? "mpegts" : "flv";
+    const escapedUrl = destination.url.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+    return `[f=${format}:onfail=ignore]${escapedUrl}`;
+  }).join("|");
+}
 async function ownedStudio(userId: number, id: string) {
   const [row] = await db
     .select()
@@ -395,13 +403,15 @@ function buildFfmpegArgs(
     "1",
   );
   if (input.outputMode === "stream" && destinations.length) {
-    for (const destination of destinations) {
-      args.push(
-        "-f",
-        destination.protocol === "srt" ? "mpegts" : "flv",
-        destinationWithKey(destination),
-      );
-    }
+    args.push(
+      "-f",
+      "tee",
+      "-use_fifo",
+      "1",
+      "-fifo_options",
+      "attempt_recovery=1:recovery_wait_time=2:restart_with_keyframe=1:drop_pkts_on_overflow=1:queue_size=120",
+      buildBroadcastTeeOutput(destinations.map((destination) => ({ protocol: destination.protocol, url: destinationWithKey(destination) }))),
+    );
   }
   else if (outputPath)
     args.push(
@@ -491,7 +501,7 @@ async function launchRuntime(
     .where(eq(broadcastSessions.id, session.id));
   await db
     .update(broadcastDestinationReceipts)
-    .set({ state: "live", detail: "Encoder is delivering output", startedAt: new Date(runtime.startedAt), updatedAt: new Date() })
+    .set({ state: "live", detail: "Protected fan-out is delivering with isolated automatic recovery", startedAt: new Date(runtime.startedAt), updatedAt: new Date() })
     .where(eq(broadcastDestinationReceipts.sessionId, session.id));
 }
 

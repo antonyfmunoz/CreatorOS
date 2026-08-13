@@ -60,6 +60,7 @@ const DistributionConnections = lazy(
   () => import("@/pages/distribution-connections"),
 );
 const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
+const CutStudioReviewPage = lazy(() => import("@/pages/cut-studio-review"));
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
@@ -230,6 +231,7 @@ function Router() {
       <Route path="/legal/data-deletion" component={TrustPolicyPage} />
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
       <Route path="/legal/ai-recording" component={TrustPolicyPage} />
+      <Route path="/review/cut/:token" component={CutStudioReviewPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />

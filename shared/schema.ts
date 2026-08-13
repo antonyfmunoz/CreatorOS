@@ -2586,6 +2586,73 @@ export const cutStudioJobs = pgTable(
   }),
 );
 
+export const cutStudioVersions = pgTable(
+  "cut_studio_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    revision: integer("revision").notNull(),
+    label: text("label").notNull(),
+    edl: json("edl").$type<import("./cut-studio").CutEdl>().notNull(),
+    transcript: json("transcript").$type<import("./cut-studio").CutTranscript | null>(),
+    artifactAssetId: uuid("artifact_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    reviewStatus: text("review_status").notNull().default("pending"),
+    approvedAt: timestamp("approved_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ projectCreatedIdx: index("cut_studio_versions_project_created_idx").on(table.projectId, table.createdAt) }),
+);
+
+export const cutStudioReviewLinks = pgTable(
+  "cut_studio_review_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    versionId: uuid("version_id").references(() => cutStudioVersions.id, { onDelete: "cascade" }).notNull(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    label: text("label").notNull(),
+    status: text("status").notNull().default("active"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tokenHashUnique: unique("cut_studio_review_links_token_hash_unique").on(table.tokenHash),
+    projectCreatedIdx: index("cut_studio_review_links_project_created_idx").on(table.projectId, table.createdAt),
+  }),
+);
+
+export const cutStudioReviewComments = pgTable(
+  "cut_studio_review_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewLinkId: uuid("review_link_id").references(() => cutStudioReviewLinks.id, { onDelete: "cascade" }).notNull(),
+    versionId: uuid("version_id").references(() => cutStudioVersions.id, { onDelete: "cascade" }).notNull(),
+    authorName: text("author_name").notNull(),
+    body: text("body").notNull(),
+    positionMs: integer("position_ms").notNull().default(0),
+    status: text("status").notNull().default("open"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at"),
+  },
+  (table) => ({ versionPositionIdx: index("cut_studio_review_comments_version_position_idx").on(table.versionId, table.positionMs) }),
+);
+
+export const cutStudioReviewDecisions = pgTable(
+  "cut_studio_review_decisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewLinkId: uuid("review_link_id").references(() => cutStudioReviewLinks.id, { onDelete: "cascade" }).notNull(),
+    versionId: uuid("version_id").references(() => cutStudioVersions.id, { onDelete: "cascade" }).notNull(),
+    reviewerName: text("reviewer_name").notNull(),
+    decision: text("decision").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ versionCreatedIdx: index("cut_studio_review_decisions_version_created_idx").on(table.versionId, table.createdAt) }),
+);
+
 export const broadcastStudios = pgTable(
   "broadcast_studios",
   {
@@ -4370,6 +4437,10 @@ export type ContentDraft = typeof contentDrafts.$inferSelect;
 export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
 export type CutStudioJob = typeof cutStudioJobs.$inferSelect;
 export type CutStudioProjectMedia = typeof cutStudioProjectMedia.$inferSelect;
+export type CutStudioVersion = typeof cutStudioVersions.$inferSelect;
+export type CutStudioReviewLink = typeof cutStudioReviewLinks.$inferSelect;
+export type CutStudioReviewComment = typeof cutStudioReviewComments.$inferSelect;
+export type CutStudioReviewDecision = typeof cutStudioReviewDecisions.$inferSelect;
 export type BroadcastStudio = typeof broadcastStudios.$inferSelect;
 export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;

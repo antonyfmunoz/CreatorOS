@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyBroadcastBrandKit, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
-import { isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
+import { buildBroadcastTeeOutput, isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
   it("starts with an independently owned preview/program scene", () => {
@@ -48,6 +48,17 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(() => validateBroadcastStudioConfig({ ...base, canvas: { width: 1920, height: 1920, fps: 30 } })).toThrow(/production profile/i);
     const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
     expect(broadcastSessionStartSchema.parse({ outputMode: "stream", destinationIds: ids, sourceMode: "browser" }).destinationIds).toEqual(ids);
+  });
+
+  it("isolates destination failures inside a single encoded fan-out", () => {
+    const output = buildBroadcastTeeOutput([
+      { protocol: "rtmps", url: "rtmps://video.example/live/key" },
+      { protocol: "srt", url: "srt://video-two.example:9000?streamid=key" },
+    ]);
+    expect(output).toContain("[f=flv:onfail=ignore]rtmps://video.example/live/key");
+    expect(output).toContain("[f=mpegts:onfail=ignore]srt://video-two.example:9000?streamid=key");
+    expect(output.split("|")).toHaveLength(2);
+    expect(buildBroadcastTeeOutput([{ protocol: "rtmp", url: "rtmp://video.example/live/key|backup" }])).toContain("key\\|backup");
   });
 
   it("creates reusable production scenes and applies a persistent brand kit", () => {

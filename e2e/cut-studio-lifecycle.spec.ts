@@ -68,14 +68,15 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   const edl = {
     version: 3,
     clips: [
-      { id: "primary", label: "Primary", start: 0, end: 3, speed: 1, volume: 1, track: "v1", timelineStart: 0 },
+      { id: "primary", label: "Primary", start: 0, end: 3, speed: 1, volume: 1, transition: "fade_black", track: "v1", timelineStart: 0 },
       { id: "broll", assetId: broll.id, label: "Blue B-roll", start: 0, end: 1, speed: 1, volume: 1, track: "v2", timelineStart: 0.5, transform: { x: 0.62, y: 0.62, width: 0.35, height: 0.35, opacity: 0.9 } },
       { id: "music", assetId: music.id, label: "Music bed", start: 0, end: 2, speed: 1, volume: 0.2, track: "a1", timelineStart: 0.25 },
     ],
+    graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }],
   };
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
-  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v2", assetId: broll.id }), expect.objectContaining({ track: "a1", assetId: music.id })]) });
+  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v2", assetId: broll.id }), expect.objectContaining({ track: "a1", assetId: music.id })]), graphics: [expect.objectContaining({ text: "CreativesOS Launch" })] });
 
   const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
   await expectOk(renderResponse);
@@ -94,4 +95,38 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
     artifactAssetId: expect.any(String),
     output: { multitrack: true, resolution: "720p", fps: 24 },
   });
+
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Launch review", expiresDays: 7 });
+  await expectOk(reviewResponse);
+  const review = await reviewResponse.json();
+  expect(review.reviewUrl).toContain("/review/cut/");
+  expect(review.link).not.toHaveProperty("tokenHash");
+  const reviewToken = new URL(review.reviewUrl).pathname.split("/").at(-1)!;
+  expect((await api(page, peer, "GET", `/api/cut/projects/${project.id}/reviews`)).status()).toBe(404);
+
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${reviewToken}`);
+  await expectOk(publicReviewResponse);
+  const publicReview = await publicReviewResponse.json();
+  expect(publicReview).toMatchObject({ project: { name: project.name }, version: { reviewStatus: "pending" }, review: { label: "Launch review" }, media: { url: expect.any(String) } });
+  const mediaResponse = await page.request.get(publicReview.media.url);
+  await expectOk(mediaResponse);
+  expect(mediaResponse.headers()["content-type"]).toContain("video/mp4");
+
+  const commentResponse = await page.request.post(`/api/cut/reviews/${reviewToken}/comments`, { data: { authorName: "Client reviewer", body: "Tighten this cut", positionMs: 750 } });
+  await expectOk(commentResponse);
+  const comment = await commentResponse.json();
+  const decisionResponse = await page.request.post(`/api/cut/reviews/${reviewToken}/decision`, { data: { reviewerName: "Client reviewer", decision: "changes_requested", note: "One revision requested" } });
+  await expectOk(decisionResponse);
+  await page.goto(`/review/cut/${reviewToken}`);
+  await expect(page.getByRole("heading", { name: new RegExp(project.name) })).toBeVisible();
+  await expect(page.getByText("Tighten this cut")).toBeVisible();
+  await expect(page.getByText("changes requested", { exact: true }).first()).toBeVisible();
+
+  const ownerReviewsResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}/reviews`);
+  await expectOk(ownerReviewsResponse);
+  const ownerReviews = await ownerReviewsResponse.json();
+  expect(ownerReviews[0]).toMatchObject({ reviewStatus: "changes_requested", comments: [expect.objectContaining({ id: comment.id, status: "open" })], decisions: [expect.objectContaining({ decision: "changes_requested" })] });
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/review-comments/${comment.id}/resolve`, {}));
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews/${review.link.id}/revoke`, {}));
+  expect((await page.request.get(`/api/cut/reviews/${reviewToken}`)).status()).toBe(404);
 });

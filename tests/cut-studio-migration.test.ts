@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(new URL("../migrations/0064_cut_studio.sql", import.meta.url), "utf8");
 const multitrackMigration = readFileSync(new URL("../migrations/0067_cut_studio_multitrack.sql", import.meta.url), "utf8");
+const reviewMigration = readFileSync(new URL("../migrations/0069_cut_studio_review.sql", import.meta.url), "utf8");
 
 describe("CutStudio persistence migration", () => {
   it("creates owner-scoped projects and durable jobs", () => {
@@ -19,5 +20,15 @@ describe("CutStudio persistence migration", () => {
     expect(multitrackMigration).toContain('REFERENCES "public"."assets"("id") ON DELETE restrict');
     expect(multitrackMigration).toContain('INSERT INTO "cut_studio_project_media"');
     expect(multitrackMigration).toContain('ON CONFLICT ("project_id", "asset_id") DO NOTHING');
+  });
+
+  it("adds immutable review versions, revocable links, comments, and decisions", () => {
+    expect(reviewMigration).toContain('CREATE TABLE "cut_studio_versions"');
+    expect(reviewMigration).toContain('CREATE TABLE "cut_studio_review_links"');
+    expect(reviewMigration).toContain('CREATE TABLE "cut_studio_review_comments"');
+    expect(reviewMigration).toContain('CREATE TABLE "cut_studio_review_decisions"');
+    expect(reviewMigration).toContain('cut_studio_review_links_token_hash_unique');
+    expect(reviewMigration).toContain('cut_studio_review_comments_position_check');
+    expect(reviewMigration).toContain('cut_studio_review_decisions_decision_check');
   });
 });

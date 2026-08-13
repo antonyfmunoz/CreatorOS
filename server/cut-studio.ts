@@ -1,11 +1,12 @@
 import type { Express, RequestHandler, Response } from "express";
 import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assets, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects } from "@shared/schema";
+import { assets, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions } from "@shared/schema";
 import {
   buildCmx3600Edl,
   buildSrtCaptions,
@@ -43,11 +44,42 @@ const projectMediaSchema = z.object({
   duration: z.number().finite().positive().max(43_200),
   mediaKind: z.enum(["video", "audio"]),
 });
+const createReviewSchema = z.object({
+  jobId: z.string().uuid().optional(),
+  label: z.string().trim().min(1).max(120).default("Client review"),
+  expiresDays: z.number().int().min(1).max(90).default(14),
+});
+const reviewCommentSchema = z.object({
+  authorName: z.string().trim().min(1).max(100),
+  body: z.string().trim().min(1).max(2_000),
+  positionMs: z.number().int().min(0).max(43_200_000).default(0),
+});
+const reviewDecisionSchema = z.object({
+  reviewerName: z.string().trim().min(1).max(100),
+  decision: z.enum(["approved", "changes_requested"]),
+  note: z.string().trim().max(2_000).optional(),
+});
 const idSchema = z.string().uuid();
 const running = new Set<string>();
 
 function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
+}
+
+function reviewTokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function activeReview(token: string) {
+  if (!/^[A-Za-z0-9_-]{40,80}$/.test(token)) return null;
+  const [link] = await db.select().from(cutStudioReviewLinks).where(eq(cutStudioReviewLinks.tokenHash, reviewTokenHash(token))).limit(1);
+  if (!link || link.status !== "active" || link.expiresAt.getTime() <= Date.now()) return null;
+  const [[version], [project]] = await Promise.all([
+    db.select().from(cutStudioVersions).where(eq(cutStudioVersions.id, link.versionId)).limit(1),
+    db.select().from(cutStudioProjects).where(eq(cutStudioProjects.id, link.projectId)).limit(1),
+  ]);
+  if (!version || !project) return null;
+  return { link, version, project };
 }
 
 async function ownedProject(userId: number, id: string) {
@@ -99,6 +131,21 @@ async function probeMedia(url: string) {
   });
   const streams = (JSON.parse(stdout).streams ?? []) as Array<{ codec_type?: string }>;
   return { hasVideo: streams.some((stream) => stream.codec_type === "video"), hasAudio: streams.some((stream) => stream.codec_type === "audio") };
+}
+
+async function cutStudioFontFilter() {
+  const candidates = [
+    process.env.CUT_STUDIO_FONT_FILE,
+    process.platform === "win32" ? "C:/Windows/Fonts/arialbd.ttf" : "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    process.platform === "win32" ? "C:/Windows/Fonts/arial.ttf" : "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  ].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    if (await fs.access(candidate).then(() => true).catch(() => false)) {
+      const escaped = candidate.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+      return `fontfile='${escaped}':`;
+    }
+  }
+  throw new Error("CutStudio title rendering requires an installed production font");
 }
 
 async function transcribeMedia(inputPath: string, tempDirectory: string) {
@@ -161,6 +208,7 @@ async function renderMultitrack(
   source: typeof assets.$inferSelect,
   request: z.infer<typeof cutRenderRequestSchema>,
   clips: CutEdl["clips"],
+  graphics: NonNullable<CutEdl["graphics"]>,
   temp: string,
   outputPath: string,
 ) {
@@ -188,8 +236,9 @@ async function renderMultitrack(
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
     const outputDuration = (clip.end - clip.start) / speed;
-    const fadeIn = Math.min(clip.fadeIn ?? 0, outputDuration / 2);
-    const fadeOut = Math.min(clip.fadeOut ?? 0, outputDuration / 2);
+    const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
+    const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
+    const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
     const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
@@ -236,6 +285,15 @@ async function renderMultitrack(
       audioLabels.push(`[${label}]`);
     }
   }
+  const fontFilter = graphics.some((graphic) => graphic.text.trim()) ? await cutStudioFontFilter() : "";
+  for (let index = 0; index < graphics.length; index += 1) {
+    const graphic = graphics[index];
+    if (!graphic.text.trim()) continue;
+    const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
+    const nextLabel = `graphic${index}`;
+    filters.push(`[${videoLabel}]drawtext=${fontFilter}text='${text}':fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=w*${graphic.x}:y=h*${graphic.y}:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+    videoLabel = nextLabel;
+  }
   let audioLabel: string | null = primaryHasAudio ? "baseaudio" : null;
   if (audioLabels.length > 1) {
     filters.push(`${audioLabels.join("")}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=2[mixedaudio]`);
@@ -243,7 +301,7 @@ async function renderMultitrack(
   } else if (audioLabels.length === 1) audioLabel = audioLabels[0].slice(1, -1);
   if (request.captions && project.transcript) {
     const srtPath = path.join(temp, "captions.srt");
-    await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 3, clips }), "utf8");
+    await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 3, clips, graphics }), "utf8");
     const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
     const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
     filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
@@ -279,10 +337,10 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       });
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
-    if (project.edl.version === 3 && clips.some((clip) => (clip.track ?? "v1") !== "v1")) {
+    if (project.edl.version === 3 && (clips.some((clip) => (clip.track ?? "v1") !== "v1") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
-      await renderMultitrack(jobId, project, source, request, clips, temp, outputPath);
-      const duration = cutDuration({ version: 3, clips });
+      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], temp, outputPath);
+      const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
       return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, multitrack: true } };
@@ -295,8 +353,9 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     clips.forEach((clip, index) => {
       const speed = clip.speed ?? 1;
       const outputDuration = (clip.end - clip.start) / speed;
-      const fadeIn = Math.min(clip.fadeIn ?? 0, outputDuration / 2);
-      const fadeOut = Math.min(clip.fadeOut ?? 0, outputDuration / 2);
+      const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
+      const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
+      const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < clips.length - 1 ? transitionFade : 0), outputDuration / 2);
       if (media.hasVideo) {
         const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
         if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
@@ -411,6 +470,68 @@ export function registerCutStudioRoutes(app: Express) {
     put: (path: string, ...handlers: RequestHandler[]) => app.put(path, ...handlers.map(wrap)),
     delete: (path: string, ...handlers: RequestHandler[]) => app.delete(path, ...handlers.map(wrap)),
   };
+  cut.get("/api/cut/reviews/:token", async (req, res) => {
+    noStore(res);
+    const review = await activeReview(req.params.token);
+    if (!review) return res.status(404).json({ message: "This review link is unavailable or expired" });
+    const [comments, decisions, artifact] = await Promise.all([
+      db.select().from(cutStudioReviewComments).where(eq(cutStudioReviewComments.versionId, review.version.id)).orderBy(cutStudioReviewComments.positionMs),
+      db.select().from(cutStudioReviewDecisions).where(eq(cutStudioReviewDecisions.versionId, review.version.id)).orderBy(cutStudioReviewDecisions.createdAt),
+      review.version.artifactAssetId ? db.select().from(assets).where(eq(assets.id, review.version.artifactAssetId)).limit(1).then((rows) => rows[0]) : Promise.resolve(undefined),
+    ]);
+    let media: { url: string; expiresAt?: string } | null = null;
+    if (artifact?.visibility === "private" && artifact.status === "ready") {
+      media = await createPrivateAssetReadUrl(artifact.storageKey).catch(() => ({ url: `/api/cut/reviews/${encodeURIComponent(req.params.token)}/media` }));
+    }
+    res.json({
+      project: { name: review.project.name, duration: cutDuration(review.version.edl), mediaKind: review.project.mediaKind },
+      version: { id: review.version.id, label: review.version.label, revision: review.version.revision, reviewStatus: review.version.reviewStatus, createdAt: review.version.createdAt },
+      review: { label: review.link.label, expiresAt: review.link.expiresAt },
+      media,
+      comments,
+      decisions,
+    });
+  });
+  cut.get("/api/cut/reviews/:token/media", async (req, res) => {
+    noStore(res);
+    const review = await activeReview(req.params.token);
+    if (!review?.version.artifactAssetId) return res.status(404).json({ message: "Review media not found" });
+    const [artifact] = await db.select().from(assets).where(and(eq(assets.id, review.version.artifactAssetId), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!artifact) return res.status(404).json({ message: "Review media not found" });
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-review-"));
+    const outputPath = path.join(temp, artifact.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "review.mp4");
+    try {
+      await materializePrivateAsset(artifact.storageKey, outputPath);
+      res.type(artifact.mimeType ?? "application/octet-stream");
+      res.sendFile(outputPath, (error) => {
+        void fs.rm(temp, { recursive: true, force: true });
+        if (error && !res.headersSent) res.status(500).end();
+      });
+    } catch (error) {
+      await fs.rm(temp, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+  });
+  cut.post("/api/cut/reviews/:token/comments", async (req, res) => {
+    noStore(res);
+    const parsed = reviewCommentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A reviewer name, timecode, and note are required" });
+    const review = await activeReview(req.params.token);
+    if (!review) return res.status(404).json({ message: "This review link is unavailable or expired" });
+    if (parsed.data.positionMs > Math.ceil(cutDuration(review.version.edl) * 1_000) + 1_000) return res.status(400).json({ message: "The timecode is outside this version" });
+    const [comment] = await db.insert(cutStudioReviewComments).values({ reviewLinkId: review.link.id, versionId: review.version.id, ...parsed.data }).returning();
+    res.status(201).json(comment);
+  });
+  cut.post("/api/cut/reviews/:token/decision", async (req, res) => {
+    noStore(res);
+    const parsed = reviewDecisionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Choose approve or request changes and provide your name" });
+    const review = await activeReview(req.params.token);
+    if (!review) return res.status(404).json({ message: "This review link is unavailable or expired" });
+    const [decision] = await db.insert(cutStudioReviewDecisions).values({ reviewLinkId: review.link.id, versionId: review.version.id, ...parsed.data }).returning();
+    await db.update(cutStudioVersions).set({ reviewStatus: parsed.data.decision, approvedAt: parsed.data.decision === "approved" ? new Date() : null }).where(eq(cutStudioVersions.id, review.version.id));
+    res.status(201).json(decision);
+  });
   cut.get("/api/cut/projects", attachUser, async (req, res) => {
     noStore(res);
     const rows = await db.select().from(cutStudioProjects).where(eq(cutStudioProjects.ownerUserId, req.dbUser!.id)).orderBy(desc(cutStudioProjects.updatedAt));
@@ -437,6 +558,63 @@ export function registerCutStudioRoutes(app: Express) {
       projectMedia(project.id, req.dbUser!.id),
     ]);
     res.json({ ...project, jobs, media });
+  });
+  cut.get("/api/cut/projects/:id/reviews", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const versions = await db.select().from(cutStudioVersions).where(and(eq(cutStudioVersions.projectId, project.id), eq(cutStudioVersions.ownerUserId, req.dbUser!.id))).orderBy(desc(cutStudioVersions.createdAt));
+    if (!versions.length) return res.json([]);
+    const versionIds = versions.map((version) => version.id);
+    const [links, comments, decisions] = await Promise.all([
+      db.select().from(cutStudioReviewLinks).where(and(eq(cutStudioReviewLinks.projectId, project.id), eq(cutStudioReviewLinks.ownerUserId, req.dbUser!.id))).orderBy(desc(cutStudioReviewLinks.createdAt)),
+      db.select().from(cutStudioReviewComments).where(inArray(cutStudioReviewComments.versionId, versionIds)).orderBy(cutStudioReviewComments.positionMs),
+      db.select().from(cutStudioReviewDecisions).where(inArray(cutStudioReviewDecisions.versionId, versionIds)).orderBy(desc(cutStudioReviewDecisions.createdAt)),
+    ]);
+    res.json(versions.map((version) => ({
+      ...version,
+      links: links.filter((link) => link.versionId === version.id).map(({ tokenHash: _tokenHash, ...link }) => link),
+      comments: comments.filter((comment) => comment.versionId === version.id),
+      decisions: decisions.filter((decision) => decision.versionId === version.id),
+    })));
+  });
+  cut.post("/api/cut/projects/:id/reviews", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = createReviewSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Review settings are invalid" });
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const jobs = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.kind, "render"), eq(cutStudioJobs.state, "done"))).orderBy(desc(cutStudioJobs.finishedAt));
+    const render = parsed.data.jobId ? jobs.find((job) => job.id === parsed.data.jobId) : jobs[0];
+    if (!render?.artifactAssetId) return res.status(409).json({ message: "Complete a render before creating a review link" });
+    const [artifact] = await db.select().from(assets).where(and(eq(assets.id, render.artifactAssetId), eq(assets.ownerUserId, req.dbUser!.id), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!artifact) return res.status(409).json({ message: "The private review render is unavailable" });
+    const versionNumber = await db.select({ count: sql<number>`count(*)::int` }).from(cutStudioVersions).where(eq(cutStudioVersions.projectId, project.id));
+    const [version] = await db.insert(cutStudioVersions).values({ projectId: project.id, ownerUserId: req.dbUser!.id, revision: project.revision, label: `Version ${(versionNumber[0]?.count ?? 0) + 1}`, edl: project.edl, transcript: project.transcript, artifactAssetId: artifact.id }).returning();
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + parsed.data.expiresDays * 86_400_000);
+    const [link] = await db.insert(cutStudioReviewLinks).values({ versionId: version.id, projectId: project.id, ownerUserId: req.dbUser!.id, tokenHash: reviewTokenHash(token), label: parsed.data.label, expiresAt }).returning();
+    const publicBase = (process.env.PUBLIC_APP_URL ?? `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.review.created", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, versionId: version.id, reviewLinkId: link.id, expiresAt: expiresAt.toISOString() }, idempotencyKey: `cutstudio:${version.id}:review.created` });
+    res.status(201).json({ version, link: { ...link, tokenHash: undefined }, reviewUrl: `${publicBase}/review/cut/${token}` });
+  });
+  cut.post("/api/cut/projects/:id/reviews/:linkId/revoke", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [link] = await db.update(cutStudioReviewLinks).set({ status: "revoked" }).where(and(eq(cutStudioReviewLinks.id, req.params.linkId), eq(cutStudioReviewLinks.projectId, project.id), eq(cutStudioReviewLinks.ownerUserId, req.dbUser!.id))).returning();
+    if (!link) return res.status(404).json({ message: "Review link not found" });
+    res.json({ id: link.id, status: link.status });
+  });
+  cut.post("/api/cut/projects/:id/review-comments/:commentId/resolve", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const versionIds = await db.select({ id: cutStudioVersions.id }).from(cutStudioVersions).where(and(eq(cutStudioVersions.projectId, project.id), eq(cutStudioVersions.ownerUserId, req.dbUser!.id)));
+    if (!versionIds.length) return res.status(404).json({ message: "Review comment not found" });
+    const [comment] = await db.update(cutStudioReviewComments).set({ status: "resolved", resolvedAt: new Date() }).where(and(eq(cutStudioReviewComments.id, req.params.commentId), inArray(cutStudioReviewComments.versionId, versionIds.map((item) => item.id)))).returning();
+    if (!comment) return res.status(404).json({ message: "Review comment not found" });
+    res.json(comment);
   });
   cut.delete("/api/cut/projects/:id", attachUser, async (req, res) => {
     noStore(res); const id = idSchema.safeParse(req.params.id); if (!id.success) return res.status(404).json({ message: "Project not found" });

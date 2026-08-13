@@ -9,6 +9,7 @@ export const cutClipSchema = z.object({
   volume: z.number().finite().min(0).max(2).optional(),
   fadeIn: z.number().finite().min(0).max(10).optional(),
   fadeOut: z.number().finite().min(0).max(10).optional(),
+  transition: z.enum(["cut", "fade_black"]).optional(),
   assetId: z.string().uuid().optional(),
   track: z.string().regex(/^[va][1-8]$/).optional(),
   timelineStart: z.number().finite().min(0).max(43_200).optional(),
@@ -21,9 +22,24 @@ export const cutClipSchema = z.object({
   }).optional(),
 });
 
+export const cutGraphicSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  kind: z.enum(["title", "lower_third", "callout"]).default("title"),
+  text: z.string().max(240),
+  timelineStart: z.number().finite().min(0).max(43_200),
+  duration: z.number().finite().min(0.25).max(3_600),
+  x: z.number().finite().min(0).max(0.95).default(0.1),
+  y: z.number().finite().min(0).max(0.95).default(0.75),
+  fontSize: z.number().int().min(12).max(160).default(48),
+  textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
+  backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#000000"),
+  backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
+});
+
 export const cutEdlSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   clips: z.array(cutClipSchema).min(1).max(200),
+  graphics: z.array(cutGraphicSchema).max(50).optional(),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -57,6 +73,7 @@ export const cutRenderRequestSchema = z.object({
 
 export type CutClip = z.infer<typeof cutClipSchema>;
 export type CutEdl = z.infer<typeof cutEdlSchema>;
+export type CutGraphic = z.infer<typeof cutGraphicSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
@@ -81,6 +98,7 @@ export function normalizeCutClips(clips: CutClip[], duration?: number, version: 
       volume: clip.volume ?? 1,
       fadeIn: clip.fadeIn ?? 0,
       fadeOut: clip.fadeOut ?? 0,
+      transition: clip.transition ?? "cut",
     }))
     .filter((clip) => clip.end - clip.start >= 0.05);
   const normalized: CutClip[] = [];
@@ -110,12 +128,15 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     const transform = clip.transform;
     if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
   }
-  return { version: parsed.version === 3 ? 3 : 2, clips };
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [] };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
   if (!edl) return 0;
-  if (edl.version === 3) return edl.clips.reduce((maximum, clip) => Math.max(maximum, (clip.timelineStart ?? 0) + (clip.end - clip.start) / (clip.speed ?? 1)), 0);
+  if (edl.version === 3) return Math.max(
+    edl.clips.reduce((maximum, clip) => Math.max(maximum, (clip.timelineStart ?? 0) + (clip.end - clip.start) / (clip.speed ?? 1)), 0),
+    ...(edl.graphics ?? []).map((graphic) => graphic.timelineStart + graphic.duration),
+  );
   return edl.clips.reduce((total, clip) => total + (clip.end - clip.start) / (clip.speed ?? 1), 0);
 }
 
@@ -131,7 +152,7 @@ export function removeCutRange(edl: CutEdl, start: number, end: number, duration
     }
   }
   const normalized = normalizeCutClips(clips, duration, edl.version);
-  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized } : edl;
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
@@ -144,7 +165,7 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     if (prior && range.start <= prior.end + 0.001) prior.end = Math.max(prior.end, range.end);
     else merged.push({ ...range });
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version), graphics: edl.graphics };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
@@ -156,7 +177,7 @@ export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
     );
     else clips.push(clip);
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version), graphics: edl.graphics };
 }
 
 export function transcriptWords(transcript: CutTranscript | null | undefined) {

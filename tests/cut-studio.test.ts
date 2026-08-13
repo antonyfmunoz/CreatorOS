@@ -81,4 +81,16 @@ describe("CutStudio edit decision list", () => {
     expect(cutDuration(result)).toBe(20);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: .9, y: 0, width: .5, height: 1, opacity: 1 } }] }, 2)).toThrow(/inside the frame/i);
   });
+
+  it("models native timed graphics and transition presets", () => {
+    const result = validateCutEdl({ version: 3, clips: [
+      { id: "intro", start: 0, end: 3, track: "v1", timelineStart: 0, transition: "fade_black" },
+    ], graphics: [
+      { id: "title", kind: "lower_third", text: "Launch day", timelineStart: .5, duration: 4, x: .08, y: .78, fontSize: 44, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: .7 },
+    ] }, 5);
+    expect(result.clips[0]).toMatchObject({ transition: "fade_black" });
+    expect(result.graphics).toEqual([expect.objectContaining({ text: "Launch day", kind: "lower_third" })]);
+    expect(cutDuration(result)).toBe(4.5);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2 }], graphics: [{ id: "title", text: "Invalid", timelineStart: 0, duration: 2, textColor: "white" }] }, 2)).toThrow();
+  });
 });
