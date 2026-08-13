@@ -62,6 +62,8 @@ type Studio = {
   config: BroadcastStudioConfig;
   revision: number;
   updatedAt: string;
+  access?: { role: "owner" | "editor" | "viewer"; canEdit: boolean; canOperate: boolean };
+  participants?: Array<{ id: number; username: string; displayName: string; profileImageUrl: string | null; role: "owner" | "editor" | "viewer" }>;
   sessions?: Session[];
 };
 type Destination = {
@@ -227,6 +229,8 @@ export default function BroadcastStudioPage() {
   const [studioNameDraft, setStudioNameDraft] = useState("");
   const [newStudioName, setNewStudioName] = useState("");
   const [deleteStudioArmed, setDeleteStudioArmed] = useState(false);
+  const [collaboratorUsername, setCollaboratorUsername] = useState("");
+  const [collaboratorRole, setCollaboratorRole] = useState<"viewer" | "editor">("editor");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -344,9 +348,13 @@ export default function BroadcastStudioPage() {
 
   const persist = useCallback(
     async (next: BroadcastStudioConfig, nextName = studio?.name) => {
+      const current = studioRef.current;
+      if (current?.access?.canEdit === false) {
+        setMessage("This shared studio is view only.");
+        return;
+      }
       setConfig(next);
       latestRequestedConfig.current = next;
-      const current = studioRef.current;
       const resolvedName = nextName?.trim() || current?.name;
       if (!current || (exactConfig(next, current.config) && resolvedName === current.name)) return;
       pendingSaves.current += 1;
@@ -435,6 +443,37 @@ export default function BroadcastStudioPage() {
     }
   }, [openStudio, queryClient, studiosQuery.data?.length]);
 
+  const addStudioCollaborator = useCallback(async () => {
+    if (!studio || !collaboratorUsername.trim()) return;
+    setBusy("studio-collaborator");
+    try {
+      await apiRequest("POST", `/api/broadcast/studios/${studio.id}/collaborators`, { username: collaboratorUsername.trim(), role: collaboratorRole });
+      setCollaboratorUsername("");
+      await openStudio(studio.id);
+      await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/studios"] });
+      setMessage("Broadcast collaborator access updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Collaborator could not be added");
+    } finally {
+      setBusy("");
+    }
+  }, [collaboratorRole, collaboratorUsername, openStudio, queryClient, studio]);
+
+  const removeStudioCollaborator = useCallback(async (userId: number) => {
+    if (!studio) return;
+    setBusy(`studio-collaborator-${userId}`);
+    try {
+      await apiRequest("DELETE", `/api/broadcast/studios/${studio.id}/collaborators/${userId}`);
+      await openStudio(studio.id);
+      await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/studios"] });
+      setMessage("Broadcast collaborator removed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Collaborator could not be removed");
+    } finally {
+      setBusy("");
+    }
+  }, [openStudio, queryClient, studio]);
+
   const applyLibraryBrandKit = useCallback(async (kit: BrandLibraryKit) => {
     if (!config) return;
     const branded = applyBroadcastBrandKit(validateBroadcastStudioConfig({
@@ -452,7 +491,7 @@ export default function BroadcastStudioPage() {
 
   const updatePreviewScene = useCallback(
     (change: (scene: BroadcastScene) => BroadcastScene, save = true) => {
-      if (!config || !previewScene) return;
+      if (!config || !previewScene || studioRef.current?.access?.canEdit === false) return;
       const next = validateBroadcastStudioConfig({
         ...config,
         scenes: config.scenes.map((scene) =>
@@ -479,7 +518,7 @@ export default function BroadcastStudioPage() {
   );
   const updateProgramSource = useCallback(
     (sourceId: string, patch: Partial<BroadcastSource>, save = true) => {
-      if (!config || !programScene) return;
+      if (!config || !programScene || studioRef.current?.access?.canEdit === false) return;
       const next = validateBroadcastStudioConfig({
         ...config,
         scenes: config.scenes.map((scene) =>
@@ -1552,6 +1591,9 @@ export default function BroadcastStudioPage() {
   if (!config || !previewScene || !programScene) return null;
   const activeSession =
     session && ["starting", "live", "stopping"].includes(session.state);
+  const studioRole = studio.access?.role ?? "owner";
+  const canEditStudio = studio.access?.canEdit ?? true;
+  const canOperateStudio = studio.access?.canOperate ?? true;
 
   return (
     <main className="min-h-screen bg-black pb-24 text-white">
@@ -1569,6 +1611,7 @@ export default function BroadcastStudioPage() {
           <h1 className="truncate text-sm font-black">{studio.name}</h1>
           <div className="flex items-center gap-2">
             <p className="shrink-0 text-[10px] uppercase tracking-widest text-zinc-500">Broadcast Studio · {saving ? "saving" : activeSession ? session?.state : "ready"}</p>
+            {studioRole !== "owner" && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-300">{studioRole}</span>}
             {(studiosQuery.data?.length ?? 0) > 1 && <select aria-label="Broadcast studio" className="h-5 max-w-28 truncate rounded border border-zinc-800 bg-black px-1 text-[10px] text-zinc-400 sm:max-w-44" value={studio.id} disabled={Boolean(activeSession) || saving} onChange={(event) => void switchStudio(event.target.value)}>{studiosQuery.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
           </div>
         </div>
@@ -1578,7 +1621,7 @@ export default function BroadcastStudioPage() {
           />
           {activeSession ? (
             <>
-              {session?.outputMode === "recording" && runtimeCapture.current && (
+              {session?.outputMode === "recording" && runtimeCapture.current && canOperateStudio && (
                 <Button size="sm" variant="outline" onClick={toggleRecordingPause} aria-label={capturePaused ? "Resume recording" : "Pause recording"}>
                   {capturePaused ? <Play className="mr-1.5 h-4 w-4" /> : <Pause className="mr-1.5 h-4 w-4" />}
                   {capturePaused ? "Resume" : "Pause"}
@@ -1587,7 +1630,7 @@ export default function BroadcastStudioPage() {
               <Button
                 size="sm"
                 variant="destructive"
-                disabled={busy === "stop"}
+                disabled={busy === "stop" || !canOperateStudio}
                 onClick={() => void stopOutput()}
               >
                 <CircleStop className="mr-1.5 h-4 w-4" />
@@ -1599,7 +1642,7 @@ export default function BroadcastStudioPage() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={Boolean(busy) || !captureAcknowledged}
+                disabled={Boolean(busy) || !captureAcknowledged || !canOperateStudio}
                 onClick={() => void beginOutput("recording")}
               >
                 <Square className="mr-1.5 h-3.5 w-3.5" />
@@ -1609,7 +1652,7 @@ export default function BroadcastStudioPage() {
                 size="sm"
                 className="bg-red-600 text-white hover:bg-red-500"
                 disabled={
-                  Boolean(busy) || !destinationIds.length || !captureAcknowledged
+                  Boolean(busy) || !destinationIds.length || !captureAcknowledged || !canOperateStudio
                 }
                 onClick={() => void beginOutput("stream")}
               >
@@ -1620,6 +1663,7 @@ export default function BroadcastStudioPage() {
           )}
         </div>
       </header>
+      {!canEditStudio && <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-200">You have view-only access. The owner controls changes and live output.</div>}
       <div className="grid gap-3 p-3 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
         <aside className="space-y-3">
           <Panel title="Scenes" icon={Layers3}>
@@ -2577,14 +2621,23 @@ export default function BroadcastStudioPage() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Studio library</p>
               <div className="flex gap-2">
                 <Input aria-label="Studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={studioNameDraft} maxLength={120} onChange={(event) => setStudioNameDraft(event.target.value)}/>
-                <Button aria-label="Save studio name" size="sm" variant="outline" disabled={!studioNameDraft.trim() || studioNameDraft.trim() === studio.name || saving || Boolean(activeSession)} onClick={() => void persist(config, studioNameDraft)}>Save</Button>
+                <Button aria-label="Save studio name" size="sm" variant="outline" disabled={!canEditStudio || !studioNameDraft.trim() || studioNameDraft.trim() === studio.name || saving || Boolean(activeSession)} onClick={() => void persist(config, studioNameDraft)}>Save</Button>
               </div>
               <div className="flex gap-2">
                 <Input aria-label="New studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={newStudioName} maxLength={120} placeholder="New studio name" onChange={(event) => setNewStudioName(event.target.value)}/>
                 <Button aria-label="Create broadcast studio" size="sm" variant="outline" disabled={!newStudioName.trim() || busy === "studio-create" || Boolean(activeSession)} onClick={() => void createStudio()}><Plus className="mr-1 h-3.5 w-3.5"/>Create</Button>
               </div>
-              {(studiosQuery.data?.length ?? 0) > 1 && <Button className="w-full" size="sm" variant={deleteStudioArmed ? "destructive" : "ghost"} disabled={Boolean(activeSession) || busy === "studio-delete"} onClick={() => deleteStudioArmed ? void deleteCurrentStudio() : setDeleteStudioArmed(true)}>{deleteStudioArmed ? `Delete ${studio.name}` : "Prepare studio deletion"}</Button>}
+              {studioRole === "owner" && (studiosQuery.data?.length ?? 0) > 1 && <Button className="w-full" size="sm" variant={deleteStudioArmed ? "destructive" : "ghost"} disabled={Boolean(activeSession) || busy === "studio-delete"} onClick={() => deleteStudioArmed ? void deleteCurrentStudio() : setDeleteStudioArmed(true)}>{deleteStudioArmed ? `Delete ${studio.name}` : "Prepare studio deletion"}</Button>}
               {deleteStudioArmed && <button className="w-full text-[10px] text-zinc-500" onClick={() => setDeleteStudioArmed(false)}>Cancel deletion</button>}
+              {(studio.participants?.length ?? 0) > 0 && <div className="space-y-1 pt-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Production team</p>
+                {studio.participants!.map((participant) => <div key={participant.id} className="flex items-center gap-2 rounded-lg bg-black px-2 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{participant.displayName} <span className="text-zinc-600">@{participant.username}</span></span><span className="text-[9px] font-bold uppercase text-zinc-500">{participant.role}</span>{studioRole === "owner" && participant.role !== "owner" && <button aria-label={`Remove ${participant.username} from broadcast studio`} className="text-[10px] font-bold text-red-400" disabled={busy === `studio-collaborator-${participant.id}`} onClick={() => void removeStudioCollaborator(participant.id)}>Remove</button>}</div>)}
+              </div>}
+              {studioRole === "owner" && <div className="grid grid-cols-[minmax(0,1fr)_86px] gap-2 pt-2">
+                <Input aria-label="Broadcast collaborator username" className="h-9 border-zinc-800 bg-black text-xs" value={collaboratorUsername} placeholder="@username" onChange={(event) => setCollaboratorUsername(event.target.value.replace(/^@/, ""))}/>
+                <select aria-label="Broadcast collaborator role" className="h-9 rounded-md border border-zinc-800 bg-black px-2 text-xs" value={collaboratorRole} onChange={(event) => setCollaboratorRole(event.target.value as "viewer" | "editor")}><option value="editor">Editor</option><option value="viewer">Viewer</option></select>
+                <Button className="col-span-full" size="sm" variant="outline" disabled={!collaboratorUsername.trim() || busy === "studio-collaborator"} onClick={() => void addStudioCollaborator()}>Share studio</Button>
+              </div>}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">

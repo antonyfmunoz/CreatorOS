@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const migration = readFileSync(new URL("../migrations/0065_broadcast_studio.sql", import.meta.url), "utf8");
 const multiDestinationMigration = readFileSync(new URL("../migrations/0066_broadcast_multidestination.sql", import.meta.url), "utf8");
 const productionEvidenceMigration = readFileSync(new URL("../migrations/0068_broadcast_production_evidence.sql", import.meta.url), "utf8");
+const collaborationMigration = readFileSync(new URL("../migrations/0074_broadcast_studio_collaboration.sql", import.meta.url), "utf8");
 
 describe("Broadcast Studio migration", () => {
   it("persists studios, encrypted destinations, and durable sessions", () => {
@@ -30,5 +31,12 @@ describe("Broadcast Studio migration", () => {
     expect(productionEvidenceMigration).toContain('broadcast_session_markers_kind_check');
     expect(productionEvidenceMigration).toContain('broadcast_destination_receipts_state_check');
     expect(productionEvidenceMigration).toContain('broadcast_destination_receipts_session_destination_unique');
+  });
+
+  it("adds role-scoped studio collaborators", () => {
+    expect(collaborationMigration).toContain('CREATE TABLE "broadcast_studio_collaborators"');
+    expect(collaborationMigration).toContain('broadcast_studio_collaborators_studio_user_unique');
+    expect(collaborationMigration).toContain("'viewer', 'editor'");
+    expect(collaborationMigration).toContain('ON DELETE cascade');
   });
 });

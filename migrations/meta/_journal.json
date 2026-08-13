@@ -519,6 +519,13 @@
       "when": 1786611600000,
       "tag": "0073_broadcast_isolated_tracks",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786615200000,
+      "tag": "0074_broadcast_studio_collaboration",
+      "breakpoints": true
     }
   ]
 }

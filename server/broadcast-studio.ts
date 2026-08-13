@@ -22,7 +22,10 @@ import {
   broadcastSessionMarkers,
   broadcastSessionTracks,
   broadcastSessions,
+  broadcastStudioCollaborators,
   broadcastStudios,
+  notifications,
+  users,
 } from "@shared/schema";
 import { attachUser } from "./auth";
 import {
@@ -83,6 +86,10 @@ const brandKitInputSchema = z.object({
   surfaceColor: z.string().regex(/^#[0-9a-f]{6}$/i),
   textColor: z.string().regex(/^#[0-9a-f]{6}$/i),
   logoAssetId: z.string().uuid().nullable().default(null),
+});
+const studioCollaboratorInputSchema = z.object({
+  username: z.string().trim().min(1).max(64),
+  role: z.enum(["viewer", "editor"]).default("viewer"),
 });
 const runtimeMachineId =
   process.env.FLY_MACHINE_ID?.trim() || `local-${process.pid}`;
@@ -205,6 +212,27 @@ async function ownedStudio(userId: number, id: string) {
     )
     .limit(1);
   return row;
+}
+async function studioAccess(userId: number, id: string) {
+  const studio = await ownedStudio(userId, id);
+  if (studio) return { studio, role: "owner" as const, canEdit: true, canOperate: true };
+  const [collaborator] = await db.select().from(broadcastStudioCollaborators).where(and(
+    eq(broadcastStudioCollaborators.studioId, id),
+    eq(broadcastStudioCollaborators.userId, userId),
+  )).limit(1);
+  if (!collaborator) return null;
+  const [sharedStudio] = await db.select().from(broadcastStudios).where(eq(broadcastStudios.id, id)).limit(1);
+  if (!sharedStudio) return null;
+  return { studio: sharedStudio, role: collaborator.role as "viewer" | "editor", canEdit: collaborator.role === "editor", canOperate: false };
+}
+async function studioParticipants(studio: typeof broadcastStudios.$inferSelect) {
+  const collaborators = await db.select().from(broadcastStudioCollaborators).where(eq(broadcastStudioCollaborators.studioId, studio.id)).orderBy(broadcastStudioCollaborators.createdAt);
+  const participantIds = [studio.ownerUserId, ...collaborators.map((item) => item.userId)];
+  const accounts = await db.select({ id: users.id, username: users.username, displayName: users.displayName, profileImageUrl: users.profileImageUrl }).from(users).where(inArray(users.id, participantIds));
+  return accounts.map((account) => ({
+    ...account,
+    role: account.id === studio.ownerUserId ? "owner" : collaborators.find((item) => item.userId === account.id)?.role ?? "viewer",
+  }));
 }
 async function ownedDestination(userId: number, id: string) {
   const [row] = await db
@@ -600,11 +628,14 @@ export function registerBroadcastStudioRoutes(app: Express) {
 
   app.get("/api/broadcast/studios", attachUser, async (req, res) => {
     noStore(res);
-    const studios = await db
+    const [owned, collaborations] = await Promise.all([db
         .select()
         .from(broadcastStudios)
         .where(eq(broadcastStudios.ownerUserId, req.dbUser!.id))
-        .orderBy(desc(broadcastStudios.updatedAt));
+        .orderBy(desc(broadcastStudios.updatedAt)), db.select().from(broadcastStudioCollaborators).where(eq(broadcastStudioCollaborators.userId, req.dbUser!.id))]);
+    const shared = collaborations.length ? await db.select().from(broadcastStudios).where(inArray(broadcastStudios.id, collaborations.map((item) => item.studioId))).orderBy(desc(broadcastStudios.updatedAt)) : [];
+    const roleByStudio = new Map(collaborations.map((item) => [item.studioId, item.role]));
+    const studios = [...owned.map((studio) => ({ ...studio, access: { role: "owner", canEdit: true, canOperate: true } })), ...shared.map((studio) => ({ ...studio, access: { role: roleByStudio.get(studio.id) ?? "viewer", canEdit: roleByStudio.get(studio.id) === "editor", canOperate: false } }))].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
     res.json(studios.map((studio) => ({ ...studio, config: validateBroadcastStudioConfig(studio.config) })));
   });
   app.post("/api/broadcast/studios", attachUser, async (req, res) => {
@@ -634,8 +665,9 @@ export function registerBroadcastStudioRoutes(app: Express) {
   });
   app.get("/api/broadcast/studios/:id", attachUser, async (req, res) => {
     noStore(res);
-    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
-    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Studio not found" });
+    const studio = access.studio;
     const sessions = await db
       .select()
       .from(broadcastSessions)
@@ -644,16 +676,17 @@ export function registerBroadcastStudioRoutes(app: Express) {
       .limit(20);
     const tracks = sessions.length ? await db.select().from(broadcastSessionTracks).where(and(
       inArray(broadcastSessionTracks.sessionId, sessions.map((session) => session.id)),
-      eq(broadcastSessionTracks.ownerUserId, req.dbUser!.id),
+      eq(broadcastSessionTracks.ownerUserId, studio.ownerUserId),
     )).orderBy(broadcastSessionTracks.createdAt) : [];
     const tracksBySession = new Map<string, typeof tracks>();
     for (const track of tracks) tracksBySession.set(track.sessionId, [...(tracksBySession.get(track.sessionId) ?? []), track]);
-    res.json({ ...studio, config: validateBroadcastStudioConfig(studio.config), sessions: sessions.map((session) => ({ ...session, tracks: tracksBySession.get(session.id) ?? [] })) });
+    res.json({ ...studio, access: { role: access.role, canEdit: access.canEdit, canOperate: access.canOperate }, participants: await studioParticipants(studio), config: validateBroadcastStudioConfig(studio.config), sessions: sessions.map((session) => ({ ...session, tracks: tracksBySession.get(session.id) ?? [] })) });
   });
   app.put("/api/broadcast/studios/:id", attachUser, async (req, res) => {
     noStore(res);
-    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
-    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access?.canEdit) return res.status(404).json({ message: "Studio not found" });
+    const studio = access.studio;
     const expected = Number(req.header("if-match"));
     if (!Number.isInteger(expected))
       return res.status(428).json({ message: "If-Match revision is required" });
@@ -697,7 +730,29 @@ export function registerBroadcastStudioRoutes(app: Express) {
       payload: { businessId: studio.businessId, revision: updated.revision },
       idempotencyKey: `broadcast:${studio.id}:revision:${updated.revision}`,
     });
-    res.json(updated);
+    res.json({ ...updated, access: { role: access.role, canEdit: access.canEdit, canOperate: access.canOperate } });
+  });
+  app.post("/api/broadcast/studios/:id/collaborators", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = studioCollaboratorInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A valid collaborator username and role are required" });
+    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
+    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const [account] = await db.select().from(users).where(eq(users.username, parsed.data.username)).limit(1);
+    if (!account || account.status !== "active" || account.deletedAt) return res.status(404).json({ message: "That active CreativesOS account was not found" });
+    if (account.id === studio.ownerUserId) return res.status(409).json({ message: "The studio owner already has access" });
+    const [collaborator] = await db.insert(broadcastStudioCollaborators).values({ studioId: studio.id, userId: account.id, invitedByUserId: req.dbUser!.id, role: parsed.data.role }).onConflictDoUpdate({ target: [broadcastStudioCollaborators.studioId, broadcastStudioCollaborators.userId], set: { role: parsed.data.role, invitedByUserId: req.dbUser!.id } }).returning();
+    await db.insert(notifications).values({ userId: account.id, type: "mention", message: `${req.dbUser!.displayName} invited you to ${studio.name} in Broadcast Studio`, read: false, linkTo: "/broadcast", relatedUserId: req.dbUser!.id, relatedUserImage: req.dbUser!.profileImageUrl, sourceType: "broadcast_studio_collaborator", sourceId: collaborator.id }).onConflictDoNothing();
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: studio.id, eventType: "broadcast.collaborator.added", actorUserId: req.dbUser!.id, payload: { collaboratorUserId: account.id, role: collaborator.role }, idempotencyKey: `broadcast:${studio.id}:collaborator:${account.id}:${collaborator.role}` });
+    res.status(201).json({ id: collaborator.id, userId: account.id, username: account.username, displayName: account.displayName, profileImageUrl: account.profileImageUrl, role: collaborator.role });
+  });
+  app.delete("/api/broadcast/studios/:id/collaborators/:userId", attachUser, async (req, res) => {
+    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
+    const userId = Number(req.params.userId);
+    if (!studio || !Number.isInteger(userId)) return res.status(404).json({ message: "Collaborator not found" });
+    const [removed] = await db.delete(broadcastStudioCollaborators).where(and(eq(broadcastStudioCollaborators.studioId, studio.id), eq(broadcastStudioCollaborators.userId, userId))).returning();
+    if (!removed) return res.status(404).json({ message: "Collaborator not found" });
+    res.status(204).end();
   });
   app.delete("/api/broadcast/studios/:id", attachUser, async (req, res) => {
     const studio = await ownedStudio(req.dbUser!.id, req.params.id);

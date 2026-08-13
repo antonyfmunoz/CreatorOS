@@ -326,6 +326,49 @@ test("Broadcast routes program and monitor audio with persisted sync and balance
   await expect(page.getByLabel("Host camera audio monitoring")).not.toBeChecked();
 });
 
+test("Broadcast owner shares an editable studio without delegating live authority", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const peerUsername = peer === 1 ? "owner" : "sarahmitchell";
+  const ownerUsername = owner === 1 ? "owner" : "sarahmitchell";
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Shared production ${Date.now()}` });
+  await expectOk(createdResponse);
+  const studio = await createdResponse.json();
+
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
+  await page.getByLabel("Broadcast collaborator username").fill(peerUsername);
+  await page.getByLabel("Broadcast collaborator role").selectOption("editor");
+  await page.getByRole("button", { name: "Share studio" }).click();
+  await expect(page.getByText(`@${peerUsername}`)).toBeVisible();
+
+  const peerStudioResponse = await api(page, peer, "GET", `/api/broadcast/studios/${studio.id}`);
+  await expectOk(peerStudioResponse);
+  const peerStudio = await peerStudioResponse.json();
+  expect(peerStudio).toMatchObject({ access: { role: "editor", canEdit: true, canOperate: false }, participants: expect.arrayContaining([expect.objectContaining({ username: ownerUsername, role: "owner" }), expect.objectContaining({ username: peerUsername, role: "editor" })]) });
+  const editedConfig = { ...peerStudio.config, replayBufferSeconds: 45 };
+  const editResponse = await api(page, peer, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config: editedConfig }, { "If-Match": String(peerStudio.revision) });
+  await expectOk(editResponse);
+  expect(await editResponse.json()).toMatchObject({ config: { replayBufferSeconds: 45 }, access: { role: "editor", canOperate: false } });
+  expect((await api(page, peer, "POST", `/api/broadcast/studios/${studio.id}/sessions`, { outputMode: "recording", sourceMode: "test_pattern" })).status()).toBe(404);
+  expect((await api(page, peer, "DELETE", `/api/broadcast/studios/${studio.id}`)).status()).toBe(404);
+
+  await page.getByLabel("Broadcast collaborator username").fill(peerUsername);
+  await page.getByLabel("Broadcast collaborator role").selectOption("viewer");
+  await page.getByRole("button", { name: "Share studio" }).click();
+  await expect(page.getByText("viewer", { exact: true })).toBeVisible();
+  const viewerStudioResponse = await api(page, peer, "GET", `/api/broadcast/studios/${studio.id}`);
+  await expectOk(viewerStudioResponse);
+  const viewerStudio = await viewerStudioResponse.json();
+  expect(viewerStudio).toMatchObject({ access: { role: "viewer", canEdit: false, canOperate: false } });
+  expect((await api(page, peer, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config: viewerStudio.config }, { "If-Match": String(viewerStudio.revision) })).status()).toBe(404);
+
+  await page.getByLabel(`Remove ${peerUsername} from broadcast studio`).click();
+  await expect(page.getByText(`@${peerUsername}`)).toHaveCount(0);
+  expect((await api(page, peer, "GET", `/api/broadcast/studios/${studio.id}`)).status()).toBe(404);
+});
+
 test("Broadcast brand library persists across studios and supports safe removal", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

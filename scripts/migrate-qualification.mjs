@@ -68,8 +68,11 @@ const requiredTables = [
   "cut_studio_review_comments",
   "cut_studio_review_decisions",
   "broadcast_studios",
+  "broadcast_studio_collaborators",
+  "broadcast_brand_kits",
   "broadcast_destinations",
   "broadcast_sessions",
+  "broadcast_session_tracks",
   "broadcast_session_markers",
   "broadcast_destination_receipts",
 ];

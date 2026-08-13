@@ -2696,6 +2696,22 @@ export const broadcastStudios = pgTable(
   (table) => ({ ownerUpdatedIdx: index("broadcast_studios_owner_updated_idx").on(table.ownerUserId, table.updatedAt) }),
 );
 
+export const broadcastStudioCollaborators = pgTable(
+  "broadcast_studio_collaborators",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studioId: uuid("studio_id").references(() => broadcastStudios.id, { onDelete: "cascade" }).notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    invitedByUserId: integer("invited_by_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    role: text("role").notNull().default("viewer"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    studioUserUnique: unique("broadcast_studio_collaborators_studio_user_unique").on(table.studioId, table.userId),
+    userCreatedIdx: index("broadcast_studio_collaborators_user_created_idx").on(table.userId, table.createdAt),
+  }),
+);
+
 // Brand identity is stored outside an individual studio so a creator can keep
 // every show visually consistent without rebuilding colors and logos for each
 // broadcast. The business key preserves a clean path to shared team libraries.
@@ -4520,6 +4536,7 @@ export type CutStudioReviewLink = typeof cutStudioReviewLinks.$inferSelect;
 export type CutStudioReviewComment = typeof cutStudioReviewComments.$inferSelect;
 export type CutStudioReviewDecision = typeof cutStudioReviewDecisions.$inferSelect;
 export type BroadcastStudio = typeof broadcastStudios.$inferSelect;
+export type BroadcastStudioCollaborator = typeof broadcastStudioCollaborators.$inferSelect;
 export type BroadcastBrandKit = typeof broadcastBrandKits.$inferSelect;
 export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;

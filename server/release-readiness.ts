@@ -190,6 +190,7 @@ export function getReleaseReadiness(
       brandKit: "configured",
       accountBrandLibrary: "configured",
       multiStudioManagement: "configured",
+      teamStudioCollaboration: "configured",
       multiAspect: "configured",
       multiDestination: "configured",
       destinationReceipts: "configured",
