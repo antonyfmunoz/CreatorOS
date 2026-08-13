@@ -15,6 +15,18 @@ export const cutClipSchema = z.object({
   timelineStart: z.number().finite().min(0).max(43_200).optional(),
   duckUnderVoice: z.boolean().optional(),
   colorPreset: z.enum(["original", "cinematic", "vivid", "monochrome"]).optional(),
+  colorAdjust: z.object({
+    brightness: z.number().finite().min(-1).max(1),
+    contrast: z.number().finite().min(0.5).max(2),
+    saturation: z.number().finite().min(0).max(3),
+    temperature: z.number().finite().min(-1).max(1),
+  }).optional(),
+  chromaKey: z.object({
+    enabled: z.boolean(),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    similarity: z.number().finite().min(0.01).max(1),
+    blend: z.number().finite().min(0).max(1),
+  }).optional(),
   transform: z.object({
     x: z.number().finite().min(0).max(1),
     y: z.number().finite().min(0).max(1),

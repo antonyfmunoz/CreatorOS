@@ -87,6 +87,8 @@ describe("CreativesOS release readiness", () => {
         audioMasteringPresets: "configured",
         automaticAudioDucking: "configured",
         colorGradePresets: "configured",
+        customColorCorrection: "configured",
+        chromaKey: "configured",
       },
       broadcastStudio: {
         sceneComposer: "configured",
@@ -176,6 +178,8 @@ describe("CreativesOS release readiness", () => {
       audioMasteringPresets: "configured",
       automaticAudioDucking: "configured",
       colorGradePresets: "configured",
+      customColorCorrection: "configured",
+      chromaKey: "configured",
     });
   });
 

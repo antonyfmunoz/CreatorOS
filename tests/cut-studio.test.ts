@@ -71,13 +71,13 @@ describe("CutStudio edit decision list", () => {
     const brollId = "00000000-0000-4000-8000-000000000001";
     const musicId = "00000000-0000-4000-8000-000000000002";
     const result = validateCutEdl({ version: 3, clips: [
-      { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0, colorPreset: "cinematic" },
-      { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .68, y: .62, width: .28, height: .32, opacity: .9 } },
+      { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0, colorPreset: "cinematic", colorAdjust: { brightness: .1, contrast: 1.1, saturation: .9, temperature: .2 } },
+      { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .68, y: .62, width: .28, height: .32, opacity: .9 }, chromaKey: { enabled: true, color: "#00ff00", similarity: .12, blend: .05 } },
       { id: "music", assetId: musicId, start: 0, end: 12, track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true },
     ] }, 20);
     expect(result.version).toBe(3);
-    expect(result.clips[0]).toMatchObject({ colorPreset: "cinematic" });
-    expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: { opacity: .9 } });
+    expect(result.clips[0]).toMatchObject({ colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) });
+    expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: expect.objectContaining({ opacity: .9 }), chromaKey: expect.objectContaining({ enabled: true }) });
     expect(result.clips[2]).toMatchObject({ track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true });
     expect(cutDuration(result)).toBe(20);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: .9, y: 0, width: .5, height: 1, opacity: 1 } }] }, 2)).toThrow(/inside the frame/i);

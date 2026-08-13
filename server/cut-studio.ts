@@ -248,7 +248,7 @@ async function renderMultitrack(
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
     const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip.colorPreset)];
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip)];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
@@ -283,7 +283,10 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
-      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${clipColorFilters(clip.colorPreset).map((filter) => `${filter},`).join("")}scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease,pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,colorchannelmixer=aa=${transform.opacity}[overlay${overlayIndex}]`);
+      const overlayFilters = [...clipColorFilters(clip), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
+      overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
+      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[overlay${overlayIndex}]`);
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x=${Math.round(size[0] * transform.x)}:y=${Math.round(size[1] * transform.y)}:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
@@ -340,11 +343,16 @@ function atempoFilters(speed: number) {
   return filters;
 }
 
-function clipColorFilters(preset: "original" | "cinematic" | "vivid" | "monochrome" | undefined) {
-  if (preset === "cinematic") return ["eq=contrast=1.08:saturation=0.9:brightness=-0.02", "colorbalance=rs=-0.02:bs=0.04"];
-  if (preset === "vivid") return ["eq=contrast=1.08:saturation=1.25"];
-  if (preset === "monochrome") return ["hue=s=0"];
-  return [];
+function clipColorFilters(clip: CutEdl["clips"][number]) {
+  const filters: string[] = [];
+  if (clip.colorPreset === "cinematic") filters.push("eq=contrast=1.08:saturation=0.9:brightness=-0.02", "colorbalance=rs=-0.02:bs=0.04");
+  else if (clip.colorPreset === "vivid") filters.push("eq=contrast=1.08:saturation=1.25");
+  else if (clip.colorPreset === "monochrome") filters.push("hue=s=0");
+  if (clip.colorAdjust) {
+    filters.push(`eq=brightness=${clip.colorAdjust.brightness}:contrast=${clip.colorAdjust.contrast}:saturation=${clip.colorAdjust.saturation}`);
+    if (clip.colorAdjust.temperature !== 0) filters.push(`colorbalance=rs=${clip.colorAdjust.temperature * 0.1}:bs=${clip.colorAdjust.temperature * -0.1}`);
+  }
+  return filters;
 }
 
 function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
@@ -391,7 +399,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
       const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < clips.length - 1 ? transitionFade : 0), outputDuration / 2);
       if (media.hasVideo) {
-        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip.colorPreset)];
+        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip)];
         if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
         if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
         filters.push(`[0:v]${videoFilters.join(",")}[v${index}]`);

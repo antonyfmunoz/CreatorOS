@@ -68,15 +68,15 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   const edl = {
     version: 3,
     clips: [
-      { id: "primary", label: "Primary", start: 0, end: 3, speed: 1, volume: 1, transition: "fade_black", colorPreset: "cinematic", track: "v1", timelineStart: 0 },
-      { id: "broll", assetId: broll.id, label: "Blue B-roll", start: 0, end: 1, speed: 1, volume: 1, colorPreset: "vivid", track: "v2", timelineStart: 0.5, transform: { x: 0.62, y: 0.62, width: 0.35, height: 0.35, opacity: 0.9 } },
+      { id: "primary", label: "Primary", start: 0, end: 3, speed: 1, volume: 1, transition: "fade_black", colorPreset: "cinematic", colorAdjust: { brightness: 0.05, contrast: 1.1, saturation: 1.05, temperature: 0.2 }, track: "v1", timelineStart: 0 },
+      { id: "broll", assetId: broll.id, label: "Blue B-roll", start: 0, end: 1, speed: 1, volume: 1, colorPreset: "vivid", chromaKey: { enabled: true, color: "#1d9bf0", similarity: 0.2, blend: 0.05 }, track: "v2", timelineStart: 0.5, transform: { x: 0.62, y: 0.62, width: 0.35, height: 0.35, opacity: 0.9 } },
       { id: "music", assetId: music.id, label: "Music bed", start: 0, end: 2, speed: 1, volume: 0.2, track: "a1", timelineStart: 0.25, duckUnderVoice: true },
     ],
     graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }],
   };
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
-  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v1", colorPreset: "cinematic" }), expect.objectContaining({ track: "v2", assetId: broll.id, colorPreset: "vivid" }), expect.objectContaining({ track: "a1", assetId: music.id, duckUnderVoice: true })]), graphics: [expect.objectContaining({ text: "CreativesOS Launch" })] });
+  expect(await savedResponse.json()).toMatchObject({ version: 3, clips: expect.arrayContaining([expect.objectContaining({ track: "v1", colorPreset: "cinematic", colorAdjust: expect.objectContaining({ contrast: 1.1 }) }), expect.objectContaining({ track: "v2", assetId: broll.id, colorPreset: "vivid", chromaKey: expect.objectContaining({ enabled: true }) }), expect.objectContaining({ track: "a1", assetId: music.id, duckUnderVoice: true })]), graphics: [expect.objectContaining({ text: "CreativesOS Launch" })] });
 
   const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: true, audioPreset: "broadcast", masterGainDb: -1, quality: "draft", resolution: "720p", fps: 24 });
   await expectOk(renderResponse);
