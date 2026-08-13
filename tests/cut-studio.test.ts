@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCmx3600Edl, buildSrtCaptions, cutDuration, detectCutCandidates, estimateCutRenderSeconds, removeCutRange, restoreCutRange, splitCutAt, validateCutEdl } from "../shared/cut-studio";
+import { buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, detectCutCandidates, estimateCutRenderSeconds, removeCutRange, restoreCutRange, splitCutAt, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -60,9 +60,9 @@ describe("CutStudio edit decision list", () => {
   });
 
   it("gives conservative render estimates for production profiles", () => {
-    const base = { aspect: "16:9", captions: false, captionStyle: 1, cleanAudio: false, quality: "draft", resolution: "720p", fps: 30 } as const;
+    const base = { aspect: "16:9", captions: false, captionStyle: 1, cleanAudio: false, audioPreset: "original", masterGainDb: 0, quality: "draft", resolution: "720p", fps: 30 } as const;
     const draft = estimateCutRenderSeconds(60, base);
-    const master = estimateCutRenderSeconds(60, { ...base, captions: true, cleanAudio: true, quality: "master", resolution: "2160p", fps: 60 });
+    const master = estimateCutRenderSeconds(60, { ...base, captions: true, cleanAudio: true, audioPreset: "broadcast", quality: "master", resolution: "2160p", fps: 60 });
     expect(draft).toBeGreaterThanOrEqual(5);
     expect(master).toBeGreaterThan(draft * 10);
   });
@@ -71,15 +71,22 @@ describe("CutStudio edit decision list", () => {
     const brollId = "00000000-0000-4000-8000-000000000001";
     const musicId = "00000000-0000-4000-8000-000000000002";
     const result = validateCutEdl({ version: 3, clips: [
-      { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0 },
+      { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0, colorPreset: "cinematic" },
       { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .68, y: .62, width: .28, height: .32, opacity: .9 } },
-      { id: "music", assetId: musicId, start: 0, end: 12, track: "a1", timelineStart: 2, volume: .4 },
+      { id: "music", assetId: musicId, start: 0, end: 12, track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true },
     ] }, 20);
     expect(result.version).toBe(3);
+    expect(result.clips[0]).toMatchObject({ colorPreset: "cinematic" });
     expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: { opacity: .9 } });
-    expect(result.clips[2]).toMatchObject({ track: "a1", timelineStart: 2, volume: .4 });
+    expect(result.clips[2]).toMatchObject({ track: "a1", timelineStart: 2, volume: .4, duckUnderVoice: true });
     expect(cutDuration(result)).toBe(20);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: .9, y: 0, width: .5, height: 1, opacity: 1 } }] }, 2)).toThrow(/inside the frame/i);
+  });
+
+  it("constrains professional audio finishing controls", () => {
+    expect(cutRenderRequestSchema.parse({ audioPreset: "broadcast", masterGainDb: -2 })).toMatchObject({ audioPreset: "broadcast", masterGainDb: -2 });
+    expect(() => cutRenderRequestSchema.parse({ audioPreset: "broadcast", masterGainDb: 13 })).toThrow();
+    expect(() => cutRenderRequestSchema.parse({ audioPreset: "unsafe-filter" })).toThrow();
   });
 
   it("models native timed graphics and transition presets", () => {

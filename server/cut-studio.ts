@@ -234,6 +234,7 @@ async function renderMultitrack(
   const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
   if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
   const primaryHasAudio = primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
+  const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
   const filters: string[] = [];
   const concatInputs: string[] = [];
   for (let index = 0; index < primaryClips.length; index += 1) {
@@ -247,7 +248,7 @@ async function renderMultitrack(
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
     const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip.colorPreset)];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
@@ -260,12 +261,14 @@ async function renderMultitrack(
       concatInputs.push(`[basea${index}]`);
     }
   }
-  filters.push(`${concatInputs.join("")}concat=n=${primaryClips.length}:v=1:a=${primaryHasAudio ? 1 : 0}[basevideo]${primaryHasAudio ? "[baseaudio]" : ""}`);
+  filters.push(`${concatInputs.join("")}concat=n=${primaryClips.length}:v=1:a=${primaryHasAudio ? 1 : 0}[basevideo]${primaryHasAudio ? (duckingClips.length ? "[baseaudioraw]" : "[baseaudio]") : ""}`);
+  if (duckingClips.length) filters.push(`[baseaudioraw]asplit=${duckingClips.length + 1}[baseaudio]${duckingClips.map((_, index) => `[voicekey${index}]`).join("")}`);
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const size = request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
   filters.push(`[basevideo]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed0]`);
   let videoLabel = "framed0";
   let overlayIndex = 0;
+  let duckingIndex = 0;
   const audioLabels = primaryHasAudio ? ["[baseaudio]"] : [];
   for (const clip of clips.filter((item) => (item.track ?? "v1") !== "v1")) {
     const assetId = clip.assetId;
@@ -280,7 +283,7 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
-      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease,pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,colorchannelmixer=aa=${transform.opacity}[overlay${overlayIndex}]`);
+      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${clipColorFilters(clip.colorPreset).map((filter) => `${filter},`).join("")}scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease,pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,colorchannelmixer=aa=${transform.opacity}[overlay${overlayIndex}]`);
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x=${Math.round(size[0] * transform.x)}:y=${Math.round(size[1] * transform.y)}:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
@@ -290,7 +293,12 @@ async function renderMultitrack(
       const label = `trackaudio${audioLabels.length}`;
       const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${clip.volume ?? 1}`, `adelay=${delay}|${delay}`];
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[${label}]`);
-      audioLabels.push(`[${label}]`);
+      if (clip.duckUnderVoice && primaryHasAudio) {
+        const duckedLabel = `duckedaudio${duckingIndex}`;
+        filters.push(`[${label}][voicekey${duckingIndex}]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=500[${duckedLabel}]`);
+        audioLabels.push(`[${duckedLabel}]`);
+        duckingIndex += 1;
+      } else audioLabels.push(`[${label}]`);
     }
   }
   const fontFilter = graphics.some((graphic) => graphic.text.trim()) ? await cutStudioFontFilter() : "";
@@ -315,7 +323,8 @@ async function renderMultitrack(
     filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
     videoLabel = "captioned";
   }
-  if (audioLabel && request.cleanAudio) { filters.push(`[${audioLabel}]afftdn=nf=-25[clean]`); audioLabel = "clean"; }
+  const finishingFilters = masterAudioFilters(request);
+  if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
   const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering multitrack edit" }).where(eq(cutStudioJobs.id, jobId));
@@ -328,6 +337,23 @@ function atempoFilters(speed: number) {
   while (remaining > 2.0001) { filters.push("atempo=2"); remaining /= 2; }
   while (remaining < 0.4999) { filters.push("atempo=0.5"); remaining /= 0.5; }
   if (Math.abs(remaining - 1) > 0.0001) filters.push(`atempo=${remaining}`);
+  return filters;
+}
+
+function clipColorFilters(preset: "original" | "cinematic" | "vivid" | "monochrome" | undefined) {
+  if (preset === "cinematic") return ["eq=contrast=1.08:saturation=0.9:brightness=-0.02", "colorbalance=rs=-0.02:bs=0.04"];
+  if (preset === "vivid") return ["eq=contrast=1.08:saturation=1.25"];
+  if (preset === "monochrome") return ["hue=s=0"];
+  return [];
+}
+
+function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
+  const filters: string[] = [];
+  if (request.cleanAudio) filters.push("afftdn=nf=-25");
+  if (request.audioPreset === "voice") filters.push("highpass=f=80", "lowpass=f=16000", "acompressor=threshold=0.125:ratio=3:attack=10:release=120", "loudnorm=I=-16:TP=-1.5:LRA=11", "alimiter=limit=0.95");
+  else if (request.audioPreset === "broadcast") filters.push("highpass=f=70", "acompressor=threshold=0.1:ratio=4:attack=5:release=100", "loudnorm=I=-14:TP=-1:LRA=9", "alimiter=limit=0.94");
+  else if (request.audioPreset === "music") filters.push("loudnorm=I=-14:TP=-1:LRA=12", "alimiter=limit=0.95");
+  if (request.masterGainDb !== 0) filters.push(`volume=${request.masterGainDb}dB`);
   return filters;
 }
 
@@ -351,7 +377,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
-      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, multitrack: true } };
+      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };
     }
     const sourcePath = path.join(temp, source.originalFilename || "source.mp4");
     await materializePrivateAsset(source.storageKey, sourcePath);
@@ -365,7 +391,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
       const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < clips.length - 1 ? transitionFade : 0), outputDuration / 2);
       if (media.hasVideo) {
-        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
+        const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip.colorPreset)];
         if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
         if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
         filters.push(`[0:v]${videoFilters.join(",")}[v${index}]`);
@@ -405,7 +431,8 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
       videoLabel = "captioned";
     }
-    if (media.hasAudio && request.cleanAudio) { filters.push(`[${audioLabel}]afftdn=nf=-25[clean]`); audioLabel = "clean"; }
+    const finishingFilters = masterAudioFilters(request);
+    if (media.hasAudio && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
     const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
     const duration = cutDuration({ version: 2, clips });
     const inputArgs = ["-y", "-i", sourcePath];
@@ -415,7 +442,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     await runProcess("ffmpeg", args, 30 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
-    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps } };
+    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }

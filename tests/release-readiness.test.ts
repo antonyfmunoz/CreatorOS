@@ -84,6 +84,9 @@ describe("CreativesOS release readiness", () => {
         renderProfiles: "configured",
         failedJobRetry: "configured",
         runningJobCancellation: "configured",
+        audioMasteringPresets: "configured",
+        automaticAudioDucking: "configured",
+        colorGradePresets: "configured",
       },
       broadcastStudio: {
         sceneComposer: "configured",
@@ -170,6 +173,9 @@ describe("CreativesOS release readiness", () => {
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",
+      audioMasteringPresets: "configured",
+      automaticAudioDucking: "configured",
+      colorGradePresets: "configured",
     });
   });
 

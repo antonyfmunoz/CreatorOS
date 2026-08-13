@@ -150,6 +150,9 @@ export function getReleaseReadiness(
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",
+      audioMasteringPresets: "configured",
+      automaticAudioDucking: "configured",
+      colorGradePresets: "configured",
     },
     broadcastStudio: {
       sceneComposer: "configured",

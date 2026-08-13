@@ -13,6 +13,8 @@ export const cutClipSchema = z.object({
   assetId: z.string().uuid().optional(),
   track: z.string().regex(/^[va][1-8]$/).optional(),
   timelineStart: z.number().finite().min(0).max(43_200).optional(),
+  duckUnderVoice: z.boolean().optional(),
+  colorPreset: z.enum(["original", "cinematic", "vivid", "monochrome"]).optional(),
   transform: z.object({
     x: z.number().finite().min(0).max(1),
     y: z.number().finite().min(0).max(1),
@@ -65,6 +67,8 @@ export const cutRenderRequestSchema = z.object({
   captions: z.boolean().default(true),
   captionStyle: z.number().int().min(1).max(3).default(1),
   cleanAudio: z.boolean().default(false),
+  audioPreset: z.enum(["original", "voice", "broadcast", "music"]).default("original"),
+  masterGainDb: z.number().finite().min(-12).max(12).default(0),
   quality: z.enum(["draft", "social", "master"]).default("social"),
   resolution: z.enum(["720p", "1080p", "2160p"]).default("1080p"),
   fps: z.union([z.literal(24), z.literal(30), z.literal(60)]).default(30),
@@ -83,7 +87,7 @@ export function estimateCutRenderSeconds(duration: number, request: CutRenderReq
   const qualityFactor = request.quality === "master" ? 2.5 : request.quality === "social" ? 1.25 : 0.65;
   const frameFactor = request.fps / 30;
   const captionFactor = request.captions ? 1.15 : 1;
-  const audioFactor = request.cleanAudio ? 1.1 : 1;
+  const audioFactor = (request.cleanAudio ? 1.1 : 1) * (request.audioPreset !== "original" ? 1.2 : 1);
   return Math.max(5, Math.ceil(Math.max(0, duration) * resolutionFactor * qualityFactor * frameFactor * captionFactor * audioFactor));
 }
 
