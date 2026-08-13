@@ -117,6 +117,47 @@ test("CutStudio measures calibrated private-source loudness", async ({ page }, t
   await expect(page.getByText(/Measured -?\d+\.\d LUFS/)).toBeVisible();
 });
 
+test("CutStudio privately marks and inserts media from a dedicated source monitor", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const fixture = generateFixtures(testInfo);
+  const primary = await uploadPrivate(page, owner, fixture.primary, "source-monitor-primary.mp4", "video/mp4", "video");
+  const broll = await uploadPrivate(page, owner, fixture.broll, "source-monitor-broll.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name: `Source monitor ${Date.now()}`, duration: 3, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  const registeredResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: broll.id, name: "Source B-roll", duration: 1, mediaKind: "video" });
+  await expectOk(registeredResponse);
+  const registered = await registeredResponse.json();
+  expect((await api(page, peer, "GET", `/api/cut/projects/${project.id}/media-library/${registered.id}/media`)).status()).toBe(404);
+  const descriptorResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}/media-library/${registered.id}/media`);
+  await expectOk(descriptorResponse);
+  const privateMediaResponse = await api(page, owner, "GET", (await descriptorResponse.json()).url);
+  await expectOk(privateMediaResponse);
+
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await expect(page.getByLabel("Timeline monitor")).toBeVisible();
+  await page.getByLabel("Open Source B-roll in source monitor").click();
+  const sourceMonitor = page.getByLabel("Source monitor");
+  await expect(sourceMonitor.getByText("Source B-roll")).toBeVisible();
+  const sourceVideo = sourceMonitor.locator("video");
+  await sourceVideo.evaluate((element: HTMLVideoElement) => { element.currentTime = .25; });
+  await sourceMonitor.getByRole("button", { name: "Mark in" }).click();
+  await sourceVideo.evaluate((element: HTMLVideoElement) => { element.currentTime = .75; });
+  await sourceMonitor.getByRole("button", { name: "Mark out" }).click();
+  await sourceMonitor.getByRole("button", { name: "Insert range" }).click();
+  await expect(page.getByText(/Source B-roll 0:00–0:00 added to V2 at the playhead/)).toBeVisible();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    return (await response.json()).edl.clips.find((clip: { assetId?: string }) => clip.assetId === broll.id);
+  }).toMatchObject({ start: .25, end: .75, timelineStart: 0, track: "v2" });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /V2 clip/ })).toBeVisible();
+});
+
 test("CutStudio renders position keyframes into private multitrack output", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

@@ -1035,6 +1035,26 @@ export function registerCutStudioRoutes(app: Express) {
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.media.added", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, assetId: asset.id, mediaKind: parsed.data.mediaKind }, idempotencyKey: `cutstudio:${project.id}:media:${asset.id}` });
     res.status(201).json(row);
   });
+  cut.get("/api/cut/projects/:id/media-library/:mediaId/media", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!media) return res.status(404).json({ message: "Project media not found" });
+    const asset = await ownedAsset(req.dbUser!.id, media.assetId);
+    if (!asset || asset.visibility !== "private" || asset.status !== "ready") return res.status(404).json({ message: "Project media not found" });
+    res.json(await privateReadDescriptor(asset, `/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(media.id)}/media-file`));
+  });
+  cut.get("/api/cut/projects/:id/media-library/:mediaId/media-file", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!media) return res.status(404).json({ message: "Project media not found" });
+    const asset = await ownedAsset(req.dbUser!.id, media.assetId);
+    if (!asset || asset.visibility !== "private" || asset.status !== "ready") return res.status(404).json({ message: "Project media not found" });
+    await streamPrivateAsset(res, asset);
+  });
   cut.get("/api/cut/projects/:id/media-library/:mediaId/waveform", attachUser, async (req, res) => {
     const project = await ownedProject(req.dbUser!.id, req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
