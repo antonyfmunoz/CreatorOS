@@ -237,4 +237,20 @@ describe("CutStudio edit decision list", () => {
     expect(result.clips[2]).toMatchObject({ id: "music", track: "a1", timelineStart: 0 });
     expect(buildSrtCaptions(transcript, result)).toContain("Host: Call to action");
   });
+
+  it("validates durable render-effective track controls", () => {
+    const result = validateCutEdl({ version: 3, clips: [
+      { id: "primary", start: 0, end: 4, track: "v1", timelineStart: 0 },
+      { id: "music", start: 0, end: 4, track: "a1", timelineStart: 0 },
+    ], tracks: [
+      { track: "v1", locked: true, hidden: false, muted: true, solo: false, gain: .8 },
+      { track: "a1", locked: false, hidden: false, muted: false, solo: true, gain: .5 },
+      { track: "a2", locked: false, hidden: false, muted: false, solo: false, gain: 1 },
+    ] }, 4);
+    expect(result.tracks).toEqual([
+      { track: "v1", locked: true, hidden: false, muted: true, solo: false, gain: .8 },
+      { track: "a1", locked: false, hidden: false, muted: false, solo: true, gain: .5 },
+    ]);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v1" }], tracks: [{ track: "v1", gain: 3 }] }, 2)).toThrow();
+  });
 });

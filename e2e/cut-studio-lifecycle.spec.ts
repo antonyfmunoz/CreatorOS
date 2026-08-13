@@ -82,6 +82,7 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
     ],
     graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }, { id: "outro_title", kind: "title", text: "Next", timelineStart: 2.5, duration: 0.25, x: 0.1, y: 0.2, fontSize: 24, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.5 }],
     markers: [{ id: "opening_beat", label: "Opening beat", position: 0.5, kind: "beat", color: "#f43f5e" }, { id: "outro_beat", label: "Outro beat", position: 2.5, kind: "beat", color: "#1d9bf0" }],
+    tracks: [{ track: "v1", locked: false, hidden: false, muted: false, solo: false, gain: 1 }, { track: "v2", locked: false, hidden: false, muted: false, solo: false, gain: 1 }, { track: "a1", locked: false, hidden: false, muted: false, solo: false, gain: 1 }],
   };
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
@@ -96,6 +97,34 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await page.getByText(project.name, { exact: true }).click();
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await expect(page.getByRole("button", { name: "Snap" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Lock V2 track" }).click();
+  await expect(page.getByRole("button", { name: "Unlock V2 track" })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Hide V2 track" }).click();
+  await expect(page.getByRole("button", { name: "Show V2 track" })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Mute A1 track" }).click();
+  await expect(page.getByRole("button", { name: "Unmute A1 track" })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Solo A1 track" }).click();
+  await page.getByLabel("A1 track gain").fill("0.5");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return current.edl.tracks.find((track: { track: string }) => track.track === "a1");
+  }).toMatchObject({ muted: true, solo: true, gain: .5 });
+  const trackControlResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(trackControlResponse);
+  expect((await trackControlResponse.json()).edl.tracks).toEqual(expect.arrayContaining([expect.objectContaining({ track: "v2", locked: true, hidden: true }), expect.objectContaining({ track: "a1", muted: true, solo: true, gain: .5 })]));
+  await page.getByRole("button", { name: "Unlock V2 track" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Show V2 track" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Unmute A1 track" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Unsolo A1 track" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   const audioMeter = page.getByLabel("Realtime audio RMS meter");
   await expect(audioMeter).toBeVisible();
   await page.locator("video").evaluate(async (element: HTMLVideoElement) => { await element.play(); });

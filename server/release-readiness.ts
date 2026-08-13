@@ -150,6 +150,8 @@ export function getReleaseReadiness(
       rollingTrimEditing: "configured",
       slipSourceEditing: "configured",
       durableCompoundTimelines: "configured",
+      trackAuthorityControls: "configured",
+      renderEffectiveTrackMixing: "configured",
       mediaDerivedWaveforms: "configured",
       realtimeAudioMeter: "configured",
       projectMediaLibrary: "configured",

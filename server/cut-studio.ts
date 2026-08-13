@@ -240,6 +240,7 @@ async function renderMultitrack(
   request: z.infer<typeof cutRenderRequestSchema>,
   clips: CutEdl["clips"],
   graphics: NonNullable<CutEdl["graphics"]>,
+  trackSettings: NonNullable<CutEdl["tracks"]>,
   temp: string,
   outputPath: string,
 ) {
@@ -254,10 +255,15 @@ async function renderMultitrack(
   }));
   const inputIndex = new Map(inputs.map((input, index) => [input.asset.id, index]));
   const inputById = new Map(inputs.map((input) => [input.asset.id, input]));
+  const settings = new Map(trackSettings.map((track) => [track.track, track]));
+  const audioTracks = Array.from(new Set(clips.filter((clip) => (clip.track ?? "v1").startsWith("a")).map((clip) => clip.track ?? "a1")));
+  const soloAudioTracks = new Set(audioTracks.filter((track) => settings.get(track)?.solo));
+  const audioTrackEnabled = (track: string) => !settings.get(track)?.muted && (!soloAudioTracks.size || soloAudioTracks.has(track));
+  const trackGain = (track: string) => settings.get(track)?.gain ?? 1;
   const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
   if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
-  const primaryHasAudio = primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
-  const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
+  const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
+  const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
   const filters: string[] = [];
   const concatInputs: string[] = [];
   for (let index = 0; index < primaryClips.length; index += 1) {
@@ -277,7 +283,7 @@ async function renderMultitrack(
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
     concatInputs.push(`[basev${index}]`);
     if (primaryHasAudio) {
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${clip.volume ?? 1}`];
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain("v1")}`];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
       if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[basea${index}]`);
@@ -302,7 +308,7 @@ async function renderMultitrack(
     const speed = clip.speed ?? 1;
     const clipDuration = (clip.end - clip.start) / speed;
     const timelineStart = clip.timelineStart ?? 0;
-    if ((clip.track ?? "").startsWith("v") && input.media.hasVideo) {
+    if ((clip.track ?? "").startsWith("v") && !settings.get(clip.track ?? "v2")?.hidden && input.media.hasVideo) {
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
@@ -314,10 +320,10 @@ async function renderMultitrack(
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
     }
-    if ((clip.track ?? "").startsWith("a") && input.media.hasAudio) {
+    if ((clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && input.media.hasAudio) {
       const delay = Math.max(0, Math.round(timelineStart * 1_000));
       const label = `trackaudio${audioLabels.length}`;
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${clip.volume ?? 1}`, `adelay=${delay}|${delay}`];
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain(clip.track ?? "a1")}`, `adelay=${delay}|${delay}`];
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[${label}]`);
       if (clip.duckUnderVoice && primaryHasAudio) {
         const duckedLabel = `duckedaudio${duckingIndex}`;
@@ -404,8 +410,8 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     if (project.edl.version === 3 && (clips.some((clip) => (clip.track ?? "v1") !== "v1") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
-      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], temp, outputPath);
-      const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics });
+      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], temp, outputPath);
+      const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
       return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };

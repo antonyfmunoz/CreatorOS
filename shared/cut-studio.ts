@@ -66,12 +66,22 @@ export const cutCompoundSchema = z.object({
   collapsed: z.boolean().default(true),
 });
 
+export const cutTrackSettingsSchema = z.object({
+  track: z.string().regex(/^[va][1-8]$/),
+  locked: z.boolean().default(false),
+  hidden: z.boolean().default(false),
+  muted: z.boolean().default(false),
+  solo: z.boolean().default(false),
+  gain: z.number().finite().min(0).max(2).default(1),
+});
+
 export const cutEdlSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   clips: z.array(cutClipSchema).min(1).max(200),
   graphics: z.array(cutGraphicSchema).max(50).optional(),
   markers: z.array(cutMarkerSchema).max(200).optional(),
   compounds: z.array(cutCompoundSchema).max(50).optional(),
+  tracks: z.array(cutTrackSettingsSchema).max(16).optional(),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -111,6 +121,7 @@ export type CutEdl = z.infer<typeof cutEdlSchema>;
 export type CutGraphic = z.infer<typeof cutGraphicSchema>;
 export type CutMarker = z.infer<typeof cutMarkerSchema>;
 export type CutCompound = z.infer<typeof cutCompoundSchema>;
+export type CutTrackSettings = z.infer<typeof cutTrackSettingsSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
@@ -179,7 +190,9 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
   }
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];
-  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds };
+  const usedTracks = new Set(clips.map((clip) => clip.track ?? "v1"));
+  const tracks = parsed.version === 3 ? Array.from(new Map((parsed.tracks ?? []).filter((track) => usedTracks.has(track.track)).map((track) => [track.track, track])).values()) : [];
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds, tracks };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
@@ -206,7 +219,7 @@ export function removeCutRange(edl: CutEdl, start: number, end: number, duration
     }
   }
   const normalized = normalizeCutClips(clips, duration, edl.version);
-  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements) } : edl;
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), tracks: edl.tracks } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
@@ -220,7 +233,7 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     else merged.push({ ...range });
   }
   const normalized = normalizeCutClips([...merged, ...overlays], duration, edl.version);
-  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized), tracks: edl.tracks };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
@@ -235,7 +248,7 @@ export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
     else clips.push(clip);
   }
   const normalized = normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version);
-  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), tracks: edl.tracks };
 }
 
 export function cutTimelinePoints(edl: CutEdl, excludeClipIds: string[] = []) {
