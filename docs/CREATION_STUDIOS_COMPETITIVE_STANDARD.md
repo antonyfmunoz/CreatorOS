@@ -42,12 +42,12 @@ checked against primary product documentation before this scorecard is revised.
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
 | Private ingest and projects | Implemented | Maintain | None |
-| Non-destructive timeline | EDL v3 with absolute positioning, eight video and eight audio tracks, split/trim, speed, volume, fades and undo/redo | Add richer magnetic/ripple editing ergonomics | Product code |
+| Non-destructive timeline | EDL v3 with absolute positioning, eight video and eight audio tracks, split/trim, speed, volume, fades, undo/redo, durable markers, boundary snapping and synchronized clip groups | Add drag editing, ripple modes and compound clips | Product code |
 | Text-based editing | Search, correction and batch filler/dead-air review implemented | Transcript rearrangement and speaker labeling | Product code; transcription provider for new transcripts |
 | Captions | Three burn-in styles plus corrected SRT sidecar export | Animated and translated caption tracks | Product code; translation provider for translation |
 | Social reframing | Fixed aspect fit/pad | Landscape, square, portrait and subject-aware reframing | Product code; vision compute for subject tracking |
 | Audio repair | Per-clip volume/fades, audio beds, automatic voice-over ducking, denoise, master gain, and voice/music/broadcast EQ, compression, loudness normalization and true-peak limiting | Add realtime loudness meters | Product code |
-| Multitrack edit | Private project media library plus real B-roll/PIP, audio beds and timed native title/lower-third/callout graphics rendered by FFmpeg | Compound clips and richer track controls | Product code |
+| Multitrack edit | Private project media library plus real B-roll/PIP, audio beds, synchronized clip grouping and timed native title/lower-third/callout graphics rendered by FFmpeg | Compound clips and richer track controls | Product code |
 | Visual finishing | Per-clip position/size/opacity, aspect render, cut/fade-through-black transitions, grade presets, exposure/contrast/saturation/temperature controls with editor preview, and chroma key for overlays | Add LUT import, dissolves and keyframes | Product code |
 | Review/collaboration | Immutable versions, hashed expiring/revocable review links, private playback, time-coded comments, change requests, approvals and owner resolution implemented | Add workspace collaborators, mention notifications and side-by-side version comparison | Product code |
 | Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry, real running-job cancellation with artifact cleanup, and distribution promotion | Add a scalable 4K worker tier with durable cross-machine cancellation | Product code and scalable compute |

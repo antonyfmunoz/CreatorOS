@@ -67,6 +67,28 @@ function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
 }
 
+async function privateReadDescriptor(asset: typeof assets.$inferSelect, localUrl: string) {
+  if (asset.storageProvider === "local" && process.env.NODE_ENV !== "production") return { url: localUrl, expiresAt: null };
+  return createPrivateAssetReadUrl(asset.storageKey);
+}
+
+async function streamPrivateAsset(res: Response, asset: typeof assets.$inferSelect) {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-private-preview-"));
+  const outputPath = path.join(temp, asset.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "media.bin");
+  try {
+    await materializePrivateAsset(asset.storageKey, outputPath);
+    res.type(asset.mimeType ?? "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${path.basename(outputPath)}"`);
+    res.sendFile(outputPath, { acceptRanges: true }, (error) => {
+      void fs.rm(temp, { recursive: true, force: true });
+      if (error && !res.headersSent) res.status(500).end();
+    });
+  } catch (error) {
+    await fs.rm(temp, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 function reviewTokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -673,7 +695,12 @@ export function registerCutStudioRoutes(app: Express) {
   cut.get("/api/cut/projects/:id/media", attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
     const source = await ownedAsset(req.dbUser!.id, project.sourceAssetId); if (!source) return res.status(404).json({ message: "Source media not found" });
-    res.json(await createPrivateAssetReadUrl(source.storageKey));
+    res.json(await privateReadDescriptor(source, `/api/cut/projects/${encodeURIComponent(project.id)}/media-file`));
+  });
+  cut.get("/api/cut/projects/:id/media-file", attachUser, async (req, res) => {
+    noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
+    const source = await ownedAsset(req.dbUser!.id, project.sourceAssetId); if (!source || source.visibility !== "private" || source.status !== "ready") return res.status(404).json({ message: "Source media not found" });
+    await streamPrivateAsset(res, source);
   });
   cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
     noStore(res);
@@ -800,7 +827,12 @@ export function registerCutStudioRoutes(app: Express) {
   });
   cut.get("/api/cut/jobs/:id/media", attachUser, async (req, res) => {
     noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
-    const artifact = await ownedAsset(req.dbUser!.id, job.artifactAssetId); if (!artifact) return res.status(404).json({ message: "Render not found" }); res.json(await createPrivateAssetReadUrl(artifact.storageKey));
+    const artifact = await ownedAsset(req.dbUser!.id, job.artifactAssetId); if (!artifact) return res.status(404).json({ message: "Render not found" }); res.json(await privateReadDescriptor(artifact, `/api/cut/jobs/${encodeURIComponent(job.id)}/media-file`));
+  });
+  cut.get("/api/cut/jobs/:id/media-file", attachUser, async (req, res) => {
+    noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
+    const artifact = await ownedAsset(req.dbUser!.id, job.artifactAssetId); if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Render not found" });
+    await streamPrivateAsset(res, artifact);
   });
   cut.post("/api/cut/jobs/:id/distribute", attachUser, async (req, res) => {
     noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.state, "done"))).limit(1); if (!job?.artifactAssetId) return res.status(409).json({ message: "A completed render is required" });

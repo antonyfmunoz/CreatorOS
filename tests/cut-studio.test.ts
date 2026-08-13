@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, detectCutCandidates, estimateCutRenderSeconds, removeCutRange, restoreCutRange, splitCutAt, validateCutEdl } from "../shared/cut-studio";
+import { buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -99,5 +99,39 @@ describe("CutStudio edit decision list", () => {
     expect(result.graphics).toEqual([expect.objectContaining({ text: "Launch day", kind: "lower_third" })]);
     expect(cutDuration(result)).toBe(4.5);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2 }], graphics: [{ id: "title", text: "Invalid", timelineStart: 0, duration: 2, textColor: "white" }] }, 2)).toThrow();
+  });
+
+  it("persists timeline markers and snaps edits to meaningful boundaries", () => {
+    const edl = validateCutEdl({ version: 3, clips: [
+      { id: "primary", start: 0, end: 10, track: "v1", timelineStart: 0 },
+      { id: "overlay", start: 0, end: 2, track: "v2", timelineStart: 4 },
+    ], graphics: [
+      { id: "title", text: "Opening", timelineStart: 2, duration: 1 },
+    ], markers: [
+      { id: "beat", label: "Music beat", position: 5.5, kind: "beat", color: "#f43f5e" },
+    ] }, 10);
+
+    expect(edl.markers).toEqual([expect.objectContaining({ label: "Music beat", position: 5.5 })]);
+    expect(cutTimelinePoints(edl)).toEqual(expect.arrayContaining([0, 2, 3, 4, 5.5, 6, 10]));
+    expect(snapCutTime(edl, 5.42)).toBe(5.5);
+    expect(snapCutTime(edl, 5.2)).toBe(5.2);
+  });
+
+  it("groups clips for synchronized movement and can ungroup them", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "camera", start: 0, end: 4, track: "v2", timelineStart: 2 },
+      { id: "mic", start: 0, end: 4, track: "a1", timelineStart: 2 },
+      { id: "music", start: 0, end: 8, track: "a2", timelineStart: 0 },
+    ], markers: [{ id: "chapter", label: "Chapter", position: 5, kind: "chapter", color: "#1d9bf0" }] }, 8);
+    const grouped = groupCutClips(initial, ["camera", "mic"], "guest_pair");
+    expect(grouped.clips.slice(0, 2).map((clip) => clip.groupId)).toEqual(["guest_pair", "guest_pair"]);
+
+    const moved = moveCutClipGroup(grouped, "camera", 4.92, true);
+    expect(moved.clips.find((clip) => clip.id === "camera")?.timelineStart).toBe(5);
+    expect(moved.clips.find((clip) => clip.id === "mic")?.timelineStart).toBe(5);
+    expect(moved.clips.find((clip) => clip.id === "music")?.timelineStart).toBe(0);
+
+    const ungrouped = ungroupCutClips(moved, ["camera"]);
+    expect(ungrouped.clips.slice(0, 2).map((clip) => clip.groupId)).toEqual([undefined, undefined]);
   });
 });

@@ -13,6 +13,7 @@ export const cutClipSchema = z.object({
   assetId: z.string().uuid().optional(),
   track: z.string().regex(/^[va][1-8]$/).optional(),
   timelineStart: z.number().finite().min(0).max(43_200).optional(),
+  groupId: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
   duckUnderVoice: z.boolean().optional(),
   colorPreset: z.enum(["original", "cinematic", "vivid", "monochrome"]).optional(),
   colorAdjust: z.object({
@@ -50,10 +51,19 @@ export const cutGraphicSchema = z.object({
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
 });
 
+export const cutMarkerSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  label: z.string().trim().min(1).max(80),
+  position: z.number().finite().min(0).max(43_200),
+  kind: z.enum(["note", "chapter", "beat"]).default("note"),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#f43f5e"),
+});
+
 export const cutEdlSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   clips: z.array(cutClipSchema).min(1).max(200),
   graphics: z.array(cutGraphicSchema).max(50).optional(),
+  markers: z.array(cutMarkerSchema).max(200).optional(),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -90,6 +100,7 @@ export const cutRenderRequestSchema = z.object({
 export type CutClip = z.infer<typeof cutClipSchema>;
 export type CutEdl = z.infer<typeof cutEdlSchema>;
 export type CutGraphic = z.infer<typeof cutGraphicSchema>;
+export type CutMarker = z.infer<typeof cutMarkerSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
@@ -144,7 +155,7 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     const transform = clip.transform;
     if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
   }
-  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [] };
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [] };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
@@ -168,7 +179,7 @@ export function removeCutRange(edl: CutEdl, start: number, end: number, duration
     }
   }
   const normalized = normalizeCutClips(clips, duration, edl.version);
-  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics } : edl;
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
@@ -181,7 +192,7 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     if (prior && range.start <= prior.end + 0.001) prior.end = Math.max(prior.end, range.end);
     else merged.push({ ...range });
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version), graphics: edl.graphics };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version), graphics: edl.graphics, markers: edl.markers };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
@@ -193,7 +204,59 @@ export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
     );
     else clips.push(clip);
   }
-  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version), graphics: edl.graphics };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version), graphics: edl.graphics, markers: edl.markers };
+}
+
+export function cutTimelinePoints(edl: CutEdl, excludeClipIds: string[] = []) {
+  const excluded = new Set(excludeClipIds);
+  const points = [0, ...(edl.markers ?? []).map((marker) => marker.position)];
+  for (const clip of edl.clips) {
+    if (clip.id && excluded.has(clip.id)) continue;
+    const start = edl.version === 3 ? (clip.timelineStart ?? 0) : clip.start;
+    points.push(start, start + (clip.end - clip.start) / (clip.speed ?? 1));
+  }
+  for (const graphic of edl.graphics ?? []) points.push(graphic.timelineStart, graphic.timelineStart + graphic.duration);
+  return Array.from(new Set(points.filter((point) => Number.isFinite(point) && point >= 0))).sort((left, right) => left - right);
+}
+
+export function snapCutTime(edl: CutEdl, candidate: number, threshold = 0.15, excludeClipIds: string[] = []) {
+  const bounded = Math.max(0, candidate);
+  const closest = cutTimelinePoints(edl, excludeClipIds).reduce<{ point: number; distance: number } | null>((best, point) => {
+    const distance = Math.abs(point - bounded);
+    return !best || distance < best.distance ? { point, distance } : best;
+  }, null);
+  return closest && closest.distance <= threshold ? closest.point : bounded;
+}
+
+export function groupCutClips(edl: CutEdl, clipIds: string[], groupId = `group_${Date.now()}`): CutEdl {
+  if (edl.version !== 3) return edl;
+  const selected = new Set(clipIds);
+  if (selected.size < 2) return edl;
+  return { ...edl, clips: edl.clips.map((clip) => clip.id && selected.has(clip.id) ? { ...clip, groupId } : clip) };
+}
+
+export function ungroupCutClips(edl: CutEdl, clipIds: string[]): CutEdl {
+  if (edl.version !== 3) return edl;
+  const selectedGroups = new Set(edl.clips.filter((clip) => clip.id && clipIds.includes(clip.id)).map((clip) => clip.groupId).filter(Boolean));
+  if (!selectedGroups.size) return edl;
+  return { ...edl, clips: edl.clips.map((clip) => clip.groupId && selectedGroups.has(clip.groupId) ? { ...clip, groupId: undefined } : clip) };
+}
+
+export function moveCutClipGroup(edl: CutEdl, clipId: string, requestedStart: number, snap = true, threshold = 0.15): CutEdl {
+  if (edl.version !== 3) return edl;
+  const anchor = edl.clips.find((clip) => clip.id === clipId);
+  if (!anchor) return edl;
+  const moving = anchor.groupId ? edl.clips.filter((clip) => clip.groupId === anchor.groupId) : [anchor];
+  const movingIds = moving.flatMap((clip) => clip.id ? [clip.id] : []);
+  const anchorStart = anchor.timelineStart ?? 0;
+  const earliestStart = Math.min(...moving.map((clip) => clip.timelineStart ?? 0));
+  const boundedStart = Math.max(requestedStart, anchorStart - earliestStart);
+  const targetStart = snap ? snapCutTime(edl, boundedStart, threshold, movingIds) : boundedStart;
+  const delta = targetStart - anchorStart;
+  return {
+    ...edl,
+    clips: edl.clips.map((clip) => moving.includes(clip) ? { ...clip, timelineStart: Math.max(0, (clip.timelineStart ?? 0) + delta) } : clip),
+  };
 }
 
 export function transcriptWords(transcript: CutTranscript | null | undefined) {
