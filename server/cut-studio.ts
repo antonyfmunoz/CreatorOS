@@ -52,7 +52,7 @@ const projectMediaSchema = z.object({
 function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y", canvasSize: number) {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const points = [{ at: 0, value: transform[axis] }, ...(clip.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[axis] }))]
+  const points = [{ at: 0, value: transform[axis], easing: "linear" as const }, ...(clip.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[axis], easing: keyframe.easing ?? "linear" }))]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
   const pixel = (value: number) => Number((value * canvasSize).toFixed(3));
@@ -65,7 +65,10 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
     const end = Number((timelineStart + right.at).toFixed(3));
     const from = pixel(left.value);
     const delta = Number((pixel(right.value) - from).toFixed(3));
-    const interpolated = `${from}+${delta}*(t-${start})/${Number((right.at - left.at).toFixed(3))}`;
+    const duration = Number((right.at - left.at).toFixed(3));
+    const progress = `(t-${start})/${duration}`;
+    const easedProgress = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    const interpolated = `${from}+${delta}*${easedProgress}`;
     expression = `if(lt(t\\,${end})\\,${interpolated}\\,${expression})`;
   }
   return expression;

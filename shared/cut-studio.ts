@@ -40,6 +40,7 @@ export const cutClipSchema = z.object({
     at: z.number().finite().min(0).max(43_200),
     x: z.number().finite().min(0).max(1),
     y: z.number().finite().min(0).max(1),
+    easing: z.enum(["linear", "ease_in_out"]).optional(),
   })).max(50).optional(),
 });
 

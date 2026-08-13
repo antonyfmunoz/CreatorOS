@@ -171,6 +171,7 @@ export function getReleaseReadiness(
       privateLutImport: "configured",
       calibratedLoudnessAnalysis: "configured",
       renderEffectivePositionKeyframes: "configured",
+      motionEasingPresets: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",

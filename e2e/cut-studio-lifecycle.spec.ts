@@ -138,10 +138,10 @@ test("CutStudio renders position keyframes into private multitrack output", asyn
   const loaded = await loadedResponse.json();
   const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
     { id: "primary", start: 0, end: 2, track: "v1", timelineStart: 0 },
-    { id: "moving_overlay", assetId: overlay.id, start: 0, end: 2, track: "v2", timelineStart: 0, transform: { x: .05, y: .35, width: .2, height: .3, opacity: 1 }, motionKeyframes: [{ at: 1.5, x: .7, y: .35 }] },
+    { id: "moving_overlay", assetId: overlay.id, start: 0, end: 2, track: "v2", timelineStart: 0, transform: { x: .05, y: .35, width: .2, height: .3, opacity: 1 }, motionKeyframes: [{ at: 1.5, x: .7, y: .35, easing: "ease_in_out" }] },
   ] }, { "If-Match": String(loaded.revision) });
   await expectOk(savedResponse);
-  expect(await savedResponse.json()).toMatchObject({ clips: expect.arrayContaining([expect.objectContaining({ id: "moving_overlay", motionKeyframes: [{ at: 1.5, x: .7, y: .35 }] })]) });
+  expect(await savedResponse.json()).toMatchObject({ clips: expect.arrayContaining([expect.objectContaining({ id: "moving_overlay", motionKeyframes: [{ at: 1.5, x: .7, y: .35, easing: "ease_in_out" }] })]) });
 
   await page.goto(`/cut-studio?project=${project.id}`);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
@@ -182,6 +182,13 @@ test("CutStudio renders position keyframes into private multitrack output", asyn
   expect(opening[1]).toBeLessThan(80);
   expect(closing[0]).toBeGreaterThan(150);
   expect(closing[1]).toBeLessThan(80);
+  await page.getByLabel("Motion preset").selectOption("slide_left");
+  await expect(page.getByText("Slide left motion preset applied")).toBeVisible();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    return (await response.json()).edl.clips.find((item: { id: string }) => item.id === "moving_overlay");
+  }).toMatchObject({ transform: { x: .8 }, motionKeyframes: [{ at: 2, x: 0, y: .35, easing: "ease_in_out" }] });
 });
 
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
