@@ -50,29 +50,51 @@ const projectMediaSchema = z.object({
   mediaKind: z.enum(["video", "audio"]),
 });
 
-function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y", canvasSize: number) {
+function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity", multiplier: number, timeVariable = "t") {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const points = [{ at: 0, value: transform[axis], easing: "linear" as const }, ...(clip.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[axis], easing: keyframe.easing ?? "linear" }))]
+  const points = [{ at: 0, value: transform[property], easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe[property] === "number" ? [{ at: keyframe.at, value: keyframe[property]!, easing: keyframe.easing ?? "linear" as const }] : [])]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
-  const pixel = (value: number) => Number((value * canvasSize).toFixed(3));
-  if (points.length === 1) return String(pixel(points[0].value));
-  let expression = String(pixel(points.at(-1)!.value));
+  const output = (value: number) => Number((value * multiplier).toFixed(5));
+  if (points.length === 1) return String(output(points[0].value));
+  let expression = String(output(points.at(-1)!.value));
   for (let index = points.length - 2; index >= 0; index -= 1) {
     const left = points[index];
     const right = points[index + 1];
     const start = Number((timelineStart + left.at).toFixed(3));
     const end = Number((timelineStart + right.at).toFixed(3));
-    const from = pixel(left.value);
-    const delta = Number((pixel(right.value) - from).toFixed(3));
+    const from = output(left.value);
+    const delta = Number((output(right.value) - from).toFixed(5));
     const duration = Number((right.at - left.at).toFixed(3));
-    const progress = `(t-${start})/${duration}`;
+    const progress = `(${timeVariable}-${start})/${duration}`;
     const easedProgress = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
     const interpolated = `${from}+${delta}*${easedProgress}`;
-    expression = `if(lt(t\\,${end})\\,${interpolated}\\,${expression})`;
+    expression = `if(lt(${timeVariable}\\,${end})\\,${interpolated}\\,${expression})`;
   }
   return expression;
+}
+
+function motionScaleExpression(clip: CutEdl["clips"][number], divisor = 1, fps = 30) {
+  const points = [{ at: 0, value: 1, easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [{ at: keyframe.at, value: keyframe.scale, easing: keyframe.easing ?? "linear" as const }] : [])]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const output = (value: number) => Number((value / divisor).toFixed(5));
+  if (points.length === 1) return String(output(points[0].value));
+  let expression = String(output(points.at(-1)!.value));
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const left = points[index]; const right = points[index + 1];
+    const start = Number(left.at.toFixed(3)); const end = Number(right.at.toFixed(3));
+    const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5)); const duration = Number((right.at - left.at).toFixed(3));
+    const progress = `(on/${fps}-${start})/${duration}`;
+    const eased = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    expression = `if(lt(on/${fps}\\,${end})\\,${from}+${delta}*${eased}\\,${expression})`;
+  }
+  return expression;
+}
+
+function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y", canvasSize: number) {
+  return motionPropertyExpression(clip, axis, canvasSize);
 }
 
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
@@ -449,9 +471,22 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
-      const overlayFilters = [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      const animatedScale = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.scale === "number");
+      const scales = [1, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [keyframe.scale] : [])];
+      const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
+      const maximumAnimatedWidth = Math.max(2, Math.round(size[0] * transform.width * maximumScale / 2) * 2);
+      const maximumAnimatedHeight = Math.max(2, Math.round(size[1] * transform.height * maximumScale / 2) * 2);
+      const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
+      const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
+      const overlayFilters = animatedScale
+        ? [...clipColorFilters(clip, lutPaths), `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
+        : [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
-      overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
+      const animatedOpacity = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.opacity === "number");
+      if (animatedOpacity) {
+        const opacityExpression = motionPropertyExpression(clip, "opacity", 1, "T");
+        overlayFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression})'`);
+      } else overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
       filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[overlay${overlayIndex}]`);
       const overlayX = motionOverlayExpression(clip, "x", size[0]);
       const overlayY = motionOverlayExpression(clip, "y", size[1]);

@@ -234,6 +234,72 @@ test("CutStudio routes named audio buses into a private render", async ({ page }
   expect(await jobResponse.json()).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
 });
 
+test("CutStudio renders scale and opacity keyframes into private output", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("scale-opacity-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const primaryPath = `${directory}/black-primary.mp4`;
+  const overlayPath = `${directory}/red-overlay.mp4`;
+  const outputPath = `${directory}/scale-opacity-output.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", primaryPath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=320x180:rate=24:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", overlayPath]);
+  const primary = await uploadPrivate(page, owner, primaryPath, "black-primary.mp4", "video/mp4", "video");
+  const overlay = await uploadPrivate(page, owner, overlayPath, "red-overlay.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name: `Scale opacity ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: overlay.id, name: "Red overlay", duration: 2, mediaKind: "video" }));
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
+    { id: "primary", start: 0, end: 2, track: "v1", timelineStart: 0 },
+    { id: "animated_overlay", assetId: overlay.id, start: 0, end: 2, track: "v2", timelineStart: 0, transform: { x: .1, y: .1, width: .5, height: .6, opacity: .2 }, motionKeyframes: [{ at: 0, x: .1, y: .1, scale: .25, opacity: .2 }, { at: 1.5, x: .1, y: .1, scale: 1, opacity: 1, easing: "ease_in_out" }] },
+  ] }, { "If-Match": String(loaded.revision) });
+  await expectOk(savedResponse);
+  expect(await savedResponse.json()).toMatchObject({ clips: expect.arrayContaining([expect.objectContaining({ id: "animated_overlay", motionKeyframes: [expect.objectContaining({ scale: .25 }), expect.objectContaining({ scale: 1, opacity: 1 })] })]) });
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "V2 clip 2" }).click();
+  await expect(page.getByLabel("Clip motion keyframes")).toContainText("Scale 100 · O 100");
+  await page.getByLabel("Motion preset").selectOption("zoom_in");
+  await expect(page.getByText("Zoom in motion preset applied")).toBeVisible();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    return (await response.json()).edl.clips.find((item: { id: string }) => item.id === "animated_overlay");
+  }).toMatchObject({ motionKeyframes: [expect.objectContaining({ scale: .35 }), expect.objectContaining({ scale: 1 })] });
+  const currentResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(currentResponse);
+  const current = await currentResponse.json();
+  await expectOk(await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { ...current.edl, clips: current.edl.clips.map((item: { id: string }) => item.id === "animated_overlay" ? { ...item, transform: { x: .1, y: .1, width: .5, height: .6, opacity: .2 }, motionKeyframes: [{ at: 0, x: .1, y: .1, scale: .25, opacity: .2 }, { at: 1.5, x: .1, y: .1, scale: 1, opacity: 1, easing: "ease_in_out" }] } : item) }, { "If-Match": String(current.revision) }));
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Scale opacity qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const token = new URL((await reviewResponse.json()).reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${token}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const sample = (seconds: number, x: number, y: number) => execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(seconds), "-i", outputPath, "-vf", `crop=2:2:${x}:${y},scale=1:1`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  const openingInside = sample(.15, 180, 100);
+  const openingOutside = sample(.15, 500, 300);
+  const closingInside = sample(1.8, 500, 300);
+  expect(openingInside[0]).toBeGreaterThan(20);
+  expect(openingInside[0]).toBeLessThan(100);
+  expect(openingOutside[0]).toBeLessThan(20);
+  expect(closingInside[0]).toBeGreaterThan(150);
+});
+
 test("CutStudio renders clip volume automation into private output", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

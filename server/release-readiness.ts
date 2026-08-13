@@ -171,6 +171,7 @@ export function getReleaseReadiness(
       privateLutImport: "configured",
       calibratedLoudnessAnalysis: "configured",
       renderEffectivePositionKeyframes: "configured",
+      renderEffectiveScaleOpacityKeyframes: "configured",
       motionEasingPresets: "configured",
       namedAudioBuses: "configured",
       renderEffectiveVolumeAutomation: "configured",

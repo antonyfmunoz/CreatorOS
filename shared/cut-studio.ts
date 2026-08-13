@@ -40,6 +40,8 @@ export const cutClipSchema = z.object({
     at: z.number().finite().min(0).max(43_200),
     x: z.number().finite().min(0).max(1),
     y: z.number().finite().min(0).max(1),
+    scale: z.number().finite().min(0.25).max(4).optional(),
+    opacity: z.number().finite().min(0).max(1).optional(),
     easing: z.enum(["linear", "ease_in_out"]).optional(),
   })).max(50).optional(),
   volumeKeyframes: z.array(z.object({
@@ -261,7 +263,8 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     const keyframeTimes = new Set<number>();
     for (const keyframe of clip.motionKeyframes ?? []) {
       if (keyframe.at > clipDuration + 0.001) throw new Error("A motion keyframe must remain inside its clip");
-      if (transform && (keyframe.x + transform.width > 1.001 || keyframe.y + transform.height > 1.001)) throw new Error("A motion keyframe must remain inside the frame");
+      const scale = keyframe.scale ?? 1;
+      if (transform && (keyframe.x + transform.width * scale > 1.001 || keyframe.y + transform.height * scale > 1.001)) throw new Error("A motion keyframe must remain inside the frame");
       const roundedTime = Math.round(keyframe.at * 1_000);
       if (keyframeTimes.has(roundedTime)) throw new Error("Motion keyframes must use unique times");
       keyframeTimes.add(roundedTime);
