@@ -259,6 +259,19 @@ export function moveCutClipGroup(edl: CutEdl, clipId: string, requestedStart: nu
   };
 }
 
+export function audioRmsDb(samples: Uint8Array, floorDb = -60) {
+  if (!samples.length) return floorDb;
+  let sumSquares = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    const normalized = (sample - 128) / 128;
+    sumSquares += normalized * normalized;
+  }
+  const rms = Math.sqrt(sumSquares / samples.length);
+  if (!Number.isFinite(rms) || rms <= 0.000001) return floorDb;
+  return Math.max(floorDb, Math.min(0, 20 * Math.log10(rms)));
+}
+
 export function transcriptWords(transcript: CutTranscript | null | undefined) {
   return transcript?.segments.flatMap((segment) => segment.words) ?? [];
 }

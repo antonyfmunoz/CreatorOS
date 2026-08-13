@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, Captions, Check, CheckCircle2, ChevronRight, Copy, Download, Film, FileText, Flag, Link2, Loader2, Magnet, MessageSquare, Play, Plus, Redo2, RefreshCw, Save, Scissors, Search, Share2, Sparkles, Square, Trash2, Undo2, Unlink2, Upload, WandSparkles, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, splitCutAt, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutTranscript } from "@shared/cut-studio";
+import { audioRmsDb, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, splitCutAt, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutTranscript } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio"; createdAt: string };
 type Project = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; edl: CutEdl; transcript: CutTranscript | null; revision: number; updatedAt: string; jobs?: Job[]; media?: ProjectMedia[] };
@@ -43,6 +43,13 @@ async function mediaDuration(file: File) {
 export default function CutStudioPage() {
   const [, setLocation] = useLocation();
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const audioSourceElementRef = useRef<HTMLMediaElement | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterFrameRef = useRef<number>();
+  const dragRef = useRef<{ clipId: string; startX: number; trackWidth: number; origin: CutEdl; moved: boolean } | null>(null);
+  const suppressClipClickRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
@@ -77,6 +84,7 @@ export default function CutStudioPage() {
   const [savingTranscript, setSavingTranscript] = useState(false);
   const [reviews, setReviews] = useState<ReviewVersion[]>([]);
   const [reviewUrl, setReviewUrl] = useState("");
+  const [audioLevelDb, setAudioLevelDb] = useState(-60);
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
@@ -287,12 +295,57 @@ export default function CutStudioPage() {
   };
 
   const seek = (time: number) => { setPlayhead(time); if (mediaRef.current) mediaRef.current.currentTime = time; };
+  const stopAudioMeter = () => {
+    if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
+    meterFrameRef.current = undefined;
+    setAudioLevelDb(-60);
+  };
+  const startAudioMeter = async () => {
+    const media = mediaRef.current;
+    if (!media) return;
+    try {
+      const AudioContextClass = window.AudioContext;
+      if (audioSourceElementRef.current && audioSourceElementRef.current !== media) {
+        audioSourceRef.current?.disconnect();
+        analyserRef.current?.disconnect();
+        await audioContextRef.current?.close();
+        audioContextRef.current = null;
+        audioSourceRef.current = null;
+        analyserRef.current = null;
+      }
+      if (!audioContextRef.current || audioContextRef.current.state === "closed") audioContextRef.current = new AudioContextClass();
+      if (!audioSourceRef.current) {
+        audioSourceRef.current = audioContextRef.current.createMediaElementSource(media);
+        audioSourceElementRef.current = media;
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        analyserRef.current.fftSize = 1024;
+        audioSourceRef.current.connect(analyserRef.current);
+        analyserRef.current.connect(audioContextRef.current.destination);
+      }
+      await audioContextRef.current.resume();
+      const samples = new Uint8Array(analyserRef.current!.fftSize);
+      const measure = () => {
+        analyserRef.current!.getByteTimeDomainData(samples);
+        setAudioLevelDb(audioRmsDb(samples));
+        meterFrameRef.current = requestAnimationFrame(measure);
+      };
+      stopAudioMeter();
+      measure();
+    } catch {
+      stopAudioMeter();
+    }
+  };
   const onTime = () => {
     const media = mediaRef.current; if (!media || !edl) return;
     const current = media.currentTime; const clip = edl.clips.find((item) => current >= item.start && current < item.end);
     if (!clip) { const next = edl.clips.find((item) => item.start > current); if (next) media.currentTime = next.start; else media.pause(); }
     setPlayhead(media.currentTime);
   };
+
+  useEffect(() => () => {
+    if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
+    void audioContextRef.current?.close();
+  }, []);
 
   const undo = () => { const prior = history.at(-1); if (!prior || !edl) return; setFuture((items) => [edl, ...items].slice(0, 50)); setHistory((items) => items.slice(0, -1)); setEdl(prior); };
   const redo = () => { const next = future[0]; if (!next || !edl) return; setHistory((items) => [...items, edl].slice(-50)); setFuture((items) => items.slice(1)); setEdl(next); };
@@ -332,6 +385,52 @@ export default function CutStudioPage() {
     setMessage(`Selection moved to ${formatTime(playhead)}${snapEnabled ? " with snapping" : ""}`);
   };
 
+  const startClipDrag = (event: ReactPointerEvent<HTMLButtonElement>, item: CutEdl["clips"][number]) => {
+    if (!edl || edl.version !== 3 || !item.id || event.button !== 0) return;
+    const trackWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 1;
+    dragRef.current = { clipId: item.id, startX: event.clientX, trackWidth, origin: edl, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveClipDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const deltaPixels = event.clientX - drag.startX;
+    if (!drag.moved && Math.abs(deltaPixels) < 3) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      const clipIndex = drag.origin.clips.findIndex((item) => item.id === drag.clipId);
+      if (clipIndex >= 0) setSelectedClip(clipIndex);
+      if (!selectedClipIds.includes(drag.clipId)) setSelectedClipIds([drag.clipId]);
+    }
+    const anchor = drag.origin.clips.find((item) => item.id === drag.clipId);
+    if (!anchor) return;
+    const requested = (anchor.timelineStart ?? 0) + (deltaPixels / drag.trackWidth) * timelineDuration;
+    setEdl(moveCutClipGroup(drag.origin, drag.clipId, requested, snapEnabled));
+  };
+
+  const finishClipDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!drag?.moved) return;
+    suppressClipClickRef.current = true;
+    setHistory((items) => [...items.slice(-49), drag.origin]);
+    setFuture([]);
+    setMessage(`Clip moved${snapEnabled ? " with snapping" : ""}`);
+  };
+
+  const selectTimelineClip = (event: ReactMouseEvent<HTMLButtonElement>, item: CutEdl["clips"][number], index: number) => {
+    event.stopPropagation();
+    if (suppressClipClickRef.current) {
+      suppressClipClickRef.current = false;
+      return;
+    }
+    setSelectedClip(index);
+    if (item.id) setSelectedClipIds((ids) => event.shiftKey || event.metaKey || event.ctrlKey ? ids.includes(item.id!) ? ids.filter((id) => id !== item.id) : [...ids, item.id!] : [item.id!]);
+    seek(edl?.version === 3 ? (item.timelineStart ?? 0) : item.start);
+  };
+
   if (!project || !edl) return (
     <main className="min-h-screen bg-black pb-24 text-white">
       <header className="sticky top-0 z-20 flex h-14 items-center border-b border-zinc-800 bg-black px-4"><Button variant="ghost" size="icon" onClick={() => setLocation("/create")} aria-label="Back"><ArrowLeft /></Button><Film className="ml-2 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 text-lg font-bold">CutStudio</h1></header>
@@ -348,6 +447,11 @@ export default function CutStudioPage() {
   const selectedMedia = clip?.assetId ? mediaLibrary.find((item) => item.assetId === clip.assetId) : mediaLibrary.find((item) => item.assetId === project.sourceAssetId);
   const timelineDuration = Math.max(project.duration, cutDuration(edl));
   const timelineTracks = edl.version === 3 ? Array.from(new Set(edl.clips.map((item) => item.track ?? "v1"))).sort() : ["v1"];
+  const clipWaveformUrl = (item: CutEdl["clips"][number]) => {
+    if (!(item.track ?? "v1").startsWith("a")) return "";
+    const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project.sourceAssetId));
+    return media ? `/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(media.id)}/waveform` : "";
+  };
   const words = project.transcript?.segments.flatMap((segment) => segment.words) ?? [];
   const renders = jobs.filter((job) => job.kind === "render");
   const transcriptJob = jobs.find((job) => job.kind === "transcribe");
@@ -360,13 +464,32 @@ export default function CutStudioPage() {
       <div className="mx-auto grid max-w-[1500px] gap-4 p-3 lg:grid-cols-[1fr_360px]">
         <section className="min-w-0 space-y-4">
           <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-            {project.mediaKind === "video" ? <video ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: previewColorFilter(clip) }} src={mediaUrl} controls onTimeUpdate={onTime}/> : <audio ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onTimeUpdate={onTime}/>}
+            {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: previewColorFilter(clip) }} src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
             {(edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} className="pointer-events-none absolute max-w-[80%] rounded px-3 py-2 font-bold" style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
           </div>
+          <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Audio RMS</span><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output></div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
              <div className="space-y-1 rounded-xl bg-zinc-900 p-2" onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); seek(((event.clientX - box.left) / box.width) * timelineDuration); }}>
-               {timelineTracks.map((track) => <div key={track} className="relative h-14 overflow-hidden rounded-lg bg-black"><span className="pointer-events-none absolute left-1 top-1 z-10 rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-400">{track.toUpperCase()}</span>{(edl.markers ?? []).map((marker) => <span key={`${track}-${marker.id}`} className="pointer-events-none absolute inset-y-0 z-10 w-px opacity-80" style={{ left: `${(marker.position / timelineDuration) * 100}%`, backgroundColor: marker.color }} title={marker.label}/>)}{edl.clips.map((item, index) => (item.track ?? "v1") === track ? <button key={item.id ?? `${item.start}-${item.end}`} className={`absolute bottom-1 top-1 rounded-md border px-2 text-xs font-bold ${item.id && selectedClipIds.includes(item.id) ? "border-white bg-[#1d9bf0] text-black" : track.startsWith("a") ? "border-emerald-700 bg-emerald-950 text-emerald-300" : "border-zinc-600 bg-zinc-700"}`} style={{ left: `${(((edl.version === 3 ? item.timelineStart : item.start) ?? 0) / timelineDuration) * 100}%`, width: `${Math.max(0.7, (((item.end - item.start) / (item.speed ?? 1)) / timelineDuration) * 100)}%` }} onClick={(event) => { event.stopPropagation(); setSelectedClip(index); if (item.id) setSelectedClipIds((ids) => event.shiftKey || event.metaKey || event.ctrlKey ? ids.includes(item.id!) ? ids.filter((id) => id !== item.id) : [...ids, item.id!] : [item.id!]); seek(edl.version === 3 ? (item.timelineStart ?? 0) : item.start); }} aria-label={`${track.toUpperCase()} clip ${index + 1}`}>{item.groupId && <Link2 className="mr-1 inline h-3 w-3"/>}{item.label ?? index + 1}{(item.speed ?? 1) !== 1 ? ` · ${item.speed}x` : ""}</button> : null)}<span className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-red-500" style={{ left: `${(playhead / timelineDuration) * 100}%` }}/></div>)}
+               {timelineTracks.map((track) => <div key={track} className="relative h-14 overflow-hidden rounded-lg bg-black">
+                 <span className="pointer-events-none absolute left-1 top-1 z-10 rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-400">{track.toUpperCase()}</span>
+                 {(edl.markers ?? []).map((marker) => <span key={`${track}-${marker.id}`} className="pointer-events-none absolute inset-y-0 z-10 w-px opacity-80" style={{ left: `${(marker.position / timelineDuration) * 100}%`, backgroundColor: marker.color }} title={marker.label}/>)}
+                 {edl.clips.map((item, index) => (item.track ?? "v1") === track ? <button
+                   key={item.id ?? `${item.start}-${item.end}`}
+                   className={`absolute bottom-1 top-1 overflow-hidden rounded-md border px-2 text-xs font-bold ${edl.version === 3 ? "touch-none select-none cursor-grab active:cursor-grabbing" : ""} ${item.id && selectedClipIds.includes(item.id) ? "border-white bg-[#1d9bf0] text-black" : track.startsWith("a") ? "border-emerald-700 bg-emerald-950 text-emerald-300" : "border-zinc-600 bg-zinc-700"}`}
+                   style={{ left: `${(((edl.version === 3 ? item.timelineStart : item.start) ?? 0) / timelineDuration) * 100}%`, width: `${Math.max(0.7, (((item.end - item.start) / (item.speed ?? 1)) / timelineDuration) * 100)}%` }}
+                   onPointerDown={(event) => startClipDrag(event, item)}
+                   onPointerMove={moveClipDrag}
+                   onPointerUp={finishClipDrag}
+                   onPointerCancel={finishClipDrag}
+                   onClick={(event) => selectTimelineClip(event, item, index)}
+                   aria-label={`${track.toUpperCase()} clip ${index + 1}`}
+                 >
+                   {clipWaveformUrl(item) && <img data-testid={`waveform-${item.id ?? index}`} src={clipWaveformUrl(item)} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-45"/>}
+                   <span className="pointer-events-none relative z-[1]">{item.groupId && <Link2 className="mr-1 inline h-3 w-3"/>}{item.label ?? index + 1}{(item.speed ?? 1) !== 1 ? ` · ${item.speed}x` : ""}</span>
+                 </button> : null)}
+                 <span className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-red-500" style={{ left: `${(playhead / timelineDuration) * 100}%` }}/>
+               </div>)}
              </div>
              {(edl.markers?.length ?? 0) > 0 && <div className="mt-2 flex flex-wrap gap-2">{edl.markers!.map((marker) => <div key={marker.id} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-black px-2 py-1 text-[10px] text-zinc-300"><button aria-label={`Seek to ${marker.label}`} onClick={() => seek(marker.position)}><span className="block h-2 w-2 rounded-full" style={{ backgroundColor: marker.color }}/></button><input aria-label={`Rename marker at ${formatTime(marker.position)}`} value={marker.label} maxLength={80} className="w-24 bg-transparent outline-none focus:text-white" onChange={(event) => applyEdit({ ...edl, markers: edl.markers?.map((item) => item.id === marker.id ? { ...item, label: event.target.value || "Marker" } : item) })}/><button className="text-zinc-500 hover:text-white" onClick={() => seek(marker.position)}>{formatTime(marker.position)}</button><button aria-label={`Delete ${marker.label}`} onClick={() => applyEdit({ ...edl, markers: edl.markers?.filter((item) => item.id !== marker.id) })}><X className="h-3 w-3 text-zinc-600"/></button></div>)}</div>}
             {clip && <><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs text-zinc-400">In · {formatTime(clip.start)}<input className="mt-2 w-full accent-[#1d9bf0]" type="range" min={0} max={clip.end - .05} step="0.05" value={clip.start} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, start: Number(event.target.value) } : item) })}/></label><label className="text-xs text-zinc-400">Out · {formatTime(clip.end)}<input className="mt-2 w-full accent-[#1d9bf0]" type="range" min={clip.start + .05} max={selectedMedia?.duration ?? project.duration} step="0.05" value={clip.end} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, end: Number(event.target.value) } : item) })}/></label></div><div className="mt-4 grid gap-3 sm:grid-cols-6"><label className="text-xs text-zinc-400">Speed<select aria-label="Clip speed" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.speed ?? 1} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, speed: Number(event.target.value) } : item) })}>{[.25,.5,.75,1,1.25,1.5,2,4].map((value) => <option key={value} value={value}>{value}x</option>)}</select></label><label className="text-xs text-zinc-400">Transition<select aria-label="Clip transition" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.transition ?? "cut"} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transition: event.target.value as "cut" | "fade_black" } : item) })}><option value="cut">Cut</option><option value="fade_black">Fade black</option></select></label><label className="text-xs text-zinc-400">Color<select aria-label="Clip color" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2 text-white" value={clip.colorPreset ?? "original"} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, colorPreset: event.target.value as "original" | "cinematic" | "vivid" | "monochrome" } : item) })}><option value="original">Original</option><option value="cinematic">Cinematic</option><option value="vivid">Vivid</option><option value="monochrome">Monochrome</option></select></label>{[["Volume", "volume", 0, 2, .05], ["Fade in", "fadeIn", 0, 10, .1], ["Fade out", "fadeOut", 0, 10, .1]].map(([label, key, min, max, step]) => <label key={String(key)} className="text-xs text-zinc-400">{label} · {Number(clip[key as "volume" | "fadeIn" | "fadeOut"] ?? (key === "volume" ? 1 : 0)).toFixed(1)}<input aria-label={String(label)} className="mt-2 w-full accent-[#1d9bf0]" type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={clip[key as "volume" | "fadeIn" | "fadeOut"] ?? (key === "volume" ? 1 : 0)} onChange={(event) => applyEdit({ version: edl.version, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, [String(key)]: Number(event.target.value) } : item) })}/></label>)}</div>{edl.version === 3 && clip.track !== "v1" && <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-xs text-zinc-400">Timeline start<input aria-label="Clip timeline start" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2" type="number" min={0} max={7200} step="0.1" value={clip.timelineStart ?? 0} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, timelineStart: Number(event.target.value) } : item) })}/></label>{clip.track?.startsWith("a") && <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400">Duck under voice<Switch aria-label="Duck under voice" checked={clip.duckUnderVoice ?? false} onCheckedChange={(checked) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, duckUnderVoice: checked } : item) })}/></label>}{clip.track?.startsWith("v") && <><label className="text-xs text-zinc-400">Layout<select aria-label="Clip layout" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black p-2" value={(clip.transform?.width ?? 1) < .8 ? "pip" : "full"} onChange={(event) => { const pip = event.target.value === "pip"; applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transform: pip ? { x: .68, y: .62, width: .28, height: .32, opacity: 1 } : { x: 0, y: 0, width: 1, height: 1, opacity: 1 } } : item) }); }}><option value="full">Full frame</option><option value="pip">Picture in picture</option></select></label><label className="text-xs text-zinc-400">Opacity<input aria-label="Clip opacity" className="mt-2 w-full accent-[#1d9bf0]" type="range" min={0} max={1} step={.05} value={clip.transform?.opacity ?? 1} onChange={(event) => applyEdit({ version: 3, clips: edl.clips.map((item, index) => index === selectedClip ? { ...item, transform: { ...(item.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 }), opacity: Number(event.target.value) } } : item) })}/></label></>}</div>}</>}

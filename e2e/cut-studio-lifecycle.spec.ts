@@ -64,6 +64,13 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(loadedResponse);
   const loaded = await loadedResponse.json();
   expect(loaded.media).toHaveLength(3);
+  const musicMedia = loaded.media.find((item: { assetId: string }) => item.assetId === music.id);
+  expect(musicMedia).toBeTruthy();
+  const waveformResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}/media-library/${musicMedia.id}/waveform`);
+  await expectOk(waveformResponse);
+  expect(waveformResponse.headers()["content-type"]).toContain("image/png");
+  expect(Array.from((await waveformResponse.body()).subarray(0, 8))).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  expect((await api(page, peer, "GET", `/api/cut/projects/${project.id}/media-library/${musicMedia.id}/waveform`)).status()).toBe(404);
 
   const edl = {
     version: 3,
@@ -83,11 +90,35 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await page.getByText(project.name, { exact: true }).click();
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await expect(page.getByRole("button", { name: "Snap" })).toHaveAttribute("aria-pressed", "true");
+  const audioMeter = page.getByLabel("Realtime audio RMS meter");
+  await expect(audioMeter).toBeVisible();
+  await page.locator("video").evaluate(async (element: HTMLVideoElement) => { await element.play(); });
+  await expect.poll(async () => Number.parseFloat((await audioMeter.locator("output").textContent()) ?? "-60"), { timeout: 5_000 }).toBeGreaterThan(-55);
+  await page.locator("video").evaluate((element: HTMLVideoElement) => element.pause());
+  const waveform = page.getByTestId("waveform-music");
+  await expect(waveform).toBeVisible();
+  await expect.poll(() => waveform.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBeTruthy();
   await expect(page.getByLabel("Rename marker at 0:00")).toHaveValue("Opening beat");
   await page.getByRole("button", { name: "V2 clip 2" }).click();
   await page.getByRole("button", { name: "A1 clip 3" }).click({ modifiers: ["Shift"] });
   await expect(page.getByRole("button", { name: "Group", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Ungroup", exact: true })).toBeEnabled();
+  const audioClip = page.getByRole("button", { name: "A1 clip 3" });
+  const audioBox = await audioClip.boundingBox();
+  const trackBox = await audioClip.locator("..").boundingBox();
+  expect(audioBox).toBeTruthy();
+  expect(trackBox).toBeTruthy();
+  await page.mouse.move(audioBox!.x + audioBox!.width / 2, audioBox!.y + audioBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(audioBox!.x + audioBox!.width / 2 + trackBox!.width * .1, audioBox!.y + audioBox!.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByText("Clip moved with snapping", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const movedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(movedResponse);
+  const moved = await movedResponse.json();
+  expect(moved.edl.clips.find((item: { id: string }) => item.id === "music").timelineStart).toBeCloseTo(.5, 2);
+  expect(moved.edl.clips.find((item: { id: string }) => item.id === "broll").timelineStart).toBeCloseTo(.75, 2);
   await page.getByRole("button", { name: "Marker", exact: true }).click();
   await expect(page.getByLabel("Rename marker at 0:00")).toHaveCount(2);
   await expect(page.getByText("Marker added at 0:00")).toBeVisible();

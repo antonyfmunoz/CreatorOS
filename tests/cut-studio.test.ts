@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { audioRmsDb, buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -133,5 +133,12 @@ describe("CutStudio edit decision list", () => {
 
     const ungrouped = ungroupCutClips(moved, ["camera"]);
     expect(ungrouped.clips.slice(0, 2).map((clip) => clip.groupId)).toEqual([undefined, undefined]);
+  });
+
+  it("measures realtime unsigned audio samples in dBFS", () => {
+    expect(audioRmsDb(new Uint8Array(128).fill(128))).toBe(-60);
+    expect(audioRmsDb(new Uint8Array([0, 255]))).toBeCloseTo(-0.03, 1);
+    expect(audioRmsDb(new Uint8Array([96, 160]))).toBeCloseTo(-12.04, 1);
+    expect(audioRmsDb(new Uint8Array())).toBe(-60);
   });
 });
