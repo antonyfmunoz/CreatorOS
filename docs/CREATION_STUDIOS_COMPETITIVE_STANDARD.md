@@ -35,13 +35,13 @@ checked against primary product documentation before this scorecard is revised.
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
 | Private ingest and projects | Implemented | Maintain | None |
-| Non-destructive timeline | Implemented, single source | Precise split/trim, per-clip speed, volume, fades, undo/redo | Product code |
+| Non-destructive timeline | EDL v3 with absolute positioning, eight video and eight audio tracks, split/trim, speed, volume, fades and undo/redo | Add richer magnetic/ripple editing ergonomics | Product code |
 | Text-based editing | Search, correction and batch filler/dead-air review implemented | Transcript rearrangement and speaker labeling | Product code; transcription provider for new transcripts |
 | Captions | Three burn-in styles plus corrected SRT sidecar export | Animated and translated caption tracks | Product code; translation provider for translation |
 | Social reframing | Fixed aspect fit/pad | Landscape, square, portrait and subject-aware reframing | Product code; vision compute for subject tracking |
 | Audio repair | Basic denoise | Loudness, EQ, compression, ducking, fades and meters | Product code |
-| Multitrack edit | Not implemented | Multiple video/audio/graphics tracks, B-roll, titles and clip ordering | Product code and data migration |
-| Visual finishing | Basic crop through aspect render | Per-clip crop/transform, transitions, color correction, LUT and chroma key | Product code |
+| Multitrack edit | Private project media library plus real B-roll/PIP and audio-bed FFmpeg render implemented | Graphics tracks, compound clips and richer track controls | Product code |
+| Visual finishing | Per-clip position, size and opacity plus aspect render | Transitions, keyframes, color correction, LUT and chroma key | Product code |
 | Review/collaboration | Project owner only | Review link, time-coded comments, versions and approvals | Product code |
 | Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry and distribution promotion | True running-job cancellation and a scalable 4K worker tier | Product code and scalable compute |
 | AI assistance | Deterministic edit proposals and highlights | Provider-neutral assistance with human review | AI providers remain optional adapters |
@@ -56,11 +56,11 @@ checked against primary product documentation before this scorecard is revised.
 | Source control | Transform, crop, layer, blend, basic filters, mute/volume | Chroma key, LUT, audio filters, monitoring and source presets | Product code; device limitations apply |
 | Brand production | Lower thirds, tickers, countdowns, asset logos and persistent color kit | Reusable team-level brand kits and animated overlays | Product code |
 | Output formats | 720p/1080p landscape, portrait and square at 24/30/60 | Maintain and add destination-specific framing when justified | Product code |
-| Destinations | Secure simultaneous fan-out to as many as eight RTMP/RTMPS/SRT destinations | Per-destination status, reconnect and independent failover | Product code; destination accounts remain providers |
-| Recording | Private server or browser recording and replay buffer | Pause/resume, markers, isolated participant tracks and local-quality capture | Product code; guest/device constraints apply |
+| Destinations | Secure simultaneous fan-out to as many as eight RTMP/RTMPS/SRT destinations with durable per-destination state receipts | Reconnect and independent failover | Product code; destination accounts remain providers |
+| Recording | Private server or browser recording, replay buffer, browser pause/resume and durable production markers | Isolated participant tracks and local-quality capture | Product code; guest/device constraints apply |
 | Guests/roles | Realtime community-room foundation exists | Backstage, producer, host, guest and AI-role participation in the studio | Product code; realtime provider activation |
 | Audience | Not integrated into studio | Unified live comments, moderation, on-screen comments and calls to action | Product code; channel APIs remain providers |
-| Reliability | Encoder test and live health | Reconnect, failover, destination health and incident receipts | Product code and production infrastructure |
+| Reliability | Encoder test, live health, durable destination status and interruption reconciliation | Automatic reconnect and independently supervised destination failover | Product code and production infrastructure |
 
 ## CreativesOS advantage
 

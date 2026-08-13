@@ -90,6 +90,21 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
   const started = await startedResponse.json();
   expect(started.state).toBe("live");
 
+  const markerResponse = await api(
+    page,
+    owner,
+    "POST",
+    `/api/broadcast/sessions/${started.id}/markers`,
+    { kind: "highlight", label: "Opening highlight" },
+  );
+  await expectOk(markerResponse);
+  expect(await markerResponse.json()).toMatchObject({
+    kind: "highlight",
+    label: "Opening highlight",
+    positionMs: expect.any(Number),
+  });
+  expect((await api(page, peer, "POST", `/api/broadcast/sessions/${started.id}/markers`, { kind: "note", label: "Unauthorized" })).status()).toBe(404);
+
   await expect
     .poll(
       async () => {
@@ -140,6 +155,11 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
   expect(completed).toMatchObject({
     state: "complete",
     recordingAssetId: expect.any(String),
+    markers: [expect.objectContaining({ label: "Opening highlight" })],
+    destinationReceipts: [expect.objectContaining({
+      destinationName: "Private recording",
+      state: "complete",
+    })],
   });
 
   const mediaResponse = await api(
@@ -222,4 +242,5 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByText(/Operator keys:/)).toBeVisible();
   await page.getByLabel("Broadcast resolution").selectOption("1080x1920");
   await expect(page.getByLabel("Broadcast resolution")).toHaveValue("1080x1920");
+
 });

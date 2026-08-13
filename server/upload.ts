@@ -85,7 +85,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     }
   } else if (file.fieldname === 'audio') {
     // For audio uploads
-    const allowedTypes = /mp3|wav|ogg|webm/;
+    const allowedTypes = /mp3|wav|ogg|webm|m4a|aac|flac/;
     // Check extension
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     // Check mime type (more permissive for audio)

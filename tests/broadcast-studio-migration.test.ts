@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(new URL("../migrations/0065_broadcast_studio.sql", import.meta.url), "utf8");
 const multiDestinationMigration = readFileSync(new URL("../migrations/0066_broadcast_multidestination.sql", import.meta.url), "utf8");
+const productionEvidenceMigration = readFileSync(new URL("../migrations/0068_broadcast_production_evidence.sql", import.meta.url), "utf8");
 
 describe("Broadcast Studio migration", () => {
   it("persists studios, encrypted destinations, and durable sessions", () => {
@@ -21,5 +22,13 @@ describe("Broadcast Studio migration", () => {
   it("adds durable multi-destination lineage", () => {
     expect(multiDestinationMigration).toContain('ADD COLUMN IF NOT EXISTS "destination_ids" json');
     expect(multiDestinationMigration).toContain('json_build_array("destination_id")');
+  });
+
+  it("persists owner-scoped production markers and destination receipts", () => {
+    expect(productionEvidenceMigration).toContain('CREATE TABLE "broadcast_session_markers"');
+    expect(productionEvidenceMigration).toContain('CREATE TABLE "broadcast_destination_receipts"');
+    expect(productionEvidenceMigration).toContain('broadcast_session_markers_kind_check');
+    expect(productionEvidenceMigration).toContain('broadcast_destination_receipts_state_check');
+    expect(productionEvidenceMigration).toContain('broadcast_destination_receipts_session_destination_unique');
   });
 });

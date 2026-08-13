@@ -140,6 +140,8 @@ export function getReleaseReadiness(
     cutStudio: {
       privateIngest: privateAssetDelivery ? "configured" : "unconfigured",
       nonDestructiveEdl: "configured",
+      projectMediaLibrary: "configured",
+      multitrackRender: "configured",
       transcriptCorrection: "configured",
       captionSidecars: "configured",
       renderProfiles: "configured",
@@ -151,6 +153,9 @@ export function getReleaseReadiness(
       brandKit: "configured",
       multiAspect: "configured",
       multiDestination: "configured",
+      destinationReceipts: "configured",
+      productionMarkers: "configured",
+      recordingPauseResume: "configured",
       nativeGraphics: "configured",
       browserCapture: "configured",
       serverEncoder: "configured",

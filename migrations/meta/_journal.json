@@ -470,6 +470,20 @@
       "when": 1786568400000,
       "tag": "0066_broadcast_multidestination",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786575600000,
+      "tag": "0067_cut_studio_multitrack",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786582800000,
+      "tag": "0068_broadcast_production_evidence",
+      "breakpoints": true
     }
   ]
 }

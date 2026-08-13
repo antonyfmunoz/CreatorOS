@@ -16,7 +16,9 @@ import {
 } from "@shared/broadcast-studio";
 import {
   assets,
+  broadcastDestinationReceipts,
   broadcastDestinations,
+  broadcastSessionMarkers,
   broadcastSessions,
   broadcastStudios,
 } from "@shared/schema";
@@ -46,6 +48,10 @@ const recordingInputSchema = z.object({
     .int()
     .positive()
     .max(8 * 60 * 60_000),
+});
+const markerInputSchema = z.object({
+  kind: z.enum(["highlight", "issue", "note"]).default("highlight"),
+  label: z.string().trim().min(1).max(160).default("Highlight"),
 });
 const runtimeMachineId =
   process.env.FLY_MACHINE_ID?.trim() || `local-${process.pid}`;
@@ -300,6 +306,15 @@ async function finalizeRuntime(runtime: Runtime, code: number | null) {
         updatedAt: new Date(),
       })
       .where(eq(broadcastSessions.id, runtime.sessionId));
+    await db
+      .update(broadcastDestinationReceipts)
+      .set({
+        state,
+        detail: state === "complete" ? "Output completed" : "Encoder stopped unexpectedly",
+        endedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(broadcastDestinationReceipts.sessionId, runtime.sessionId));
     await emitProjectionEvent({
       aggregateType: "broadcast_studio",
       aggregateId: runtime.studioId,
@@ -474,6 +489,10 @@ async function launchRuntime(
       updatedAt: new Date(),
     })
     .where(eq(broadcastSessions.id, session.id));
+  await db
+    .update(broadcastDestinationReceipts)
+    .set({ state: "live", detail: "Encoder is delivering output", startedAt: new Date(runtime.startedAt), updatedAt: new Date() })
+    .where(eq(broadcastDestinationReceipts.sessionId, session.id));
 }
 
 export function registerBroadcastStudioRoutes(app: Express) {
@@ -758,6 +777,11 @@ export function registerBroadcastStudioRoutes(app: Express) {
           })
           .returning();
         sessionId = session.id;
+        await db.insert(broadcastDestinationReceipts).values(
+          destinations.length
+            ? destinations.map((destination) => ({ sessionId: session.id, destinationId: destination.id, ownerUserId: req.dbUser!.id, destinationName: destination.name }))
+            : [{ sessionId: session.id, destinationId: null, ownerUserId: req.dbUser!.id, destinationName: "Private recording" }],
+        );
         await launchRuntime(session, studio, destinations, parsed.data);
         await emitProjectionEvent({
           aggregateType: "broadcast_studio",
@@ -780,17 +804,10 @@ export function registerBroadcastStudioRoutes(app: Express) {
           .json((await ownedSession(req.dbUser!.id, session.id))!);
       } catch (error: any) {
         if (sessionId)
-          await db
-            .update(broadcastSessions)
-            .set({
-              state: "error",
-              errorCode: "encoder_start_failed",
-              errorMessage: "The encoder could not start",
-              endedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(broadcastSessions.id, sessionId))
-            .catch(() => undefined);
+          await Promise.all([
+            db.update(broadcastSessions).set({ state: "error", errorCode: "encoder_start_failed", errorMessage: "The encoder could not start", endedAt: new Date(), updatedAt: new Date() }).where(eq(broadcastSessions.id, sessionId)).catch(() => undefined),
+            db.update(broadcastDestinationReceipts).set({ state: "error", detail: "Encoder could not start", endedAt: new Date(), updatedAt: new Date() }).where(eq(broadcastDestinationReceipts.sessionId, sessionId)).catch(() => undefined),
+          ]);
         if (error?.code === "23505")
           return res
             .status(409)
@@ -851,6 +868,16 @@ export function registerBroadcastStudioRoutes(app: Express) {
           endedAt: now,
         })
         .returning();
+      await db.insert(broadcastDestinationReceipts).values({
+        sessionId: session.id,
+        destinationId: null,
+        ownerUserId: req.dbUser!.id,
+        destinationName: "Private recording",
+        state: "complete",
+        detail: "Browser-composited recording saved",
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+      });
       await emitProjectionEvent({
         aggregateType: "broadcast_studio",
         aggregateId: studio.id,
@@ -871,7 +898,35 @@ export function registerBroadcastStudioRoutes(app: Express) {
     const session = await ownedSession(req.dbUser!.id, req.params.id);
     if (!session)
       return res.status(404).json({ message: "Broadcast not found" });
-    res.json(session);
+    const [markers, destinationReceipts] = await Promise.all([
+      db.select().from(broadcastSessionMarkers).where(and(eq(broadcastSessionMarkers.sessionId, session.id), eq(broadcastSessionMarkers.ownerUserId, req.dbUser!.id))).orderBy(broadcastSessionMarkers.positionMs),
+      db.select().from(broadcastDestinationReceipts).where(and(eq(broadcastDestinationReceipts.sessionId, session.id), eq(broadcastDestinationReceipts.ownerUserId, req.dbUser!.id))).orderBy(broadcastDestinationReceipts.updatedAt),
+    ]);
+    res.json({ ...session, markers, destinationReceipts });
+  });
+  app.post("/api/broadcast/sessions/:id/markers", attachUser, async (req, res) => {
+    noStore(res);
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    if (!session.startedAt || !["live", "stopping"].includes(session.state)) return res.status(409).json({ message: "Markers can only be added to active output" });
+    const parsed = markerInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const [marker] = await db.insert(broadcastSessionMarkers).values({
+      sessionId: session.id,
+      ownerUserId: req.dbUser!.id,
+      kind: parsed.data.kind,
+      label: parsed.data.label,
+      positionMs: Math.max(0, Date.now() - session.startedAt.getTime()),
+    }).returning();
+    res.status(201).json(marker);
+  });
+  app.delete("/api/broadcast/sessions/:id/markers/:markerId", attachUser, async (req, res) => {
+    noStore(res);
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    const deleted = await db.delete(broadcastSessionMarkers).where(and(eq(broadcastSessionMarkers.id, req.params.markerId), eq(broadcastSessionMarkers.sessionId, session.id), eq(broadcastSessionMarkers.ownerUserId, req.dbUser!.id))).returning({ id: broadcastSessionMarkers.id });
+    if (!deleted.length) return res.status(404).json({ message: "Marker not found" });
+    res.status(204).end();
   });
   app.post(
     "/api/broadcast/sessions/:id/chunks",
@@ -936,6 +991,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
           updatedAt: new Date(),
         })
         .where(eq(broadcastSessions.id, session.id));
+      await db.update(broadcastDestinationReceipts).set({ state: "interrupted", detail: "Broadcast runtime was interrupted", endedAt: new Date(), updatedAt: new Date() }).where(eq(broadcastDestinationReceipts.sessionId, session.id));
       return res
         .status(409)
         .json({ message: "Broadcast runtime was interrupted" });
@@ -1083,6 +1139,7 @@ export async function reconcileBroadcastSessions() {
       ),
     )
     .returning({ id: broadcastSessions.id });
+  if (stale.length) await db.update(broadcastDestinationReceipts).set({ state: "interrupted", detail: "Encoder host stopped reporting", endedAt: new Date(), updatedAt: new Date() }).where(inArray(broadcastDestinationReceipts.sessionId, stale.map((row) => row.id)));
   return stale.length;
 }
 

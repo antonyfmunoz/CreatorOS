@@ -66,4 +66,19 @@ describe("CutStudio edit decision list", () => {
     expect(draft).toBeGreaterThanOrEqual(5);
     expect(master).toBeGreaterThan(draft * 10);
   });
+
+  it("models durable video and audio layers on an absolute multitrack timeline", () => {
+    const brollId = "00000000-0000-4000-8000-000000000001";
+    const musicId = "00000000-0000-4000-8000-000000000002";
+    const result = validateCutEdl({ version: 3, clips: [
+      { id: "primary", start: 0, end: 20, track: "v1", timelineStart: 0 },
+      { id: "broll", assetId: brollId, start: 1, end: 6, track: "v2", timelineStart: 4, transform: { x: .68, y: .62, width: .28, height: .32, opacity: .9 } },
+      { id: "music", assetId: musicId, start: 0, end: 12, track: "a1", timelineStart: 2, volume: .4 },
+    ] }, 20);
+    expect(result.version).toBe(3);
+    expect(result.clips[1]).toMatchObject({ track: "v2", timelineStart: 4, assetId: brollId, transform: { opacity: .9 } });
+    expect(result.clips[2]).toMatchObject({ track: "a1", timelineStart: 2, volume: .4 });
+    expect(cutDuration(result)).toBe(20);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v2", transform: { x: .9, y: 0, width: .5, height: 1, opacity: 1 } }] }, 2)).toThrow(/inside the frame/i);
+  });
 });

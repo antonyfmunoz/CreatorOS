@@ -61,10 +61,13 @@ const requiredTables = [
   "creator_payout_events",
   "production_backups",
   "cut_studio_projects",
+  "cut_studio_project_media",
   "cut_studio_jobs",
   "broadcast_studios",
   "broadcast_destinations",
   "broadcast_sessions",
+  "broadcast_session_markers",
+  "broadcast_destination_receipts",
 ];
 
 const requiredColumns = {

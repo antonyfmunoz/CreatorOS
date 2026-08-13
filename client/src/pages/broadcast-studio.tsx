@@ -16,6 +16,7 @@ import {
   Mic,
   MonitorUp,
   Palette,
+  Pause,
   Play,
   Plus,
   Radio,
@@ -74,6 +75,8 @@ type Session = {
   recordingAssetId: string | null;
   errorMessage: string | null;
   createdAt: string;
+  markers?: Array<{ id: string; kind: string; label: string; positionMs: number }>;
+  destinationReceipts?: Array<{ id: string; destinationName: string; state: string; detail: string }>;
 };
 type Asset = {
   id: string;
@@ -169,6 +172,7 @@ export default function BroadcastStudioPage() {
   const [busy, setBusy] = useState("");
   const [replayActive, setReplayActive] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
+  const [capturePaused, setCapturePaused] = useState(false);
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
@@ -852,6 +856,7 @@ export default function BroadcastStudioPage() {
           );
       };
       recorder.start(1000);
+      setCapturePaused(false);
       setSession({ ...created, state: "live" });
       setMessage(
         outputMode === "stream" ? "You are live" : "Recording program output",
@@ -880,10 +885,37 @@ export default function BroadcastStudioPage() {
       capture.stream.getTracks().forEach((track) => track.stop());
       await capture.audioContext?.close();
       runtimeCapture.current = null;
+      setCapturePaused(false);
     }
     await apiRequest("POST", `/api/broadcast/sessions/${session.id}/stop`, {});
     setSession({ ...session, state: "stopping" });
     setBusy("");
+  };
+  const toggleRecordingPause = () => {
+    const capture = runtimeCapture.current;
+    if (!capture || session?.outputMode !== "recording") return;
+    if (capture.recorder.state === "recording") {
+      capture.recorder.pause();
+      setCapturePaused(true);
+      setMessage("Recording paused. Program preview remains active.");
+    } else if (capture.recorder.state === "paused") {
+      capture.recorder.resume();
+      setCapturePaused(false);
+      setMessage("Recording resumed");
+    }
+  };
+  const addProductionMarker = async (kind: "highlight" | "issue" | "note" = "highlight") => {
+    if (!session) return;
+    try {
+      const marker = await (await apiRequest("POST", `/api/broadcast/sessions/${session.id}/markers`, {
+        kind,
+        label: kind === "highlight" ? "Highlight" : kind === "issue" ? "Review issue" : "Operator note",
+      })).json() as NonNullable<Session["markers"]>[number];
+      setSession({ ...session, markers: [...(session.markers ?? []), marker] });
+      setMessage(`${marker.label} marked at ${formatUptime(marker.positionMs / 1000)}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Marker could not be saved");
+    }
   };
   const startEncoderTest = async () => {
     if (!studio || activeSession) return;
@@ -1131,15 +1163,23 @@ export default function BroadcastStudioPage() {
             className={`h-2 w-2 rounded-full ${activeSession ? "animate-pulse bg-red-500" : "bg-emerald-500"}`}
           />
           {activeSession ? (
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={busy === "stop"}
-              onClick={() => void stopOutput()}
-            >
-              <CircleStop className="mr-1.5 h-4 w-4" />
-              Stop
-            </Button>
+            <>
+              {session?.outputMode === "recording" && runtimeCapture.current && (
+                <Button size="sm" variant="outline" onClick={toggleRecordingPause} aria-label={capturePaused ? "Resume recording" : "Pause recording"}>
+                  {capturePaused ? <Play className="mr-1.5 h-4 w-4" /> : <Pause className="mr-1.5 h-4 w-4" />}
+                  {capturePaused ? "Resume" : "Pause"}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy === "stop"}
+                onClick={() => void stopOutput()}
+              >
+                <CircleStop className="mr-1.5 h-4 w-4" />
+                Stop
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -1579,6 +1619,7 @@ export default function BroadcastStudioPage() {
           </Panel>
           <Panel title="Output health" icon={Radio}>
             {activeSession ? (
+              <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-9">
                 {[
                   ["State", session?.state],
@@ -1600,6 +1641,13 @@ export default function BroadcastStudioPage() {
                     value={String(value)}
                   />
                 ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-3">
+                <Button size="sm" variant="outline" onClick={() => void addProductionMarker("highlight")}>Mark highlight</Button>
+                <Button size="sm" variant="outline" onClick={() => void addProductionMarker("issue")}>Mark issue</Button>
+                <span className="text-[10px] text-zinc-500">{session?.markers?.length ?? 0} production markers</span>
+              </div>
+              {(session?.destinationReceipts?.length ?? 0) > 0 && <div className="grid gap-2 sm:grid-cols-2">{session!.destinationReceipts!.map((receipt) => <div key={receipt.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-xs"><span className={`h-2 w-2 rounded-full ${receipt.state === "live" ? "animate-pulse bg-emerald-400" : receipt.state === "error" || receipt.state === "interrupted" ? "bg-red-500" : "bg-zinc-500"}`}/><span className="truncate font-bold">{receipt.destinationName}</span><span className="ml-auto text-[10px] uppercase text-zinc-500">{receipt.state}</span></div>)}</div>}
               </div>
             ) : (
               <div className="space-y-3">

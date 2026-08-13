@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assets, cutStudioJobs, cutStudioProjects } from "@shared/schema";
+import { assets, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects } from "@shared/schema";
 import {
   buildCmx3600Edl,
   buildSrtCaptions,
@@ -37,6 +37,12 @@ const createProjectSchema = z.object({
   mediaKind: z.enum(["video", "audio"]),
 });
 const promptSchema = z.object({ prompt: z.string().trim().min(1).max(2_000) });
+const projectMediaSchema = z.object({
+  assetId: z.string().uuid(),
+  name: z.string().trim().min(1).max(160),
+  duration: z.number().finite().positive().max(43_200),
+  mediaKind: z.enum(["video", "audio"]),
+});
 const idSchema = z.string().uuid();
 const running = new Set<string>();
 
@@ -56,6 +62,10 @@ async function ownedAsset(userId: number, id: string) {
     .where(and(eq(assets.id, id), eq(assets.ownerUserId, userId)))
     .limit(1);
   return asset;
+}
+
+async function projectMedia(projectId: string, userId: number) {
+  return db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, projectId), eq(cutStudioProjectMedia.ownerUserId, userId))).orderBy(cutStudioProjectMedia.createdAt);
 }
 
 async function canStartJob(userId: number) {
@@ -145,9 +155,117 @@ function deterministicProposal(prompt: string, edl: CutEdl, duration: number, tr
   return null;
 }
 
+async function renderMultitrack(
+  jobId: string,
+  project: typeof cutStudioProjects.$inferSelect,
+  source: typeof assets.$inferSelect,
+  request: z.infer<typeof cutRenderRequestSchema>,
+  clips: CutEdl["clips"],
+  temp: string,
+  outputPath: string,
+) {
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : [])]));
+  const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), inArray(assets.id, requestedAssetIds)));
+  if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
+  const inputs = await Promise.all(assetRows.map(async (asset, index) => {
+    const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
+    const inputPath = path.join(temp, `source-${index}${extension}`);
+    await materializePrivateAsset(asset.storageKey, inputPath);
+    return { asset, url: inputPath, media: await probeMedia(inputPath) };
+  }));
+  const inputIndex = new Map(inputs.map((input, index) => [input.asset.id, index]));
+  const inputById = new Map(inputs.map((input) => [input.asset.id, input]));
+  const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
+  if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
+  const primaryHasAudio = primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
+  const filters: string[] = [];
+  const concatInputs: string[] = [];
+  for (let index = 0; index < primaryClips.length; index += 1) {
+    const clip = primaryClips[index];
+    const assetId = clip.assetId ?? source.id;
+    const media = inputById.get(assetId)?.media;
+    const sourceIndex = inputIndex.get(assetId);
+    if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
+    const speed = clip.speed ?? 1;
+    const outputDuration = (clip.end - clip.start) / speed;
+    const fadeIn = Math.min(clip.fadeIn ?? 0, outputDuration / 2);
+    const fadeOut = Math.min(clip.fadeOut ?? 0, outputDuration / 2);
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`];
+    if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
+    if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+    filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
+    concatInputs.push(`[basev${index}]`);
+    if (primaryHasAudio) {
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${clip.volume ?? 1}`];
+      if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
+      if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+      filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[basea${index}]`);
+      concatInputs.push(`[basea${index}]`);
+    }
+  }
+  filters.push(`${concatInputs.join("")}concat=n=${primaryClips.length}:v=1:a=${primaryHasAudio ? 1 : 0}[basevideo]${primaryHasAudio ? "[baseaudio]" : ""}`);
+  const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
+  const size = request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  filters.push(`[basevideo]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed0]`);
+  let videoLabel = "framed0";
+  let overlayIndex = 0;
+  const audioLabels = primaryHasAudio ? ["[baseaudio]"] : [];
+  for (const clip of clips.filter((item) => (item.track ?? "v1") !== "v1")) {
+    const assetId = clip.assetId;
+    if (!assetId) continue;
+    const input = inputById.get(assetId);
+    const sourceIndex = inputIndex.get(assetId);
+    if (!input || sourceIndex === undefined) continue;
+    const speed = clip.speed ?? 1;
+    const clipDuration = (clip.end - clip.start) / speed;
+    const timelineStart = clip.timelineStart ?? 0;
+    if ((clip.track ?? "").startsWith("v") && input.media.hasVideo) {
+      const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
+      const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
+      const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
+      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease,pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,colorchannelmixer=aa=${transform.opacity}[overlay${overlayIndex}]`);
+      filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x=${Math.round(size[0] * transform.x)}:y=${Math.round(size[1] * transform.y)}:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
+      videoLabel = `framed${overlayIndex + 1}`;
+      overlayIndex += 1;
+    }
+    if ((clip.track ?? "").startsWith("a") && input.media.hasAudio) {
+      const delay = Math.max(0, Math.round(timelineStart * 1_000));
+      const label = `trackaudio${audioLabels.length}`;
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${clip.volume ?? 1}`, `adelay=${delay}|${delay}`];
+      filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[${label}]`);
+      audioLabels.push(`[${label}]`);
+    }
+  }
+  let audioLabel: string | null = primaryHasAudio ? "baseaudio" : null;
+  if (audioLabels.length > 1) {
+    filters.push(`${audioLabels.join("")}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=2[mixedaudio]`);
+    audioLabel = "mixedaudio";
+  } else if (audioLabels.length === 1) audioLabel = audioLabels[0].slice(1, -1);
+  if (request.captions && project.transcript) {
+    const srtPath = path.join(temp, "captions.srt");
+    await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 3, clips }), "utf8");
+    const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+    const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
+    filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
+    videoLabel = "captioned";
+  }
+  if (audioLabel && request.cleanAudio) { filters.push(`[${audioLabel}]afftdn=nf=-25[clean]`); audioLabel = "clean"; }
+  const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering multitrack edit" }).where(eq(cutStudioJobs.id, jobId));
+  await runProcess("ffmpeg", args);
+}
+
+function atempoFilters(speed: number) {
+  const filters: string[] = [];
+  let remaining = speed;
+  while (remaining > 2.0001) { filters.push("atempo=2"); remaining /= 2; }
+  while (remaining < 0.4999) { filters.push("atempo=0.5"); remaining /= 0.5; }
+  if (Math.abs(remaining - 1) > 0.0001) filters.push(`atempo=${remaining}`);
+  return filters;
+}
+
 async function renderJob(jobId: string, project: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
-  const secure = await createPrivateAssetReadUrl(source.storageKey);
-  const media = await probeMedia(secure.url);
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
   const outputName = `${project.name.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "cut"}.mp4`;
   const outputPath = path.join(temp, outputName);
@@ -161,6 +279,17 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       });
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
+    if (project.edl.version === 3 && clips.some((clip) => (clip.track ?? "v1") !== "v1")) {
+      if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
+      await renderMultitrack(jobId, project, source, request, clips, temp, outputPath);
+      const duration = cutDuration({ version: 3, clips });
+      const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
+      const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
+      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, multitrack: true } };
+    }
+    const sourcePath = path.join(temp, source.originalFilename || "source.mp4");
+    await materializePrivateAsset(source.storageKey, sourcePath);
+    const media = await probeMedia(sourcePath);
     const filters: string[] = [];
     const concatInputs: string[] = [];
     clips.forEach((clip, index) => {
@@ -212,7 +341,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     if (media.hasAudio && request.cleanAudio) { filters.push(`[${audioLabel}]afftdn=nf=-25[clean]`); audioLabel = "clean"; }
     const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
     const duration = cutDuration({ version: 2, clips });
-    const inputArgs = ["-y", "-i", secure.url];
+    const inputArgs = ["-y", "-i", sourcePath];
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
     const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
     await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering edit" }).where(eq(cutStudioJobs.id, jobId));
@@ -296,14 +425,18 @@ export function registerCutStudioRoutes(app: Express) {
     if (!source.mimeType?.startsWith(`${parsed.data.mediaKind}/`)) return res.status(400).json({ message: "The source media type does not match the project" });
     const business = await ensureDefaultBusiness(req.dbUser!);
     const [project] = await db.insert(cutStudioProjects).values({ ...parsed.data, ownerUserId: req.dbUser!.id, businessId: business.id, edl: { version: 2, clips: [{ id: "clip_00", start: 0, end: parsed.data.duration, label: "clip00", speed: 1, volume: 1, fadeIn: 0, fadeOut: 0 }] } }).returning();
+    await db.insert(cutStudioProjectMedia).values({ projectId: project.id, assetId: source.id, ownerUserId: req.dbUser!.id, name: source.originalFilename ?? project.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.project.created", actorUserId: req.dbUser!.id, payload: { businessId: business.id, sourceAssetId: project.sourceAssetId, mediaKind: project.mediaKind, duration: project.duration }, idempotencyKey: `cutstudio:${project.id}:project.created` });
     res.status(201).json(project);
   });
   cut.get("/api/cut/projects/:id", attachUser, async (req, res) => {
     noStore(res); const id = idSchema.safeParse(req.params.id); if (!id.success) return res.status(404).json({ message: "Project not found" });
     const project = await ownedProject(req.dbUser!.id, id.data); if (!project) return res.status(404).json({ message: "Project not found" });
-    const jobs = await db.select().from(cutStudioJobs).where(eq(cutStudioJobs.projectId, project.id)).orderBy(desc(cutStudioJobs.createdAt)).limit(20);
-    res.json({ ...project, jobs });
+    const [jobs, media] = await Promise.all([
+      db.select().from(cutStudioJobs).where(eq(cutStudioJobs.projectId, project.id)).orderBy(desc(cutStudioJobs.createdAt)).limit(20),
+      projectMedia(project.id, req.dbUser!.id),
+    ]);
+    res.json({ ...project, jobs, media });
   });
   cut.delete("/api/cut/projects/:id", attachUser, async (req, res) => {
     noStore(res); const id = idSchema.safeParse(req.params.id); if (!id.success) return res.status(404).json({ message: "Project not found" });
@@ -315,6 +448,29 @@ export function registerCutStudioRoutes(app: Express) {
     const source = await ownedAsset(req.dbUser!.id, project.sourceAssetId); if (!source) return res.status(404).json({ message: "Source media not found" });
     res.json(await createPrivateAssetReadUrl(source.storageKey));
   });
+  cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = projectMediaSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Valid private video or audio metadata is required" });
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);
+    if (!asset || asset.visibility !== "private" || asset.status !== "ready" || !asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)) return res.status(400).json({ message: "The private media asset is not ready" });
+    const [row] = await db.insert(cutStudioProjectMedia).values({ projectId: project.id, assetId: asset.id, ownerUserId: req.dbUser!.id, name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration }).onConflictDoUpdate({ target: [cutStudioProjectMedia.projectId, cutStudioProjectMedia.assetId], set: { name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration } }).returning();
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.media.added", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, assetId: asset.id, mediaKind: parsed.data.mediaKind }, idempotencyKey: `cutstudio:${project.id}:media:${asset.id}` });
+    res.status(201).json(row);
+  });
+  cut.delete("/api/cut/projects/:id/media-library/:mediaId", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!media) return res.status(404).json({ message: "Project media not found" });
+    if (media.assetId === project.sourceAssetId) return res.status(409).json({ message: "The primary source cannot be removed" });
+    if (project.edl.clips.some((clip) => clip.assetId === media.assetId)) return res.status(409).json({ message: "Remove this media from the timeline first" });
+    await db.delete(cutStudioProjectMedia).where(eq(cutStudioProjectMedia.id, media.id));
+    res.status(204).end();
+  });
   cut.get("/api/cut/projects/:id/edl", attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
     res.setHeader("X-EDL-Rev", String(project.revision)); res.json(project.edl);
@@ -322,7 +478,11 @@ export function registerCutStudioRoutes(app: Express) {
   cut.put("/api/cut/projects/:id/edl", attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
     const expected = Number(req.get("if-match")?.replace(/\"/g, "")); if (!Number.isInteger(expected)) return res.status(428).json({ message: "Edit revision is required" });
-    let edl: CutEdl; try { edl = validateCutEdl(req.body, project.duration); } catch { return res.status(400).json({ message: "The edit decision list is invalid" }); }
+    const media = await projectMedia(project.id, req.dbUser!.id);
+    const allowedAssets = new Map(media.map((item) => [item.assetId, item]));
+    let edl: CutEdl; try { edl = validateCutEdl(req.body, Math.max(project.duration, ...media.map((item) => item.duration))); } catch { return res.status(400).json({ message: "The edit decision list is invalid" }); }
+    if (edl.clips.some((clip) => clip.assetId && !allowedAssets.has(clip.assetId))) return res.status(400).json({ message: "Every timeline clip must reference project media you own" });
+    if (edl.clips.some((clip) => clip.assetId && clip.end > (allowedAssets.get(clip.assetId)?.duration ?? 0) + 0.01)) return res.status(400).json({ message: "A timeline clip exceeds its source media" });
     const [updated] = await db.update(cutStudioProjects).set({ edl, revision: sql`${cutStudioProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioProjects.id, project.id), eq(cutStudioProjects.revision, expected))).returning();
     if (!updated) return res.status(409).json({ message: "This edit changed elsewhere. Reload the latest version." });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: updated.id, eventType: "cutstudio.edl.updated", actorUserId: req.dbUser!.id, payload: { businessId: updated.businessId, revision: updated.revision, clipCount: updated.edl.clips.length }, idempotencyKey: `cutstudio:${updated.id}:edl:${updated.revision}` });

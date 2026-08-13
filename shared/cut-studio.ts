@@ -9,11 +9,21 @@ export const cutClipSchema = z.object({
   volume: z.number().finite().min(0).max(2).optional(),
   fadeIn: z.number().finite().min(0).max(10).optional(),
   fadeOut: z.number().finite().min(0).max(10).optional(),
+  assetId: z.string().uuid().optional(),
+  track: z.string().regex(/^[va][1-8]$/).optional(),
+  timelineStart: z.number().finite().min(0).max(43_200).optional(),
+  transform: z.object({
+    x: z.number().finite().min(0).max(1),
+    y: z.number().finite().min(0).max(1),
+    width: z.number().finite().positive().max(1),
+    height: z.number().finite().positive().max(1),
+    opacity: z.number().finite().min(0).max(1),
+  }).optional(),
 });
 
 export const cutEdlSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]),
-  clips: z.array(cutClipSchema).min(1).max(100),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  clips: z.array(cutClipSchema).min(1).max(200),
 });
 
 export const cutTranscriptWordSchema = z.object({
@@ -60,7 +70,7 @@ export function estimateCutRenderSeconds(duration: number, request: CutRenderReq
   return Math.max(5, Math.ceil(Math.max(0, duration) * resolutionFactor * qualityFactor * frameFactor * captionFactor * audioFactor));
 }
 
-export function normalizeCutClips(clips: CutClip[], duration?: number): CutClip[] {
+export function normalizeCutClips(clips: CutClip[], duration?: number, version: 1 | 2 | 3 = 2): CutClip[] {
   const maxDuration = typeof duration === "number" && Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
   const ordered = clips
     .map((clip) => ({
@@ -77,40 +87,56 @@ export function normalizeCutClips(clips: CutClip[], duration?: number): CutClip[
   for (const clip of ordered) {
     normalized.push(clip);
   }
-  return normalized.slice(0, 100).map((clip, index) => ({
-    ...clip,
-    id: clip.id ?? `clip_${String(index).padStart(2, "0")}_${Math.round(clip.start * 1000)}`,
-    label: clip.label ?? `clip${String(index).padStart(2, "0")}`,
-  }));
+  let cursor = 0;
+  return normalized.slice(0, 200).map((clip, index) => {
+    const track = clip.track ?? "v1";
+    const clipDuration = (clip.end - clip.start) / (clip.speed ?? 1);
+    const timelineStart = version === 3 ? (clip.timelineStart ?? (track === "v1" ? cursor : 0)) : cursor;
+    if (track === "v1") cursor = Math.max(cursor, timelineStart + clipDuration);
+    return {
+      ...clip,
+      id: clip.id ?? `clip_${String(index).padStart(2, "0")}_${Math.round(clip.start * 1000)}`,
+      label: clip.label ?? `clip${String(index).padStart(2, "0")}`,
+      ...(version === 3 ? { track, timelineStart, transform: clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 } } : {}),
+    };
+  });
 }
 
 export function validateCutEdl(value: unknown, duration: number): CutEdl {
   const parsed = cutEdlSchema.parse(value);
-  const clips = normalizeCutClips(parsed.clips, duration);
+  const clips = normalizeCutClips(parsed.clips, duration, parsed.version);
   if (!clips.length) throw new Error("A cut must retain at least one playable clip");
-  return { version: 2, clips };
+  for (const clip of clips) {
+    const transform = clip.transform;
+    if (transform && (transform.x + transform.width > 1.001 || transform.y + transform.height > 1.001)) throw new Error("A multitrack clip must remain inside the frame");
+  }
+  return { version: parsed.version === 3 ? 3 : 2, clips };
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
-  return edl?.clips.reduce((total, clip) => total + (clip.end - clip.start) / (clip.speed ?? 1), 0) ?? 0;
+  if (!edl) return 0;
+  if (edl.version === 3) return edl.clips.reduce((maximum, clip) => Math.max(maximum, (clip.timelineStart ?? 0) + (clip.end - clip.start) / (clip.speed ?? 1)), 0);
+  return edl.clips.reduce((total, clip) => total + (clip.end - clip.start) / (clip.speed ?? 1), 0);
 }
 
 export function removeCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
   if (end <= start) return edl;
   const clips: CutClip[] = [];
   for (const clip of edl.clips) {
+    if (edl.version === 3 && ((clip.track ?? "v1") !== "v1" || clip.assetId)) { clips.push(clip); continue; }
     if (clip.end <= start || clip.start >= end) clips.push(clip);
     else {
       if (clip.start < start) clips.push({ ...clip, id: `${clip.id ?? "clip"}_a`, start: clip.start, end: start });
       if (clip.end > end) clips.push({ ...clip, id: `${clip.id ?? "clip"}_b`, start: end, end: clip.end });
     }
   }
-  const normalized = normalizeCutClips(clips, duration);
-  return normalized.length ? { version: 2, clips: normalized } : edl;
+  const normalized = normalizeCutClips(clips, duration, edl.version);
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
-  const ranges = [...edl.clips.map((clip) => ({ start: clip.start, end: clip.end })), { start, end }]
+  const overlays = edl.version === 3 ? edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" || clip.assetId) : [];
+  const ranges = [...edl.clips.filter((clip) => !overlays.includes(clip)).map((clip) => ({ start: clip.start, end: clip.end })), { start, end }]
     .sort((left, right) => left.start - right.start);
   const merged: Array<{ start: number; end: number }> = [];
   for (const range of ranges) {
@@ -118,19 +144,19 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     if (prior && range.start <= prior.end + 0.001) prior.end = Math.max(prior.end, range.end);
     else merged.push({ ...range });
   }
-  return { version: 2, clips: normalizeCutClips(merged, duration) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips([...merged, ...overlays], duration, edl.version) };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
   const clips: CutClip[] = [];
   for (const clip of edl.clips) {
-    if (seconds > clip.start + 0.05 && seconds < clip.end - 0.05) clips.push(
+    if ((edl.version !== 3 || (clip.track ?? "v1") === "v1") && seconds > clip.start + 0.05 && seconds < clip.end - 0.05) clips.push(
       { ...clip, id: `${clip.id ?? "clip"}_a`, start: clip.start, end: seconds },
       { ...clip, id: `${clip.id ?? "clip"}_b`, start: seconds, end: clip.end },
     );
     else clips.push(clip);
   }
-  return { version: 2, clips: clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })) };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version) };
 }
 
 export function transcriptWords(transcript: CutTranscript | null | undefined) {
@@ -148,7 +174,7 @@ function srtTimestamp(seconds: number) {
 
 function sourceToOutput(edl: CutEdl, time: number) {
   let cursor = 0;
-  for (const clip of edl.clips) {
+  for (const clip of edl.clips.filter((item) => (item.track ?? "v1") === "v1" && !item.assetId)) {
     const speed = clip.speed ?? 1;
     if (time >= clip.start && time <= clip.end) return cursor + (time - clip.start) / speed;
     cursor += (clip.end - clip.start) / speed;
@@ -192,7 +218,7 @@ export function buildCmx3600Edl(projectName: string, edl: CutEdl) {
     return [hh, mm, ss, ff].map((part) => String(part).padStart(2, "0")).join(":");
   };
   let outputCursor = 0;
-  const events = edl.clips.map((clip, index) => {
+  const events = edl.clips.filter((clip) => (clip.track ?? "v1") === "v1").map((clip, index) => {
     const outputEnd = outputCursor + (clip.end - clip.start) / (clip.speed ?? 1);
     const line = `${String(index + 1).padStart(3, "0")}  SOURCE   V     C        ${frames(clip.start)} ${frames(clip.end)} ${frames(outputCursor)} ${frames(outputEnd)}`;
     outputCursor = outputEnd;

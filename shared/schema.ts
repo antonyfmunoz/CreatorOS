@@ -2544,6 +2544,24 @@ export const cutStudioProjects = pgTable(
   }),
 );
 
+export const cutStudioProjectMedia = pgTable(
+  "cut_studio_project_media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "restrict" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    mediaKind: text("media_kind").notNull(),
+    duration: doublePrecision("duration").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectAssetUnique: unique("cut_studio_project_media_project_asset_unique").on(table.projectId, table.assetId),
+    projectCreatedIdx: index("cut_studio_project_media_project_created_idx").on(table.projectId, table.createdAt),
+  }),
+);
+
 export const cutStudioJobs = pgTable(
   "cut_studio_jobs",
   {
@@ -2625,6 +2643,40 @@ export const broadcastSessions = pgTable(
   (table) => ({
     studioCreatedIdx: index("broadcast_sessions_studio_created_idx").on(table.studioId, table.createdAt),
     ownerCreatedIdx: index("broadcast_sessions_owner_created_idx").on(table.ownerUserId, table.createdAt),
+  }),
+);
+
+export const broadcastSessionMarkers = pgTable(
+  "broadcast_session_markers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => broadcastSessions.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    kind: text("kind").notNull().default("highlight"),
+    label: text("label").notNull().default("Highlight"),
+    positionMs: integer("position_ms").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ sessionPositionIdx: index("broadcast_session_markers_session_position_idx").on(table.sessionId, table.positionMs) }),
+);
+
+export const broadcastDestinationReceipts = pgTable(
+  "broadcast_destination_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => broadcastSessions.id, { onDelete: "cascade" }).notNull(),
+    destinationId: uuid("destination_id").references(() => broadcastDestinations.id, { onDelete: "set null" }),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    destinationName: text("destination_name").notNull(),
+    state: text("state").notNull().default("starting"),
+    detail: text("detail").notNull().default("Encoder is starting"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionDestinationUnique: unique("broadcast_destination_receipts_session_destination_unique").on(table.sessionId, table.destinationId),
+    sessionUpdatedIdx: index("broadcast_destination_receipts_session_updated_idx").on(table.sessionId, table.updatedAt),
   }),
 );
 
@@ -4317,9 +4369,12 @@ export type Asset = typeof assets.$inferSelect;
 export type ContentDraft = typeof contentDrafts.$inferSelect;
 export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
 export type CutStudioJob = typeof cutStudioJobs.$inferSelect;
+export type CutStudioProjectMedia = typeof cutStudioProjectMedia.$inferSelect;
 export type BroadcastStudio = typeof broadcastStudios.$inferSelect;
 export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;
+export type BroadcastSessionMarker = typeof broadcastSessionMarkers.$inferSelect;
+export type BroadcastDestinationReceipt = typeof broadcastDestinationReceipts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type CampaignDeliverable = typeof campaignDeliverables.$inferSelect;

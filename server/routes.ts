@@ -137,6 +137,7 @@ import {
   createPrivateAssetReadUrl,
   discardUploadedFiles,
   inspectDirectUpload,
+  persistPrivateFile,
   persistUpload,
   removeStoredAsset,
 } from "./asset-storage";
@@ -1164,7 +1165,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Direct browser uploads remain the preferred path. This bounded fallback
   // keeps the library usable while a storage bucket's browser CORS policy is
-  // being configured, without accepting arbitrary file types or private data.
+  // being configured. It accepts only the same bounded media policy as direct
+  // upload and can preserve private visibility for studio source material.
   app.post(
     "/api/assets/upload-proxy",
     attachUser,
@@ -1174,12 +1176,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const files = Array.isArray(req.files) ? req.files : [];
       try {
         const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
+        const visibility = normalizeAssetVisibility(req.body?.visibility ?? "public");
         const [file] = files;
         if (files.length !== 1 || !file)
           return res
             .status(400)
             .json({ message: "Upload exactly one media file" });
-        if (!["photo", "video", "audio"].includes(kind)) {
+        if (!["photo", "video", "audio"].includes(kind) || !visibility) {
           await discardUploadedFiles(files);
           return res
             .status(400)
@@ -1189,7 +1192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kind,
           mimeType: file.mimetype,
           sizeBytes: file.size,
-          visibility: "public",
+          visibility,
         });
         if (validationError) {
           await discardUploadedFiles(files);
@@ -1220,7 +1223,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               "Monthly asset quota reached. Upgrade or remove old assets before uploading more.",
           });
         }
-        const stored = await persistUpload(file, req.dbUser!.id, kind);
+        const stored = visibility === "private"
+          ? await persistPrivateFile({ sourcePath: file.path, ownerUserId: req.dbUser!.id, kind, filename: file.originalname, mimeType: file.mimetype })
+          : await persistUpload(file, req.dbUser!.id, kind);
+        if (visibility === "private") await discardUploadedFiles([file]);
         const [asset] = await db
           .insert(assets)
           .values({
@@ -1228,12 +1234,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             kind,
             storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local",
             storageKey: stored.storageKey,
-            publicUrl: stored.publicUrl,
+            publicUrl: "publicUrl" in stored ? stored.publicUrl : null,
             mimeType: file.mimetype,
             sizeBytes: file.size,
-            visibility: "public",
+            visibility,
             originalFilename: file.originalname.slice(0, 255),
-            metadata: { uploadProtocol: "server-proxy-cors-fallback" },
+            metadata: { uploadProtocol: "server-proxy-cors-fallback", visibility },
             status: "ready",
           })
           .returning();
