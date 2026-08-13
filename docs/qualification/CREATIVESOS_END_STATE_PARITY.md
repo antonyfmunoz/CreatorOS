@@ -27,6 +27,24 @@ The obsolete direct-PostgreSQL projection transport is not part of this end
 state. The standalone-safe signed HTTPS bridge and durable outbox are the
 current architecture.
 
+## Competitive acceptance overlay
+
+This ledger records functional implementation and release evidence. Every
+capability inspired by an established product category also inherits
+[`PRODUCT_WIDE_COMPETITIVE_STANDARD.md`](../PRODUCT_WIDE_COMPETITIVE_STANDARD.md):
+
+- first meet the standalone professional-quality bar for the bounded normal
+  workflow;
+- then prove that the connected CreativesOS workflow is materially faster or
+  requires materially fewer manual handoffs;
+- never infer competitive parity from a rendered route, passing API test, or
+  the fact that several features share one application.
+
+Accordingly, `verified_complete` below is not automatically a claim that the
+capability has reached `parity_met` or `connected_advantage_proven`. Those
+competitive states require a dated golden-journey benchmark and side-by-side
+field evidence.
+
 ## Completion vocabulary
 
 | State | Meaning |

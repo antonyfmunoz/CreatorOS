@@ -1,6 +1,11 @@
 # CreativesOS Creation Studios competitive standard
 
-Last reviewed: 2026-08-12
+Last reviewed: 2026-08-13
+
+This studio-specific scorecard inherits the two-bar acceptance model in
+[`PRODUCT_WIDE_COMPETITIVE_STANDARD.md`](./PRODUCT_WIDE_COMPETITIVE_STANDARD.md).
+Functional completion, standalone parity and connected superiority are
+reported separately.
 
 ## Product standard
 
@@ -12,11 +17,13 @@ monetize without leaving CreativesOS.
 The target is:
 
 1. parity on the controls required to publish professional creator content;
-2. a shorter end-to-end workflow than a collection of disconnected tools;
-3. private-by-default assets, explicit rights confirmation, durable jobs, and
+2. equivalent professional output for the bounded creator workflow before
+   integration benefits are counted;
+3. a shorter end-to-end workflow than a collection of disconnected tools;
+4. private-by-default assets, explicit rights confirmation, durable jobs, and
    observable output health;
-4. clean-room implementation using CreativesOS code and public protocols; and
-5. an honest external gate wherever a provider, device, codec licence, or
+5. clean-room implementation using CreativesOS code and public protocols; and
+6. an honest external gate wherever a provider, device, codec licence, or
    specialized workstation capability is required.
 
 “Better than competitors” therefore means better for the CreativesOS creator
