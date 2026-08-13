@@ -289,7 +289,9 @@ async function renderMultitrack(
   const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
   const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
   const filters: string[] = [];
-  const concatInputs: string[] = [];
+  const primaryDurations: number[] = [];
+  const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
+  const size = request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
   for (let index = 0; index < primaryClips.length; index += 1) {
     const clip = primaryClips[index];
     const assetId = clip.assetId ?? source.id;
@@ -298,27 +300,46 @@ async function renderMultitrack(
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
     const outputDuration = (clip.end - clip.start) / speed;
+    primaryDurations.push(outputDuration);
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
     const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip)];
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip), `scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease`, `pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black`, `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
-    concatInputs.push(`[basev${index}]`);
     if (primaryHasAudio) {
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain("v1")}`];
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain("v1")}`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo"];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
       if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[basea${index}]`);
-      concatInputs.push(`[basea${index}]`);
     }
   }
-  filters.push(`${concatInputs.join("")}concat=n=${primaryClips.length}:v=1:a=${primaryHasAudio ? 1 : 0}[basevideo]${primaryHasAudio ? (duckingClips.length ? "[baseaudioraw]" : "[baseaudio]") : ""}`);
+  let primaryVideoLabel = "basev0";
+  let primaryAudioLabel = primaryHasAudio ? "basea0" : null;
+  let primaryDuration = primaryDurations[0];
+  for (let index = 1; index < primaryClips.length; index += 1) {
+    const dissolve = primaryClips[index].transition === "cross_dissolve";
+    if (dissolve) {
+      const duration = Math.min(0.35, primaryDurations[index - 1] / 2, primaryDurations[index] / 2);
+      filters.push(`[${primaryVideoLabel}]tpad=stop_mode=clone:stop_duration=${duration}[dissolvepadv${index}]`);
+      filters.push(`[dissolvepadv${index}][basev${index}]xfade=transition=fade:duration=${duration}:offset=${primaryDuration}[primaryv${index}]`);
+      if (primaryAudioLabel) {
+        filters.push(`[${primaryAudioLabel}]apad=pad_dur=${duration}[dissolvepada${index}]`);
+        filters.push(`[dissolvepada${index}][basea${index}]acrossfade=d=${duration}:c1=tri:c2=tri[primarya${index}]`);
+      }
+    } else {
+      filters.push(`[${primaryVideoLabel}][basev${index}]concat=n=2:v=1:a=0[primaryv${index}]`);
+      if (primaryAudioLabel) filters.push(`[${primaryAudioLabel}][basea${index}]concat=n=2:v=0:a=1[primarya${index}]`);
+    }
+    primaryVideoLabel = `primaryv${index}`;
+    if (primaryAudioLabel) primaryAudioLabel = `primarya${index}`;
+    primaryDuration += primaryDurations[index];
+  }
+  filters.push(`[${primaryVideoLabel}]null[basevideo]`);
+  if (primaryAudioLabel) filters.push(`[${primaryAudioLabel}]anull[${duckingClips.length ? "baseaudioraw" : "baseaudio"}]`);
   if (duckingClips.length) filters.push(`[baseaudioraw]asplit=${duckingClips.length + 1}[baseaudio]${duckingClips.map((_, index) => `[voicekey${index}]`).join("")}`);
-  const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
-  const size = request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
-  filters.push(`[basevideo]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed0]`);
+  filters.push("[basevideo]null[framed0]");
   let videoLabel = "framed0";
   let overlayIndex = 0;
   let duckingIndex = 0;
@@ -432,7 +453,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       });
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
-    if (project.edl.version === 3 && (clips.some((clip) => (clip.track ?? "v1") !== "v1") || (project.edl.graphics?.length ?? 0) > 0)) {
+    if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks });

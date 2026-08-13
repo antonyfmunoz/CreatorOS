@@ -162,6 +162,7 @@ export function getReleaseReadiness(
       mentionNotifications: "configured",
       nativeTitles: "configured",
       transitionPresets: "configured",
+      crossDissolve: "configured",
       transcriptCorrection: "configured",
       transcriptStoryReordering: "configured",
       transcriptSpeakerLabels: "configured",

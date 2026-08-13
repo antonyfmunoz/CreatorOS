@@ -9,7 +9,7 @@ export const cutClipSchema = z.object({
   volume: z.number().finite().min(0).max(2).optional(),
   fadeIn: z.number().finite().min(0).max(10).optional(),
   fadeOut: z.number().finite().min(0).max(10).optional(),
-  transition: z.enum(["cut", "fade_black"]).optional(),
+  transition: z.enum(["cut", "fade_black", "cross_dissolve"]).optional(),
   assetId: z.string().uuid().optional(),
   track: z.string().regex(/^[va][1-8]$/).optional(),
   timelineStart: z.number().finite().min(0).max(43_200).optional(),

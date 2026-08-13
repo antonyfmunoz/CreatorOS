@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 
 function ownerFor(testInfo: TestInfo) {
@@ -38,6 +38,64 @@ async function uploadPrivate(page: Page, owner: number, filePath: string, name: 
   await expectOk(response);
   return (await response.json()).asset as { id: string };
 }
+
+test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("cross-dissolve-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const redPath = `${directory}/red.mp4`;
+  const bluePath = `${directory}/blue.mp4`;
+  const outputPath = `${directory}/dissolve.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=640x360:rate=24:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", redPath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:size=320x180:rate=24:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", bluePath]);
+  const red = await uploadPrivate(page, owner, redPath, "red.mp4", "video/mp4", "video");
+  const blue = await uploadPrivate(page, owner, bluePath, "blue.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: red.id, name: `Cross dissolve ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: blue.id, name: "Blue source", duration: 1, mediaKind: "video" }));
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  const savedResponse = await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, {
+    version: 3,
+    clips: [
+      { id: "red", label: "Red source", start: 0, end: 1, track: "v1", timelineStart: 0, transition: "cut" },
+      { id: "blue", assetId: blue.id, label: "Blue source", start: 0, end: 1, track: "v1", timelineStart: 1, transition: "cross_dissolve" },
+    ],
+    tracks: [{ track: "v1", locked: false, hidden: false, muted: false, solo: false, gain: 1 }],
+  }, { "If-Match": String(loaded.revision) });
+  await expectOk(savedResponse);
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Dissolve qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const review = await reviewResponse.json();
+  const reviewToken = new URL(review.reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${reviewToken}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const renderedDuration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", outputPath], { encoding: "utf8" }).trim());
+  expect(renderedDuration).toBeGreaterThan(1.8);
+  expect(renderedDuration).toBeLessThan(2.2);
+  const pixel = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", "1.175", "-i", outputPath, "-vf", "scale=1:1", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  expect(pixel[0]).toBeGreaterThan(40);
+  expect(pixel[2]).toBeGreaterThan(40);
+  expect(pixel[1]).toBeLessThan(80);
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "V1 clip 2" }).click();
+  await expect(page.getByLabel("Clip transition")).toHaveValue("cross_dissolve");
+});
 
 test("CutStudio renders an owner-scoped private multitrack artifact", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
