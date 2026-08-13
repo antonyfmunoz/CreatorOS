@@ -112,6 +112,7 @@ describe("CreativesOS release readiness", () => {
       broadcastStudio: {
         sceneComposer: "configured",
         sceneTemplates: "configured",
+        reusableScenePresets: "configured",
         reusableSourcePresets: "configured",
         renderEffectiveAudioProcessing: "configured",
         localAudioMonitoring: "configured",
@@ -171,6 +172,7 @@ describe("CreativesOS release readiness", () => {
     expect(result.broadcastStudio).toEqual({
       sceneComposer: "configured",
       sceneTemplates: "configured",
+      reusableScenePresets: "configured",
       reusableSourcePresets: "configured",
       renderEffectiveAudioProcessing: "configured",
       localAudioMonitoring: "configured",

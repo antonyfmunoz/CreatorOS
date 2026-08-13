@@ -57,7 +57,7 @@ checked against primary product documentation before this scorecard is revised.
 
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
-| Scene composer | Reusable solo, interview, presentation and countdown scenes implemented | Expand the template library and team sharing | Product code |
+| Scene composer | Reusable solo, interview, presentation and countdown scenes plus complete custom scene presets implemented | Team-shared scene libraries | Product code |
 | Preview/program | Cut, fade and production hotkeys | Maintain | Product code |
 | Sources | Camera, screen, mic, media, image, text, color, test pattern | Browser/deck sources, guest feeds and reusable brand graphics | Product code; guest transport uses realtime provider |
 | Source control | Transform, crop, layer, blend, basic visual filters, adjustable chroma key, mute/volume, reusable render-effective source presets, high/low-pass audio filters, dynamics compression and local monitoring | LUT, audio noise suppression and advanced routing | Product code; device limitations apply |

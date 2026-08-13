@@ -178,6 +178,7 @@ export function getReleaseReadiness(
     broadcastStudio: {
       sceneComposer: "configured",
       sceneTemplates: "configured",
+      reusableScenePresets: "configured",
       reusableSourcePresets: "configured",
       renderEffectiveAudioProcessing: "configured",
       localAudioMonitoring: "configured",

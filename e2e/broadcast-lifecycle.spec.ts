@@ -243,6 +243,10 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await page.getByLabel("Scene template").selectOption("interview");
   await page.getByRole("button", { name: "Add template" }).click();
   await expect(page.getByRole("button", { name: /Two-person interview/ })).toBeVisible();
+  await page.getByLabel("Scene preset name").fill("Weekly show");
+  await page.getByRole("button", { name: "Save scene preset" }).click();
+  await page.getByRole("button", { name: "Apply Weekly show scene preset" }).click();
+  await expect(page.getByRole("button", { name: "3 Weekly show", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Transition to program" }).click();
   await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
   await page.getByLabel("Overlay motion").selectOption("fade");
@@ -276,5 +280,6 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; presentation?: { animation: string } }> }> } }) =>
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Lower third" && source.presentation?.animation === "fade")),
   )).toBe(true);
+  expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
 
 });

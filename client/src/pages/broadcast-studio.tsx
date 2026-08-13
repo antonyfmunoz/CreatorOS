@@ -44,10 +44,13 @@ import type {
 } from "@shared/broadcast-studio";
 import {
   applyBroadcastBrandKit,
+  applyBroadcastScenePreset,
   applyBroadcastSourcePreset,
   createBroadcastSceneFromTemplate,
   duplicateBroadcastScene,
   removeBroadcastSourcePreset,
+  removeBroadcastScenePreset,
+  saveBroadcastScenePreset,
   saveBroadcastSourcePreset,
   transitionBroadcastScene,
   validateBroadcastStudioConfig,
@@ -186,6 +189,7 @@ export default function BroadcastStudioPage() {
   const [capturePaused, setCapturePaused] = useState(false);
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [sourcePresetName, setSourcePresetName] = useState("");
+  const [scenePresetName, setScenePresetName] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -1432,6 +1436,13 @@ export default function BroadcastStudioPage() {
                 <option value="countdown">Countdown opener</option>
               </select>
               <Button size="sm" variant="outline" disabled={config.scenes.length >= 20} onClick={() => void persist(createBroadcastSceneFromTemplate(config, sceneTemplate, safeId("scene")))}><Wand2 className="mr-1 h-3.5 w-3.5"/>Add template</Button>
+            </div>
+            <div className="mt-3 border-t border-zinc-800 pt-3">
+              <div className="flex gap-1">
+                <Input aria-label="Scene preset name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={scenePresetName} onChange={(event) => setScenePresetName(event.target.value)} placeholder="Reusable scene name"/>
+                <Button aria-label="Save scene preset" size="icon" variant="outline" disabled={!scenePresetName.trim() || config.scenePresets.length >= 30} onClick={() => { void persist(saveBroadcastScenePreset(config, previewScene.id, safeId("scene_preset"), scenePresetName.trim())); setScenePresetName(""); }}><Save className="h-3.5 w-3.5"/></Button>
+              </div>
+              <div className="mt-2 space-y-1">{config.scenePresets.map((preset) => <div key={preset.id} className="flex items-center gap-1 rounded-lg bg-black p-1.5"><span className="min-w-0 flex-1 truncate text-[11px] font-bold">{preset.name}</span><Button aria-label={`Apply ${preset.name} scene preset`} size="sm" variant="outline" disabled={config.scenes.length >= 20} onClick={() => void persist(applyBroadcastScenePreset(config, preset.id, safeId("scene")))}>Add</Button><button aria-label={`Delete ${preset.name} scene preset`} onClick={() => void persist(removeBroadcastScenePreset(config, preset.id))}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button></div>)}</div>
             </div>
           </Panel>
           <Panel title="Sources" icon={Video}>

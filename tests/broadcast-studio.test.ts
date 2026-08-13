@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBroadcastBrandKit, applyBroadcastSourcePreset, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, removeBroadcastSourcePreset, saveBroadcastSourcePreset, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
+import { applyBroadcastBrandKit, applyBroadcastScenePreset, applyBroadcastSourcePreset, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, removeBroadcastScenePreset, removeBroadcastSourcePreset, saveBroadcastScenePreset, saveBroadcastSourcePreset, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
 import { buildBroadcastTeeOutput, isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
@@ -84,5 +84,15 @@ describe("CreativesOS Broadcast scene graph", () => {
     const applied = applyBroadcastSourcePreset(saved, "scene_main", "preset_title", "source_reused");
     expect(applied.scenes[0].sources.at(-1)).toMatchObject({ id: "source_reused", name: "Launch title", text: "CreativesOS Live", locked: false });
     expect(removeBroadcastSourcePreset(applied, "preset_title").sourcePresets).toEqual([]);
+  });
+
+  it("saves, instantiates, and removes complete reusable scene presets", () => {
+    const base = createBroadcastSceneFromTemplate(defaultBroadcastStudioConfig(), "interview", "scene_interview");
+    const saved = saveBroadcastScenePreset(base, "scene_interview", "preset_interview", "Weekly interview");
+    expect(saved.scenePresets[0]).toMatchObject({ name: "Weekly interview", scene: { name: "Two-person interview" } });
+    const applied = applyBroadcastScenePreset(saved, "preset_interview", "scene_weekly");
+    expect(applied.scenes.at(-1)).toMatchObject({ id: "scene_weekly", name: "Weekly interview" });
+    expect(new Set(applied.scenes.at(-1)!.sources.map((source) => source.id)).size).toBe(applied.scenes.at(-1)!.sources.length);
+    expect(removeBroadcastScenePreset(applied, "preset_interview").scenePresets).toEqual([]);
   });
 });
