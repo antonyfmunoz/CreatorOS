@@ -142,6 +142,7 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from broadcast_studios where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select id, owner_user_id, business_id, name, protocol, ingest_url, status, created_at, updated_at from broadcast_destinations where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from broadcast_sessions where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_brand_kits where owner_user_id = ${userId} order by created_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from purchases where buyer_id = ${userId} order by purchased_at`),
@@ -224,6 +225,7 @@ export async function buildAccountExport(user: User) {
       cutStudioVersions: creatorStudio[13], cutStudioReviewLinks: creatorStudio[14],
       cutStudioReviewComments: creatorStudio[15], cutStudioReviewDecisions: creatorStudio[16],
       broadcastStudios: creatorStudio[17], broadcastDestinations: creatorStudio[18], broadcastSessions: creatorStudio[19],
+      broadcastBrandKits: creatorStudio[20],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],

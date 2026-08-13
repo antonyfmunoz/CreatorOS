@@ -283,3 +283,39 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
 
 });
+
+test("Broadcast brand library persists across studios and supports safe removal", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand source studio" }));
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: "Brand source studio" })).toBeVisible();
+  await page.getByLabel("Surface brand color").fill("#112233");
+  await page.getByLabel("Brand kit name").fill("Operator brand kit");
+  await page.getByRole("button", { name: "Save brand kit" }).click();
+  await expect(page.getByRole("button", { name: "Apply Operator brand kit brand kit" })).toBeVisible();
+
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand destination studio" }));
+  await page.reload();
+  await page.getByLabel("Broadcast studio").selectOption({ label: "Brand destination studio" });
+  await expect(page.getByRole("heading", { name: "Brand destination studio" })).toBeVisible();
+  await expect(page.getByLabel("Surface brand color")).not.toHaveValue("#112233");
+  await page.getByRole("button", { name: "Apply Operator brand kit brand kit" }).click();
+  await expect(page.getByLabel("Surface brand color")).toHaveValue("#112233");
+
+  await page.getByLabel("Brand kit name").fill("Disposable field kit");
+  await page.getByRole("button", { name: "Save brand kit" }).click();
+  await expect(page.getByRole("button", { name: "Apply Disposable field kit brand kit" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Disposable field kit brand kit" }).click();
+  await expect(page.getByRole("button", { name: "Apply Disposable field kit brand kit" })).toHaveCount(0);
+
+  const studiosResponse = await api(page, owner, "GET", "/api/broadcast/studios");
+  await expectOk(studiosResponse);
+  const studios = await studiosResponse.json();
+  expect(studios.find((item: { name: string }) => item.name === "Brand destination studio")?.config.brandKit.surfaceColor).toBe("#112233");
+  const kitsResponse = await api(page, owner, "GET", "/api/broadcast/brand-kits");
+  await expectOk(kitsResponse);
+  const kits = await kitsResponse.json();
+  expect(kits.some((kit: { name: string; surfaceColor: string }) => kit.name === "Operator brand kit" && kit.surfaceColor === "#112233")).toBe(true);
+  expect(kits.some((kit: { name: string }) => kit.name === "Disposable field kit")).toBe(false);
+});

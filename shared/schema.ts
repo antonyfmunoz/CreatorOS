@@ -2696,6 +2696,30 @@ export const broadcastStudios = pgTable(
   (table) => ({ ownerUpdatedIdx: index("broadcast_studios_owner_updated_idx").on(table.ownerUserId, table.updatedAt) }),
 );
 
+// Brand identity is stored outside an individual studio so a creator can keep
+// every show visually consistent without rebuilding colors and logos for each
+// broadcast. The business key preserves a clean path to shared team libraries.
+export const broadcastBrandKits = pgTable(
+  "broadcast_brand_kits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    primaryColor: text("primary_color").notNull(),
+    surfaceColor: text("surface_color").notNull(),
+    textColor: text("text_color").notNull(),
+    logoAssetId: uuid("logo_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerNameUnique: unique("broadcast_brand_kits_owner_name_unique").on(table.ownerUserId, table.name),
+    ownerUpdatedIdx: index("broadcast_brand_kits_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+    businessUpdatedIdx: index("broadcast_brand_kits_business_updated_idx").on(table.businessId, table.updatedAt),
+  }),
+);
+
 export const broadcastDestinations = pgTable(
   "broadcast_destinations",
   {
@@ -4470,6 +4494,7 @@ export type CutStudioReviewLink = typeof cutStudioReviewLinks.$inferSelect;
 export type CutStudioReviewComment = typeof cutStudioReviewComments.$inferSelect;
 export type CutStudioReviewDecision = typeof cutStudioReviewDecisions.$inferSelect;
 export type BroadcastStudio = typeof broadcastStudios.$inferSelect;
+export type BroadcastBrandKit = typeof broadcastBrandKits.$inferSelect;
 export type BroadcastDestination = typeof broadcastDestinations.$inferSelect;
 export type BroadcastSession = typeof broadcastSessions.$inferSelect;
 export type BroadcastSessionMarker = typeof broadcastSessionMarkers.$inferSelect;

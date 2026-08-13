@@ -185,6 +185,7 @@ export function getReleaseReadiness(
       chromaKey: "configured",
       animatedOverlays: "configured",
       brandKit: "configured",
+      accountBrandLibrary: "configured",
       multiAspect: "configured",
       multiDestination: "configured",
       destinationReceipts: "configured",

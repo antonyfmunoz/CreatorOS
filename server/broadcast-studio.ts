@@ -16,6 +16,7 @@ import {
 } from "@shared/broadcast-studio";
 import {
   assets,
+  broadcastBrandKits,
   broadcastDestinationReceipts,
   broadcastDestinations,
   broadcastSessionMarkers,
@@ -52,6 +53,13 @@ const recordingInputSchema = z.object({
 const markerInputSchema = z.object({
   kind: z.enum(["highlight", "issue", "note"]).default("highlight"),
   label: z.string().trim().min(1).max(160).default("Highlight"),
+});
+const brandKitInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  primaryColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  surfaceColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  textColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  logoAssetId: z.string().uuid().nullable().default(null),
 });
 const runtimeMachineId =
   process.env.FLY_MACHINE_ID?.trim() || `local-${process.pid}`;
@@ -506,6 +514,67 @@ async function launchRuntime(
 }
 
 export function registerBroadcastStudioRoutes(app: Express) {
+  app.get("/api/broadcast/brand-kits", attachUser, async (req, res) => {
+    noStore(res);
+    const kits = await db
+      .select()
+      .from(broadcastBrandKits)
+      .where(eq(broadcastBrandKits.ownerUserId, req.dbUser!.id))
+      .orderBy(desc(broadcastBrandKits.updatedAt));
+    res.json(kits);
+  });
+  app.post("/api/broadcast/brand-kits", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = brandKitInputSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    if (parsed.data.logoAssetId) {
+      const [logo] = await db
+        .select({ id: assets.id })
+        .from(assets)
+        .where(and(
+          eq(assets.id, parsed.data.logoAssetId),
+          eq(assets.ownerUserId, req.dbUser!.id),
+          eq(assets.status, "ready"),
+        ))
+        .limit(1);
+      if (!logo) return res.status(400).json({ message: "Brand logo is not an available account asset" });
+    }
+    const business = await ensureDefaultBusiness(req.dbUser!);
+    const [kit] = await db
+      .insert(broadcastBrandKits)
+      .values({
+        ownerUserId: req.dbUser!.id,
+        businessId: business.id,
+        ...parsed.data,
+      })
+      .onConflictDoUpdate({
+        target: [broadcastBrandKits.ownerUserId, broadcastBrandKits.name],
+        set: {
+          primaryColor: parsed.data.primaryColor,
+          surfaceColor: parsed.data.surfaceColor,
+          textColor: parsed.data.textColor,
+          logoAssetId: parsed.data.logoAssetId,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    res.status(201).json(kit);
+  });
+  app.delete("/api/broadcast/brand-kits/:id", attachUser, async (req, res) => {
+    const parsedId = idSchema.safeParse(req.params.id);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid brand kit" });
+    const [removed] = await db
+      .delete(broadcastBrandKits)
+      .where(and(
+        eq(broadcastBrandKits.id, parsedId.data),
+        eq(broadcastBrandKits.ownerUserId, req.dbUser!.id),
+      ))
+      .returning({ id: broadcastBrandKits.id });
+    if (!removed) return res.status(404).json({ message: "Brand kit not found" });
+    res.status(204).end();
+  });
+
   app.get("/api/broadcast/studios", attachUser, async (req, res) => {
     noStore(res);
     const studios = await db

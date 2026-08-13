@@ -92,6 +92,15 @@ type Asset = {
   visibility: string;
   status: string;
 };
+type BrandLibraryKit = {
+  id: string;
+  name: string;
+  primaryColor: string;
+  surfaceColor: string;
+  textColor: string;
+  logoAssetId: string | null;
+  updatedAt: string;
+};
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -190,6 +199,7 @@ export default function BroadcastStudioPage() {
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [sourcePresetName, setSourcePresetName] = useState("");
   const [scenePresetName, setScenePresetName] = useState("");
+  const [brandKitName, setBrandKitName] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -228,6 +238,9 @@ export default function BroadcastStudioPage() {
     queryKey: ["/api/assets", "broadcast-library"],
     queryFn: async () => (await apiRequest("GET", "/api/assets")).json(),
   });
+  const brandKitsQuery = useQuery<BrandLibraryKit[]>({
+    queryKey: ["/api/broadcast/brand-kits"],
+  });
   const destinations = destinationsQuery.data ?? [];
   const assets = (assetsQuery.data ?? []).filter(
     (asset) =>
@@ -235,6 +248,38 @@ export default function BroadcastStudioPage() {
       (asset.mimeType?.startsWith("video/") ||
         asset.mimeType?.startsWith("image/")),
   );
+  const brandKits = brandKitsQuery.data ?? [];
+
+  const saveBrandKit = useCallback(async () => {
+    if (!config || !brandKitName.trim()) return;
+    setBusy("brand-kit-save");
+    try {
+      await apiRequest("POST", "/api/broadcast/brand-kits", {
+        name: brandKitName.trim(),
+        ...config.brandKit,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/brand-kits"] });
+      setMessage(`${brandKitName.trim()} is saved to your brand library.`);
+      setBrandKitName("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Brand kit could not be saved");
+    } finally {
+      setBusy("");
+    }
+  }, [brandKitName, config, queryClient]);
+
+  const deleteLibraryBrandKit = useCallback(async (kit: BrandLibraryKit) => {
+    setBusy(`brand-kit-delete:${kit.id}`);
+    try {
+      await apiRequest("DELETE", `/api/broadcast/brand-kits/${kit.id}`);
+      await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/brand-kits"] });
+      setMessage(`${kit.name} was removed from your brand library.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Brand kit could not be removed");
+    } finally {
+      setBusy("");
+    }
+  }, [queryClient]);
   const previewScene =
     config?.scenes.find((scene) => scene.id === config.previewSceneId) ?? null;
   const programScene =
@@ -315,6 +360,27 @@ export default function BroadcastStudioPage() {
     },
     [studio, openStudio],
   );
+
+  const switchStudio = useCallback(async (studioId: string) => {
+    if (!studioId || studioId === studioRef.current?.id) return;
+    await persistQueue.current.catch(() => undefined);
+    await openStudio(studioId);
+  }, [openStudio]);
+
+  const applyLibraryBrandKit = useCallback(async (kit: BrandLibraryKit) => {
+    if (!config) return;
+    const branded = applyBroadcastBrandKit(validateBroadcastStudioConfig({
+      ...config,
+      brandKit: {
+        primaryColor: kit.primaryColor,
+        surfaceColor: kit.surfaceColor,
+        textColor: kit.textColor,
+        logoAssetId: kit.logoAssetId,
+      },
+    }));
+    await persist(branded);
+    setMessage(`${kit.name} is active in this studio.`);
+  }, [config, persist]);
 
   const updatePreviewScene = useCallback(
     (change: (scene: BroadcastScene) => BroadcastScene, save = true) => {
@@ -1263,10 +1329,10 @@ export default function BroadcastStudioPage() {
         <Radio className="h-5 w-5 text-[#1d9bf0]" />
         <div className="min-w-0">
           <h1 className="truncate text-sm font-black">{studio.name}</h1>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">
-            Broadcast Studio ·{" "}
-            {saving ? "saving" : activeSession ? session?.state : "ready"}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="shrink-0 text-[10px] uppercase tracking-widest text-zinc-500">Broadcast Studio · {saving ? "saving" : activeSession ? session?.state : "ready"}</p>
+            {(studiosQuery.data?.length ?? 0) > 1 && <select aria-label="Broadcast studio" className="h-5 max-w-28 truncate rounded border border-zinc-800 bg-black px-1 text-[10px] text-zinc-400 sm:max-w-44" value={studio.id} disabled={Boolean(activeSession) || saving} onChange={(event) => void switchStudio(event.target.value)}>{studiosQuery.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
+          </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span
@@ -1559,11 +1625,24 @@ export default function BroadcastStudioPage() {
             <div className="mt-3 space-y-2">{config.sourcePresets.length ? config.sourcePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{preset.name}</span><span className="text-[10px] text-zinc-600">{preset.source.type.replace("_", " ")}</span></span><Button size="sm" variant="outline" aria-label={`Apply ${preset.name} source preset`} onClick={() => { const sourceId = safeId("source"); void persist(applyBroadcastSourcePreset(config, previewScene.id, preset.id, sourceId)); setSelectedSourceId(sourceId); }}>Add</Button><button aria-label={`Delete ${preset.name} source preset`} onClick={() => void persist(removeBroadcastSourcePreset(config, preset.id))}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button></div>) : <p className="py-3 text-center text-xs text-zinc-600">No source presets yet.</p>}</div>
           </Panel>
           <Panel title="Brand kit" icon={Palette}>
+            <p className="mb-3 text-[11px] leading-5 text-zinc-500">Set this studio's identity or save it once for reuse across every broadcast studio in your account.</p>
             <div className="grid grid-cols-3 gap-2">
               {([['Primary', 'primaryColor'], ['Surface', 'surfaceColor'], ['Text', 'textColor']] as const).map(([label, key]) => <label key={key} className="text-[10px] text-zinc-500">{label}<Input aria-label={`${label} brand color`} type="color" className="mt-1 h-9 border-zinc-800 bg-black p-1" value={config.brandKit[key]} onChange={(event) => void persist({ ...config, brandKit: { ...config.brandKit, [key]: event.target.value } })}/></label>)}
             </div>
             <label className="mt-3 block text-[10px] text-zinc-500">Logo asset<select aria-label="Brand logo asset" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-2 text-[11px] text-white" value={config.brandKit.logoAssetId ?? ""} onChange={(event) => void persist({ ...config, brandKit: { ...config.brandKit, logoAssetId: event.target.value || null } })}><option value="">No logo</option>{assets.filter((asset) => asset.mimeType?.startsWith("image/")).map((asset) => <option key={asset.id} value={asset.id}>{asset.originalFilename ?? "Image asset"}</option>)}</select></label>
             <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => void persist(applyBroadcastBrandKit(config))}>Apply to branded graphics</Button>
+            <div className="mt-3 flex gap-2 border-t border-zinc-800 pt-3">
+              <Input aria-label="Brand kit name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={brandKitName} onChange={(event) => setBrandKitName(event.target.value)} placeholder="Brand library name" maxLength={80}/>
+              <Button aria-label="Save brand kit" size="icon" variant="outline" disabled={!brandKitName.trim() || busy === "brand-kit-save"} onClick={() => void saveBrandKit()}><Save className="h-3.5 w-3.5"/></Button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {brandKits.length ? brandKits.map((kit) => <div key={kit.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2">
+                <span className="flex" aria-hidden="true"><i className="h-5 w-3 rounded-l" style={{ backgroundColor: kit.primaryColor }}/><i className="h-5 w-3" style={{ backgroundColor: kit.surfaceColor }}/><i className="h-5 w-3 rounded-r border border-zinc-700" style={{ backgroundColor: kit.textColor }}/></span>
+                <span className="min-w-0 flex-1 truncate text-xs font-bold">{kit.name}</span>
+                <Button size="sm" variant="outline" aria-label={`Apply ${kit.name} brand kit`} onClick={() => void applyLibraryBrandKit(kit)}>Apply</Button>
+                <button aria-label={`Delete ${kit.name} brand kit`} disabled={busy === `brand-kit-delete:${kit.id}`} onClick={() => void deleteLibraryBrandKit(kit)}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button>
+              </div>) : <p className="py-3 text-center text-xs text-zinc-600">No saved brand kits yet.</p>}
+            </div>
           </Panel>
         </aside>
         <section className="space-y-3">
