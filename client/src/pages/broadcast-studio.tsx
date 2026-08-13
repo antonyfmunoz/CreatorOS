@@ -122,6 +122,9 @@ type RuntimeCapture = {
     highPass: BiquadFilterNode;
     lowPass: BiquadFilterNode;
     compressor: DynamicsCompressorNode;
+    delay: DelayNode;
+    panner: StereoPannerNode;
+    programSend: GainNode;
     monitorGain: GainNode;
   }>;
   masterGain: GainNode | null;
@@ -157,7 +160,7 @@ const sourceDefaults = {
   locked: false,
   muted: false,
   volume: 1,
-  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, routeToProgram: true, syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
   chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
@@ -975,6 +978,9 @@ export default function BroadcastStudioPage() {
       highPass: BiquadFilterNode;
       lowPass: BiquadFilterNode;
       compressor: DynamicsCompressorNode;
+      delay: DelayNode;
+      panner: StereoPannerNode;
+      programSend: GainNode;
       monitorGain: GainNode;
     }>();
     let masterGain: GainNode | null = null;
@@ -1013,14 +1019,20 @@ export default function BroadcastStudioPage() {
         compressor.threshold.value = sourceConfig?.audioProcessing.compressor ? -18 : 0;
         compressor.knee.value = sourceConfig?.audioProcessing.compressor ? 12 : 0;
         compressor.ratio.value = sourceConfig?.audioProcessing.compressor ? 4 : 1;
+        const delay = audioContext.createDelay(2);
+        delay.delayTime.value = (sourceConfig?.audioProcessing.syncOffsetMs ?? 0) / 1_000;
+        const panner = audioContext.createStereoPanner();
+        panner.pan.value = sourceConfig?.audioProcessing.stereoBalance ?? 0;
         const gain = audioContext.createGain();
         gain.gain.value = sourceConfig?.muted ? 0 : (sourceConfig?.volume ?? 1);
+        const programSend = audioContext.createGain();
+        programSend.gain.value = sourceConfig?.audioProcessing.routeToProgram === false ? 0 : 1;
         const monitorGain = audioContext.createGain();
         monitorGain.gain.value = sourceConfig?.audioProcessing.monitor ? 1 : 0;
         sourceGains.set(input.sourceId, gain);
-        sourceAudioNodes.set(input.sourceId, { highPass, lowPass, compressor, monitorGain });
-        node.connect(highPass).connect(lowPass).connect(compressor).connect(gain);
-        gain.connect(masterGain);
+        sourceAudioNodes.set(input.sourceId, { highPass, lowPass, compressor, delay, panner, programSend, monitorGain });
+        node.connect(highPass).connect(lowPass).connect(compressor).connect(delay).connect(panner).connect(gain);
+        gain.connect(programSend).connect(masterGain);
         gain.connect(monitorGain).connect(audioContext.destination);
       }
       destination.stream
@@ -1052,6 +1064,9 @@ export default function BroadcastStudioPage() {
         audioNodes.compressor.threshold.setTargetAtTime(source.audioProcessing.compressor ? -18 : 0, now, 0.015);
         audioNodes.compressor.knee.setTargetAtTime(source.audioProcessing.compressor ? 12 : 0, now, 0.015);
         audioNodes.compressor.ratio.setTargetAtTime(source.audioProcessing.compressor ? 4 : 1, now, 0.015);
+        audioNodes.delay.delayTime.setTargetAtTime(source.audioProcessing.syncOffsetMs / 1_000, now, 0.015);
+        audioNodes.panner.pan.setTargetAtTime(source.audioProcessing.stereoBalance, now, 0.015);
+        audioNodes.programSend.gain.setTargetAtTime(source.audioProcessing.routeToProgram ? 1 : 0, now, 0.015);
         audioNodes.monitorGain.gain.setTargetAtTime(source.audioProcessing.monitor ? 1 : 0, now, 0.015);
       }
     });
@@ -2040,7 +2055,18 @@ export default function BroadcastStudioPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-zinc-400">
                       <label className="flex items-center gap-2">Compressor<Switch aria-label={`${source.name} compressor`} checked={source.audioProcessing.compressor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, compressor: checked } })}/></label>
+                      <label className="flex items-center gap-2" title="Send this source to the recorded and streamed program mix">Program<Switch aria-label={`${source.name} program audio bus`} checked={source.audioProcessing.routeToProgram} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, routeToProgram: checked } })}/></label>
                       <label className="flex items-center gap-2" title="Monitor this source through your local output; headphones recommended">Monitor<Switch aria-label={`${source.name} audio monitoring`} checked={source.audioProcessing.monitor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, monitor: checked } })}/></label>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-[10px] text-zinc-500">
+                        Sync delay · {source.audioProcessing.syncOffsetMs} ms
+                        <Slider aria-label={`${source.name} audio sync delay`} className="mt-2" min={0} max={2000} step={10} value={[source.audioProcessing.syncOffsetMs]} onValueChange={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, syncOffsetMs: value[0] } }, false)} onValueCommit={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, syncOffsetMs: value[0] } })}/>
+                      </label>
+                      <label className="text-[10px] text-zinc-500">
+                        Stereo balance · {source.audioProcessing.stereoBalance < 0 ? `${Math.round(Math.abs(source.audioProcessing.stereoBalance) * 100)}% L` : source.audioProcessing.stereoBalance > 0 ? `${Math.round(source.audioProcessing.stereoBalance * 100)}% R` : "center"}
+                        <Slider aria-label={`${source.name} stereo balance`} className="mt-2" min={-1} max={1} step={0.05} value={[source.audioProcessing.stereoBalance]} onValueChange={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, stereoBalance: value[0] } }, false)} onValueCommit={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, stereoBalance: value[0] } })}/>
+                      </label>
                     </div>
                     {["camera", "screen", "microphone"].includes(source.type) && <div className="mt-3 grid gap-2 border-t border-zinc-900 pt-3 text-[10px] text-zinc-400 sm:grid-cols-3">
                       <label className="flex items-center justify-between gap-2">Echo cancellation<Switch aria-label={`${source.name} echo cancellation`} checked={source.audioProcessing.echoCancellation} onCheckedChange={(checked) => void updateDeviceAudioProcessing(source, { echoCancellation: checked })}/></label>

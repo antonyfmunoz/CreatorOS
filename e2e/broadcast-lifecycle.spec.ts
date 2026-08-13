@@ -5,6 +5,7 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
+import { createBroadcastSceneFromTemplate } from "../shared/broadcast-studio";
 
 function ownerFor(testInfo: TestInfo) {
   return testInfo.project.name.startsWith("mobile") ? 1 : 2;
@@ -287,6 +288,42 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
 
+});
+
+test("Broadcast routes program and monitor audio with persisted sync and balance", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Audio routing ${Date.now()}` });
+  await expectOk(createdResponse);
+  const studio = await createdResponse.json();
+  const templated = createBroadcastSceneFromTemplate(studio.config, "interview", "scene_audio_route");
+  const config = { ...templated, programSceneId: "scene_audio_route" };
+  await expectOk(await api(page, owner, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config }, { "If-Match": String(studio.revision) }));
+
+  const hostAudio = async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return current.config.scenes.flatMap((item: { sources: Array<{ name: string; audioProcessing: Record<string, unknown> }> }) => item.sources).find((source: { name: string }) => source.name === "Host camera")?.audioProcessing;
+  };
+
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
+  await expect(page.getByLabel("Host camera program audio bus")).toBeChecked();
+  await page.getByLabel("Host camera program audio bus").click();
+  await expect.poll(async () => (await hostAudio())?.routeToProgram).toBe(false);
+
+  const delay = page.getByLabel("Host camera audio sync delay");
+  await delay.press("End");
+  await expect(delay).toHaveAttribute("aria-valuenow", "2000");
+  await expect.poll(async () => (await hostAudio())?.syncOffsetMs).toBe(2000);
+
+  const balance = page.getByLabel("Host camera stereo balance");
+  await balance.press("ArrowRight");
+  await balance.press("ArrowRight");
+  await expect(balance).toHaveAttribute("aria-valuenow", "0.1");
+  await expect.poll(async () => (await hostAudio())?.stereoBalance).toBe(0.1);
+  await expect(page.getByLabel("Host camera audio monitoring")).not.toBeChecked();
 });
 
 test("Broadcast brand library persists across studios and supports safe removal", async ({ page }, testInfo) => {
