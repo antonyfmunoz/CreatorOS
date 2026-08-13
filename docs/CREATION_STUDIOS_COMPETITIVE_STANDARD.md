@@ -43,7 +43,7 @@ checked against primary product documentation before this scorecard is revised.
 | Multitrack edit | Private project media library plus real B-roll/PIP, audio beds and timed native title/lower-third/callout graphics rendered by FFmpeg | Compound clips and richer track controls | Product code |
 | Visual finishing | Per-clip position, size and opacity, aspect render and cut/fade-through-black transition presets | Dissolves, keyframes, color correction, LUT and chroma key | Product code |
 | Review/collaboration | Immutable versions, hashed expiring/revocable review links, private playback, time-coded comments, change requests, approvals and owner resolution implemented | Add workspace collaborators, mention notifications and side-by-side version comparison | Product code |
-| Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry and distribution promotion | True running-job cancellation and a scalable 4K worker tier | Product code and scalable compute |
+| Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry, real running-job cancellation with artifact cleanup, and distribution promotion | Add a scalable 4K worker tier with durable cross-machine cancellation | Product code and scalable compute |
 | AI assistance | Deterministic edit proposals and highlights | Provider-neutral assistance with human review | AI providers remain optional adapters |
 
 ## Broadcast scorecard

@@ -83,6 +83,7 @@ describe("CreativesOS release readiness", () => {
         captionSidecars: "configured",
         renderProfiles: "configured",
         failedJobRetry: "configured",
+        runningJobCancellation: "configured",
       },
       broadcastStudio: {
         sceneComposer: "configured",
@@ -168,6 +169,7 @@ describe("CreativesOS release readiness", () => {
       captionSidecars: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
+      runningJobCancellation: "configured",
     });
   });
 

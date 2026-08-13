@@ -149,6 +149,7 @@ export function getReleaseReadiness(
       captionSidecars: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
+      runningJobCancellation: "configured",
     },
     broadcastStudio: {
       sceneComposer: "configured",

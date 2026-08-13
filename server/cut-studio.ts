@@ -1,5 +1,5 @@
 import type { Express, RequestHandler, Response } from "express";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -61,6 +61,7 @@ const reviewDecisionSchema = z.object({
 });
 const idSchema = z.string().uuid();
 const running = new Set<string>();
+const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
 
 function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
@@ -106,17 +107,24 @@ async function canStartJob(userId: number) {
   return (row?.count ?? 0) < 2;
 }
 
-function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000) {
+function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string) {
   return new Promise<string>((resolve, reject) => {
     const child = spawn(command, args, { windowsHide: true });
+    if (jobId) activeProcesses.set(jobId, child);
     let stderr = "";
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${String(chunk)}`.slice(-8_000); });
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error(`${command} timed out`)); }, timeoutMs);
-    child.on("error", (error) => { clearTimeout(timer); reject(error); });
-    child.on("close", (code) => {
+    let settled = false;
+    const finish = (handler: () => void) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      if (code === 0) resolve(stderr);
-      else reject(new Error(`${command} exited ${code}: ${stderr.slice(-1_000)}`));
+      if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId);
+      handler();
+    };
+    const timer = setTimeout(() => { child.kill("SIGKILL"); finish(() => reject(new Error(`${command} timed out`))); }, timeoutMs);
+    child.on("error", (error) => finish(() => reject(error)));
+    child.on("close", (code) => {
+      finish(() => code === 0 ? resolve(stderr) : reject(new Error(`${command} exited ${code}: ${stderr.slice(-1_000)}`)));
     });
   });
 }
@@ -148,9 +156,9 @@ async function cutStudioFontFilter() {
   throw new Error("CutStudio title rendering requires an installed production font");
 }
 
-async function transcribeMedia(inputPath: string, tempDirectory: string) {
+async function transcribeMedia(inputPath: string, tempDirectory: string, jobId: string) {
   const audioPath = path.join(tempDirectory, "transcription.mp3");
-  await runProcess("ffmpeg", ["-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", audioPath], 10 * 60_000);
+  await runProcess("ffmpeg", ["-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", audioPath], 10 * 60_000, jobId);
   const audio = await fs.readFile(audioPath);
   if (audio.byteLength > 24 * 1024 * 1024) throw Object.assign(new Error("The extracted audio is too long for one transcription job"), { code: "transcription_too_large" });
   const form = new FormData();
@@ -311,7 +319,7 @@ async function renderMultitrack(
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
   const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering multitrack edit" }).where(eq(cutStudioJobs.id, jobId));
-  await runProcess("ffmpeg", args);
+  await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }
 
 function atempoFilters(speed: number) {
@@ -404,7 +412,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
     const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
     await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering edit" }).where(eq(cutStudioJobs.id, jobId));
-    await runProcess("ffmpeg", args);
+    await runProcess("ffmpeg", args, 30 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
     return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps } };
@@ -431,7 +439,7 @@ async function processJob(jobId: string) {
       try {
         await materializePrivateAsset(source.storageKey, inputPath);
         await db.update(cutStudioJobs).set({ progress: 0.3, detail: "Transcribing media" }).where(eq(cutStudioJobs.id, jobId));
-        const result = await transcribeMedia(inputPath, temp);
+        const result = await transcribeMedia(inputPath, temp, jobId);
         const words = (result.words ?? []).map((word: any) => ({ word: String(word.word ?? "").trim(), start: Number(word.start ?? 0), end: Number(word.end ?? word.start ?? 0) })).filter((word: any) => word.word);
         const segments = (result.segments ?? []).map((segment: any, index: number) => ({ id: String(segment.id ?? index), start: Number(segment.start ?? 0), end: Number(segment.end ?? 0), text: String(segment.text ?? "").trim(), words: words.filter((word: any) => word.start >= Number(segment.start ?? 0) && word.end <= Number(segment.end ?? project.duration) + 0.1) }));
         const transcript: CutTranscript = { duration: Number(result.duration ?? project.duration), language: String(result.language ?? "en"), segments: segments.length ? segments : [{ id: "0", start: 0, end: project.duration, text: String(result.text ?? ""), words }] };
@@ -446,13 +454,19 @@ async function processJob(jobId: string) {
     } else if (claimed.kind === "render") {
       const request = cutRenderRequestSchema.parse(claimed.request);
       const result = await renderJob(jobId, project, source, request);
+      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, finishedAt: new Date() })
+        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).returning();
+      if (!completed) {
+        await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
+        await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
+        return;
+      }
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.render.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, ...result.output }, idempotencyKey: `cutstudio:${jobId}:render.ready` });
-      await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId));
     }
   } catch (error) {
     console.error("CutStudio job failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "processing_failed";
-    await db.update(cutStudioJobs).set({ state: "error", detail: error instanceof Error ? error.message.slice(0, 240) : "Processing failed", errorCode: code, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId)).catch(() => undefined);
+    await db.update(cutStudioJobs).set({ state: "error", detail: error instanceof Error ? error.message.slice(0, 240) : "Processing failed", errorCode: code, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).catch(() => undefined);
   } finally { running.delete(jobId); }
 }
 
@@ -725,6 +739,19 @@ export function registerCutStudioRoutes(app: Express) {
       return res.json({ ...job, state: "queued", detail: "Recovering interrupted job", progress: 0 });
     }
     res.json(job);
+  });
+  cut.post("/api/cut/jobs/:id/cancel", attachUser, async (req, res) => {
+    noStore(res);
+    const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.kind !== "render") return res.status(409).json({ message: "Only render jobs can be cancelled" });
+    if (job.state !== "queued" && job.state !== "running") return res.status(409).json({ message: "Only an active job can be cancelled" });
+    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled by user", errorCode: null, finishedAt: new Date() })
+      .where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), sql`${cutStudioJobs.state} in ('queued', 'running')`)).returning();
+    if (!cancelled) return res.status(409).json({ message: "The job already finished" });
+    activeProcesses.get(job.id)?.kill("SIGKILL");
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.job.cancelled", actorUserId: req.dbUser!.id, payload: { jobId: job.id, kind: job.kind }, idempotencyKey: `cutstudio:${job.id}:cancelled` });
+    res.json(cancelled);
   });
   cut.post("/api/cut/jobs/:id/retry", attachUser, async (req, res) => {
     noStore(res);

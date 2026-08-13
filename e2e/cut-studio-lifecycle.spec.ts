@@ -129,4 +129,26 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/review-comments/${comment.id}/resolve`, {}));
   await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews/${review.link.id}/revoke`, {}));
   expect((await page.request.get(`/api/cut/reviews/${reviewToken}`)).status()).toBe(404);
+
+  const beforeCancellationResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(beforeCancellationResponse);
+  const beforeCancellation = await beforeCancellationResponse.json();
+  const longEdl = {
+    version: 3,
+    clips: Array.from({ length: 20 }, (_, index) => ({ id: `cancel-${index}`, label: `Cancellation segment ${index + 1}`, start: 0, end: 3, speed: 1, volume: 1, track: "v1", timelineStart: index * 3 })),
+    graphics: [],
+  };
+  await expectOk(await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, longEdl, { "If-Match": String(beforeCancellation.revision) }));
+  const cancellableResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "master", resolution: "2160p", fps: 60 });
+  await expectOk(cancellableResponse);
+  const cancellable = await cancellableResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${cancellable.id}`)).json()).state, { timeout: 10_000, intervals: [25, 50, 100] }).toBe("running");
+  const cancelResponse = await api(page, owner, "POST", `/api/cut/jobs/${cancellable.id}/cancel`, {});
+  await expectOk(cancelResponse);
+  expect(await cancelResponse.json()).toMatchObject({ state: "cancelled", detail: "Cancelled by user", artifactAssetId: null });
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  const cancelledResponse = await api(page, owner, "GET", `/api/cut/jobs/${cancellable.id}`);
+  await expectOk(cancelledResponse);
+  expect(await cancelledResponse.json()).toMatchObject({ state: "cancelled", artifactAssetId: null });
+  expect((await api(page, peer, "POST", `/api/cut/jobs/${cancellable.id}/cancel`, {})).status()).toBe(404);
 });

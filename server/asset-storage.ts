@@ -109,6 +109,10 @@ export async function createPrivateAssetReadUrl(storageKey: string) {
 
 export async function removeStoredAsset(storageKey: string, visibility: AssetVisibility) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  if (provider === "local") {
+    await fs.rm(localStoragePath(storageKey), { force: true });
+    return;
+  }
   if (provider !== "r2") return;
   const { client, bucket } = r2BucketFor(visibility);
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
