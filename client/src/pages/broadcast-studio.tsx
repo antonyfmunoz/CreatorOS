@@ -200,6 +200,9 @@ export default function BroadcastStudioPage() {
   const [sourcePresetName, setSourcePresetName] = useState("");
   const [scenePresetName, setScenePresetName] = useState("");
   const [brandKitName, setBrandKitName] = useState("");
+  const [studioNameDraft, setStudioNameDraft] = useState("");
+  const [newStudioName, setNewStudioName] = useState("");
+  const [deleteStudioArmed, setDeleteStudioArmed] = useState(false);
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -294,6 +297,8 @@ export default function BroadcastStudioPage() {
     ).json()) as Studio;
     setStudio(value);
     studioRef.current = value;
+    setStudioNameDraft(value.name);
+    setDeleteStudioArmed(false);
     setConfig(value.config);
     latestRequestedConfig.current = value.config;
     setSelectedSourceId(
@@ -317,19 +322,20 @@ export default function BroadcastStudioPage() {
       setConfig(next);
       latestRequestedConfig.current = next;
       const current = studioRef.current;
-      if (!current || exactConfig(next, current.config)) return;
+      const resolvedName = nextName?.trim() || current?.name;
+      if (!current || (exactConfig(next, current.config) && resolvedName === current.name)) return;
       pendingSaves.current += 1;
       setSaving(true);
       const save = async () => {
         let base = studioRef.current;
-        if (!base || exactConfig(next, base.config)) return;
+        if (!base || (exactConfig(next, base.config) && resolvedName === base.name)) return;
         try {
           let response: Response;
           try {
             response = await apiRequest(
               "PUT",
               `/api/broadcast/studios/${base.id}`,
-              { config: next, name: nextName },
+              { config: next, name: resolvedName },
               { "If-Match": String(base.revision) },
             );
           } catch {
@@ -338,7 +344,7 @@ export default function BroadcastStudioPage() {
             response = await apiRequest(
               "PUT",
               `/api/broadcast/studios/${base.id}`,
-              { config: next, name: nextName },
+              { config: next, name: resolvedName },
               { "If-Match": String(base.revision) },
             );
           }
@@ -366,6 +372,43 @@ export default function BroadcastStudioPage() {
     await persistQueue.current.catch(() => undefined);
     await openStudio(studioId);
   }, [openStudio]);
+
+  const createStudio = useCallback(async () => {
+    const name = newStudioName.trim();
+    if (!name) return;
+    setBusy("studio-create");
+    try {
+      await persistQueue.current.catch(() => undefined);
+      const created = (await (await apiRequest("POST", "/api/broadcast/studios", { name })).json()) as Studio;
+      await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/studios"] });
+      setNewStudioName("");
+      await openStudio(created.id);
+      setMessage(`${created.name} is ready.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Studio could not be created");
+    } finally {
+      setBusy("");
+    }
+  }, [newStudioName, openStudio, queryClient]);
+
+  const deleteCurrentStudio = useCallback(async () => {
+    const current = studioRef.current;
+    if (!current || (studiosQuery.data?.length ?? 0) <= 1) return;
+    setBusy("studio-delete");
+    try {
+      await persistQueue.current.catch(() => undefined);
+      await apiRequest("DELETE", `/api/broadcast/studios/${current.id}`);
+      const remaining = (await (await apiRequest("GET", "/api/broadcast/studios")).json()) as Studio[];
+      queryClient.setQueryData(["/api/broadcast/studios"], remaining);
+      setDeleteStudioArmed(false);
+      await openStudio(remaining[0].id);
+      setMessage(`${current.name} was deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Studio could not be deleted");
+    } finally {
+      setBusy("");
+    }
+  }, [openStudio, queryClient, studiosQuery.data?.length]);
 
   const applyLibraryBrandKit = useCallback(async (kit: BrandLibraryKit) => {
     if (!config) return;
@@ -2306,6 +2349,19 @@ export default function BroadcastStudioPage() {
             )}
           </Panel>
           <Panel title="Production settings" icon={Settings2}>
+            <div className="mb-4 space-y-2 border-b border-zinc-800 pb-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Studio library</p>
+              <div className="flex gap-2">
+                <Input aria-label="Studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={studioNameDraft} maxLength={120} onChange={(event) => setStudioNameDraft(event.target.value)}/>
+                <Button aria-label="Save studio name" size="sm" variant="outline" disabled={!studioNameDraft.trim() || studioNameDraft.trim() === studio.name || saving || Boolean(activeSession)} onClick={() => void persist(config, studioNameDraft)}>Save</Button>
+              </div>
+              <div className="flex gap-2">
+                <Input aria-label="New studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={newStudioName} maxLength={120} placeholder="New studio name" onChange={(event) => setNewStudioName(event.target.value)}/>
+                <Button aria-label="Create broadcast studio" size="sm" variant="outline" disabled={!newStudioName.trim() || busy === "studio-create" || Boolean(activeSession)} onClick={() => void createStudio()}><Plus className="mr-1 h-3.5 w-3.5"/>Create</Button>
+              </div>
+              {(studiosQuery.data?.length ?? 0) > 1 && <Button className="w-full" size="sm" variant={deleteStudioArmed ? "destructive" : "ghost"} disabled={Boolean(activeSession) || busy === "studio-delete"} onClick={() => deleteStudioArmed ? void deleteCurrentStudio() : setDeleteStudioArmed(true)}>{deleteStudioArmed ? `Delete ${studio.name}` : "Prepare studio deletion"}</Button>}
+              {deleteStudioArmed && <button className="w-full text-[10px] text-zinc-500" onClick={() => setDeleteStudioArmed(false)}>Cancel deletion</button>}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                 Resolution

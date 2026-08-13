@@ -186,6 +186,7 @@ export function getReleaseReadiness(
       animatedOverlays: "configured",
       brandKit: "configured",
       accountBrandLibrary: "configured",
+      multiStudioManagement: "configured",
       multiAspect: "configured",
       multiDestination: "configured",
       destinationReceipts: "configured",

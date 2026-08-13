@@ -297,7 +297,7 @@ test("Broadcast brand library persists across studios and supports safe removal"
 
   await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand destination studio" }));
   await page.reload();
-  await page.getByLabel("Broadcast studio").selectOption({ label: "Brand destination studio" });
+  await page.getByRole("combobox", { name: "Broadcast studio", exact: true }).selectOption({ label: "Brand destination studio" });
   await expect(page.getByRole("heading", { name: "Brand destination studio" })).toBeVisible();
   await expect(page.getByLabel("Surface brand color")).not.toHaveValue("#112233");
   await page.getByRole("button", { name: "Apply Operator brand kit brand kit" }).click();
@@ -318,4 +318,31 @@ test("Broadcast brand library persists across studios and supports safe removal"
   const kits = await kitsResponse.json();
   expect(kits.some((kit: { name: string; surfaceColor: string }) => kit.name === "Operator brand kit" && kit.surfaceColor === "#112233")).toBe(true);
   expect(kits.some((kit: { name: string }) => kit.name === "Disposable field kit")).toBe(false);
+});
+
+test("Broadcast studio library creates renames switches and guards deletion", async ({ page }, testInfo) => {
+  test.setTimeout(75_000);
+  const owner = ownerFor(testInfo);
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Field managed studio" }));
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: "Field managed studio" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Studio name", exact: true }).fill("Field renamed studio");
+  await page.getByRole("button", { name: "Save studio name" }).click();
+  await expect(page.getByRole("heading", { name: "Field renamed studio" })).toBeVisible();
+
+  await page.getByRole("textbox", { name: "New studio name", exact: true }).fill("Field second studio");
+  await page.getByRole("button", { name: "Create broadcast studio" }).click();
+  await expect(page.getByRole("heading", { name: "Field second studio" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Broadcast studio", exact: true }).selectOption({ label: "Field renamed studio" });
+  await expect(page.getByRole("heading", { name: "Field renamed studio" })).toBeVisible();
+  await page.getByRole("button", { name: "Prepare studio deletion" }).click();
+  await expect(page.getByRole("button", { name: "Delete Field renamed studio" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Field renamed studio" }).click();
+  await expect(page.getByRole("heading", { name: "Field second studio" })).toBeVisible();
+
+  const response = await api(page, owner, "GET", "/api/broadcast/studios");
+  await expectOk(response);
+  const studios = await response.json();
+  expect(studios.some((item: { name: string }) => item.name === "Field renamed studio")).toBe(false);
+  expect(studios.some((item: { name: string }) => item.name === "Field second studio")).toBe(true);
 });
