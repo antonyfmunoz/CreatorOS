@@ -173,6 +173,7 @@ export function getReleaseReadiness(
       renderEffectivePositionKeyframes: "configured",
       motionEasingPresets: "configured",
       namedAudioBuses: "configured",
+      renderEffectiveVolumeAutomation: "configured",
       renderProfiles: "configured",
       failedJobRetry: "configured",
       runningJobCancellation: "configured",

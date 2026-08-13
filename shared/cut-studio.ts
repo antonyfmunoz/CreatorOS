@@ -42,6 +42,11 @@ export const cutClipSchema = z.object({
     y: z.number().finite().min(0).max(1),
     easing: z.enum(["linear", "ease_in_out"]).optional(),
   })).max(50).optional(),
+  volumeKeyframes: z.array(z.object({
+    at: z.number().finite().min(0).max(43_200),
+    volume: z.number().finite().min(0).max(2),
+    easing: z.enum(["linear", "ease_in_out"]).optional(),
+  })).max(50).optional(),
 });
 
 export const cutGraphicSchema = z.object({
@@ -240,6 +245,7 @@ export function normalizeCutClips(clips: CutClip[], duration?: number, version: 
       label: clip.label ?? `clip${String(index).padStart(2, "0")}`,
       ...(version === 3 ? { track, timelineStart, transform: clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 } } : {}),
       ...(version === 3 && clip.motionKeyframes ? { motionKeyframes: [...clip.motionKeyframes].sort((left, right) => left.at - right.at) } : {}),
+      ...(version === 3 && clip.volumeKeyframes ? { volumeKeyframes: [...clip.volumeKeyframes].sort((left, right) => left.at - right.at) } : {}),
     };
   });
 }
@@ -259,6 +265,13 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
       const roundedTime = Math.round(keyframe.at * 1_000);
       if (keyframeTimes.has(roundedTime)) throw new Error("Motion keyframes must use unique times");
       keyframeTimes.add(roundedTime);
+    }
+    const volumeKeyframeTimes = new Set<number>();
+    for (const keyframe of clip.volumeKeyframes ?? []) {
+      if (keyframe.at > clipDuration + 0.001) throw new Error("A volume keyframe must remain inside its clip");
+      const roundedTime = Math.round(keyframe.at * 1_000);
+      if (volumeKeyframeTimes.has(roundedTime)) throw new Error("Volume keyframes must use unique times");
+      volumeKeyframeTimes.add(roundedTime);
     }
   }
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];

@@ -74,6 +74,27 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
   }
   return expression;
 }
+
+function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
+  const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const gain = (value: number) => Number((value * multiplier).toFixed(5));
+  if (points.length === 1) return String(gain(points[0].value));
+  let expression = String(gain(points.at(-1)!.value));
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const left = points[index];
+    const right = points[index + 1];
+    const end = Number(right.at.toFixed(3));
+    const from = gain(left.value);
+    const delta = Number((gain(right.value) - from).toFixed(5));
+    const duration = Number((right.at - left.at).toFixed(3));
+    const progress = `t/${duration}`.replace("t", `(t-${Number(left.at.toFixed(3))})`);
+    const easedProgress = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    expression = `if(lt(t\\,${end})\\,${from}+${delta}*${easedProgress}\\,${expression})`;
+  }
+  return expression;
+}
 const projectLutSchema = z.object({ assetId: z.string().uuid(), name: z.string().trim().min(1).max(160) });
 const createReviewSchema = z.object({
   jobId: z.string().uuid().optional(),
@@ -380,7 +401,7 @@ async function renderMultitrack(
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
     if (primaryHasAudio) {
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain("v1")}`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo"];
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain("v1"))}':eval=frame`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo"];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
       if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[basea${index}]`);
@@ -441,7 +462,7 @@ async function renderMultitrack(
     if ((clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && input.media.hasAudio) {
       const delay = Math.max(0, Math.round(timelineStart * 1_000));
       const label = `trackaudio${audioLabels.length}`;
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume=${(clip.volume ?? 1) * trackGain(clip.track ?? "a1")}`, `adelay=${delay}|${delay}`];
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain(clip.track ?? "a1"))}':eval=frame`, `adelay=${delay}|${delay}`];
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[${label}]`);
       if (clip.duckUnderVoice && primaryHasAudio) {
         const duckedLabel = `duckedaudio${duckingIndex}`;

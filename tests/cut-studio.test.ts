@@ -123,6 +123,16 @@ describe("CutStudio edit decision list", () => {
     expect(edl.audioBuses).toEqual([expect.objectContaining({ id: "music", name: "Music bed", gain: .5 })]);
   });
 
+  it("persists constrained render-effective clip volume automation", () => {
+    const edl = validateCutEdl({ version: 3, clips: [
+      { id: "primary", start: 0, end: 4, track: "v1", timelineStart: 0 },
+      { id: "music", start: 0, end: 4, track: "a1", timelineStart: 0, volume: 1, volumeKeyframes: [{ at: 3, volume: 1, easing: "ease_in_out" }, { at: 1, volume: .2 }] },
+    ] }, 4);
+    expect(edl.clips[1].volumeKeyframes).toEqual([{ at: 1, volume: .2 }, { at: 3, volume: 1, easing: "ease_in_out" }]);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "a1", volumeKeyframes: [{ at: 3, volume: 1 }] }] }, 3)).toThrow(/volume keyframe must remain inside/i);
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "a1", volumeKeyframes: [{ at: 1, volume: .2 }, { at: 1, volume: .8 }] }] }, 2)).toThrow(/unique times/i);
+  });
+
   it("models native timed graphics and transition presets", () => {
     const result = validateCutEdl({ version: 3, clips: [
       { id: "intro", start: 0, end: 3, track: "v1", timelineStart: 0, transition: "fade_black" },

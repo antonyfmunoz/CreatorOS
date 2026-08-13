@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 
@@ -232,6 +232,72 @@ test("CutStudio routes named audio buses into a private render", async ({ page }
   const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
   await expectOk(jobResponse);
   expect(await jobResponse.json()).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
+});
+
+test("CutStudio renders clip volume automation into private output", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("volume-automation-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const primaryPath = `${directory}/primary.mp4`;
+  const musicPath = `${directory}/music.mp3`;
+  const outputPath = `${directory}/volume-automation.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:duration=3", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", primaryPath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=3", "-c:a", "libmp3lame", musicPath]);
+  const primary = await uploadPrivate(page, owner, primaryPath, "primary.mp4", "video/mp4", "video");
+  const music = await uploadPrivate(page, owner, musicPath, "music.mp3", "audio/mpeg", "audio");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name: `Volume automation ${Date.now()}`, duration: 3, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: music.id, name: "Music", duration: 3, mediaKind: "audio" }));
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(loadedResponse);
+  const loaded = await loadedResponse.json();
+  await expectOk(await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
+    { id: "primary", start: 0, end: 3, track: "v1", timelineStart: 0 },
+    { id: "music", assetId: music.id, start: 0, end: 3, track: "a1", timelineStart: 0, volume: 1 },
+  ] }, { "If-Match": String(loaded.revision) }));
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "A1 clip 2" }).click();
+  await page.getByLabel("Volume automation preset").selectOption("duck_middle");
+  await expect(page.getByText("Conversation dip volume automation applied")).toBeVisible();
+  await expect(page.getByLabel("Clip volume automation")).toContainText("0:01");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(response);
+    return (await response.json()).edl.clips.find((item: { id: string }) => item.id === "music");
+  }).toMatchObject({ volume: 1, volumeKeyframes: [
+    { at: .75, volume: 1 }, { at: 1.05, volume: .2, easing: "ease_in_out" }, { at: 1.95, volume: .2 }, { at: 2.25, volume: 1, easing: "ease_in_out" },
+  ] });
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const jobResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(jobResponse);
+  const job = await jobResponse.json();
+  expect(job, job.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
+  const reviewResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/reviews`, { jobId: render.id, label: "Volume automation qualification", expiresDays: 1 });
+  await expectOk(reviewResponse);
+  const token = new URL((await reviewResponse.json()).reviewUrl).pathname.split("/").at(-1)!;
+  const publicReviewResponse = await page.request.get(`/api/cut/reviews/${token}`);
+  await expectOk(publicReviewResponse);
+  const artifactResponse = await page.request.get((await publicReviewResponse.json()).media.url);
+  await expectOk(artifactResponse);
+  writeFileSync(outputPath, await artifactResponse.body());
+  const peakAt = (seconds: number) => {
+    const measured = spawnSync("ffmpeg", ["-hide_banner", "-ss", String(seconds), "-t", "0.25", "-i", outputPath, "-vn", "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+    expect(measured.status, measured.stderr).toBe(0);
+    const peak = Number(measured.stderr.match(/max_volume:\s*(-?[\d.]+) dB/)?.[1]);
+    expect(Number.isFinite(peak), measured.stderr).toBeTruthy();
+    return peak;
+  };
+  const openingPeak = peakAt(.2);
+  const dippedPeak = peakAt(1.35);
+  const closingPeak = peakAt(2.55);
+  expect(openingPeak - dippedPeak).toBeGreaterThan(8);
+  expect(Math.abs(openingPeak - closingPeak)).toBeLessThan(3);
 });
 
 test("CutStudio renders a durable cross dissolve between differently sized sources", async ({ page }, testInfo) => {
