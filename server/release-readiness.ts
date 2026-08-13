@@ -140,6 +140,9 @@ export function getReleaseReadiness(
     cutStudio: {
       privateIngest: privateAssetDelivery ? "configured" : "unconfigured",
       nonDestructiveEdl: "configured",
+      timelineMarkers: "configured",
+      boundarySnapping: "configured",
+      synchronizedClipGroups: "configured",
       projectMediaLibrary: "configured",
       multitrackRender: "configured",
       reviewCollaboration: "configured",

@@ -74,6 +74,9 @@ describe("CreativesOS release readiness", () => {
       cutStudio: {
         privateIngest: "configured",
         nonDestructiveEdl: "configured",
+        timelineMarkers: "configured",
+        boundarySnapping: "configured",
+        synchronizedClipGroups: "configured",
         projectMediaLibrary: "configured",
         multitrackRender: "configured",
         reviewCollaboration: "configured",
@@ -165,6 +168,9 @@ describe("CreativesOS release readiness", () => {
     expect(result.cutStudio).toEqual({
       privateIngest: "unconfigured",
       nonDestructiveEdl: "configured",
+      timelineMarkers: "configured",
+      boundarySnapping: "configured",
+      synchronizedClipGroups: "configured",
       projectMediaLibrary: "configured",
       multitrackRender: "configured",
       reviewCollaboration: "configured",
