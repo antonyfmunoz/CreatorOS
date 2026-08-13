@@ -423,6 +423,25 @@ test("Broadcast routes program and monitor audio with persisted sync and balance
   await page.goto("/broadcast");
   await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
   await expect(page.getByLabel("Host camera program audio bus")).toBeChecked();
+  await page.getByLabel("Host camera mix bus").selectOption("music");
+  await expect.poll(async () => (await hostAudio())?.bus).toBe("music");
+  const musicGain = page.getByLabel("Music bus gain");
+  await musicGain.press("Home");
+  await musicGain.press("ArrowRight");
+  await musicGain.press("ArrowRight");
+  await expect(musicGain).toHaveAttribute("aria-valuenow", "2");
+  await page.getByLabel("Mute Music bus").click();
+  const currentMix = async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return current.config.audioBuses.find((bus: { id: string }) => bus.id === "music");
+  };
+  await expect.poll(currentMix).toMatchObject({ gain: 0.02, muted: true });
+  await page.reload();
+  await expect(page.getByLabel("Host camera mix bus")).toHaveValue("music");
+  await expect(page.getByLabel("Music bus gain")).toHaveAttribute("aria-valuenow", "2");
+  await expect(page.getByLabel("Unmute Music bus")).toBeVisible();
   await page.getByLabel("Host camera program audio bus").click();
   await expect.poll(async () => (await hostAudio())?.routeToProgram).toBe(false);
 

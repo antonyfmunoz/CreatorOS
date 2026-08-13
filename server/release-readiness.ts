@@ -193,6 +193,7 @@ export function getReleaseReadiness(
       localAudioMonitoring: "configured",
       deviceAudioCleanup: "configured",
       programMonitorRouting: "configured",
+      namedAuxMixBuses: "configured",
       audioSyncAndBalance: "configured",
       chromaKey: "configured",
       animatedOverlays: "configured",

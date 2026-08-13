@@ -32,11 +32,24 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, volume: 3 }] }] })).toThrow();
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, filters: { ...source.filters, blurPx: 50 } }] }] })).toThrow();
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { ...source.audioProcessing, highPassHz: 2_000 } }] }] })).toThrow();
-    expect(validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true } }] }] }).scenes[0].sources[0].audioProcessing).toEqual({ highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true, routeToProgram: true, syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    expect(validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true } }] }] }).scenes[0].sources[0].audioProcessing).toEqual({ highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true, routeToProgram: true, bus: "dialogue", syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true });
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { ...source.audioProcessing, syncOffsetMs: 2_001 } }] }] })).toThrow();
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { ...source.audioProcessing, stereoBalance: -1.1 } }] }] })).toThrow();
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, chromaKey: { ...source.chromaKey, smoothness: 0.8 } }] }] })).toThrow();
     expect(validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, chromaKey: { enabled: true, color: "#00ff00", similarity: 0.4, smoothness: 0.15 } }] }] }).scenes[0].sources[0].chromaKey.enabled).toBe(true);
+  });
+
+  it("persists bounded named audio submixes and source assignments", () => {
+    const base = defaultBroadcastStudioConfig();
+    const source = base.scenes[0].sources[0];
+    const mixed = validateBroadcastStudioConfig({
+      ...base,
+      audioBuses: base.audioBuses.map((bus) => bus.id === "music" ? { ...bus, name: "Score", gain: 0.4, muted: true } : bus),
+      scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { ...source.audioProcessing, bus: "music" } }] }],
+    });
+    expect(mixed.audioBuses.find((bus) => bus.id === "music")).toMatchObject({ name: "Score", gain: 0.4, muted: true });
+    expect(mixed.scenes[0].sources[0].audioProcessing.bus).toBe("music");
+    expect(() => validateBroadcastStudioConfig({ ...base, audioBuses: base.audioBuses.map((bus) => ({ ...bus, gain: 2.1 })) })).toThrow();
   });
 
   it("rejects internal destination addresses and never exposes URL credentials", () => {

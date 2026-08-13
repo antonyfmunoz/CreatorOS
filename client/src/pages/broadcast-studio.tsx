@@ -166,7 +166,7 @@ const sourceDefaults = {
   locked: false,
   muted: false,
   volume: 1,
-  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, routeToProgram: true, syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, routeToProgram: true, bus: "dialogue" as const, syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
   chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
@@ -1162,7 +1162,8 @@ export default function BroadcastStudioPage() {
         const gain = audioContext.createGain();
         gain.gain.value = sourceConfig?.muted ? 0 : (sourceConfig?.volume ?? 1);
         const programSend = audioContext.createGain();
-        programSend.gain.value = sourceConfig?.audioProcessing.routeToProgram === false ? 0 : 1;
+        const bus = config.audioBuses.find((item) => item.id === (sourceConfig?.audioProcessing.bus ?? "dialogue"));
+        programSend.gain.value = sourceConfig?.audioProcessing.routeToProgram === false || bus?.muted ? 0 : (bus?.gain ?? 1);
         const monitorGain = audioContext.createGain();
         monitorGain.gain.value = sourceConfig?.audioProcessing.monitor ? 1 : 0;
         sourceGains.set(input.sourceId, gain);
@@ -1202,11 +1203,12 @@ export default function BroadcastStudioPage() {
         audioNodes.compressor.ratio.setTargetAtTime(source.audioProcessing.compressor ? 4 : 1, now, 0.015);
         audioNodes.delay.delayTime.setTargetAtTime(source.audioProcessing.syncOffsetMs / 1_000, now, 0.015);
         audioNodes.panner.pan.setTargetAtTime(source.audioProcessing.stereoBalance, now, 0.015);
-        audioNodes.programSend.gain.setTargetAtTime(source.audioProcessing.routeToProgram ? 1 : 0, now, 0.015);
+        const bus = config.audioBuses.find((item) => item.id === source.audioProcessing.bus);
+        audioNodes.programSend.gain.setTargetAtTime(source.audioProcessing.routeToProgram && !bus?.muted ? (bus?.gain ?? 1) : 0, now, 0.015);
         audioNodes.monitorGain.gain.setTargetAtTime(source.audioProcessing.monitor ? 1 : 0, now, 0.015);
       }
     });
-  }, [config?.masterMuted, config?.masterVolume, programScene]);
+  }, [config?.masterMuted, config?.masterVolume, config?.audioBuses, programScene]);
   const startIsolatedTrackCaptures = () => {
     if (!isolatedTracksEnabled || !config) return;
     const sources = new Map(
@@ -2172,6 +2174,17 @@ export default function BroadcastStudioPage() {
                         })
                       }
                     />
+                    <label className="mt-3 block text-[10px] text-zinc-500">
+                      Live submix
+                      <select
+                        aria-label={`${source.name} mix bus`}
+                        className="mt-1 w-full rounded-lg border border-zinc-800 bg-black px-2 py-2 text-xs text-zinc-200"
+                        value={source.audioProcessing.bus}
+                        onChange={(event) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, bus: event.target.value as BroadcastSource["audioProcessing"]["bus"] } })}
+                      >
+                        {config.audioBuses.map((bus) => <option key={bus.id} value={bus.id}>{bus.name}</option>)}
+                      </select>
+                    </label>
                     <div className="mt-3 grid grid-cols-2 gap-3 border-t border-zinc-900 pt-3">
                       <label className="text-[10px] text-zinc-500">
                         High-pass · {source.audioProcessing.highPassHz} Hz
@@ -2222,6 +2235,45 @@ export default function BroadcastStudioPage() {
                     </div>}
                   </div>
                 ))}
+            </div>
+            <div aria-label="Live audio buses" className="mt-3 grid gap-3 rounded-xl border border-zinc-900 bg-black/50 p-3 sm:grid-cols-3">
+              {config.audioBuses.map((bus) => (
+                <div key={bus.id} className="rounded-lg border border-zinc-900 bg-black p-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      aria-label={`${bus.id} bus name`}
+                      className="min-w-0 flex-1 bg-transparent text-xs font-bold text-zinc-200 outline-none"
+                      value={bus.name}
+                      maxLength={40}
+                      onChange={(event) => setConfig({ ...config, audioBuses: config.audioBuses.map((item) => item.id === bus.id ? { ...item, name: event.target.value } : item) })}
+                      onBlur={(event) => {
+                        const name = event.currentTarget.value.trim();
+                        void persist({ ...config, audioBuses: config.audioBuses.map((item) => item.id === bus.id ? { ...item, name: name || item.name } : item) });
+                      }}
+                    />
+                    <button
+                      aria-label={`${bus.muted ? "Unmute" : "Mute"} ${bus.name} bus`}
+                      className={bus.muted ? "text-red-400" : "text-zinc-400"}
+                      onClick={() => void persist({ ...config, audioBuses: config.audioBuses.map((item) => item.id === bus.id ? { ...item, muted: !item.muted } : item) })}
+                    >
+                      {bus.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Slider
+                      aria-label={`${bus.name} bus gain`}
+                      className="flex-1"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={[bus.gain * 100]}
+                      onValueChange={(value) => setConfig({ ...config, audioBuses: config.audioBuses.map((item) => item.id === bus.id ? { ...item, gain: value[0] / 100 } : item) })}
+                      onValueCommit={(value) => void persist({ ...config, audioBuses: config.audioBuses.map((item) => item.id === bus.id ? { ...item, gain: value[0] / 100 } : item) })}
+                    />
+                    <span className="w-9 text-right text-[9px] text-zinc-600">{Math.round(bus.gain * 100)}%</span>
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="mt-3 flex items-center gap-3 rounded-xl bg-black p-3">
               <span className="text-xs font-bold">Master</span>
