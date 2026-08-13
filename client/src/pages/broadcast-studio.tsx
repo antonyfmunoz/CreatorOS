@@ -15,6 +15,7 @@ import {
   Lock,
   Mic,
   MonitorUp,
+  Palette,
   Play,
   Plus,
   Radio,
@@ -36,10 +37,13 @@ import { Switch } from "@/components/ui/switch";
 import { apiRequest } from "@/lib/queryClient";
 import type {
   BroadcastScene,
+  BroadcastSceneTemplate,
   BroadcastSource,
   BroadcastStudioConfig,
 } from "@shared/broadcast-studio";
 import {
+  applyBroadcastBrandKit,
+  createBroadcastSceneFromTemplate,
   duplicateBroadcastScene,
   transitionBroadcastScene,
   validateBroadcastStudioConfig,
@@ -165,6 +169,7 @@ export default function BroadcastStudioPage() {
   const [busy, setBusy] = useState("");
   const [replayActive, setReplayActive] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
+  const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -172,6 +177,7 @@ export default function BroadcastStudioPage() {
   const mediaElements = useRef(
     new Map<string, HTMLVideoElement | HTMLImageElement>(),
   );
+  const loadingAssetSources = useRef(new Set<string>());
   const runtimeCapture = useRef<RuntimeCapture | null>(null);
   const replayCapture = useRef<ReplayCapture | null>(null);
   const replayChunks = useRef<Array<{ blob: Blob; at: number }>>([]);
@@ -658,6 +664,36 @@ export default function BroadcastStudioPage() {
       type: asset.mimeType?.startsWith("image/") ? "image" : "media",
     });
   };
+  useEffect(() => {
+    for (const source of previewScene?.sources ?? []) {
+      if (!source.assetId || mediaElements.current.has(source.id) || loadingAssetSources.current.has(source.id)) continue;
+      const asset = assets.find((item) => item.id === source.assetId);
+      if (!asset) continue;
+      loadingAssetSources.current.add(source.id);
+      void (async () => {
+        try {
+          const access = (await (await apiRequest("GET", `/api/assets/${asset.id}/access`)).json()) as { url: string };
+          if (asset.mimeType?.startsWith("image/")) {
+            const image = new window.Image();
+            image.crossOrigin = "anonymous";
+            image.src = access.url;
+            await image.decode();
+            mediaElements.current.set(source.id, image);
+          } else {
+            const video = document.createElement("video");
+            video.crossOrigin = "anonymous";
+            video.src = access.url;
+            video.loop = true;
+            video.muted = true;
+            video.playsInline = true;
+            await video.play();
+            mediaElements.current.set(source.id, video);
+          }
+        } catch { setMessage(`${source.name} could not be loaded`); }
+        finally { loadingAssetSources.current.delete(source.id); }
+      })();
+    }
+  }, [assets, previewScene?.sources]);
   const addSource = (type: BroadcastSource["type"], graphicStyle: "plain" | "lower_third" | "ticker" | "countdown" = "plain") => {
     if (!previewScene) return;
     const id = safeId("source");
@@ -1242,6 +1278,15 @@ export default function BroadcastStudioPage() {
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
+            <div className="mt-2 grid grid-cols-[1fr_auto] gap-1">
+              <select aria-label="Scene template" value={sceneTemplate} onChange={(event) => setSceneTemplate(event.target.value as BroadcastSceneTemplate)} className="h-9 min-w-0 rounded-lg border border-zinc-800 bg-black px-2 text-[11px] text-white">
+                <option value="solo">Solo creator</option>
+                <option value="interview">Two-person interview</option>
+                <option value="presentation">Screen presentation</option>
+                <option value="countdown">Countdown opener</option>
+              </select>
+              <Button size="sm" variant="outline" disabled={config.scenes.length >= 20} onClick={() => void persist(createBroadcastSceneFromTemplate(config, sceneTemplate, safeId("scene")))}><Wand2 className="mr-1 h-3.5 w-3.5"/>Add template</Button>
+            </div>
           </Panel>
           <Panel title="Sources" icon={Video}>
             <div className="space-y-1">
@@ -1348,6 +1393,13 @@ export default function BroadcastStudioPage() {
               </Button>
             )}
           </Panel>
+          <Panel title="Brand kit" icon={Palette}>
+            <div className="grid grid-cols-3 gap-2">
+              {([['Primary', 'primaryColor'], ['Surface', 'surfaceColor'], ['Text', 'textColor']] as const).map(([label, key]) => <label key={key} className="text-[10px] text-zinc-500">{label}<Input aria-label={`${label} brand color`} type="color" className="mt-1 h-9 border-zinc-800 bg-black p-1" value={config.brandKit[key]} onChange={(event) => void persist({ ...config, brandKit: { ...config.brandKit, [key]: event.target.value } })}/></label>)}
+            </div>
+            <label className="mt-3 block text-[10px] text-zinc-500">Logo asset<select aria-label="Brand logo asset" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-2 text-[11px] text-white" value={config.brandKit.logoAssetId ?? ""} onChange={(event) => void persist({ ...config, brandKit: { ...config.brandKit, logoAssetId: event.target.value || null } })}><option value="">No logo</option>{assets.filter((asset) => asset.mimeType?.startsWith("image/")).map((asset) => <option key={asset.id} value={asset.id}>{asset.originalFilename ?? "Image asset"}</option>)}</select></label>
+            <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => void persist(applyBroadcastBrandKit(config))}>Apply to branded graphics</Button>
+          </Panel>
         </aside>
         <section className="space-y-3">
           <div className="grid gap-3 lg:grid-cols-2">
@@ -1431,6 +1483,7 @@ export default function BroadcastStudioPage() {
                 }
               />
             </label>
+            <span className="w-full text-center text-[10px] text-zinc-600">Operator keys: Alt/Option + 1–9 selects preview · Alt/Option + Enter takes it live</span>
           </div>
           <Panel title="Audio mixer" icon={Volume2}>
             <div className="grid gap-2 md:grid-cols-2">
@@ -1614,7 +1667,7 @@ export default function BroadcastStudioPage() {
                     Connect {selectedSource.type}
                   </Button>
                 )}
-                {selectedSource.type === "media" && (
+                {(selectedSource.type === "media" || selectedSource.type === "image") && (
                   <select
                     aria-label="Media asset"
                     className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs"

@@ -71,8 +71,21 @@ describe("CreativesOS release readiness", () => {
         transcriptIngest: "configured",
         realtimeAi: "configured",
       },
+      cutStudio: {
+        privateIngest: "configured",
+        nonDestructiveEdl: "configured",
+        transcriptCorrection: "configured",
+        captionSidecars: "configured",
+        renderProfiles: "configured",
+        failedJobRetry: "configured",
+      },
       broadcastStudio: {
         sceneComposer: "configured",
+        sceneTemplates: "configured",
+        brandKit: "configured",
+        multiAspect: "configured",
+        multiDestination: "configured",
+        nativeGraphics: "configured",
         browserCapture: "configured",
         serverEncoder: "configured",
         privateRecording: "configured",
@@ -117,11 +130,24 @@ describe("CreativesOS release readiness", () => {
     });
     expect(result.broadcastStudio).toEqual({
       sceneComposer: "configured",
+      sceneTemplates: "configured",
+      brandKit: "configured",
+      multiAspect: "configured",
+      multiDestination: "configured",
+      nativeGraphics: "configured",
       browserCapture: "configured",
       serverEncoder: "configured",
       privateRecording: "unconfigured",
       destinationSecurity: "unconfigured",
       liveDestination: "provider_pending",
+    });
+    expect(result.cutStudio).toEqual({
+      privateIngest: "unconfigured",
+      nonDestructiveEdl: "configured",
+      transcriptCorrection: "configured",
+      captionSidecars: "configured",
+      renderProfiles: "configured",
+      failedJobRetry: "configured",
     });
   });
 

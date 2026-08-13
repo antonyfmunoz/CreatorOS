@@ -51,6 +51,15 @@ export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
 
+export function estimateCutRenderSeconds(duration: number, request: CutRenderRequest) {
+  const resolutionFactor = request.resolution === "2160p" ? 4 : request.resolution === "1080p" ? 1.8 : 1;
+  const qualityFactor = request.quality === "master" ? 2.5 : request.quality === "social" ? 1.25 : 0.65;
+  const frameFactor = request.fps / 30;
+  const captionFactor = request.captions ? 1.15 : 1;
+  const audioFactor = request.cleanAudio ? 1.1 : 1;
+  return Math.max(5, Math.ceil(Math.max(0, duration) * resolutionFactor * qualityFactor * frameFactor * captionFactor * audioFactor));
+}
+
 export function normalizeCutClips(clips: CutClip[], duration?: number): CutClip[] {
   const maxDuration = typeof duration === "number" && Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
   const ordered = clips
@@ -126,6 +135,38 @@ export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
 
 export function transcriptWords(transcript: CutTranscript | null | undefined) {
   return transcript?.segments.flatMap((segment) => segment.words) ?? [];
+}
+
+function srtTimestamp(seconds: number) {
+  const milliseconds = Math.max(0, Math.round(seconds * 1_000));
+  const hh = Math.floor(milliseconds / 3_600_000);
+  const mm = Math.floor((milliseconds % 3_600_000) / 60_000);
+  const ss = Math.floor((milliseconds % 60_000) / 1_000);
+  const ms = milliseconds % 1_000;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+function sourceToOutput(edl: CutEdl, time: number) {
+  let cursor = 0;
+  for (const clip of edl.clips) {
+    const speed = clip.speed ?? 1;
+    if (time >= clip.start && time <= clip.end) return cursor + (time - clip.start) / speed;
+    cursor += (clip.end - clip.start) / speed;
+  }
+  return null;
+}
+
+export function buildSrtCaptions(transcript: CutTranscript, edl: CutEdl) {
+  let sequence = 0;
+  const blocks: string[] = [];
+  for (const segment of transcript.segments) {
+    const start = sourceToOutput(edl, segment.start);
+    const end = sourceToOutput(edl, Math.max(segment.start, segment.end - 0.001));
+    if (start === null || end === null || end <= start || !segment.text.trim()) continue;
+    sequence += 1;
+    blocks.push(`${sequence}\n${srtTimestamp(start)} --> ${srtTimestamp(end)}\n${segment.text.trim()}\n`);
+  }
+  return blocks.join("\n");
 }
 
 export function detectCutCandidates(transcript: CutTranscript, silenceThreshold = 1) {

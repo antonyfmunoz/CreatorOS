@@ -8,8 +8,10 @@ import { z } from "zod";
 import { assets, cutStudioJobs, cutStudioProjects } from "@shared/schema";
 import {
   buildCmx3600Edl,
+  buildSrtCaptions,
   cutDuration,
   cutRenderRequestSchema,
+  cutTranscriptSchema,
   detectCutCandidates,
   removeCutRange,
   validateCutEdl,
@@ -115,38 +117,6 @@ async function transcribeMedia(inputPath: string, tempDirectory: string) {
   return result;
 }
 
-function srtTimestamp(seconds: number) {
-  const milliseconds = Math.max(0, Math.round(seconds * 1_000));
-  const hh = Math.floor(milliseconds / 3_600_000);
-  const mm = Math.floor((milliseconds % 3_600_000) / 60_000);
-  const ss = Math.floor((milliseconds % 60_000) / 1_000);
-  const ms = milliseconds % 1_000;
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-}
-
-function sourceToOutput(edl: CutEdl, time: number) {
-  let cursor = 0;
-  for (const clip of edl.clips) {
-    const speed = clip.speed ?? 1;
-    if (time >= clip.start && time <= clip.end) return cursor + (time - clip.start) / speed;
-    cursor += (clip.end - clip.start) / speed;
-  }
-  return null;
-}
-
-function transcriptToSrt(transcript: CutTranscript, edl: CutEdl) {
-  let sequence = 0;
-  const blocks: string[] = [];
-  for (const segment of transcript.segments) {
-    const start = sourceToOutput(edl, segment.start);
-    const end = sourceToOutput(edl, Math.max(segment.start, segment.end - 0.001));
-    if (start === null || end === null || end <= start) continue;
-    sequence += 1;
-    blocks.push(`${sequence}\n${srtTimestamp(start)} --> ${srtTimestamp(end)}\n${segment.text.trim()}\n`);
-  }
-  return blocks.join("\n");
-}
-
 function highlightCandidates(transcript: CutTranscript) {
   return transcript.segments.map((segment) => {
     const text = segment.text.trim();
@@ -233,7 +203,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     }
     if (media.hasVideo && request.captions && project.transcript) {
       const srtPath = path.join(temp, "captions.srt");
-      await fs.writeFile(srtPath, transcriptToSrt(project.transcript, { version: 2, clips }), "utf8");
+      await fs.writeFile(srtPath, buildSrtCaptions(project.transcript, { version: 2, clips }), "utf8");
       const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
       const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
       filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
@@ -361,6 +331,29 @@ export function registerCutStudioRoutes(app: Express) {
   cut.get("/api/cut/projects/:id/transcript", attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" }); res.json(project.transcript);
   });
+  cut.put("/api/cut/projects/:id/transcript", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const expected = Number(req.get("if-match")?.replace(/\"/g, ""));
+    if (!Number.isInteger(expected)) return res.status(428).json({ message: "Transcript revision is required" });
+    const parsed = cutTranscriptSchema.safeParse(req.body);
+    if (!parsed.success || parsed.data.segments.some((segment) => segment.end < segment.start || segment.end > project.duration + 1)) return res.status(400).json({ message: "The corrected transcript is invalid" });
+    const [updated] = await db.update(cutStudioProjects).set({ transcript: parsed.data, revision: sql`${cutStudioProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioProjects.id, project.id), eq(cutStudioProjects.revision, expected))).returning();
+    if (!updated) return res.status(409).json({ message: "This project changed elsewhere. Reload before saving transcript corrections." });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: updated.id, eventType: "cutstudio.transcript.corrected", actorUserId: req.dbUser!.id, payload: { businessId: updated.businessId, revision: updated.revision, segmentCount: parsed.data.segments.length }, idempotencyKey: `cutstudio:${updated.id}:transcript:${updated.revision}` });
+    res.setHeader("X-Cut-Rev", String(updated.revision));
+    res.json(updated.transcript);
+  });
+  cut.get("/api/cut/projects/:id/captions.srt", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (!project.transcript) return res.status(409).json({ message: "Create a transcript before exporting captions" });
+    const filename = `${project.name.replace(/[^a-z0-9_-]+/gi, "-") || "captions"}.srt`;
+    res.type("application/x-subrip").setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+    res.send(buildSrtCaptions(project.transcript, project.edl));
+  });
   cut.post("/api/cut/projects/:id/detect", attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
     if (!project.transcript) return res.status(409).json({ message: "Transcribe the media first" }); res.json(detectCutCandidates(project.transcript));
@@ -394,6 +387,16 @@ export function registerCutStudioRoutes(app: Express) {
       return res.json({ ...job, state: "queued", detail: "Recovering interrupted job", progress: 0 });
     }
     res.json(job);
+  });
+  cut.post("/api/cut/jobs/:id/retry", attachUser, async (req, res) => {
+    noStore(res);
+    const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.state !== "error") return res.status(409).json({ message: "Only a failed job can be retried" });
+    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
+    const [retry] = await db.insert(cutStudioJobs).values({ projectId: job.projectId, ownerUserId: req.dbUser!.id, kind: job.kind, request: job.request, detail: "Retry queued" }).returning();
+    queueJob(retry.id);
+    res.status(202).json(retry);
   });
   cut.get("/api/cut/jobs/:id/media", attachUser, async (req, res) => {
     noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });

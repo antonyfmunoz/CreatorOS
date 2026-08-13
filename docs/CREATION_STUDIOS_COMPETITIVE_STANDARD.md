@@ -36,27 +36,27 @@ checked against primary product documentation before this scorecard is revised.
 | --- | --- | --- | --- |
 | Private ingest and projects | Implemented | Maintain | None |
 | Non-destructive timeline | Implemented, single source | Precise split/trim, per-clip speed, volume, fades, undo/redo | Product code |
-| Text-based editing | Implemented | Batch filler/dead-air review and transcript search/correction | Product code; transcription provider for new transcripts |
-| Captions | Three burn-in styles | Editable, animated and translated caption tracks plus sidecar export | Product code; translation provider for translation |
+| Text-based editing | Search, correction and batch filler/dead-air review implemented | Transcript rearrangement and speaker labeling | Product code; transcription provider for new transcripts |
+| Captions | Three burn-in styles plus corrected SRT sidecar export | Animated and translated caption tracks | Product code; translation provider for translation |
 | Social reframing | Fixed aspect fit/pad | Landscape, square, portrait and subject-aware reframing | Product code; vision compute for subject tracking |
 | Audio repair | Basic denoise | Loudness, EQ, compression, ducking, fades and meters | Product code |
 | Multitrack edit | Not implemented | Multiple video/audio/graphics tracks, B-roll, titles and clip ordering | Product code and data migration |
 | Visual finishing | Basic crop through aspect render | Per-clip crop/transform, transitions, color correction, LUT and chroma key | Product code |
 | Review/collaboration | Project owner only | Review link, time-coded comments, versions and approvals | Product code |
-| Render/delivery | Private H.264/AAC render and distribution promotion | Quality presets, cancel/retry, render estimate, 4K-capable worker tier | Product code and scalable compute |
+| Render/delivery | Private H.264/AAC render, quality profiles, estimate, failed-job retry and distribution promotion | True running-job cancellation and a scalable 4K worker tier | Product code and scalable compute |
 | AI assistance | Deterministic edit proposals and highlights | Provider-neutral assistance with human review | AI providers remain optional adapters |
 
 ## Broadcast scorecard
 
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
-| Scene composer | Implemented | Maintain reusable scenes and templates | None |
-| Preview/program | Cut and fade | Maintain with production hotkeys | Product code |
+| Scene composer | Reusable solo, interview, presentation and countdown scenes implemented | Expand the template library and team sharing | Product code |
+| Preview/program | Cut, fade and production hotkeys | Maintain | Product code |
 | Sources | Camera, screen, mic, media, image, text, color, test pattern | Browser/deck sources, guest feeds and reusable brand graphics | Product code; guest transport uses realtime provider |
 | Source control | Transform, crop, layer, blend, basic filters, mute/volume | Chroma key, LUT, audio filters, monitoring and source presets | Product code; device limitations apply |
-| Brand production | Plain text/image sources | Lower thirds, tickers, countdowns, logos and brand kits | Product code |
-| Output formats | 720p/1080p landscape at 24/30/60 | Portrait and square production profiles | Product code |
-| Destinations | One RTMP/RTMPS/SRT destination | Secure simultaneous multi-destination fan-out with per-destination status | Product code; destination accounts remain providers |
+| Brand production | Lower thirds, tickers, countdowns, asset logos and persistent color kit | Reusable team-level brand kits and animated overlays | Product code |
+| Output formats | 720p/1080p landscape, portrait and square at 24/30/60 | Maintain and add destination-specific framing when justified | Product code |
+| Destinations | Secure simultaneous fan-out to as many as eight RTMP/RTMPS/SRT destinations | Per-destination status, reconnect and independent failover | Product code; destination accounts remain providers |
 | Recording | Private server or browser recording and replay buffer | Pause/resume, markers, isolated participant tracks and local-quality capture | Product code; guest/device constraints apply |
 | Guests/roles | Realtime community-room foundation exists | Backstage, producer, host, guest and AI-role participation in the studio | Product code; realtime provider activation |
 | Audience | Not integrated into studio | Unified live comments, moderation, on-screen comments and calls to action | Product code; channel APIs remain providers |
@@ -84,4 +84,3 @@ count as implemented.
   private playback, and distribution promotion.
 - External authorization: separately proven for every streaming/social channel;
   never inferred from configured environment variables.
-

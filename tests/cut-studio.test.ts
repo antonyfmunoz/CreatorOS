@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCmx3600Edl, cutDuration, detectCutCandidates, removeCutRange, restoreCutRange, splitCutAt, validateCutEdl } from "../shared/cut-studio";
+import { buildCmx3600Edl, buildSrtCaptions, cutDuration, detectCutCandidates, estimateCutRenderSeconds, removeCutRange, restoreCutRange, splitCutAt, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -44,5 +44,26 @@ describe("CutStudio edit decision list", () => {
       { id: "context", start: 0, end: 10 },
     ] }, 30);
     expect(result.clips.map((clip) => clip.id)).toEqual(["hook", "context"]);
+  });
+
+  it("exports corrected captions against the retimed output timeline", () => {
+    const transcript = { duration: 20, language: "en", segments: [
+      { id: "a", start: 0, end: 10, text: "Corrected opening", words: [] },
+      { id: "b", start: 10, end: 20, text: "Corrected ending", words: [] },
+    ] };
+    const result = buildSrtCaptions(transcript, validateCutEdl({ version: 2, clips: [
+      { id: "a", start: 0, end: 10, speed: 2 },
+      { id: "b", start: 10, end: 20, speed: 1 },
+    ] }, 20));
+    expect(result).toContain("00:00:00,000 --> 00:00:05,000\nCorrected opening");
+    expect(result).toContain("00:00:05,000 --> 00:00:14,999\nCorrected ending");
+  });
+
+  it("gives conservative render estimates for production profiles", () => {
+    const base = { aspect: "16:9", captions: false, captionStyle: 1, cleanAudio: false, quality: "draft", resolution: "720p", fps: 30 } as const;
+    const draft = estimateCutRenderSeconds(60, base);
+    const master = estimateCutRenderSeconds(60, { ...base, captions: true, cleanAudio: true, quality: "master", resolution: "2160p", fps: 60 });
+    expect(draft).toBeGreaterThanOrEqual(5);
+    expect(master).toBeGreaterThan(draft * 10);
   });
 });

@@ -196,6 +196,7 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   ).toBeVisible();
   await expect(page.getByText("Scenes", { exact: true })).toBeVisible();
   await expect(page.getByText("Sources", { exact: true })).toBeVisible();
+  await expect(page.getByText("Brand kit", { exact: true })).toBeVisible();
   await expect(page.getByText("Audio mixer", { exact: true })).toBeVisible();
   await expect(page.getByText("Output health", { exact: true })).toBeVisible();
   await expect(
@@ -213,6 +214,12 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByRole("button", { name: "Text", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lower third", exact: true }).click();
   await expect(page.getByRole("button", { name: "Lower third", exact: true })).toHaveCount(2);
+  await page.getByLabel("Scene template").selectOption("interview");
+  await page.getByRole("button", { name: "Add template" }).click();
+  await expect(page.getByRole("button", { name: /Two-person interview/ })).toBeVisible();
+  await page.getByLabel("Surface brand color").fill("#112233");
+  await page.getByRole("button", { name: "Apply to branded graphics" }).click();
+  await expect(page.getByText(/Operator keys:/)).toBeVisible();
   await page.getByLabel("Broadcast resolution").selectOption("1080x1920");
   await expect(page.getByLabel("Broadcast resolution")).toHaveValue("1080x1920");
 });

@@ -479,13 +479,12 @@ async function launchRuntime(
 export function registerBroadcastStudioRoutes(app: Express) {
   app.get("/api/broadcast/studios", attachUser, async (req, res) => {
     noStore(res);
-    res.json(
-      await db
+    const studios = await db
         .select()
         .from(broadcastStudios)
         .where(eq(broadcastStudios.ownerUserId, req.dbUser!.id))
-        .orderBy(desc(broadcastStudios.updatedAt)),
-    );
+        .orderBy(desc(broadcastStudios.updatedAt));
+    res.json(studios.map((studio) => ({ ...studio, config: validateBroadcastStudioConfig(studio.config) })));
   });
   app.post("/api/broadcast/studios", attachUser, async (req, res) => {
     noStore(res);
@@ -522,7 +521,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
       .where(eq(broadcastSessions.studioId, studio.id))
       .orderBy(desc(broadcastSessions.createdAt))
       .limit(20);
-    res.json({ ...studio, sessions });
+    res.json({ ...studio, config: validateBroadcastStudioConfig(studio.config), sessions });
   });
   app.put("/api/broadcast/studios/:id", attachUser, async (req, res) => {
     noStore(res);

@@ -95,6 +95,12 @@ export const broadcastStudioConfigSchema = z.object({
   masterMuted: z.boolean().default(false),
   masterVolume: z.number().finite().min(0).max(2).default(1),
   replayBufferSeconds: z.number().int().min(0).max(120).default(30),
+  brandKit: z.object({
+    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#1d9bf0"),
+    surfaceColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#101014"),
+    textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
+    logoAssetId: z.string().uuid().nullable().default(null),
+  }).default({ primaryColor: "#1d9bf0", surfaceColor: "#101014", textColor: "#ffffff", logoAssetId: null }),
 });
 
 export const broadcastDestinationInputSchema = z.object({
@@ -116,6 +122,7 @@ export const broadcastSessionStartSchema = z.object({
 export type BroadcastSource = z.infer<typeof broadcastSourceSchema>;
 export type BroadcastScene = z.infer<typeof broadcastSceneSchema>;
 export type BroadcastStudioConfig = z.infer<typeof broadcastStudioConfigSchema>;
+export type BroadcastSceneTemplate = "solo" | "interview" | "presentation" | "countdown";
 
 export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
   const sceneId = "scene_main";
@@ -166,6 +173,7 @@ export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
     masterMuted: false,
     masterVolume: 1,
     replayBufferSeconds: 30,
+    brandKit: { primaryColor: "#1d9bf0", surfaceColor: "#101014", textColor: "#ffffff", logoAssetId: null },
   };
 }
 
@@ -232,5 +240,71 @@ export function duplicateBroadcastScene(
       },
     ],
     previewSceneId: nextId,
+  });
+}
+
+function templateSource(id: string, name: string, type: BroadcastSource["type"], transform: BroadcastSource["transform"], zOrder: number, overrides: Partial<BroadcastSource> = {}): BroadcastSource {
+  return {
+    id,
+    name,
+    type,
+    assetId: null,
+    text: null,
+    color: null,
+    transform,
+    zOrder,
+    visible: true,
+    locked: false,
+    muted: type === "text" || type === "image" || type === "color" || type === "test_pattern",
+    volume: 1,
+    blendMode: "source-over",
+    filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
+    presentation: { style: "plain", secondaryText: null, backgroundColor: null, fontScale: 1, align: "center", scrollSpeed: 90, countdownEndsAt: null },
+    ...overrides,
+  };
+}
+
+export function createBroadcastSceneFromTemplate(config: BroadcastStudioConfig, template: BroadcastSceneTemplate, sceneId: string): BroadcastStudioConfig {
+  const kit = config.brandKit;
+  const full = { x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 };
+  const lowerThird = templateSource(`${sceneId}_lower`.slice(0, 32), "Lower third", "text", { ...full, x: 0.05, y: 0.78, width: 0.62, height: 0.16 }, 10, { text: "Guest or headline", color: kit.textColor, presentation: { style: "lower_third", secondaryText: "Role or call to action", backgroundColor: kit.surfaceColor, fontScale: 1, align: "left", scrollSpeed: 90, countdownEndsAt: null } });
+  let name = "Solo creator";
+  let sources: BroadcastSource[] = [];
+  if (template === "solo") {
+    sources = [templateSource(`${sceneId}_cam`.slice(0, 32), "Host camera", "camera", { ...full, x: 0.08, y: 0.05, width: 0.84, height: 0.88 }, 0), lowerThird];
+  } else if (template === "interview") {
+    name = "Two-person interview";
+    sources = [
+      templateSource(`${sceneId}_host`.slice(0, 32), "Host camera", "camera", { ...full, x: 0.03, y: 0.08, width: 0.46, height: 0.78 }, 0),
+      templateSource(`${sceneId}_guest`.slice(0, 32), "Guest camera", "camera", { ...full, x: 0.51, y: 0.08, width: 0.46, height: 0.78 }, 1),
+      lowerThird,
+    ];
+  } else if (template === "presentation") {
+    name = "Screen presentation";
+    sources = [
+      templateSource(`${sceneId}_screen`.slice(0, 32), "Screen share", "screen", { ...full, x: 0.02, y: 0.03, width: 0.96, height: 0.94 }, 0),
+      templateSource(`${sceneId}_pip`.slice(0, 32), "Presenter camera", "camera", { ...full, x: 0.72, y: 0.64, width: 0.25, height: 0.31 }, 1),
+      lowerThird,
+    ];
+  } else {
+    name = "Countdown opener";
+    sources = [templateSource(`${sceneId}_count`.slice(0, 32), "Countdown", "text", { ...full, x: 0.15, y: 0.25, width: 0.7, height: 0.5 }, 0, { text: "Starting soon", color: kit.textColor, presentation: { style: "countdown", secondaryText: null, backgroundColor: kit.surfaceColor, fontScale: 1.5, align: "center", scrollSpeed: 90, countdownEndsAt: Date.now() + 300_000 } })];
+  }
+  if (kit.logoAssetId) sources.push(templateSource(`${sceneId}_logo`.slice(0, 32), "Brand logo", "image", { ...full, x: 0.82, y: 0.04, width: 0.14, height: 0.14 }, 20, { assetId: kit.logoAssetId }));
+  return validateBroadcastStudioConfig({ ...config, scenes: [...config.scenes, { id: sceneId, name, background: "#09090b", sources }], previewSceneId: sceneId });
+}
+
+export function applyBroadcastBrandKit(config: BroadcastStudioConfig): BroadcastStudioConfig {
+  const kit = config.brandKit;
+  return validateBroadcastStudioConfig({
+    ...config,
+    scenes: config.scenes.map((scene) => ({
+      ...scene,
+      sources: scene.sources.map((source) => source.type === "text" && source.presentation && source.presentation.style !== "plain" ? {
+        ...source,
+        color: kit.textColor,
+        presentation: { ...source.presentation, backgroundColor: kit.surfaceColor },
+      } : source),
+    })),
   });
 }

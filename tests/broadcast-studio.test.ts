@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { broadcastSessionStartSchema, defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
+import { applyBroadcastBrandKit, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
 import { isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
@@ -48,5 +48,16 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(() => validateBroadcastStudioConfig({ ...base, canvas: { width: 1920, height: 1920, fps: 30 } })).toThrow(/production profile/i);
     const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
     expect(broadcastSessionStartSchema.parse({ outputMode: "stream", destinationIds: ids, sourceMode: "browser" }).destinationIds).toEqual(ids);
+  });
+
+  it("creates reusable production scenes and applies a persistent brand kit", () => {
+    const base = validateBroadcastStudioConfig({ ...defaultBroadcastStudioConfig(), brandKit: { primaryColor: "#ff0055", surfaceColor: "#221122", textColor: "#fefefe", logoAssetId: null } });
+    const interview = createBroadcastSceneFromTemplate(base, "interview", "scene_interview");
+    const scene = interview.scenes.at(-1)!;
+    expect(scene.name).toBe("Two-person interview");
+    expect(scene.sources.filter((source) => source.type === "camera")).toHaveLength(2);
+    expect(scene.sources.find((source) => source.presentation?.style === "lower_third")).toMatchObject({ color: "#fefefe", presentation: { backgroundColor: "#221122" } });
+    const branded = applyBroadcastBrandKit(validateBroadcastStudioConfig({ ...interview, brandKit: { ...interview.brandKit, surfaceColor: "#0055ff" } }));
+    expect(branded.scenes.at(-1)?.sources.find((source) => source.presentation?.style === "lower_third")?.presentation?.backgroundColor).toBe("#0055ff");
   });
 });
