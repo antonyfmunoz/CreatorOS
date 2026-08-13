@@ -41,6 +41,12 @@ export const broadcastSourceSchema = z.object({
   locked: z.boolean().default(false),
   muted: z.boolean().default(false),
   volume: z.number().finite().min(0).max(2).default(1),
+  audioProcessing: z.object({
+    highPassHz: z.number().finite().min(20).max(1_000).default(20),
+    lowPassHz: z.number().finite().min(1_000).max(20_000).default(20_000),
+    compressor: z.boolean().default(false),
+    monitor: z.boolean().default(false),
+  }).default({ highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false }),
   blendMode: z
     .enum(["source-over", "screen", "multiply", "overlay"])
     .default("source-over"),
@@ -168,6 +174,7 @@ export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
             locked: false,
             muted: true,
             volume: 0,
+            audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
             blendMode: "source-over",
             filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
           },
@@ -266,6 +273,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
     locked: false,
     muted: type === "text" || type === "image" || type === "color" || type === "test_pattern",
     volume: 1,
+    audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
     blendMode: "source-over",
     filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
     presentation: { style: "plain", secondaryText: null, backgroundColor: null, fontScale: 1, align: "center", scrollSpeed: 90, countdownEndsAt: null },

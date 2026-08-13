@@ -179,6 +179,8 @@ export function getReleaseReadiness(
       sceneComposer: "configured",
       sceneTemplates: "configured",
       reusableSourcePresets: "configured",
+      renderEffectiveAudioProcessing: "configured",
+      localAudioMonitoring: "configured",
       brandKit: "configured",
       multiAspect: "configured",
       multiDestination: "configured",

@@ -187,6 +187,7 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
 test("Broadcast Studio exposes independent operator controls and explicit capture consent", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(75_000);
   const owner = ownerFor(testInfo);
   const studiosResponse = await api(
     page,
@@ -242,6 +243,11 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await page.getByLabel("Scene template").selectOption("interview");
   await page.getByRole("button", { name: "Add template" }).click();
   await expect(page.getByRole("button", { name: /Two-person interview/ })).toBeVisible();
+  await page.getByRole("button", { name: "Transition to program" }).click();
+  await page.getByLabel("Host camera compressor").click();
+  await page.getByLabel("Host camera audio monitoring").click();
+  await expect(page.getByLabel("Host camera compressor")).toBeChecked();
+  await expect(page.getByLabel("Host camera audio monitoring")).toBeChecked();
   await page.getByLabel("Surface brand color").fill("#112233");
   await page.getByRole("button", { name: "Apply to branded graphics" }).click();
   await expect(page.getByText(/Operator keys:/)).toBeVisible();
@@ -253,6 +259,9 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   const persistedStudios = await persistedStudiosResponse.json();
   expect(persistedStudios.some((studio: { config?: { sourcePresets?: Array<{ name: string }> } }) =>
     studio.config?.sourcePresets?.some((preset) => preset.name === "Reusable headline"),
+  )).toBe(true);
+  expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; audioProcessing?: { compressor: boolean; monitor: boolean } }> }> } }) =>
+    studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.audioProcessing?.compressor && source.audioProcessing.monitor)),
   )).toBe(true);
 
 });

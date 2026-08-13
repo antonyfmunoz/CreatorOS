@@ -31,6 +31,8 @@ describe("CreativesOS Broadcast scene graph", () => {
     const source = base.scenes[0].sources[0];
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, volume: 3 }] }] })).toThrow();
     expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, filters: { ...source.filters, blurPx: 50 } }] }] })).toThrow();
+    expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { ...source.audioProcessing, highPassHz: 2_000 } }] }] })).toThrow();
+    expect(validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, audioProcessing: { highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true } }] }] }).scenes[0].sources[0].audioProcessing).toEqual({ highPassHz: 100, lowPassHz: 12_000, compressor: true, monitor: true });
   });
 
   it("rejects internal destination addresses and never exposes URL credentials", () => {

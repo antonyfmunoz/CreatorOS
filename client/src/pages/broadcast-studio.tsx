@@ -96,6 +96,12 @@ type RuntimeCapture = {
   stream: MediaStream;
   audioContext: AudioContext | null;
   sourceGains: Map<string, GainNode>;
+  sourceAudioNodes: Map<string, {
+    highPass: BiquadFilterNode;
+    lowPass: BiquadFilterNode;
+    compressor: DynamicsCompressorNode;
+    monitorGain: GainNode;
+  }>;
   masterGain: GainNode | null;
 };
 type ReplayCapture = {
@@ -119,6 +125,7 @@ const sourceDefaults = {
   locked: false,
   muted: false,
   volume: 1,
+  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
   presentation: { style: "plain" as const, secondaryText: null, backgroundColor: null, fontScale: 1, align: "center" as const, scrollSpeed: 90, countdownEndsAt: null },
@@ -195,6 +202,10 @@ export default function BroadcastStudioPage() {
     offsetY: number;
   } | null>(null);
   const meterContexts = useRef(new Map<string, AudioContext>());
+  const studioRef = useRef<Studio | null>(null);
+  const latestRequestedConfig = useRef<BroadcastStudioConfig | null>(null);
+  const persistQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaves = useRef(0);
   const transitionFrame = useRef<ActiveTransition | null>(null);
   const transitionCanvases = useRef<{
     from: HTMLCanvasElement;
@@ -231,7 +242,9 @@ export default function BroadcastStudioPage() {
       await apiRequest("GET", `/api/broadcast/studios/${id}`)
     ).json()) as Studio;
     setStudio(value);
+    studioRef.current = value;
     setConfig(value.config);
+    latestRequestedConfig.current = value.config;
     setSelectedSourceId(
       value.config.scenes.find(
         (scene) => scene.id === value.config.previewSceneId,
@@ -250,31 +263,49 @@ export default function BroadcastStudioPage() {
 
   const persist = useCallback(
     async (next: BroadcastStudioConfig, nextName = studio?.name) => {
-      if (!studio || exactConfig(next, studio.config)) {
-        setConfig(next);
-        return;
-      }
-      setSaving(true);
       setConfig(next);
-      try {
-        const updated = (await (
-          await apiRequest(
-            "PUT",
-            `/api/broadcast/studios/${studio.id}`,
-            { config: next, name: nextName },
-            { "If-Match": String(studio.revision) },
-          )
-        ).json()) as Studio;
-        setStudio(updated);
-        setConfig(updated.config);
-      } catch (error) {
-        setMessage(
-          error instanceof Error ? error.message : "Studio could not be saved",
-        );
-        await openStudio(studio.id);
-      } finally {
-        setSaving(false);
-      }
+      latestRequestedConfig.current = next;
+      const current = studioRef.current;
+      if (!current || exactConfig(next, current.config)) return;
+      pendingSaves.current += 1;
+      setSaving(true);
+      const save = async () => {
+        let base = studioRef.current;
+        if (!base || exactConfig(next, base.config)) return;
+        try {
+          let response: Response;
+          try {
+            response = await apiRequest(
+              "PUT",
+              `/api/broadcast/studios/${base.id}`,
+              { config: next, name: nextName },
+              { "If-Match": String(base.revision) },
+            );
+          } catch {
+            base = (await (await apiRequest("GET", `/api/broadcast/studios/${base.id}`)).json()) as Studio;
+            studioRef.current = base;
+            response = await apiRequest(
+              "PUT",
+              `/api/broadcast/studios/${base.id}`,
+              { config: next, name: nextName },
+              { "If-Match": String(base.revision) },
+            );
+          }
+          const updated = (await response.json()) as Studio;
+          studioRef.current = updated;
+          setStudio(updated);
+          if (latestRequestedConfig.current && exactConfig(latestRequestedConfig.current, next)) setConfig(updated.config);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Studio could not be saved");
+          const failedStudioId = studioRef.current?.id;
+          if (failedStudioId) await openStudio(failedStudioId);
+        }
+      };
+      persistQueue.current = persistQueue.current.catch(() => undefined).then(save).finally(() => {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) setSaving(false);
+      });
+      await persistQueue.current;
     },
     [studio, openStudio],
   );
@@ -735,6 +766,12 @@ export default function BroadcastStudioPage() {
     const stream = programCanvas.current.captureStream(config.canvas.fps);
     let audioContext: AudioContext | null = null;
     const sourceGains = new Map<string, GainNode>();
+    const sourceAudioNodes = new Map<string, {
+      highPass: BiquadFilterNode;
+      lowPass: BiquadFilterNode;
+      compressor: DynamicsCompressorNode;
+      monitorGain: GainNode;
+    }>();
     let masterGain: GainNode | null = null;
     const audioInputs: Array<{ sourceId: string; stream: MediaStream }> =
       Array.from(liveStreams.current.entries()).map(
@@ -761,16 +798,31 @@ export default function BroadcastStudioPage() {
           (source) => source.id === input.sourceId,
         );
         const node = audioContext.createMediaStreamSource(input.stream);
+        const highPass = audioContext.createBiquadFilter();
+        highPass.type = "highpass";
+        highPass.frequency.value = sourceConfig?.audioProcessing.highPassHz ?? 20;
+        const lowPass = audioContext.createBiquadFilter();
+        lowPass.type = "lowpass";
+        lowPass.frequency.value = sourceConfig?.audioProcessing.lowPassHz ?? 20_000;
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.value = sourceConfig?.audioProcessing.compressor ? -18 : 0;
+        compressor.knee.value = sourceConfig?.audioProcessing.compressor ? 12 : 0;
+        compressor.ratio.value = sourceConfig?.audioProcessing.compressor ? 4 : 1;
         const gain = audioContext.createGain();
         gain.gain.value = sourceConfig?.muted ? 0 : (sourceConfig?.volume ?? 1);
+        const monitorGain = audioContext.createGain();
+        monitorGain.gain.value = sourceConfig?.audioProcessing.monitor ? 1 : 0;
         sourceGains.set(input.sourceId, gain);
-        node.connect(gain).connect(masterGain);
+        sourceAudioNodes.set(input.sourceId, { highPass, lowPass, compressor, monitorGain });
+        node.connect(highPass).connect(lowPass).connect(compressor).connect(gain);
+        gain.connect(masterGain);
+        gain.connect(monitorGain).connect(audioContext.destination);
       }
       destination.stream
         .getAudioTracks()
         .forEach((track) => stream.addTrack(track));
     }
-    return { stream, audioContext, sourceGains, masterGain };
+    return { stream, audioContext, sourceGains, sourceAudioNodes, masterGain };
   };
   useEffect(() => {
     const capture = runtimeCapture.current;
@@ -787,6 +839,16 @@ export default function BroadcastStudioPage() {
         capture.audioContext?.currentTime ?? 0,
         0.015,
       );
+      const audioNodes = capture.sourceAudioNodes.get(sourceId);
+      if (source && audioNodes && capture.audioContext) {
+        const now = capture.audioContext.currentTime;
+        audioNodes.highPass.frequency.setTargetAtTime(source.audioProcessing.highPassHz, now, 0.015);
+        audioNodes.lowPass.frequency.setTargetAtTime(source.audioProcessing.lowPassHz, now, 0.015);
+        audioNodes.compressor.threshold.setTargetAtTime(source.audioProcessing.compressor ? -18 : 0, now, 0.015);
+        audioNodes.compressor.knee.setTargetAtTime(source.audioProcessing.compressor ? 12 : 0, now, 0.015);
+        audioNodes.compressor.ratio.setTargetAtTime(source.audioProcessing.compressor ? 4 : 1, now, 0.015);
+        audioNodes.monitorGain.gain.setTargetAtTime(source.audioProcessing.monitor ? 1 : 0, now, 0.015);
+      }
     });
   }, [config?.masterMuted, config?.masterVolume, programScene]);
   const beginOutput = async (outputMode: "stream" | "recording") => {
@@ -830,6 +892,7 @@ export default function BroadcastStudioPage() {
         stream: mixed.stream,
         audioContext: mixed.audioContext,
         sourceGains: mixed.sourceGains,
+        sourceAudioNodes: mixed.sourceAudioNodes,
         masterGain: mixed.masterGain,
       };
       runtimeCapture.current = capture;
@@ -1595,6 +1658,38 @@ export default function BroadcastStudioPage() {
                         })
                       }
                     />
+                    <div className="mt-3 grid grid-cols-2 gap-3 border-t border-zinc-900 pt-3">
+                      <label className="text-[10px] text-zinc-500">
+                        High-pass · {source.audioProcessing.highPassHz} Hz
+                        <Slider
+                          aria-label={`${source.name} high-pass filter`}
+                          className="mt-2"
+                          min={20}
+                          max={1000}
+                          step={10}
+                          value={[source.audioProcessing.highPassHz]}
+                          onValueChange={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, highPassHz: value[0] } }, false)}
+                          onValueCommit={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, highPassHz: value[0] } })}
+                        />
+                      </label>
+                      <label className="text-[10px] text-zinc-500">
+                        Low-pass · {source.audioProcessing.lowPassHz} Hz
+                        <Slider
+                          aria-label={`${source.name} low-pass filter`}
+                          className="mt-2"
+                          min={1000}
+                          max={20000}
+                          step={100}
+                          value={[source.audioProcessing.lowPassHz]}
+                          onValueChange={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, lowPassHz: value[0] } }, false)}
+                          onValueCommit={(value) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, lowPassHz: value[0] } })}
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-zinc-400">
+                      <label className="flex items-center gap-2">Compressor<Switch aria-label={`${source.name} compressor`} checked={source.audioProcessing.compressor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, compressor: checked } })}/></label>
+                      <label className="flex items-center gap-2" title="Monitor this source through your local output; headphones recommended">Monitor<Switch aria-label={`${source.name} audio monitoring`} checked={source.audioProcessing.monitor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, monitor: checked } })}/></label>
+                    </div>
                   </div>
                 ))}
             </div>
