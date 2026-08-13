@@ -44,8 +44,11 @@ import type {
 } from "@shared/broadcast-studio";
 import {
   applyBroadcastBrandKit,
+  applyBroadcastSourcePreset,
   createBroadcastSceneFromTemplate,
   duplicateBroadcastScene,
+  removeBroadcastSourcePreset,
+  saveBroadcastSourcePreset,
   transitionBroadcastScene,
   validateBroadcastStudioConfig,
 } from "@shared/broadcast-studio";
@@ -174,6 +177,7 @@ export default function BroadcastStudioPage() {
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const [capturePaused, setCapturePaused] = useState(false);
   const [sceneTemplate, setSceneTemplate] = useState<BroadcastSceneTemplate>("solo");
+  const [sourcePresetName, setSourcePresetName] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -1432,6 +1436,14 @@ export default function BroadcastStudioPage() {
                 Remove source
               </Button>
             )}
+          </Panel>
+          <Panel title="Source presets" icon={Save}>
+            <p className="text-[11px] leading-5 text-zinc-500">Save a complete source setup—layout, crop, filters, audio, graphics and attached asset—then reuse it in any scene.</p>
+            <div className="mt-3 flex gap-2">
+              <Input aria-label="Source preset name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={sourcePresetName} onChange={(event) => setSourcePresetName(event.target.value)} placeholder={selectedSource?.name ?? "Select a source"}/>
+              <Button aria-label="Save source preset" size="sm" variant="outline" disabled={!selectedSource || !sourcePresetName.trim() || config.sourcePresets.length >= 50} onClick={() => { if (!selectedSource) return; void persist(saveBroadcastSourcePreset(config, selectedSource.id, safeId("preset"), sourcePresetName.trim())); setSourcePresetName(""); }}><Save className="h-3.5 w-3.5"/></Button>
+            </div>
+            <div className="mt-3 space-y-2">{config.sourcePresets.length ? config.sourcePresets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{preset.name}</span><span className="text-[10px] text-zinc-600">{preset.source.type.replace("_", " ")}</span></span><Button size="sm" variant="outline" aria-label={`Apply ${preset.name} source preset`} onClick={() => { const sourceId = safeId("source"); void persist(applyBroadcastSourcePreset(config, previewScene.id, preset.id, sourceId)); setSelectedSourceId(sourceId); }}>Add</Button><button aria-label={`Delete ${preset.name} source preset`} onClick={() => void persist(removeBroadcastSourcePreset(config, preset.id))}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button></div>) : <p className="py-3 text-center text-xs text-zinc-600">No source presets yet.</p>}</div>
           </Panel>
           <Panel title="Brand kit" icon={Palette}>
             <div className="grid grid-cols-3 gap-2">

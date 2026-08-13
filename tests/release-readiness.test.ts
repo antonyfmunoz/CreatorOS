@@ -112,6 +112,7 @@ describe("CreativesOS release readiness", () => {
       broadcastStudio: {
         sceneComposer: "configured",
         sceneTemplates: "configured",
+        reusableSourcePresets: "configured",
         brandKit: "configured",
         multiAspect: "configured",
         multiDestination: "configured",
@@ -166,6 +167,7 @@ describe("CreativesOS release readiness", () => {
     expect(result.broadcastStudio).toEqual({
       sceneComposer: "configured",
       sceneTemplates: "configured",
+      reusableSourcePresets: "configured",
       brandKit: "configured",
       multiAspect: "configured",
       multiDestination: "configured",

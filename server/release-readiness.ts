@@ -178,6 +178,7 @@ export function getReleaseReadiness(
     broadcastStudio: {
       sceneComposer: "configured",
       sceneTemplates: "configured",
+      reusableSourcePresets: "configured",
       brandKit: "configured",
       multiAspect: "configured",
       multiDestination: "configured",

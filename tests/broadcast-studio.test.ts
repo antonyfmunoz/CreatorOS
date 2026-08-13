@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBroadcastBrandKit, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
+import { applyBroadcastBrandKit, applyBroadcastSourcePreset, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, removeBroadcastSourcePreset, saveBroadcastSourcePreset, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
 import { buildBroadcastTeeOutput, isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
@@ -70,5 +70,14 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(scene.sources.find((source) => source.presentation?.style === "lower_third")).toMatchObject({ color: "#fefefe", presentation: { backgroundColor: "#221122" } });
     const branded = applyBroadcastBrandKit(validateBroadcastStudioConfig({ ...interview, brandKit: { ...interview.brandKit, surfaceColor: "#0055ff" } }));
     expect(branded.scenes.at(-1)?.sources.find((source) => source.presentation?.style === "lower_third")?.presentation?.backgroundColor).toBe("#0055ff");
+  });
+
+  it("saves, reapplies, and removes render-effective source presets", () => {
+    const base = defaultBroadcastStudioConfig();
+    const saved = saveBroadcastSourcePreset(base, "source_title", "preset_title", "Launch title");
+    expect(saved.sourcePresets).toEqual([expect.objectContaining({ id: "preset_title", name: "Launch title", source: expect.objectContaining({ type: "text", text: "CreativesOS Live" }) })]);
+    const applied = applyBroadcastSourcePreset(saved, "scene_main", "preset_title", "source_reused");
+    expect(applied.scenes[0].sources.at(-1)).toMatchObject({ id: "source_reused", name: "Launch title", text: "CreativesOS Live", locked: false });
+    expect(removeBroadcastSourcePreset(applied, "preset_title").sourcePresets).toEqual([]);
   });
 });

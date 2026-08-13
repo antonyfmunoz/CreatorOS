@@ -71,6 +71,12 @@ export const broadcastSceneSchema = z.object({
   sources: z.array(broadcastSourceSchema).max(32).default([]),
 });
 
+export const broadcastSourcePresetSchema = z.object({
+  id: safeId,
+  name: z.string().trim().min(1).max(80),
+  source: broadcastSourceSchema,
+});
+
 export const broadcastStudioConfigSchema = z.object({
   version: z.literal(1),
   canvas: z.object({
@@ -101,6 +107,7 @@ export const broadcastStudioConfigSchema = z.object({
     textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
     logoAssetId: z.string().uuid().nullable().default(null),
   }).default({ primaryColor: "#1d9bf0", surfaceColor: "#101014", textColor: "#ffffff", logoAssetId: null }),
+  sourcePresets: z.array(broadcastSourcePresetSchema).max(50).default([]),
 });
 
 export const broadcastDestinationInputSchema = z.object({
@@ -122,6 +129,7 @@ export const broadcastSessionStartSchema = z.object({
 export type BroadcastSource = z.infer<typeof broadcastSourceSchema>;
 export type BroadcastScene = z.infer<typeof broadcastSceneSchema>;
 export type BroadcastStudioConfig = z.infer<typeof broadcastStudioConfigSchema>;
+export type BroadcastSourcePreset = z.infer<typeof broadcastSourcePresetSchema>;
 export type BroadcastSceneTemplate = "solo" | "interview" | "presentation" | "countdown";
 
 export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
@@ -174,6 +182,7 @@ export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
     masterVolume: 1,
     replayBufferSeconds: 30,
     brandKit: { primaryColor: "#1d9bf0", surfaceColor: "#101014", textColor: "#ffffff", logoAssetId: null },
+    sourcePresets: [],
   };
 }
 
@@ -307,4 +316,27 @@ export function applyBroadcastBrandKit(config: BroadcastStudioConfig): Broadcast
       } : source),
     })),
   });
+}
+
+export function saveBroadcastSourcePreset(config: BroadcastStudioConfig, sourceId: string, presetId: string, name: string): BroadcastStudioConfig {
+  const source = config.scenes.flatMap((scene) => scene.sources).find((item) => item.id === sourceId);
+  if (!source) throw new Error("Source not found");
+  const preset = broadcastSourcePresetSchema.parse({ id: presetId, name, source });
+  const existing = config.sourcePresets.findIndex((item) => item.id === preset.id);
+  const sourcePresets = existing < 0 ? [...config.sourcePresets, preset] : config.sourcePresets.map((item) => item.id === preset.id ? preset : item);
+  return validateBroadcastStudioConfig({ ...config, sourcePresets });
+}
+
+export function applyBroadcastSourcePreset(config: BroadcastStudioConfig, sceneId: string, presetId: string, sourceId: string): BroadcastStudioConfig {
+  const preset = config.sourcePresets.find((item) => item.id === presetId);
+  const scene = config.scenes.find((item) => item.id === sceneId);
+  if (!preset || !scene) throw new Error("Source preset or scene not found");
+  return validateBroadcastStudioConfig({
+    ...config,
+    scenes: config.scenes.map((item) => item.id === sceneId ? { ...item, sources: [...item.sources, { ...preset.source, id: sourceId, name: preset.name, zOrder: item.sources.length, locked: false }] } : item),
+  });
+}
+
+export function removeBroadcastSourcePreset(config: BroadcastStudioConfig, presetId: string): BroadcastStudioConfig {
+  return validateBroadcastStudioConfig({ ...config, sourcePresets: config.sourcePresets.filter((item) => item.id !== presetId) });
 }
