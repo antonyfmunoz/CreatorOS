@@ -253,8 +253,13 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByLabel("Overlay motion")).toHaveValue("fade");
   await page.getByLabel("Host camera compressor").click();
   await page.getByLabel("Host camera audio monitoring").click();
+  await expect(page.getByLabel("Host camera echo cancellation")).toBeChecked();
+  await expect(page.getByLabel("Host camera noise suppression")).toBeChecked();
+  await expect(page.getByLabel("Host camera automatic gain control")).toBeChecked();
+  await page.getByLabel("Host camera noise suppression").click();
   await expect(page.getByLabel("Host camera compressor")).toBeChecked();
   await expect(page.getByLabel("Host camera audio monitoring")).toBeChecked();
+  await expect(page.getByLabel("Host camera noise suppression")).not.toBeChecked();
   await page.getByRole("button", { name: "Host camera", exact: true }).click();
   await page.getByLabel("Enable chroma key").click();
   await page.getByLabel("Chroma key color").fill("#00ee22");
@@ -271,8 +276,8 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   expect(persistedStudios.some((studio: { config?: { sourcePresets?: Array<{ name: string }> } }) =>
     studio.config?.sourcePresets?.some((preset) => preset.name === "Reusable headline"),
   )).toBe(true);
-  expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; audioProcessing?: { compressor: boolean; monitor: boolean } }> }> } }) =>
-    studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.audioProcessing?.compressor && source.audioProcessing.monitor)),
+  expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; audioProcessing?: { compressor: boolean; monitor: boolean; echoCancellation: boolean; noiseSuppression: boolean; autoGainControl: boolean } }> }> } }) =>
+    studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.audioProcessing?.compressor && source.audioProcessing.monitor && source.audioProcessing.echoCancellation && !source.audioProcessing.noiseSuppression && source.audioProcessing.autoGainControl)),
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenes?: Array<{ sources?: Array<{ name: string; chromaKey?: { enabled: boolean; color: string } }> }> } }) =>
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Host camera" && source.chromaKey?.enabled && source.chromaKey.color === "#00ee22")),

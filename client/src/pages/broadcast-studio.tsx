@@ -157,7 +157,7 @@ const sourceDefaults = {
   locked: false,
   muted: false,
   volume: 1,
-  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false },
+  audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   blendMode: "source-over" as const,
   filters: { brightness: 1, contrast: 1, saturation: 1, blurPx: 0 },
   chromaKey: { enabled: false, color: "#00ff00", similarity: 0.35, smoothness: 0.1 },
@@ -783,6 +783,29 @@ export default function BroadcastStudioPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [config, performTransition]);
 
+  const applyDeviceAudioProcessing = async (source: BroadcastSource, stream = liveStreams.current.get(source.id)) => {
+    if (!stream?.getAudioTracks().length) return 0;
+    const supported = navigator.mediaDevices.getSupportedConstraints?.() ?? {};
+    const constraints: MediaTrackConstraints = {};
+    if (supported.echoCancellation) constraints.echoCancellation = source.audioProcessing.echoCancellation;
+    if (supported.noiseSuppression) constraints.noiseSuppression = source.audioProcessing.noiseSuppression;
+    if (supported.autoGainControl) constraints.autoGainControl = source.audioProcessing.autoGainControl;
+    await Promise.all(stream.getAudioTracks().map((track) => track.applyConstraints(constraints)));
+    return Object.keys(constraints).length;
+  };
+  const updateDeviceAudioProcessing = async (
+    source: BroadcastSource,
+    patch: Partial<Pick<BroadcastSource["audioProcessing"], "echoCancellation" | "noiseSuppression" | "autoGainControl">>,
+  ) => {
+    const updated = { ...source, audioProcessing: { ...source.audioProcessing, ...patch } };
+    updateProgramSource(source.id, { audioProcessing: updated.audioProcessing });
+    try {
+      const applied = await applyDeviceAudioProcessing(updated);
+      setMessage(applied ? `${source.name} capture cleanup updated` : `${source.name} device does not expose browser cleanup controls`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `${source.name} capture cleanup could not be applied`);
+    }
+  };
   const attachMedia = async (source: BroadcastSource) => {
     try {
       let stream: MediaStream;
@@ -794,13 +817,18 @@ export default function BroadcastStudioPage() {
       else
         stream = await navigator.mediaDevices.getUserMedia({
           video: source.type === "camera",
-          audio: source.type === "camera" || source.type === "microphone",
+          audio: source.type === "camera" || source.type === "microphone" ? {
+            echoCancellation: source.audioProcessing.echoCancellation,
+            noiseSuppression: source.audioProcessing.noiseSuppression,
+            autoGainControl: source.audioProcessing.autoGainControl,
+          } : false,
         });
       liveStreams.current
         .get(source.id)
         ?.getTracks()
         .forEach((track) => track.stop());
       liveStreams.current.set(source.id, stream);
+      await applyDeviceAudioProcessing(source, stream);
       await meterContexts.current.get(source.id)?.close();
       meterContexts.current.delete(source.id);
       if (stream.getAudioTracks().length) {
@@ -2014,6 +2042,11 @@ export default function BroadcastStudioPage() {
                       <label className="flex items-center gap-2">Compressor<Switch aria-label={`${source.name} compressor`} checked={source.audioProcessing.compressor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, compressor: checked } })}/></label>
                       <label className="flex items-center gap-2" title="Monitor this source through your local output; headphones recommended">Monitor<Switch aria-label={`${source.name} audio monitoring`} checked={source.audioProcessing.monitor} onCheckedChange={(checked) => updateProgramSource(source.id, { audioProcessing: { ...source.audioProcessing, monitor: checked } })}/></label>
                     </div>
+                    {["camera", "screen", "microphone"].includes(source.type) && <div className="mt-3 grid gap-2 border-t border-zinc-900 pt-3 text-[10px] text-zinc-400 sm:grid-cols-3">
+                      <label className="flex items-center justify-between gap-2">Echo cancellation<Switch aria-label={`${source.name} echo cancellation`} checked={source.audioProcessing.echoCancellation} onCheckedChange={(checked) => void updateDeviceAudioProcessing(source, { echoCancellation: checked })}/></label>
+                      <label className="flex items-center justify-between gap-2">Noise suppression<Switch aria-label={`${source.name} noise suppression`} checked={source.audioProcessing.noiseSuppression} onCheckedChange={(checked) => void updateDeviceAudioProcessing(source, { noiseSuppression: checked })}/></label>
+                      <label className="flex items-center justify-between gap-2">Auto gain<Switch aria-label={`${source.name} automatic gain control`} checked={source.audioProcessing.autoGainControl} onCheckedChange={(checked) => void updateDeviceAudioProcessing(source, { autoGainControl: checked })}/></label>
+                    </div>}
                   </div>
                 ))}
             </div>
