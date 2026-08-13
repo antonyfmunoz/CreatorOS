@@ -526,6 +526,13 @@
       "when": 1786615200000,
       "tag": "0074_broadcast_studio_collaboration",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786618800000,
+      "tag": "0075_broadcast_audience_control",
+      "breakpoints": true
     }
   ]
 }

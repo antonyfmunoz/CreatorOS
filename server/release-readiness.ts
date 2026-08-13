@@ -199,6 +199,7 @@ export function getReleaseReadiness(
       destinationFailureIsolation: "configured",
       automaticReconnect: "configured",
       productionMarkers: "configured",
+      nativeAudienceControl: "configured",
       recordingPauseResume: "configured",
       isolatedSourceTracks: privateAssetDelivery ? "configured" : "unconfigured",
       localQualityCapture: privateAssetDelivery ? "configured" : "unconfigured",

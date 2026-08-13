@@ -113,6 +113,8 @@ type BrandLibraryKit = {
   logoAssetId: string | null;
   updatedAt: string;
 };
+type AudienceMessage = { id: string; kind: "comment" | "cta"; authorName: string; body: string; actionUrl: string | null; status: "visible" | "hidden"; featured: boolean; createdAt: string };
+type AudiencePayload = { access: { productionTeam: boolean; canModerate: boolean }; messages: AudienceMessage[] };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -231,6 +233,8 @@ export default function BroadcastStudioPage() {
   const [deleteStudioArmed, setDeleteStudioArmed] = useState(false);
   const [collaboratorUsername, setCollaboratorUsername] = useState("");
   const [collaboratorRole, setCollaboratorRole] = useState<"viewer" | "editor">("editor");
+  const [audienceCtaLabel, setAudienceCtaLabel] = useState("");
+  const [audienceCtaUrl, setAudienceCtaUrl] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
@@ -273,6 +277,12 @@ export default function BroadcastStudioPage() {
   const brandKitsQuery = useQuery<BrandLibraryKit[]>({
     queryKey: ["/api/broadcast/brand-kits"],
   });
+  const audienceQuery = useQuery<AudiencePayload>({
+    queryKey: ["/api/broadcast/sessions", session?.id, "audience"],
+    queryFn: async () => (await apiRequest("GET", `/api/broadcast/sessions/${session!.id}/audience`)).json(),
+    enabled: Boolean(session?.id),
+    refetchInterval: session?.state === "live" ? 2_000 : false,
+  });
   const destinations = destinationsQuery.data ?? [];
   const assets = (assetsQuery.data ?? []).filter(
     (asset) =>
@@ -312,6 +322,26 @@ export default function BroadcastStudioPage() {
       setBusy("");
     }
   }, [queryClient]);
+  const moderateAudienceMessage = useCallback(async (messageId: string, action: "feature" | "hide" | "show") => {
+    if (!session) return;
+    setBusy(`audience:${messageId}:${action}`);
+    try {
+      await apiRequest("POST", `/api/broadcast/sessions/${session.id}/audience/messages/${messageId}/moderate`, { action });
+      await audienceQuery.refetch();
+      setMessage(action === "feature" ? "Audience message is live on the program canvas." : `Audience message ${action === "hide" ? "hidden" : "restored"}.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Audience control failed"); }
+    finally { setBusy(""); }
+  }, [audienceQuery, session]);
+  const publishAudienceCta = useCallback(async () => {
+    if (!session || !audienceCtaLabel.trim() || !audienceCtaUrl.trim()) return;
+    setBusy("audience:cta");
+    try {
+      await apiRequest("POST", `/api/broadcast/sessions/${session.id}/audience/cta`, { label: audienceCtaLabel.trim(), actionUrl: audienceCtaUrl.trim() });
+      await audienceQuery.refetch();
+      setAudienceCtaLabel(""); setAudienceCtaUrl(""); setMessage("Call to action is live on the program canvas.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Call to action could not be published"); }
+    finally { setBusy(""); }
+  }, [audienceCtaLabel, audienceCtaUrl, audienceQuery, session]);
   const previewScene =
     config?.scenes.find((scene) => scene.id === config.previewSceneId) ?? null;
   const programScene =
@@ -709,6 +739,30 @@ export default function BroadcastStudioPage() {
         ctx.restore();
       }
     };
+    const drawAudienceOverlay = (canvas: HTMLCanvasElement | null) => {
+      const featured = audienceQuery.data?.messages.find((item) => item.featured && item.status === "visible");
+      if (!canvas || !featured) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const width = canvas.width;
+      const height = canvas.height;
+      const panelHeight = Math.max(90, height * 0.14);
+      const margin = Math.max(24, width * 0.04);
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.86)";
+      ctx.fillRect(margin, height - panelHeight - margin, width - margin * 2, panelHeight);
+      ctx.fillStyle = "#1d9bf0";
+      ctx.fillRect(margin, height - panelHeight - margin, Math.max(8, width * .006), panelHeight);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `700 ${Math.max(18, height * .032)}px Inter, sans-serif`;
+      ctx.fillText(featured.kind === "cta" ? featured.body : featured.authorName, margin * 1.45, height - panelHeight * .72 - margin, width - margin * 3);
+      ctx.fillStyle = featured.kind === "cta" ? "#1d9bf0" : "#d4d4d8";
+      ctx.font = `500 ${Math.max(15, height * .026)}px Inter, sans-serif`;
+      ctx.fillText(featured.kind === "cta" ? "Visit the audience room to open the link" : featured.body, margin * 1.45, height - panelHeight * .32 - margin, width - margin * 3);
+      ctx.restore();
+    };
     const loop = () => {
       drawScene(previewCanvas.current, previewScene, true);
       const active = transitionFrame.current;
@@ -737,11 +791,12 @@ export default function BroadcastStudioPage() {
           if (progress >= 1) transitionFrame.current = null;
         }
       } else drawScene(programCanvas.current, programScene);
+      drawAudienceOverlay(programCanvas.current);
       animation = requestAnimationFrame(loop);
     };
     loop();
     return () => cancelAnimationFrame(animation);
-  }, [config, previewScene, programScene, selectedSourceId]);
+  }, [audienceQuery.data, config, previewScene, programScene, selectedSourceId]);
 
   useEffect(
     () => () => {
@@ -2615,6 +2670,13 @@ export default function BroadcastStudioPage() {
                 Select a source to edit its transform, appearance, and audio.
               </p>
             )}
+          </Panel>
+          <Panel title="Audience control" icon={Radio}>
+            {!session ? <p className="text-sm text-zinc-500">Start a recording or broadcast to open its native audience room.</p> : <div className="space-y-3">
+              <div className="flex gap-2"><Input aria-label="Audience room link" readOnly className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={`${window.location.origin}/broadcast/audience/${session.id}`}/><Button size="sm" variant="outline" aria-label="Copy audience room link" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/broadcast/audience/${session.id}`)}><Copy className="h-3.5 w-3.5"/></Button></div>
+              {canOperateStudio && <div className="grid gap-2 rounded-xl border border-zinc-800 bg-black p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">On-screen call to action</p><Input aria-label="Audience CTA label" className="h-9 border-zinc-800 bg-zinc-950 text-xs" maxLength={120} value={audienceCtaLabel} placeholder="Get the launch guide" onChange={(event) => setAudienceCtaLabel(event.target.value)}/><Input aria-label="Audience CTA URL" className="h-9 border-zinc-800 bg-zinc-950 text-xs" type="url" value={audienceCtaUrl} placeholder="https://…" onChange={(event) => setAudienceCtaUrl(event.target.value)}/><Button size="sm" variant="outline" disabled={busy === "audience:cta" || !audienceCtaLabel.trim() || !audienceCtaUrl.trim()} onClick={() => void publishAudienceCta()}>Put CTA on screen</Button></div>}
+              <div className="space-y-2" aria-label="Audience moderation queue">{(audienceQuery.data?.messages ?? []).filter((item) => item.kind === "comment").slice(0, 20).map((item) => <article key={item.id} className={`rounded-xl border p-3 ${item.status === "hidden" ? "border-red-950 opacity-60" : item.featured ? "border-[#1d9bf0] bg-[#1d9bf0]/10" : "border-zinc-800 bg-black"}`}><div className="flex items-center justify-between gap-2"><strong className="truncate text-xs">{item.authorName}</strong><span className="text-[9px] font-bold uppercase text-zinc-600">{item.status}</span></div><p className="mt-1 text-xs leading-5 text-zinc-300">{item.body}</p>{canOperateStudio && <div className="mt-2 flex gap-2">{item.status === "visible" ? <><Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void moderateAudienceMessage(item.id, "feature")}>{item.featured ? "On screen" : "Feature"}</Button><Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void moderateAudienceMessage(item.id, "hide")}>Hide</Button></> : <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void moderateAudienceMessage(item.id, "show")}>Restore</Button>}</div>}</article>)}{audienceQuery.data?.messages.filter((item) => item.kind === "comment").length === 0 && <p className="py-4 text-center text-xs text-zinc-600">Audience messages will appear here live.</p>}</div>
+            </div>}
           </Panel>
           <Panel title="Production settings" icon={Settings2}>
             <div className="mb-4 space-y-2 border-b border-zinc-800 pb-4">

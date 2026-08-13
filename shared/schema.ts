@@ -2795,6 +2795,33 @@ export const broadcastSessionMarkers = pgTable(
   (table) => ({ sessionPositionIdx: index("broadcast_session_markers_session_position_idx").on(table.sessionId, table.positionMs) }),
 );
 
+// Native audience messages share one moderated session timeline with future
+// provider adapters. Only visible items can enter the program canvas; featuring
+// and moderation remain explicit owner actions with durable evidence.
+export const broadcastAudienceMessages = pgTable(
+  "broadcast_audience_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => broadcastSessions.id, { onDelete: "cascade" }).notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    provider: text("provider").notNull().default("native"),
+    externalMessageId: text("external_message_id"),
+    kind: text("kind").notNull().default("comment"),
+    authorName: text("author_name").notNull(),
+    body: text("body").notNull(),
+    actionUrl: text("action_url"),
+    status: text("status").notNull().default("visible"),
+    featured: boolean("featured").notNull().default(false),
+    moderatedByUserId: integer("moderated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    moderatedAt: timestamp("moderated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionCreatedIdx: index("broadcast_audience_messages_session_created_idx").on(table.sessionId, table.createdAt),
+    providerExternalUnique: uniqueIndex("broadcast_audience_messages_provider_external_unique").on(table.sessionId, table.provider, table.externalMessageId),
+  }),
+);
+
 // Isolated source recordings preserve the camera, screen, or microphone feed
 // alongside the composited program. Bytes remain private assets; this table is
 // the durable, owner-scoped recording manifest used by Broadcast and CutStudio.

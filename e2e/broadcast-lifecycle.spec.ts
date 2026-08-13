@@ -124,6 +124,24 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
   });
   expect((await api(page, peer, "POST", `/api/broadcast/sessions/${started.id}/markers`, { kind: "note", label: "Unauthorized" })).status()).toBe(404);
 
+  const audienceMessageResponse = await api(page, peer, "POST", `/api/broadcast/sessions/${started.id}/audience/messages`, { body: "Show the launch link" });
+  await expectOk(audienceMessageResponse);
+  const audienceMessage = await audienceMessageResponse.json();
+  expect((await api(page, peer, "POST", `/api/broadcast/sessions/${started.id}/audience/messages/${audienceMessage.id}/moderate`, { action: "feature" })).status()).toBe(404);
+  const featureResponse = await api(page, owner, "POST", `/api/broadcast/sessions/${started.id}/audience/messages/${audienceMessage.id}/moderate`, { action: "feature" });
+  await expectOk(featureResponse);
+  expect(await featureResponse.json()).toMatchObject({ featured: true, status: "visible", body: "Show the launch link" });
+  const ctaResponse = await api(page, owner, "POST", `/api/broadcast/sessions/${started.id}/audience/cta`, { label: "Get the launch guide", actionUrl: "https://creativesos.net/" });
+  await expectOk(ctaResponse);
+  expect(await ctaResponse.json()).toMatchObject({ kind: "cta", featured: true, actionUrl: "https://creativesos.net/" });
+  const audienceResponse = await api(page, peer, "GET", `/api/broadcast/sessions/${started.id}/audience`);
+  await expectOk(audienceResponse);
+  expect(await audienceResponse.json()).toMatchObject({ access: { productionTeam: false, canModerate: false }, messages: expect.arrayContaining([expect.objectContaining({ id: audienceMessage.id, body: "Show the launch link", featured: false }), expect.objectContaining({ kind: "cta", body: "Get the launch guide", featured: true })]) });
+  await page.goto(`/broadcast/audience/${started.id}`);
+  await expect(page.getByRole("heading", { name: "Live audience room" })).toBeVisible();
+  await expect(page.getByText("Get the launch guide", { exact: true })).toBeVisible();
+  await expect(page.getByText("Show the launch link", { exact: true })).toBeVisible();
+
   await expect
     .poll(
       async () => {

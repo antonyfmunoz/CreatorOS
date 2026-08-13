@@ -579,6 +579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "broadcast_studios",
       "broadcast_destinations",
       "broadcast_sessions",
+      "broadcast_audience_messages",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",

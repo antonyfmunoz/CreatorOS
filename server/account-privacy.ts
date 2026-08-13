@@ -145,6 +145,7 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from broadcast_brand_kits where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from broadcast_session_tracks where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from broadcast_studio_collaborators where user_id = ${userId} or invited_by_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_audience_messages where author_user_id = ${userId} or moderated_by_user_id = ${userId} order by created_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from purchases where buyer_id = ${userId} order by purchased_at`),
@@ -230,6 +231,7 @@ export async function buildAccountExport(user: User) {
       broadcastBrandKits: creatorStudio[20],
       broadcastSessionTracks: creatorStudio[21],
       broadcastStudioCollaborations: creatorStudio[22],
+      broadcastAudienceMessages: creatorStudio[23],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],
@@ -311,6 +313,7 @@ async function eraseLocalAccountData(request: AccountPrivacyRequest, user: User)
 
     await tx.execute(sql`delete from businesses where owner_user_id = ${userId}`);
     await tx.execute(sql`delete from business_members where user_id = ${userId}`);
+    await tx.execute(sql`update broadcast_audience_messages set author_name = 'Deleted user', author_user_id = null where author_user_id = ${userId}`);
 
     await tx.execute(sql`delete from posts where user_id = ${userId}`);
     await tx.execute(sql`delete from comments where user_id = ${userId}`);

@@ -75,6 +75,7 @@ const requiredTables = [
   "broadcast_session_tracks",
   "broadcast_session_markers",
   "broadcast_destination_receipts",
+  "broadcast_audience_messages",
 ];
 
 const requiredColumns = {

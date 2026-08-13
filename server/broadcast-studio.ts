@@ -17,6 +17,7 @@ import {
 import { validateCutEdl } from "@shared/cut-studio";
 import {
   assets,
+  broadcastAudienceMessages,
   broadcastBrandKits,
   broadcastDestinationReceipts,
   broadcastDestinations,
@@ -94,6 +95,12 @@ const studioCollaboratorInputSchema = z.object({
   username: z.string().trim().min(1).max(64),
   role: z.enum(["viewer", "editor"]).default("viewer"),
 });
+const audienceCommentInputSchema = z.object({ body: z.string().trim().min(1).max(500) });
+const audienceCtaInputSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+  actionUrl: z.string().url().refine((value) => new URL(value).protocol === "https:", "CTA links must use HTTPS"),
+});
+const audienceModerationInputSchema = z.object({ action: z.enum(["feature", "hide", "show"]) });
 const runtimeMachineId =
   process.env.FLY_MACHINE_ID?.trim() || `local-${process.pid}`;
 
@@ -1070,6 +1077,54 @@ export function registerBroadcastStudioRoutes(app: Express) {
       db.select().from(broadcastDestinationReceipts).where(and(eq(broadcastDestinationReceipts.sessionId, session.id), eq(broadcastDestinationReceipts.ownerUserId, req.dbUser!.id))).orderBy(broadcastDestinationReceipts.updatedAt),
     ]);
     res.json({ ...session, markers, tracks, destinationReceipts });
+  });
+  app.get("/api/broadcast/sessions/:id/audience", attachUser, async (req, res) => {
+    noStore(res);
+    const [session] = await db.select().from(broadcastSessions).where(eq(broadcastSessions.id, req.params.id)).limit(1);
+    if (!session) return res.status(404).json({ message: "Audience room not found" });
+    const access = await studioAccess(req.dbUser!.id, session.studioId);
+    const isProductionTeam = Boolean(access);
+    if (!isProductionTeam && !["starting", "live", "stopping"].includes(session.state)) return res.status(404).json({ message: "Audience room is closed" });
+    const rows = await db.select().from(broadcastAudienceMessages).where(eq(broadcastAudienceMessages.sessionId, session.id)).orderBy(desc(broadcastAudienceMessages.createdAt)).limit(200);
+    const messages = isProductionTeam ? rows : rows.filter((row) => row.status === "visible");
+    res.json({ session: { id: session.id, state: session.state, studioId: session.studioId }, access: { productionTeam: isProductionTeam, canModerate: access?.canOperate ?? false }, messages });
+  });
+  app.post("/api/broadcast/sessions/:id/audience/messages", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = audienceCommentInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const [session] = await db.select().from(broadcastSessions).where(eq(broadcastSessions.id, req.params.id)).limit(1);
+    if (!session || !["starting", "live", "stopping"].includes(session.state)) return res.status(404).json({ message: "Audience room is closed" });
+    const [message] = await db.insert(broadcastAudienceMessages).values({ sessionId: session.id, authorUserId: req.dbUser!.id, provider: "native", kind: "comment", authorName: req.dbUser!.displayName, body: parsed.data.body }).returning();
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: session.studioId, eventType: "broadcast.audience.comment.received", actorUserId: req.dbUser!.id, payload: { businessId: session.businessId, sessionId: session.id, messageId: message.id, provider: "native" }, idempotencyKey: `broadcast:${session.id}:audience:${message.id}` });
+    res.status(201).json(message);
+  });
+  app.post("/api/broadcast/sessions/:id/audience/cta", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = audienceCtaInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    const message = await db.transaction(async (tx) => {
+      await tx.update(broadcastAudienceMessages).set({ featured: false, moderatedByUserId: req.dbUser!.id, moderatedAt: new Date() }).where(and(eq(broadcastAudienceMessages.sessionId, session.id), eq(broadcastAudienceMessages.featured, true)));
+      const [created] = await tx.insert(broadcastAudienceMessages).values({ sessionId: session.id, authorUserId: req.dbUser!.id, provider: "native", kind: "cta", authorName: req.dbUser!.displayName, body: parsed.data.label, actionUrl: parsed.data.actionUrl, featured: true, moderatedByUserId: req.dbUser!.id, moderatedAt: new Date() }).returning();
+      return created;
+    });
+    res.status(201).json(message);
+  });
+  app.post("/api/broadcast/sessions/:id/audience/messages/:messageId/moderate", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = audienceModerationInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: "A valid moderation action is required" });
+    const session = await ownedSession(req.dbUser!.id, req.params.id);
+    if (!session) return res.status(404).json({ message: "Broadcast not found" });
+    const updated = await db.transaction(async (tx) => {
+      if (parsed.data.action === "feature") await tx.update(broadcastAudienceMessages).set({ featured: false, moderatedByUserId: req.dbUser!.id, moderatedAt: new Date() }).where(and(eq(broadcastAudienceMessages.sessionId, session.id), eq(broadcastAudienceMessages.featured, true)));
+      const [row] = await tx.update(broadcastAudienceMessages).set({ status: parsed.data.action === "hide" ? "hidden" : "visible", featured: parsed.data.action === "feature", moderatedByUserId: req.dbUser!.id, moderatedAt: new Date() }).where(and(eq(broadcastAudienceMessages.id, req.params.messageId), eq(broadcastAudienceMessages.sessionId, session.id))).returning();
+      return row;
+    });
+    if (!updated) return res.status(404).json({ message: "Audience message not found" });
+    res.json(updated);
   });
   app.post("/api/broadcast/sessions/:id/markers", attachUser, async (req, res) => {
     noStore(res);
