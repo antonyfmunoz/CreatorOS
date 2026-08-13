@@ -259,6 +259,45 @@ export function moveCutClipGroup(edl: CutEdl, clipId: string, requestedStart: nu
   };
 }
 
+export function trimCutClip(
+  edl: CutEdl,
+  clipId: string,
+  edge: "start" | "end",
+  requestedTimelineTime: number,
+  options: { rippleTrack?: boolean; sourceDuration?: number; minimumDuration?: number } = {},
+): CutEdl {
+  if (edl.version !== 3) return edl;
+  const anchor = edl.clips.find((clip) => clip.id === clipId);
+  if (!anchor) return edl;
+  const speed = anchor.speed ?? 1;
+  const timelineStart = anchor.timelineStart ?? 0;
+  const originalDuration = (anchor.end - anchor.start) / speed;
+  const timelineEnd = timelineStart + originalDuration;
+  const minimumDuration = Math.max(0.05, options.minimumDuration ?? 0.05);
+  const sourceDuration = Math.max(anchor.end, options.sourceDuration ?? 43_200);
+
+  if (edge === "start") {
+    const requested = Math.max(0, Math.min(timelineEnd - minimumDuration / speed, requestedTimelineTime));
+    const sourceStart = Math.max(0, Math.min(anchor.end - minimumDuration, anchor.start + (requested - timelineStart) * speed));
+    const actualTimelineStart = timelineStart + (sourceStart - anchor.start) / speed;
+    return { ...edl, clips: edl.clips.map((clip) => clip === anchor ? { ...clip, start: sourceStart, timelineStart: actualTimelineStart } : clip) };
+  }
+
+  const requested = Math.max(timelineStart + minimumDuration / speed, requestedTimelineTime);
+  const sourceEnd = Math.max(anchor.start + minimumDuration, Math.min(sourceDuration, anchor.start + (requested - timelineStart) * speed));
+  const nextDuration = (sourceEnd - anchor.start) / speed;
+  const durationDelta = nextDuration - originalDuration;
+  const track = anchor.track ?? "v1";
+  return {
+    ...edl,
+    clips: edl.clips.map((clip) => {
+      if (clip === anchor) return { ...clip, end: sourceEnd };
+      if (!options.rippleTrack || (clip.track ?? "v1") !== track || (clip.timelineStart ?? 0) < timelineEnd - 0.001) return clip;
+      return { ...clip, timelineStart: Math.max(0, (clip.timelineStart ?? 0) + durationDelta) };
+    }),
+  };
+}
+
 export function audioRmsDb(samples: Uint8Array, floorDb = -60) {
   if (!samples.length) return floorDb;
   let sumSquares = 0;

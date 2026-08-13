@@ -78,6 +78,7 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
       { id: "primary", label: "Primary", start: 0, end: 3, speed: 1, volume: 1, transition: "fade_black", colorPreset: "cinematic", colorAdjust: { brightness: 0.05, contrast: 1.1, saturation: 1.05, temperature: 0.2 }, track: "v1", timelineStart: 0 },
       { id: "broll", assetId: broll.id, label: "Blue B-roll", start: 0, end: 1, speed: 1, volume: 1, colorPreset: "vivid", chromaKey: { enabled: true, color: "#1d9bf0", similarity: 0.2, blend: 0.05 }, track: "v2", timelineStart: 0.5, groupId: "launch_layers", transform: { x: 0.62, y: 0.62, width: 0.35, height: 0.35, opacity: 0.9 } },
       { id: "music", assetId: music.id, label: "Music bed", start: 0, end: 2, speed: 1, volume: 0.2, track: "a1", timelineStart: 0.25, groupId: "launch_layers", duckUnderVoice: true },
+      { id: "music_outro", assetId: music.id, label: "Music outro", start: 0, end: 0.5, speed: 1, volume: 0.2, track: "a1", timelineStart: 2.5 },
     ],
     graphics: [{ id: "launch_title", kind: "lower_third", text: "CreativesOS Launch", timelineStart: 0.4, duration: 1.5, x: 0.08, y: 0.75, fontSize: 34, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0.75 }],
     markers: [{ id: "opening_beat", label: "Opening beat", position: 0.5, kind: "beat", color: "#f43f5e" }],
@@ -119,6 +120,30 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   const moved = await movedResponse.json();
   expect(moved.edl.clips.find((item: { id: string }) => item.id === "music").timelineStart).toBeCloseTo(.5, 2);
   expect(moved.edl.clips.find((item: { id: string }) => item.id === "broll").timelineStart).toBeCloseTo(.75, 2);
+  expect(moved.edl.clips.find((item: { id: string }) => item.id === "music_outro").timelineStart).toBeCloseTo(2.5, 2);
+  await page.getByRole("button", { name: "Ripple track" }).click();
+  await expect(page.getByRole("button", { name: "Ripple track" })).toHaveAttribute("aria-pressed", "true");
+  const trimEnd = page.getByLabel("Trim end A1 clip 3");
+  const trimBox = await trimEnd.boundingBox();
+  expect(trimBox).toBeTruthy();
+  await page.mouse.move(trimBox!.x + trimBox!.width / 2, trimBox!.y + trimBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(trimBox!.x + trimBox!.width / 2 - trackBox!.width * .1, trimBox!.y + trimBox!.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByText("Clip trimmed with track ripple and snapping", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const trimmedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(trimmedResponse);
+  const trimmed = await trimmedResponse.json();
+  expect(trimmed.edl.clips.find((item: { id: string }) => item.id === "music").end).toBeCloseTo(1.7, 1);
+  expect(trimmed.edl.clips.find((item: { id: string }) => item.id === "music_outro").timelineStart).toBeCloseTo(2.2, 1);
+  await page.getByLabel("Trim end A1 clip 4").focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByText("Clip out point adjusted with track ripple", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const keyboardTrimResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(keyboardTrimResponse);
+  expect((await keyboardTrimResponse.json()).edl.clips.find((item: { id: string }) => item.id === "music_outro").end).toBeCloseTo(.4, 2);
   await page.getByRole("button", { name: "Marker", exact: true }).click();
   await expect(page.getByLabel("Rename marker at 0:00")).toHaveCount(2);
   await expect(page.getByText("Marker added at 0:00")).toBeVisible();

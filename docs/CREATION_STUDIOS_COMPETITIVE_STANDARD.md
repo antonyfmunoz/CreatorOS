@@ -42,7 +42,7 @@ checked against primary product documentation before this scorecard is revised.
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
 | Private ingest and projects | Implemented | Maintain | None |
-| Non-destructive timeline | EDL v3 with absolute positioning, eight video and eight audio tracks, split/trim, speed, volume, fades, undo/redo, durable markers, boundary snapping, synchronized clip groups and direct pointer/touch drag placement | Add ripple modes, trim handles and compound clips | Product code and generated-media browser qualification |
+| Non-destructive timeline | EDL v3 with absolute positioning, eight video and eight audio tracks, split/trim, speed, volume, fades, undo/redo, durable markers, boundary snapping, synchronized clip groups, direct pointer/touch placement, precision trim handles and explicit track-local ripple-out editing | Add linked cross-track ripple, rolling/slip trims and compound clips | Product code and generated-media browser qualification |
 | Text-based editing | Search, correction and batch filler/dead-air review implemented | Transcript rearrangement and speaker labeling | Product code; transcription provider for new transcripts |
 | Captions | Three burn-in styles plus corrected SRT sidecar export | Animated and translated caption tracks | Product code; translation provider for translation |
 | Social reframing | Fixed aspect fit/pad | Landscape, square, portrait and subject-aware reframing | Product code; vision compute for subject tracking |

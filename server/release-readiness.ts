@@ -144,6 +144,8 @@ export function getReleaseReadiness(
       boundarySnapping: "configured",
       synchronizedClipGroups: "configured",
       directTimelineDrag: "configured",
+      precisionTrimHandles: "configured",
+      trackRippleEditing: "configured",
       mediaDerivedWaveforms: "configured",
       realtimeAudioMeter: "configured",
       projectMediaLibrary: "configured",

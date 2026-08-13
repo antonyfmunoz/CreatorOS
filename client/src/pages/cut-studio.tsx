@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, Captions, Check, CheckCircle2, ChevronRight, Copy, Download, Film, FileText, Flag, Link2, Loader2, Magnet, MessageSquare, Play, Plus, Redo2, RefreshCw, Save, Scissors, Search, Share2, Sparkles, Square, Trash2, Undo2, Unlink2, Upload, WandSparkles, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { audioRmsDb, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, splitCutAt, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutTranscript } from "@shared/cut-studio";
+import { audioRmsDb, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutTranscript } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio"; createdAt: string };
 type Project = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; edl: CutEdl; transcript: CutTranscript | null; revision: number; updatedAt: string; jobs?: Job[]; media?: ProjectMedia[] };
@@ -49,6 +49,7 @@ export default function CutStudioPage() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFrameRef = useRef<number>();
   const dragRef = useRef<{ clipId: string; startX: number; trackWidth: number; origin: CutEdl; moved: boolean } | null>(null);
+  const trimRef = useRef<{ clipId: string; edge: "start" | "end"; startX: number; trackWidth: number; sourceDuration: number; origin: CutEdl; moved: boolean } | null>(null);
   const suppressClipClickRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -62,6 +63,7 @@ export default function CutStudioPage() {
   const [selectedClip, setSelectedClip] = useState(0);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [rippleEnabled, setRippleEnabled] = useState(false);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -431,6 +433,54 @@ export default function CutStudioPage() {
     seek(edl?.version === 3 ? (item.timelineStart ?? 0) : item.start);
   };
 
+  const startClipTrim = (event: ReactPointerEvent<HTMLSpanElement>, item: CutEdl["clips"][number], edge: "start" | "end") => {
+    event.stopPropagation();
+    if (!edl || edl.version !== 3 || !item.id || event.button !== 0) return;
+    const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project?.sourceAssetId));
+    trimRef.current = { clipId: item.id, edge, startX: event.clientX, trackWidth: event.currentTarget.parentElement?.parentElement?.getBoundingClientRect().width ?? 1, sourceDuration: media?.duration ?? project?.duration ?? item.end, origin: edl, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveClipTrim = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    event.stopPropagation();
+    const trim = trimRef.current;
+    if (!trim) return;
+    const deltaPixels = event.clientX - trim.startX;
+    if (!trim.moved && Math.abs(deltaPixels) < 3) return;
+    trim.moved = true;
+    const clip = trim.origin.clips.find((item) => item.id === trim.clipId);
+    if (!clip) return;
+    const start = clip.timelineStart ?? 0;
+    const originalEdge = trim.edge === "start" ? start : start + (clip.end - clip.start) / (clip.speed ?? 1);
+    const requested = originalEdge + (deltaPixels / trim.trackWidth) * timelineDuration;
+    const snapped = snapEnabled ? snapCutTime(trim.origin, requested, .15, [trim.clipId]) : Math.max(0, requested);
+    setEdl(trimCutClip(trim.origin, trim.clipId, trim.edge, snapped, { rippleTrack: rippleEnabled && trim.edge === "end", sourceDuration: trim.sourceDuration }));
+  };
+
+  const finishClipTrim = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    event.stopPropagation();
+    const trim = trimRef.current;
+    trimRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!trim?.moved) return;
+    setHistory((items) => [...items.slice(-49), trim.origin]);
+    setFuture([]);
+    const modes = [rippleEnabled && trim.edge === "end" ? "track ripple" : "", snapEnabled ? "snapping" : ""].filter(Boolean);
+    setMessage(`Clip trimmed${modes.length ? ` with ${modes.join(" and ")}` : ""}`);
+  };
+
+  const keyboardClipTrim = (event: ReactKeyboardEvent<HTMLSpanElement>, item: CutEdl["clips"][number], edge: "start" | "end") => {
+    if (!edl || edl.version !== 3 || !item.id || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const timelineStart = item.timelineStart ?? 0;
+    const currentEdge = edge === "start" ? timelineStart : timelineStart + (item.end - item.start) / (item.speed ?? 1);
+    const requested = Math.max(0, currentEdge + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 1 : .1));
+    const media = mediaLibrary.find((entry) => entry.assetId === (item.assetId ?? project?.sourceAssetId));
+    applyEdit(trimCutClip(edl, item.id, edge, requested, { rippleTrack: rippleEnabled && edge === "end", sourceDuration: media?.duration ?? project?.duration ?? item.end }));
+    setMessage(`Clip ${edge === "start" ? "in" : "out"} point adjusted${rippleEnabled && edge === "end" ? " with track ripple" : ""}`);
+  };
+
   if (!project || !edl) return (
     <main className="min-h-screen bg-black pb-24 text-white">
       <header className="sticky top-0 z-20 flex h-14 items-center border-b border-zinc-800 bg-black px-4"><Button variant="ghost" size="icon" onClick={() => setLocation("/create")} aria-label="Back"><ArrowLeft /></Button><Film className="ml-2 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 text-lg font-bold">CutStudio</h1></header>
@@ -469,7 +519,7 @@ export default function CutStudioPage() {
           </div>
           <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Audio RMS</span><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output></div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant={rippleEnabled ? "default" : "outline"} onClick={() => setRippleEnabled((value) => !value)} aria-pressed={rippleEnabled}>Ripple track</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
              <div className="space-y-1 rounded-xl bg-zinc-900 p-2" onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); seek(((event.clientX - box.left) / box.width) * timelineDuration); }}>
                {timelineTracks.map((track) => <div key={track} className="relative h-14 overflow-hidden rounded-lg bg-black">
                  <span className="pointer-events-none absolute left-1 top-1 z-10 rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-400">{track.toUpperCase()}</span>
@@ -485,6 +535,10 @@ export default function CutStudioPage() {
                    onClick={(event) => selectTimelineClip(event, item, index)}
                    aria-label={`${track.toUpperCase()} clip ${index + 1}`}
                  >
+                   {edl.version === 3 && item.id && <>
+                     <span role="slider" tabIndex={0} aria-label={`Trim start ${track.toUpperCase()} clip ${index + 1}`} aria-valuemin={0} aria-valuemax={timelineDuration} aria-valuenow={item.timelineStart ?? 0} className="absolute inset-y-0 left-0 z-[3] w-2 cursor-ew-resize touch-none bg-white/40 opacity-60 hover:opacity-100 focus:opacity-100" onPointerDown={(event) => startClipTrim(event, item, "start")} onPointerMove={moveClipTrim} onPointerUp={finishClipTrim} onPointerCancel={finishClipTrim} onKeyDown={(event) => keyboardClipTrim(event, item, "start")} onClick={(event) => event.stopPropagation()}/>
+                     <span role="slider" tabIndex={0} aria-label={`Trim end ${track.toUpperCase()} clip ${index + 1}`} aria-valuemin={0} aria-valuemax={timelineDuration} aria-valuenow={(item.timelineStart ?? 0) + (item.end - item.start) / (item.speed ?? 1)} className="absolute inset-y-0 right-0 z-[3] w-2 cursor-ew-resize touch-none bg-white/40 opacity-60 hover:opacity-100 focus:opacity-100" onPointerDown={(event) => startClipTrim(event, item, "end")} onPointerMove={moveClipTrim} onPointerUp={finishClipTrim} onPointerCancel={finishClipTrim} onKeyDown={(event) => keyboardClipTrim(event, item, "end")} onClick={(event) => event.stopPropagation()}/>
+                   </>}
                    {clipWaveformUrl(item) && <img data-testid={`waveform-${item.id ?? index}`} src={clipWaveformUrl(item)} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-45"/>}
                    <span className="pointer-events-none relative z-[1]">{item.groupId && <Link2 className="mr-1 inline h-3 w-3"/>}{item.label ?? index + 1}{(item.speed ?? 1) !== 1 ? ` · ${item.speed}x` : ""}</span>
                  </button> : null)}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audioRmsDb, buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { audioRmsDb, buildCmx3600Edl, buildSrtCaptions, cutDuration, cutRenderRequestSchema, cutTimelinePoints, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -140,5 +140,25 @@ describe("CutStudio edit decision list", () => {
     expect(audioRmsDb(new Uint8Array([0, 255]))).toBeCloseTo(-0.03, 1);
     expect(audioRmsDb(new Uint8Array([96, 160]))).toBeCloseTo(-12.04, 1);
     expect(audioRmsDb(new Uint8Array())).toBe(-60);
+  });
+
+  it("performs precise edge trims and track-local ripple edits", () => {
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "intro", start: 0, end: 4, track: "v1", timelineStart: 0 },
+      { id: "main", start: 4, end: 8, track: "v1", timelineStart: 4 },
+      { id: "overlay", start: 0, end: 2, track: "v2", timelineStart: 4 },
+    ] }, 10);
+    const leftTrim = trimCutClip(initial, "intro", "start", 1, { sourceDuration: 10 });
+    expect(leftTrim.clips[0]).toMatchObject({ start: 1, end: 4, timelineStart: 1 });
+    expect(leftTrim.clips[1].timelineStart).toBe(4);
+
+    const regularOut = trimCutClip(initial, "intro", "end", 3, { sourceDuration: 10 });
+    expect(regularOut.clips[0].end).toBe(3);
+    expect(regularOut.clips[1].timelineStart).toBe(4);
+
+    const rippleOut = trimCutClip(initial, "intro", "end", 3, { rippleTrack: true, sourceDuration: 10 });
+    expect(rippleOut.clips[0].end).toBe(3);
+    expect(rippleOut.clips[1].timelineStart).toBe(3);
+    expect(rippleOut.clips[2].timelineStart).toBe(4);
   });
 });
