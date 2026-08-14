@@ -131,11 +131,91 @@ export async function deleteRecoverySegment(id: string) {
 type NetworkInformation = { type?: string; effectiveType?: string; rtt?: number };
 type BatteryManager = { level: number; charging: boolean };
 
+export type FieldSenderStat = {
+  id: string;
+  kind: "audio" | "video";
+  timestamp: number;
+  bytesSent?: number;
+  packetsSent?: number;
+  packetsLost?: number;
+  roundTripTime?: number;
+  jitter?: number;
+  framesPerSecond?: number;
+  framesSent?: number;
+};
+
+export type FieldSenderSnapshot = {
+  sampledAtMs: number;
+  stats: FieldSenderStat[];
+};
+
+export type FieldTransportMeasurement = {
+  uplinkKbps: number;
+  rttMs: number;
+  jitterMs: number;
+  packetLossPct: number;
+  videoBitrateKbps: number;
+  audioBitrateKbps: number;
+  fps: number;
+  encodedFrames: number;
+};
+
+function finiteNonNegative(value: number | undefined) {
+  return Number.isFinite(value) ? Math.max(0, value ?? 0) : 0;
+}
+
+export function measureFieldSenderTransport(
+  current: FieldSenderSnapshot,
+  previous: FieldSenderSnapshot | null,
+): FieldTransportMeasurement {
+  const previousById = new Map(previous?.stats.map((stat) => [stat.id, stat]) ?? []);
+  const elapsedSeconds = previous ? Math.max(0.001, (current.sampledAtMs - previous.sampledAtMs) / 1_000) : 0;
+  let audioBytes = 0;
+  let videoBytes = 0;
+  let sentPackets = 0;
+  let lostPackets = 0;
+  let encodedFrames = 0;
+  let fps = 0;
+  let rttSeconds = 0;
+  let jitterSeconds = 0;
+
+  for (const stat of current.stats) {
+    const prior = previousById.get(stat.id);
+    const bytesDelta = prior && elapsedSeconds
+      ? Math.max(0, finiteNonNegative(stat.bytesSent) - finiteNonNegative(prior.bytesSent))
+      : 0;
+    if (stat.kind === "video") videoBytes += bytesDelta;
+    else audioBytes += bytesDelta;
+    if (prior && elapsedSeconds) {
+      sentPackets += Math.max(0, finiteNonNegative(stat.packetsSent) - finiteNonNegative(prior.packetsSent));
+      lostPackets += Math.max(0, finiteNonNegative(stat.packetsLost) - finiteNonNegative(prior.packetsLost));
+    }
+    encodedFrames += finiteNonNegative(stat.framesSent);
+    fps = Math.max(fps, finiteNonNegative(stat.framesPerSecond));
+    rttSeconds = Math.max(rttSeconds, finiteNonNegative(stat.roundTripTime));
+    jitterSeconds = Math.max(jitterSeconds, finiteNonNegative(stat.jitter));
+  }
+
+  const bitrate = (bytes: number) => elapsedSeconds ? Math.round((bytes * 8) / elapsedSeconds / 1_000) : 0;
+  const totalPackets = sentPackets + lostPackets;
+  return {
+    uplinkKbps: bitrate(audioBytes + videoBytes),
+    rttMs: Math.round(rttSeconds * 1_000),
+    jitterMs: Math.round(jitterSeconds * 1_000),
+    packetLossPct: totalPackets ? Math.round((lostPackets / totalPackets) * 10_000) / 100 : 0,
+    videoBitrateKbps: bitrate(videoBytes),
+    audioBitrateKbps: bitrate(audioBytes),
+    fps: Math.round(fps * 10) / 10,
+    encodedFrames: Math.round(encodedFrames),
+  };
+}
+
 export async function buildCaptureTelemetry(input: {
   sequence: number;
   configuration: CaptureNodeConfiguration;
   stream: MediaStream | null;
   recording: { active: boolean; pendingSegments: number; durationMs: number };
+  transport?: FieldTransportMeasurement | null;
 }): Promise<CaptureTelemetry> {
   const connection = (navigator as Navigator & { connection?: NetworkInformation }).connection;
   const battery = await (navigator as Navigator & { getBattery?: () => Promise<BatteryManager> }).getBattery?.().catch(() => null) ?? null;
@@ -157,20 +237,20 @@ export async function buildCaptureTelemetry(input: {
       id: connectionType,
       type: connectionType,
       active: navigator.onLine,
-      // Browsers expose a downstream estimate but no trustworthy upstream
-      // measurement. Reporting zero is safer than steering the encoder from a
-      // fabricated uplink figure; the real transport adapter supplies this.
-      uplinkKbps: 0,
-      rttMs: Math.max(0, Math.round(connection?.rtt ?? 0)),
-      jitterMs: 0,
-      packetLossPct: 0,
+      // The LiveKit sender adapter supplies measured outbound deltas without
+      // exposing ICE candidates or network addresses. Before it has two
+      // samples, zero is intentionally reported rather than a fabricated rate.
+      uplinkKbps: input.transport?.uplinkKbps ?? 0,
+      rttMs: input.transport?.rttMs || Math.max(0, Math.round(connection?.rtt ?? 0)),
+      jitterMs: input.transport?.jitterMs ?? 0,
+      packetLossPct: input.transport?.packetLossPct ?? 0,
     }],
     encoder: {
-      videoBitrateKbps: input.configuration.profile.targetVideoBitrateKbps,
-      audioBitrateKbps: input.configuration.profile.audioBitrateKbps,
-      fps: settings?.frameRate ?? (videoTrack ? input.configuration.profile.fps : 0),
+      videoBitrateKbps: input.transport?.videoBitrateKbps ?? 0,
+      audioBitrateKbps: input.transport?.audioBitrateKbps ?? 0,
+      fps: input.transport?.fps || settings?.frameRate || 0,
       droppedFrames: 0,
-      encodedFrames: 0,
+      encodedFrames: input.transport?.encodedFrames ?? 0,
       queueMs: 0,
     },
     device: {

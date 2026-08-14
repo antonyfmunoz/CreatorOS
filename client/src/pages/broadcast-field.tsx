@@ -11,10 +11,13 @@ import {
   deleteRecoverySegment,
   listRecoverySegments,
   loadFieldSession,
+  measureFieldSenderTransport,
   saveFieldSession,
   storeRecoverySegment,
+  type FieldSenderSnapshot,
   type FieldCaptureSession,
   type RecoverySegment,
+  type FieldTransportMeasurement,
 } from "@/lib/field-capture";
 
 const defaultConfiguration: CaptureNodeConfiguration = {
@@ -56,6 +59,7 @@ export default function BroadcastFieldPage() {
   const streamRef = useRef(stream);
   const segmentCountRef = useRef(segments.length);
   const recordingStartedAtRef = useRef(recordingStartedAt);
+  const transportMeasurementRef = useRef<FieldTransportMeasurement | null>(null);
 
   useEffect(() => { configurationRef.current = configuration; }, [configuration]);
   useEffect(() => { streamRef.current = stream; }, [stream]);
@@ -135,10 +139,14 @@ export default function BroadcastFieldPage() {
     if (advanced.length) void video.applyConstraints({ advanced } as MediaTrackConstraints).catch(() => undefined);
   }, [configuration.exposureCompensation, configuration.microphoneMuted, configuration.remoteControlEnabled, configuration.requestedState, configuration.torchEnabled, configuration.zoom, stream]);
 
+  const transportEnabled = configuration.requestedState !== "stopped";
+
   useEffect(() => {
-    if (!session || !stream || configuration.requestedState === "stopped") { setTransport("idle"); return; }
+    if (!session || !stream || !transportEnabled) { setTransport("idle"); return; }
     const room = new Room({ adaptiveStream: true, dynacast: true });
     let cancelled = false;
+    let statsInterval: number | null = null;
+    let previousStats: FieldSenderSnapshot | null = null;
     room.on(RoomEvent.Disconnected, () => { if (!cancelled) setTransport("error"); });
     void (async () => {
       try {
@@ -152,10 +160,51 @@ export default function BroadcastFieldPage() {
         if (cancelled) return;
         for (const track of stream.getTracks()) await room.localParticipant.publishTrack(track, { name: track.kind === "video" ? "field-camera" : "field-microphone" });
         setTransport("live");
+        const sampleSenderStats = async () => {
+          const stats: FieldSenderSnapshot["stats"] = [];
+          for (const publication of Array.from(room.localParticipant.trackPublications.values())) {
+            const track = publication.track as unknown as { kind?: string; getSenderStats?: () => Promise<unknown> } | undefined;
+            if (!track?.getSenderStats) continue;
+            let raw: unknown;
+            try {
+              raw = await track.getSenderStats();
+            } catch {
+              continue;
+            }
+            const senderStats = Array.isArray(raw) ? raw : raw ? [raw] : [];
+            for (const item of senderStats as Array<Record<string, unknown>>) {
+              const kind = item.type === "audio" ? "audio" : item.type === "video" ? "video" : null;
+              if (!kind) continue;
+              stats.push({
+                id: String(item.streamId ?? item.rid ?? publication.trackSid),
+                kind,
+                timestamp: Number(item.timestamp) || Date.now(),
+                bytesSent: Number(item.bytesSent) || 0,
+                packetsSent: Number(item.packetsSent) || 0,
+                packetsLost: Number(item.packetsLost) || 0,
+                roundTripTime: Number(item.roundTripTime) || 0,
+                jitter: Number(item.jitter) || 0,
+                framesPerSecond: Number(item.framesPerSecond) || 0,
+                framesSent: Number(item.framesSent) || 0,
+              });
+            }
+          }
+          if (cancelled) return;
+          const currentStats = { sampledAtMs: Date.now(), stats };
+          transportMeasurementRef.current = measureFieldSenderTransport(currentStats, previousStats);
+          previousStats = currentStats;
+        };
+        await sampleSenderStats();
+        statsInterval = window.setInterval(() => void sampleSenderStats(), 2_000);
       } catch { if (!cancelled) setTransport("error"); }
     })();
-    return () => { cancelled = true; void room.disconnect(); };
-  }, [configuration.requestedState, disconnect, session, stream]);
+    return () => {
+      cancelled = true;
+      if (statsInterval !== null) window.clearInterval(statsInterval);
+      transportMeasurementRef.current = null;
+      void room.disconnect();
+    };
+  }, [disconnect, session, stream, transportEnabled]);
 
   useEffect(() => {
     if (!session) return;
@@ -182,7 +231,7 @@ export default function BroadcastFieldPage() {
         const currentConfiguration = configurationRef.current;
         const currentStream = streamRef.current;
         const startedAt = recordingStartedAtRef.current;
-        const sample = await buildCaptureTelemetry({ sequence: nextSequence, configuration: currentConfiguration, stream: currentStream, recording: { active: recorderRef.current?.state === "recording", pendingSegments: segmentCountRef.current, durationMs: startedAt ? Date.now() - startedAt : 0 } });
+        const sample = await buildCaptureTelemetry({ sequence: nextSequence, configuration: currentConfiguration, stream: currentStream, recording: { active: recorderRef.current?.state === "recording", pendingSegments: segmentCountRef.current, durationMs: startedAt ? Date.now() - startedAt : 0 }, transport: transportMeasurementRef.current });
         const response = await fetch(session.telemetryUrl, { method: "POST", headers: { Authorization: `Bearer ${session.deviceSecret}`, "Content-Type": "application/json" }, body: JSON.stringify(sample) });
         if (response.status === 401) return disconnect("The director revoked this device. Pair it again to reconnect.");
         const data = await response.json() as ConfigurationResponse & { message?: string };

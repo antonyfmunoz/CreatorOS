@@ -1095,6 +1095,9 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
   await expect(page.getByText("Field capture", { exact: true })).toBeVisible();
   await expect(page.getByText("Android field camera", { exact: true })).toBeVisible();
   await expect(page.getByText(/11 Mbps uplink/)).toBeVisible();
+  await expect(page.getByText("92 ms RTT", { exact: true })).toBeVisible();
+  await expect(page.getByText("0.8% loss", { exact: true })).toBeVisible();
+  await expect(page.getByText("15 ms jitter", { exact: true })).toBeVisible();
   await expect(page.getByText(/Director: 1920×1080/)).toBeVisible();
   await expect(page.getByLabel("Android field camera director state")).toHaveValue("standby");
   await page.getByLabel("Android field camera director state").selectOption("live");

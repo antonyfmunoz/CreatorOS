@@ -34,7 +34,7 @@ that unconfigured third-party destinations have been field-tested.
 
 ## Qualification
 
-- 75 unit/integration files, 307 tests: passed.
+- 75 unit/integration files, 309 tests: passed.
 - TypeScript, production builds, Worker dry run and bundle budgets: passed.
 - 126 isolated PostgreSQL browser executions across mobile and desktop: passed.
 - Empty-database migration qualification: 83 migrations passed.
@@ -87,7 +87,7 @@ subscribe-only token. The resulting feed can be inserted into Preview and
 transitioned to Program; reusable scene/source presets strip the physical
 capture-node binding. Focused unit and isolated mobile/desktop browser
 qualification pass, followed by the complete 126-execution browser matrix,
-75 unit/integration files with 307 assertions, TypeScript/build/Worker/bundle
+75 unit/integration files with 309 assertions, TypeScript/build/Worker/bundle
 gates, relationship release, backup/restore, a clean 581-file source-secret
 scan, zero production dependency vulnerabilities and a 200-request capacity
 probe with zero failures.
@@ -102,3 +102,9 @@ also cleared from the pairing form after revocation; its temporary device and
 studio were removed. The automated in-app browser had no granted
 physical camera, so an actual camera track publication and network endurance
 run remain an explicit real-device gate rather than inferred evidence.
+
+The field client now derives outbound video/audio bitrate, RTT, jitter, packet
+loss, frame rate and encoded-frame counts from consecutive LiveKit sender
+statistics. The operator sees those measured values in Broadcast; changing
+Ready/Live/Standby/Pause no longer tears down and recreates the media room.
+No ICE candidates, local addresses or other network identifiers are persisted.

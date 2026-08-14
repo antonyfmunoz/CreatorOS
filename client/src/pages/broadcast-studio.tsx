@@ -141,7 +141,7 @@ type CaptureNode = {
   lastTelemetry: null | {
     state: string;
     links: Array<{ id: string; type: string; active: boolean; uplinkKbps: number; rttMs: number; jitterMs: number; packetLossPct: number }>;
-    encoder: { videoBitrateKbps: number; fps: number; droppedFrames: number };
+    encoder: { videoBitrateKbps: number; audioBitrateKbps: number; fps: number; droppedFrames: number; encodedFrames: number; queueMs: number };
     device: { batteryPct: number | null; charging: boolean | null; thermalState: string; availableStorageMb: number | null };
     recording: { active: boolean; pendingSegments: number; durationMs: number };
   };
@@ -2860,6 +2860,9 @@ export default function BroadcastStudioPage() {
                 {captureNodes.filter((node) => !node.revokedAt).map((node) => {
                   const activeLinks = node.lastTelemetry?.links.filter((link) => link.active) ?? [];
                   const uplink = activeLinks.reduce((sum, link) => sum + link.uplinkKbps, 0);
+                  const worstRtt = activeLinks.reduce((value, link) => Math.max(value, link.rttMs), 0);
+                  const worstJitter = activeLinks.reduce((value, link) => Math.max(value, link.jitterMs), 0);
+                  const worstLoss = activeLinks.reduce((value, link) => Math.max(value, link.packetLossPct), 0);
                   return <div key={node.id} className="rounded-xl border border-zinc-800 bg-black p-3">
                     <div className="flex items-start gap-2">
                       <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${node.status === "live" ? "animate-pulse bg-emerald-400" : node.status === "degraded" || node.status === "reconnecting" ? "bg-amber-400" : node.status === "error" || node.status === "offline" ? "bg-red-500" : "bg-zinc-500"}`}/>
@@ -2872,6 +2875,12 @@ export default function BroadcastStudioPage() {
                     {node.lastTelemetry ? <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-zinc-500">
                       <span>{Math.round(uplink / 100) / 10} Mbps uplink</span>
                       <span>{node.lastTelemetry.encoder.fps.toFixed(0)} fps</span>
+                      <span>{Math.round(node.lastTelemetry.encoder.videoBitrateKbps / 100) / 10} Mbps video</span>
+                      <span>{node.lastTelemetry.encoder.audioBitrateKbps} kbps audio</span>
+                      <span>{worstRtt} ms RTT</span>
+                      <span>{Math.round(worstLoss * 100) / 100}% loss</span>
+                      <span>{worstJitter} ms jitter</span>
+                      <span>{node.lastTelemetry.encoder.encodedFrames.toLocaleString()} frames sent</span>
                       <span>{node.lastTelemetry.device.batteryPct === null ? "Battery unknown" : `${Math.round(node.lastTelemetry.device.batteryPct)}% battery`}</span>
                       <span className={node.lastTelemetry.device.thermalState === "serious" || node.lastTelemetry.device.thermalState === "critical" ? "text-amber-400" : ""}>{node.lastTelemetry.device.thermalState} thermal</span>
                       {node.lastDirective && <span className="col-span-2 border-t border-zinc-900 pt-2">Director: {node.lastDirective.width}×{node.lastDirective.height} · {node.lastDirective.fps} fps · {node.lastDirective.videoBitrateKbps} kbps ({node.lastDirective.reason})</span>}

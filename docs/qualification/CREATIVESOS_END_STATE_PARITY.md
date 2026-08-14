@@ -76,7 +76,7 @@ field evidence.
 | AI relationship copilot | Governed suggestions, evidence citations, injection boundary, human review and execution re-check | `provider_pending` | Native review/state proof plus model-provider inference round trip |
 | Cloned voice | Attestation, consent, exact-script approval, disclosure, private artifact lifecycle and revocation | `provider_pending` | Voice-provider enrollment/generation/delivery/revocation/deletion proof |
 | CutStudio | Durable multitrack editing, captions, audio/color/brand controls, review, rendering, multicam and reusable asset lineage | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive) | The bounded creator workflow now includes Broadcast multicam handoff, synchronized angle switching, private edit proxies and original-source render lineage. Competitive parity still requires the locked same-source human review benchmark; translated captions, provider transcription/diarization, vision/model assistance and scalable 4K worker evidence remain external or scale gates. |
-| Broadcast | Multi-studio live production, scenes/sources/audio, collaboration, recording, resilient delivery, field capture and operator evidence | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive); `provider_pending` (external destinations) | The bounded workflow now includes program/preview multiview, transition rendering, native audience widgets, destination-specific landscape/portrait/square variants, a phone operator surface, and an installable browser field camera with one-time pairing, session-only device custody, camera/mic/screen preview, director controls, truthful telemetry, local recovery segments and role-separated LiveKit media delivery into Preview/Program. Competitive parity still requires the locked same-show human review benchmark and real-device/network endurance runs; native background capture, bonded links, external live destinations and regional encoder failover remain device, provider or scale gates. |
+| Broadcast | Multi-studio live production, scenes/sources/audio, collaboration, recording, resilient delivery, field capture and operator evidence | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive); `provider_pending` (external destinations) | The bounded workflow now includes program/preview multiview, transition rendering, native audience widgets, destination-specific landscape/portrait/square variants, a phone operator surface, and an installable browser field camera with one-time pairing, session-only device custody, camera/mic/screen preview, director controls, measured WebRTC bitrate/RTT/jitter/loss/encoder telemetry, local recovery segments and role-separated LiveKit media delivery into Preview/Program. Competitive parity still requires the locked same-show human review benchmark and real-device/network endurance runs; native background capture, bonded links, external live destinations and regional encoder failover remain device, provider or scale gates. |
 | Connected creation loop | Completed Broadcast programs, isolated sources and markers open directly as lineage-preserving CutStudio projects without export/re-upload | `verified_complete` (native) | One generated source now passes the mobile and desktop golden journey: private Broadcast program and isolated track, idempotent CutStudio handoff, transcript correction, deterministic highlights, kinetic-caption render, public distribution promotion, native publication, post-scoped comment automation, second-user keyword comment, public reply, DM and post analytics. External destinations remain provider gates. |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
@@ -124,7 +124,7 @@ styling:
 This section records local evidence for the current worktree without rewriting
 older production evidence:
 
-- 75 unit/integration files and 307 tests passed, followed by TypeScript checks,
+- 75 unit/integration files and 309 tests passed, followed by TypeScript checks,
   production builds, Worker validation and bundle budgets;
 - 126 isolated PostgreSQL browser executions passed across mobile and desktop,
   including secure field-node pairing and replay rejection, remote director
@@ -140,11 +140,13 @@ older production evidence:
   audit reported zero vulnerabilities, and the 200-request/20-concurrency
   capacity probe completed with zero failures.
 
-The subsequent field-camera slice adds 5 unit assertions and a two-viewport
+The subsequent field-camera slices add 7 unit assertions and two-viewport
 isolated PostgreSQL browser journey covering one-time pairing, preview,
 heartbeat sequencing, director state and mute commands, and revocation. The
 complete 126-execution matrix passed rather than inferring release readiness
-from that focused pass.
+from that focused pass. A later targeted four-execution run also proves the
+operator's bitrate, RTT, jitter and loss readouts while sender-delta unit tests
+cover the LiveKit measurement math.
 
 This qualification plus the v309 production checks are release evidence. They are not evidence of a
 native phone-binary, physical-camera/background-capture field test, an authorized
