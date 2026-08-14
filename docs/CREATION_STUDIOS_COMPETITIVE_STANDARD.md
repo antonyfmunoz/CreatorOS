@@ -57,7 +57,7 @@ checked against primary product documentation before this scorecard is revised.
 
 | Capability | Current baseline | Competitive target | Gate |
 | --- | --- | --- | --- |
-| Scene composer | Reusable solo, interview, presentation and countdown scenes, complete custom scene presets, business-scoped cross-studio scene/source catalogs, and owner/editor/viewer team studio collaboration implemented | Expand the catalog with version history when production teams demonstrate a rollback need | Product code and owner-scoped collaboration field tests |
+| Scene composer | Reusable solo, interview, presentation and countdown scenes, complete custom scene presets, business-scoped cross-studio scene/source catalogs, owner/editor/viewer team studio collaboration, and immutable bounded configuration history with authorized rollback implemented | Maintain and qualify restoration behavior with production teams | Product code and owner-scoped collaboration field tests |
 | Preview/program | Cut, fade and production hotkeys | Maintain | Product code |
 | Sources | Camera, screen, mic, media, image, text, color, test pattern | Browser/deck sources, guest feeds and reusable brand graphics | Product code; guest transport uses realtime provider |
 | Source control | Transform, crop, layer, blend, basic visual filters, adjustable chroma key, mute/volume, reusable render-effective source presets, high/low-pass audio filters, dynamics compression, independent program/monitor routing, named dialogue/music/effects submix buses with live gain and mute, audio sync delay, stereo balance, local monitoring, and per-source device echo cancellation, noise suppression and automatic gain | LUT workflow | Product code; browser/device capability limitations are disclosed at the control |

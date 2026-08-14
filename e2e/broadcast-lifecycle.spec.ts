@@ -536,6 +536,41 @@ test("Broadcast owner shares an editable studio without delegating live authorit
   expect((await api(page, peer, "GET", `/api/broadcast/studios/${studio.id}`)).status()).toBe(404);
 });
 
+test("Broadcast preserves and restores immutable studio configuration history", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Versioned studio ${Date.now()}` });
+  await expectOk(createdResponse);
+  const created = await createdResponse.json();
+  const firstResponse = await api(page, owner, "PUT", `/api/broadcast/studios/${created.id}`, { name: "First production plan", config: { ...created.config, replayBufferSeconds: 45 } }, { "If-Match": String(created.revision) });
+  await expectOk(firstResponse);
+  const first = await firstResponse.json();
+  const secondResponse = await api(page, owner, "PUT", `/api/broadcast/studios/${created.id}`, { name: "Second production plan", config: { ...first.config, replayBufferSeconds: 75 } }, { "If-Match": String(first.revision) });
+  await expectOk(secondResponse);
+  const second = await secondResponse.json();
+  const versionsResponse = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}/versions`);
+  await expectOk(versionsResponse);
+  expect(await versionsResponse.json()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ revision: 1, name: created.name, reason: "save", access: { canRestore: true } }),
+    expect.objectContaining({ revision: 2, name: "First production plan", reason: "save", access: { canRestore: true } }),
+  ]));
+  expect((await api(page, peer, "GET", `/api/broadcast/studios/${created.id}/versions`)).status()).toBe(404);
+
+  await page.goto("/broadcast");
+  await expect(page.getByRole("heading", { name: "Second production plan" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByLabel("Restore studio revision 1").click();
+  await expect(page.getByText("Restored revision 1. Your previous configuration is still in history.")).toBeVisible();
+  await expect(page.getByLabel("Replay buffer (seconds)")).toHaveAttribute("aria-valuetext", "30");
+  const restoredResponse = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}`);
+  await expectOk(restoredResponse);
+  expect(await restoredResponse.json()).toMatchObject({ name: created.name, revision: second.revision + 1, config: { replayBufferSeconds: 30 } });
+  const restoredVersionsResponse = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}/versions`);
+  await expectOk(restoredVersionsResponse);
+  expect(await restoredVersionsResponse.json()).toEqual(expect.arrayContaining([expect.objectContaining({ revision: second.revision, name: "Second production plan", reason: "restore" })]));
+});
+
 test("Broadcast brand library persists across studios and supports safe removal", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

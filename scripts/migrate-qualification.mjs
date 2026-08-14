@@ -70,6 +70,7 @@ const requiredTables = [
   "cut_studio_review_decisions",
   "broadcast_studios",
   "broadcast_studio_collaborators",
+  "broadcast_studio_versions",
   "broadcast_brand_kits",
   "broadcast_destinations",
   "broadcast_sessions",

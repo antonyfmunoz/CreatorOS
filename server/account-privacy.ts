@@ -141,6 +141,7 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select c.* from cut_studio_review_comments c join cut_studio_versions v on v.id = c.version_id where v.owner_user_id = ${userId} order by c.created_at`),
       exportRows(sql`select d.* from cut_studio_review_decisions d join cut_studio_versions v on v.id = d.version_id where v.owner_user_id = ${userId} order by d.created_at`),
       exportRows(sql`select * from broadcast_studios where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_studio_versions where actor_user_id = ${userId} order by created_at`),
       exportRows(sql`select id, owner_user_id, business_id, name, protocol, ingest_url, status, created_at, updated_at from broadcast_destinations where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from broadcast_sessions where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from broadcast_brand_kits where owner_user_id = ${userId} order by created_at`),

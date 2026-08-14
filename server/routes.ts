@@ -580,6 +580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "cut_studio_review_comments",
       "cut_studio_review_decisions",
       "broadcast_studios",
+      "broadcast_studio_versions",
       "broadcast_destinations",
       "broadcast_sessions",
       "broadcast_audience_messages",

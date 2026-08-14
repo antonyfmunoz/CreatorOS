@@ -27,6 +27,7 @@ import {
   broadcastSessionTracks,
   broadcastSessions,
   broadcastStudioCollaborators,
+  broadcastStudioVersions,
   broadcastStudios,
   broadcastTemplateCatalog,
   cutStudioProjectMedia,
@@ -909,21 +910,12 @@ export function registerBroadcastStudioRoutes(app: Express) {
       typeof req.body?.name === "string"
         ? req.body.name.trim().slice(0, 120)
         : studio.name;
-    const [updated] = await db
-      .update(broadcastStudios)
-      .set({
-        name: name || studio.name,
-        config,
-        revision: sql`${broadcastStudios.revision} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(broadcastStudios.id, studio.id),
-          eq(broadcastStudios.revision, expected),
-        ),
-      )
-      .returning();
+    const updated = await db.transaction(async (transaction) => {
+      await transaction.insert(broadcastStudioVersions).values({ studioId: studio.id, businessId: studio.businessId, actorUserId: req.dbUser!.id, revision: studio.revision, name: studio.name, config: validateBroadcastStudioConfig(studio.config), reason: "save" }).onConflictDoNothing();
+      const [row] = await transaction.update(broadcastStudios).set({ name: name || studio.name, config, revision: sql`${broadcastStudios.revision} + 1`, updatedAt: new Date() }).where(and(eq(broadcastStudios.id, studio.id), eq(broadcastStudios.revision, expected))).returning();
+      if (row) await transaction.execute(sql`delete from broadcast_studio_versions where id in (select id from broadcast_studio_versions where studio_id = ${studio.id} order by revision desc offset 50)`);
+      return row;
+    });
     if (!updated)
       return res.status(409).json({
         message: "Studio changed in another session",
@@ -938,6 +930,33 @@ export function registerBroadcastStudioRoutes(app: Express) {
       idempotencyKey: `broadcast:${studio.id}:revision:${updated.revision}`,
     });
     res.json({ ...updated, access: { role: access.role, canEdit: access.canEdit, canOperate: access.canOperate } });
+  });
+  app.get("/api/broadcast/studios/:id/versions", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Studio not found" });
+    const rows = await db.select({ id: broadcastStudioVersions.id, revision: broadcastStudioVersions.revision, name: broadcastStudioVersions.name, reason: broadcastStudioVersions.reason, createdAt: broadcastStudioVersions.createdAt, actor: { id: users.id, username: users.username, displayName: users.displayName } }).from(broadcastStudioVersions).leftJoin(users, eq(users.id, broadcastStudioVersions.actorUserId)).where(eq(broadcastStudioVersions.studioId, access.studio.id)).orderBy(desc(broadcastStudioVersions.revision)).limit(50);
+    res.json(rows.map((row) => ({ ...row, access: { canRestore: access.canEdit } })));
+  });
+  app.post("/api/broadcast/studios/:id/versions/:versionId/restore", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access?.canEdit) return res.status(404).json({ message: "Studio not found" });
+    const expected = Number(req.header("if-match"));
+    if (!Number.isInteger(expected)) return res.status(428).json({ message: "If-Match revision is required" });
+    const [version] = await db.select().from(broadcastStudioVersions).where(and(eq(broadcastStudioVersions.id, req.params.versionId), eq(broadcastStudioVersions.studioId, access.studio.id))).limit(1);
+    if (!version) return res.status(404).json({ message: "Studio version not found" });
+    const [active] = await db.select({ id: broadcastSessions.id }).from(broadcastSessions).where(and(eq(broadcastSessions.studioId, access.studio.id), inArray(broadcastSessions.state, ["starting", "live", "stopping"]))).limit(1);
+    if (active) return res.status(409).json({ message: "Stop the active output before restoring studio history" });
+    const restored = await db.transaction(async (transaction) => {
+      await transaction.insert(broadcastStudioVersions).values({ studioId: access.studio.id, businessId: access.studio.businessId, actorUserId: req.dbUser!.id, revision: access.studio.revision, name: access.studio.name, config: validateBroadcastStudioConfig(access.studio.config), reason: "restore" }).onConflictDoNothing();
+      const [row] = await transaction.update(broadcastStudios).set({ name: version.name, config: validateBroadcastStudioConfig(version.config), revision: sql`${broadcastStudios.revision} + 1`, updatedAt: new Date() }).where(and(eq(broadcastStudios.id, access.studio.id), eq(broadcastStudios.revision, expected))).returning();
+      if (row) await transaction.execute(sql`delete from broadcast_studio_versions where id in (select id from broadcast_studio_versions where studio_id = ${access.studio.id} order by revision desc offset 50)`);
+      return row;
+    });
+    if (!restored) return res.status(409).json({ message: "Studio changed in another session", currentRevision: access.studio.revision });
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: access.studio.id, eventType: "broadcast.studio.restored", actorUserId: req.dbUser!.id, payload: { businessId: access.studio.businessId, fromRevision: access.studio.revision, restoredRevision: version.revision, revision: restored.revision }, idempotencyKey: `broadcast:${access.studio.id}:restore:${restored.revision}` });
+    res.json({ ...restored, access: { role: access.role, canEdit: access.canEdit, canOperate: access.canOperate } });
   });
   app.post("/api/broadcast/studios/:id/collaborators", attachUser, async (req, res) => {
     noStore(res);

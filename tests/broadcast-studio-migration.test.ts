@@ -6,6 +6,7 @@ const multiDestinationMigration = readFileSync(new URL("../migrations/0066_broad
 const productionEvidenceMigration = readFileSync(new URL("../migrations/0068_broadcast_production_evidence.sql", import.meta.url), "utf8");
 const collaborationMigration = readFileSync(new URL("../migrations/0074_broadcast_studio_collaboration.sql", import.meta.url), "utf8");
 const audienceMigration = readFileSync(new URL("../migrations/0075_broadcast_audience_control.sql", import.meta.url), "utf8");
+const versionMigration = readFileSync(new URL("../migrations/0078_broadcast_studio_versions.sql", import.meta.url), "utf8");
 
 describe("Broadcast Studio migration", () => {
   it("persists studios, encrypted destinations, and durable sessions", () => {
@@ -49,5 +50,11 @@ describe("Broadcast Studio migration", () => {
     expect(templateMigration).toContain('broadcast_template_catalog_business_kind_name_unique');
     expect(audienceMigration).toContain("'comment', 'cta'");
     expect(audienceMigration).toContain("'visible', 'hidden'");
+  });
+
+  it("adds immutable studio configuration history", () => {
+    expect(versionMigration).toContain('CREATE TABLE "broadcast_studio_versions"');
+    expect(versionMigration).toContain('broadcast_studio_versions_studio_revision_unique');
+    expect(versionMigration).toContain('broadcast_studio_versions_reason_check');
   });
 });

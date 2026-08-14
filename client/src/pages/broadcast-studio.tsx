@@ -12,6 +12,7 @@ import {
   EyeOff,
   Image,
   Layers3,
+  Loader2,
   Lock,
   Mic,
   MonitorUp,
@@ -121,6 +122,7 @@ type BrandLibraryKit = {
 type AudienceMessage = { id: string; kind: "comment" | "cta"; authorName: string; body: string; actionUrl: string | null; status: "visible" | "hidden"; featured: boolean; createdAt: string };
 type AudiencePayload = { access: { productionTeam: boolean; canModerate: boolean }; messages: AudienceMessage[] };
 type TeamTemplate = { id: string; kind: "scene" | "source"; name: string; payload: BroadcastScene | BroadcastSource; access: { canDelete: boolean }; updatedAt: string };
+type StudioVersion = { id: string; revision: number; name: string; reason: "save" | "restore"; createdAt: string; actor: { id: number; username: string; displayName: string } | null; access: { canRestore: boolean } };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -213,6 +215,7 @@ export default function BroadcastStudioPage() {
   const queryClient = useQueryClient();
   const [studio, setStudio] = useState<Studio | null>(null);
   const [config, setConfig] = useState<BroadcastStudioConfig | null>(null);
+  const [studioVersions, setStudioVersions] = useState<StudioVersion[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [destinationIds, setDestinationIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -368,14 +371,14 @@ export default function BroadcastStudioPage() {
     null;
 
   const openStudio = useCallback(async (id: string) => {
-    const value = (await (
-      await apiRequest("GET", `/api/broadcast/studios/${id}`)
-    ).json()) as Studio;
+    const [studioResponse, versionsResponse] = await Promise.all([apiRequest("GET", `/api/broadcast/studios/${id}`), apiRequest("GET", `/api/broadcast/studios/${id}/versions`)]);
+    const value = (await studioResponse.json()) as Studio;
     setStudio(value);
     studioRef.current = value;
     setStudioNameDraft(value.name);
     setDeleteStudioArmed(false);
     setConfig(value.config);
+    setStudioVersions(await versionsResponse.json() as StudioVersion[]);
     latestRequestedConfig.current = value.config;
     setSelectedSourceId(
       value.config.scenes.find(
@@ -431,6 +434,7 @@ export default function BroadcastStudioPage() {
           const updated = (await response.json()) as Studio;
           studioRef.current = updated;
           setStudio(updated);
+          setStudioVersions(await (await apiRequest("GET", `/api/broadcast/studios/${updated.id}/versions`)).json() as StudioVersion[]);
           if (latestRequestedConfig.current && exactConfig(latestRequestedConfig.current, next)) setConfig(updated.config);
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Studio could not be saved");
@@ -446,6 +450,28 @@ export default function BroadcastStudioPage() {
     },
     [studio, openStudio],
   );
+
+  const restoreStudioVersion = useCallback(async (version: StudioVersion) => {
+    const current = studioRef.current;
+    if (!current || session || !version.access.canRestore) return;
+    if (!window.confirm(`Restore ${version.name} from revision ${version.revision}? The current studio will remain in history.`)) return;
+    setBusy(`studio-version:${version.id}`);
+    setMessage("");
+    try {
+      await persistQueue.current.catch(() => undefined);
+      const response = await apiRequest("POST", `/api/broadcast/studios/${current.id}/versions/${version.id}/restore`, {}, { "If-Match": String(studioRef.current!.revision) });
+      const restored = await response.json() as Studio;
+      studioRef.current = restored;
+      setStudio(restored);
+      setStudioNameDraft(restored.name);
+      setConfig(restored.config);
+      latestRequestedConfig.current = restored.config;
+      setSelectedSourceId(restored.config.scenes.find((scene) => scene.id === restored.config.previewSceneId)?.sources[0]?.id ?? null);
+      setStudioVersions(await (await apiRequest("GET", `/api/broadcast/studios/${restored.id}/versions`)).json() as StudioVersion[]);
+      setMessage(`Restored revision ${version.revision}. Your previous configuration is still in history.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Studio history could not be restored"); }
+    finally { setBusy(""); }
+  }, [session]);
 
   const switchStudio = useCallback(async (studioId: string) => {
     if (!studioId || studioId === studioRef.current?.id) return;
@@ -2875,6 +2901,10 @@ export default function BroadcastStudioPage() {
               </div>
               {studioRole === "owner" && (studiosQuery.data?.length ?? 0) > 1 && <Button className="w-full" size="sm" variant={deleteStudioArmed ? "destructive" : "ghost"} disabled={Boolean(activeSession) || busy === "studio-delete"} onClick={() => deleteStudioArmed ? void deleteCurrentStudio() : setDeleteStudioArmed(true)}>{deleteStudioArmed ? `Delete ${studio.name}` : "Prepare studio deletion"}</Button>}
               {deleteStudioArmed && <button className="w-full text-[10px] text-zinc-500" onClick={() => setDeleteStudioArmed(false)}>Cancel deletion</button>}
+              <div className="space-y-1 pt-2" aria-label="Studio version history">
+                <div className="flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Version history</p><span className="text-[9px] text-zinc-600">Current r{studio.revision}</span></div>
+                {studioVersions.length ? studioVersions.slice(0, 8).map((version) => <div key={version.id} className="flex items-center gap-2 rounded-lg bg-black px-2 py-1.5"><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold">r{version.revision} · {version.name}</span><span className="block truncate text-[9px] text-zinc-600">{version.actor?.displayName ?? "Team member"} · {new Date(version.createdAt).toLocaleString()}</span></span><Button size="sm" variant="ghost" aria-label={`Restore studio revision ${version.revision}`} disabled={!version.access.canRestore || Boolean(activeSession) || busy === `studio-version:${version.id}`} onClick={() => void restoreStudioVersion(version)}>{busy === `studio-version:${version.id}` ? <Loader2 className="h-3 w-3 animate-spin"/> : "Restore"}</Button></div>) : <p className="rounded-lg bg-black px-2 py-2 text-[10px] text-zinc-600">Your previous configuration appears after the first saved change.</p>}
+              </div>
               {(studio.participants?.length ?? 0) > 0 && <div className="space-y-1 pt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Production team</p>
                 {studio.participants!.map((participant) => <div key={participant.id} className="flex items-center gap-2 rounded-lg bg-black px-2 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{participant.displayName} <span className="text-zinc-600">@{participant.username}</span></span><span className="text-[9px] font-bold uppercase text-zinc-500">{participant.role}</span>{studioRole === "owner" && participant.role !== "owner" && <button aria-label={`Remove ${participant.username} from broadcast studio`} className="text-[10px] font-bold text-red-400" disabled={busy === `studio-collaborator-${participant.id}`} onClick={() => void removeStudioCollaborator(participant.id)}>Remove</button>}</div>)}
@@ -3287,6 +3317,8 @@ function Control({
         <span>{value.toFixed(2)}</span>
       </span>
       <Slider
+        aria-label={label}
+        aria-valuetext={String(value)}
         className="mt-2"
         min={min * 100}
         max={Math.max(min, max) * 100}

@@ -205,6 +205,7 @@ export function getReleaseReadiness(
       accountBrandLibrary: "configured",
       organizationTemplateCatalog: "configured",
       organizationMediaLibrary: "configured",
+      configurationVersionHistory: "configured",
       multiStudioManagement: "configured",
       teamStudioCollaboration: "configured",
       broadcastToCutStudio: "configured",

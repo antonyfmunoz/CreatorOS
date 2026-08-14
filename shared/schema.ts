@@ -2732,6 +2732,27 @@ export const broadcastStudioCollaborators = pgTable(
   }),
 );
 
+// Immutable bounded snapshots make collaborative production changes
+// recoverable without coupling rollback to the live studio row.
+export const broadcastStudioVersions = pgTable(
+  "broadcast_studio_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studioId: uuid("studio_id").references(() => broadcastStudios.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    revision: integer("revision").notNull(),
+    name: text("name").notNull(),
+    config: json("config").$type<import("./broadcast-studio").BroadcastStudioConfig>().notNull(),
+    reason: text("reason").notNull().default("save"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    studioRevisionUnique: unique("broadcast_studio_versions_studio_revision_unique").on(table.studioId, table.revision),
+    studioCreatedIdx: index("broadcast_studio_versions_studio_created_idx").on(table.studioId, table.createdAt),
+  }),
+);
+
 // Brand identity is stored outside an individual studio so a creator can keep
 // every show visually consistent without rebuilding colors and logos for each
 // broadcast. The business key preserves a clean path to shared team libraries.
