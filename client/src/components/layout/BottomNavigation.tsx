@@ -8,22 +8,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
+import { resolveBottomNavigationTab } from '@/lib/bottom-navigation';
 
 const BottomNavigation = () => {
   const { setActiveTab } = useAppStore();
   const [location, setLocation] = useLocation();
 
-  const activeTab = location === "/" || location.startsWith("/post/") || location.startsWith("/posts/")
-    ? "explore"
-    : location.startsWith("/marketplace") || ["/cart", "/orders", "/checkout"].some((path) => location === path || location.startsWith(`${path}/`)) || location.startsWith("/learn") || location.startsWith("/courses/")
-      ? "marketplace"
-      : location.startsWith("/create") || location === "/new-text-post" || ["/studio", "/distribution", "/business", "/campaigns", "/earnings", "/products", "/ai", "/automations"].some((path) => location === path || location.startsWith(`${path}/`))
-        ? "create"
-        : location.startsWith("/communities")
-          ? "communities"
-          : location.startsWith("/profile") || location.startsWith("/user/") || ["/saved-posts", "/followers", "/following", "/revenue", "/contacts", "/documents", "/moderation"].some((path) => location === path || location.startsWith(`${path}/`))
-            ? "profile"
-            : null;
+  const activeTab = resolveBottomNavigationTab(location);
 
   // These are focused, full-screen Stitch surfaces. Their own headers provide
   // the exit path; retaining the global nav here breaks the approved layout.
