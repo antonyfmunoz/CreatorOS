@@ -31,7 +31,7 @@ must fail closed without breaking the native workflow.
 | Learning | Course curriculum, lesson progress, assessments, completion, and entitlement enforcement | qualified before this release |
 | Commerce separation | Platform revenue and creator proceeds are separate; Connect routes creator funds and records each recurring paid invoice | production data contains a paid creator allocation; platform subscription revenue remains separate; invoice handling is enabled and replay-safe |
 | Subscription management | Buyer can cancel renewal while retaining access through the paid period | production-qualified through buyer cancellation, retained paid-period access, and terminal cancellation |
-| Safety and operations | Moderation, privacy/export/deletion, readiness, migration, backup, security, and capacity gates | production-qualified through v304 with private backup evidence, protected main, and zero open Dependabot, code-scanning, secret-scanning, source-secret, or production-dependency findings |
+| Safety and operations | Moderation, privacy/export/deletion, readiness, migration, backup, security, and capacity gates | production-qualified through v305 with private backup evidence, protected main, and zero open Dependabot, code-scanning, secret-scanning, source-secret, or production-dependency findings |
 | Projection kernel | Signed, scoped, replay-safe UMH ingress and durable outbox; CreativesOS remains standalone | projection side qualified; UMH pairing is outside this repository |
 
 ## Explicit external or post-native gates
@@ -67,17 +67,17 @@ completed. Local implementation alone is not production completion.
 
 ## Current production evidence
 
-Fly release `v304`, including commits `8514e15` and `b3a0241`, passed its release migration and its required live machine
+Fly release `v305`, including route-navigation correction commit `22d7cb9`, passed its release migration and its required live machine
 reports a passing health check. `/api/health` is `ok`; `/api/ready` is `ready` with no
 release blockers, production Clerk authentication, private R2 delivery, the
 native automation kernel, the Relationship Hub kernel, and community-room
-media configured. The current production candidate passed 271 automated
-tests across 72 test files, TypeScript, production build and bundle limits, the
+media configured. The current production candidate passed 289 automated
+tests across 73 test files, TypeScript, production build and bundle limits, the
 572-file source secret scan, zero production dependency vulnerabilities, all 116
 mobile and desktop browser executions, backup/restore recovery, and a 200-request
 capacity probe with zero failures.
 
-The v304 anonymous entry redirects server-side to `/auth/login`. Its production
+The anonymous entry redirects server-side to `/auth/login`. Its last production
 Lighthouse trace scored 96 performance and 100 accessibility with 1.70 s
 FCP/LCP, 209 ms total blocking time, 0.019 CLS and 99 ms server response. The
 authenticated-only application overlays are deferred outside auth, reducing
@@ -86,7 +86,10 @@ the initial JavaScript budget measurement to 109,391 gzip bytes.
 The signed-in production field tests cover profile tab selection, Marketplace
 search, stable product routing, route-correct navigation, communities, the
 Relationship Hub inbox, Broadcast, a real CutStudio project, Distribution,
-automations and the Create hub with no browser errors. After upgrading the
+automations and the Create hub with no browser errors. The v305 sweep directly
+verified the active bottom-navigation destination on Explore, Marketplace,
+Broadcast, Communities, Profile, Privacy settings, and CutStudio; Broadcast
+and CutStudio correctly retain Create. After upgrading the
 upload middleware, a production image was uploaded and published as a story;
 the feed changed from `Create a story` to `View your story` with no browser
 errors. The private production
