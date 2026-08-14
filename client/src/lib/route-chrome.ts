@@ -15,8 +15,9 @@ export function routeChrome(pathname: string) {
   const isReview = pathname.startsWith("/review/");
   const isBroadcastControl = pathname.startsWith("/broadcast/control/");
   const isBroadcastField = pathname === "/broadcast/field";
+  const isPublicPortfolio = pathname.startsWith("/ugc/creator/");
   return {
-    isAuth: isAuth || isReview || isBroadcastControl || isBroadcastField,
-    showBottomNavigation: !isAuth && !isConference && !isTrust && !isFocusedSearch && !isReview && !isBroadcastControl && !isBroadcastField,
+    isAuth: isAuth || isReview || isBroadcastControl || isBroadcastField || isPublicPortfolio,
+    showBottomNavigation: !isAuth && !isConference && !isTrust && !isFocusedSearch && !isReview && !isBroadcastControl && !isBroadcastField && !isPublicPortfolio,
   };
 }

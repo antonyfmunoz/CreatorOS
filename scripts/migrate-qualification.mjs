@@ -82,6 +82,14 @@ const requiredTables = [
   "broadcast_capture_nodes",
   "broadcast_capture_invitations",
   "broadcast_capture_telemetry",
+  "ugc_creator_profiles",
+  "ugc_portfolio_items",
+  "ugc_opportunities",
+  "ugc_applications",
+  "ugc_collaborations",
+  "ugc_submissions",
+  "ugc_performance_snapshots",
+  "ugc_earnings_ledger",
 ];
 
 const requiredColumns = {

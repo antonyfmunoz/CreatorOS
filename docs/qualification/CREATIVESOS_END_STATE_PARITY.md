@@ -63,6 +63,7 @@ field evidence.
 | Feed and stories | Every supported text/image/video/story format; mention navigation; reaction/comment/save/repost rules | `verified_complete` | PostgreSQL API lifecycle plus desktop/mobile post, story-media, following and reload journeys pass; external social publishing is tracked under Distribution |
 | Profiles | Public profile, edit profile, follow graph, clickable/slidable six-tab viewport, private owner data outside public tabs | `verified_complete` | Desktop/mobile six-tab navigation, profile-link reload, follow graph and owner/non-owner mutation denial pass |
 | Marketplace discovery | Search/filter, stable product links, save/cart state, creator storefront | `verified_complete` | Desktop/mobile search and empty states plus account-scoped save/cart persistence and stable dynamic-route handling pass |
+| Native UGC | Shareable creator portfolio, brand briefs, discovery, applications, selection, private versions, feedback, revisions, approval, chat, performance and creator earnings | `implemented_unqualified` pending production release; `not_benchmarked` (competitive) | The provider-independent mobile/desktop lifecycle passes with opposite brand/creator actors, cross-tenant denial, immutable accepted terms, enforced revision limits, fixed-plus-commission earnings and retry-safe performance accounting. Production migration/smoke evidence and the authorized [UGC golden benchmark](UGC_GOLDEN_BENCHMARK.md) remain. External ad attribution and funded settlement remain provider gates. |
 | Platform commerce | Order lifecycle, verified payment event, platform fees/revenue, refund/dispute-safe transitions | `verified_complete` | Checkout, subscriptions, signed webhooks, full refund/reversal, dispute revocation, destination-transfer recovery, won-dispute restoration, crash recovery and zero-residue reconciliation are production-qualified |
 | Creator proceeds | Creator-owned Connect onboarding, allocation ledger, payout readiness, separation from platform revenue | `verified_complete` (native); `provider_pending` (successful payout) | Connected-account onboarding, allocation, transfer reversal/restoration, dual signed webhooks, remediation sync and failed-payout history are production-qualified; the creator must replace the errored Stripe sandbox bank before a successful provider payout can be proved. |
 | Communities | Discover, join gate, free/paid membership, channels, posts, replies, polls, events, owner/moderator controls | `verified_complete` | Join gate, member/owner/moderator authorization, channel access, search/context actions and course-entitlement auto-membership pass |
@@ -124,7 +125,7 @@ styling:
 This section records local evidence for the current worktree without rewriting
 older production evidence:
 
-- 75 unit/integration files and 309 tests passed, followed by TypeScript checks,
+- 77 unit/integration files and 317 tests passed, followed by TypeScript checks,
   production builds, Worker validation and bundle budgets;
 - 126 isolated PostgreSQL browser executions passed across mobile and desktop,
   including secure field-node pairing and replay rejection, remote director
@@ -133,7 +134,7 @@ older production evidence:
 - real FFmpeg qualification produced and probed simultaneous landscape and
   portrait outputs from one program, in addition to the existing private
   CutStudio render paths;
-- all 83 migrations passed from an empty database, and a backup created from
+- all 84 migrations passed from an empty database, and a backup created from
   that schema restored with the required tables and no orphaned direct
   messages;
 - the source-secret scan covered 581 source files, the production dependency

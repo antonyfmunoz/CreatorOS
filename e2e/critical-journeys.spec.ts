@@ -126,6 +126,7 @@ test("core provider-independent workspaces render without route failures", async
     "/automations",
     "/business",
     "/campaigns",
+    "/ugc",
     "/earnings",
     "/distribution",
     "/cut-studio",

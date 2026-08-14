@@ -3999,6 +3999,175 @@ export const insertDirectMessageSchema = createInsertSchema(
   reactions: true,
 });
 
+// UGC is a native two-sided marketplace and production workflow. Provider
+// connections may later import ad performance, but discovery, contracting,
+// private review, approvals, and creator earnings remain usable on their own.
+export const ugcCreatorProfiles = pgTable(
+  "ugc_creator_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+    headline: text("headline").notNull().default(""),
+    bio: text("bio").notNull().default(""),
+    niches: json("niches").$type<string[]>().notNull().default([]),
+    languages: json("languages").$type<string[]>().notNull().default([]),
+    startingRateCents: integer("starting_rate_cents").notNull().default(0),
+    currency: text("currency").notNull().default("usd"),
+    availability: text("availability").notNull().default("available"),
+    portfolioPublic: boolean("portfolio_public").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ availabilityIdx: index("ugc_creator_profiles_availability_idx").on(table.availability, table.updatedAt) }),
+);
+
+export const ugcPortfolioItems = pgTable(
+  "ugc_portfolio_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    creatorUserId: integer("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "restrict" }).notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    category: text("category").notNull(),
+    format: text("format").notNull(),
+    public: boolean("public").notNull().default(true),
+    performance: json("performance").$type<{ impressions: number; conversions: number; attributedRevenueCents: number }>().notNull().default({ impressions: 0, conversions: 0, attributedRevenueCents: 0 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ creatorUpdatedIdx: index("ugc_portfolio_items_creator_updated_idx").on(table.creatorUserId, table.updatedAt) }),
+);
+
+export const ugcOpportunities = pgTable(
+  "ugc_opportunities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    category: text("category").notNull(),
+    platforms: json("platforms").$type<string[]>().notNull().default([]),
+    deliverables: json("deliverables").$type<Array<{ title: string; quantity: number; format: string; durationSeconds?: number; notes: string }>>().notNull().default([]),
+    compensationModel: text("compensation_model").notNull(),
+    fixedFeeCents: integer("fixed_fee_cents").notNull().default(0),
+    commissionBps: integer("commission_bps").notNull().default(0),
+    currency: text("currency").notNull().default("usd"),
+    applicationDeadline: timestamp("application_deadline"),
+    contentDueAt: timestamp("content_due_at"),
+    usageRights: json("usage_rights").$type<import("./ugc").UgcUsageRights>().notNull(),
+    eligibility: json("eligibility").$type<import("./ugc").UgcEligibility>().notNull(),
+    revisionLimit: integer("revision_limit").notNull().default(2),
+    disclosure: text("disclosure").notNull().default(""),
+    status: text("status").notNull().default("draft"),
+    publishedAt: timestamp("published_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ statusPublishedIdx: index("ugc_opportunities_status_published_idx").on(table.status, table.publishedAt), businessUpdatedIdx: index("ugc_opportunities_business_updated_idx").on(table.businessId, table.updatedAt) }),
+);
+
+export const ugcApplications = pgTable(
+  "ugc_applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    opportunityId: uuid("opportunity_id").references(() => ugcOpportunities.id, { onDelete: "cascade" }).notNull(),
+    creatorUserId: integer("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    pitch: text("pitch").notNull(),
+    portfolioItemIds: json("portfolio_item_ids").$type<string[]>().notNull().default([]),
+    previewAssetId: uuid("preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    proposedFeeCents: integer("proposed_fee_cents"),
+    status: text("status").notNull().default("submitted"),
+    submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ opportunityCreatorUnique: unique("ugc_applications_opportunity_creator_unique").on(table.opportunityId, table.creatorUserId), opportunityStatusIdx: index("ugc_applications_opportunity_status_idx").on(table.opportunityId, table.status), creatorUpdatedIdx: index("ugc_applications_creator_updated_idx").on(table.creatorUserId, table.updatedAt) }),
+);
+
+export const ugcCollaborations = pgTable(
+  "ugc_collaborations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    opportunityId: uuid("opportunity_id").references(() => ugcOpportunities.id, { onDelete: "restrict" }).notNull(),
+    applicationId: uuid("application_id").references(() => ugcApplications.id, { onDelete: "restrict" }).notNull().unique(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "restrict" }).notNull(),
+    creatorUserId: integer("creator_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+    conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("in_progress"),
+    compensation: json("compensation").$type<{ model: string; fixedFeeCents: number; commissionBps: number; currency: string }>().notNull(),
+    usageRights: json("usage_rights").$type<Record<string, unknown>>().notNull(),
+    revisionLimit: integer("revision_limit").notNull().default(2),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+    approvedAt: timestamp("approved_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ creatorUpdatedIdx: index("ugc_collaborations_creator_updated_idx").on(table.creatorUserId, table.updatedAt), businessUpdatedIdx: index("ugc_collaborations_business_updated_idx").on(table.businessId, table.updatedAt) }),
+);
+
+export const ugcSubmissions = pgTable(
+  "ugc_submissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collaborationId: uuid("collaboration_id").references(() => ugcCollaborations.id, { onDelete: "cascade" }).notNull(),
+    creatorUserId: integer("creator_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "restrict" }).notNull(),
+    version: integer("version").notNull(),
+    caption: text("caption").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    status: text("status").notNull().default("submitted"),
+    feedback: text("feedback"),
+    reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ collaborationVersionUnique: unique("ugc_submissions_collaboration_version_unique").on(table.collaborationId, table.version), collaborationCreatedIdx: index("ugc_submissions_collaboration_created_idx").on(table.collaborationId, table.createdAt) }),
+);
+
+export const ugcPerformanceSnapshots = pgTable(
+  "ugc_performance_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collaborationId: uuid("collaboration_id").references(() => ugcCollaborations.id, { onDelete: "cascade" }).notNull(),
+    capturedByUserId: integer("captured_by_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    source: text("source").notNull().default("manual"),
+    impressions: integer("impressions").notNull().default(0),
+    engagements: integer("engagements").notNull().default(0),
+    clicks: integer("clicks").notNull().default(0),
+    conversions: integer("conversions").notNull().default(0),
+    spendCents: integer("spend_cents").notNull().default(0),
+    attributedRevenueCents: integer("attributed_revenue_cents").notNull().default(0),
+    commissionAmountCents: integer("commission_amount_cents").notNull().default(0),
+    capturedAt: timestamp("captured_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ collaborationCapturedIdx: index("ugc_performance_collaboration_captured_idx").on(table.collaborationId, table.capturedAt) }),
+);
+
+export const ugcEarningsLedger = pgTable(
+  "ugc_earnings_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collaborationId: uuid("collaboration_id").references(() => ugcCollaborations.id, { onDelete: "restrict" }).notNull(),
+    creatorUserId: integer("creator_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+    kind: text("kind").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("usd"),
+    status: text("status").notNull().default("pending"),
+    providerReference: text("provider_reference"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({ sourceUnique: unique("ugc_earnings_ledger_source_unique").on(table.sourceType, table.sourceId, table.kind), creatorUpdatedIdx: index("ugc_earnings_ledger_creator_updated_idx").on(table.creatorUserId, table.updatedAt) }),
+);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   ownedBusinesses: many(businesses, { relationName: "business_owner" }),
@@ -4734,6 +4903,14 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type CampaignDeliverable = typeof campaignDeliverables.$inferSelect;
 export type CampaignMetric = typeof campaignMetrics.$inferSelect;
+export type UgcCreatorProfile = typeof ugcCreatorProfiles.$inferSelect;
+export type UgcPortfolioItem = typeof ugcPortfolioItems.$inferSelect;
+export type UgcOpportunity = typeof ugcOpportunities.$inferSelect;
+export type UgcApplication = typeof ugcApplications.$inferSelect;
+export type UgcCollaboration = typeof ugcCollaborations.$inferSelect;
+export type UgcSubmission = typeof ugcSubmissions.$inferSelect;
+export type UgcPerformanceSnapshot = typeof ugcPerformanceSnapshots.$inferSelect;
+export type UgcEarningsLedgerEntry = typeof ugcEarningsLedger.$inferSelect;
 
 export type Post = typeof posts.$inferSelect;
 export type PostView = typeof postViews.$inferSelect;

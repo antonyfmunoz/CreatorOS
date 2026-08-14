@@ -38,6 +38,7 @@ export function resolveBottomNavigationTab(
       "/broadcast",
       "/business",
       "/campaigns",
+      "/ugc",
       "/earnings",
       "/products",
       "/events",

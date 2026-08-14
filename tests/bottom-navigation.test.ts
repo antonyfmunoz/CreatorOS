@@ -15,6 +15,7 @@ describe("resolveBottomNavigationTab", () => {
     ["/broadcast", "create"],
     ["/broadcast/audience/42", "create"],
     ["/distribution/connections", "create"],
+    ["/ugc", "create"],
     ["/events/42/edit", "create"],
     ["/communities/42/rooms/7", "communities"],
     ["/profile", "profile"],

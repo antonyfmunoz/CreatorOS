@@ -3,6 +3,7 @@ import { db } from "../server/db";
 import {
   businessMembers,
   businesses,
+  assets,
   channels,
   channelMessages,
   communities,
@@ -34,6 +35,13 @@ await db.insert(businessMembers).values([
   { businessId: ownerBusiness.id, userId: owner.id, role: "owner" },
   { businessId: ownerBusiness.id, userId: moderator.id, role: "operator" },
   { businessId: peerBusiness.id, userId: peer.id, role: "owner" },
+]);
+
+await db.insert(assets).values([
+  { ownerUserId: owner.id, businessId: ownerBusiness.id, kind: "video", storageProvider: "local", storageKey: "qualification/owner-public.mp4", publicUrl: "data:video/mp4;base64,AAAA", mimeType: "video/mp4", sizeBytes: 4, visibility: "public", status: "ready", originalFilename: "owner-public.mp4" },
+  { ownerUserId: owner.id, businessId: ownerBusiness.id, kind: "video", storageProvider: "local", storageKey: "qualification/owner-private.mp4", mimeType: "video/mp4", sizeBytes: 4, visibility: "private", status: "ready", originalFilename: "owner-private.mp4" },
+  { ownerUserId: peer.id, businessId: peerBusiness.id, kind: "video", storageProvider: "local", storageKey: "qualification/peer-public.mp4", publicUrl: "data:video/mp4;base64,AAAA", mimeType: "video/mp4", sizeBytes: 4, visibility: "public", status: "ready", originalFilename: "peer-public.mp4" },
+  { ownerUserId: peer.id, businessId: peerBusiness.id, kind: "video", storageProvider: "local", storageKey: "qualification/peer-private.mp4", mimeType: "video/mp4", sizeBytes: 4, visibility: "private", status: "ready", originalFilename: "peer-private.mp4" },
 ]);
 
 await db.insert(posts).values([

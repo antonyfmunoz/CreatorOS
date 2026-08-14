@@ -68,6 +68,8 @@ const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
 const BroadcastFieldPage = lazy(() => import("@/pages/broadcast-field"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
+const UgcPage = lazy(() => import("@/pages/ugc"));
+const UgcCreatorPage = lazy(() => import("@/pages/ugc-creator"));
 const CourseBuilder = lazy(() => import("@/pages/course-builder"));
 const UmhApprovalsPage = lazy(() => import("@/pages/umh-approvals"));
 const CheckoutSuccessPage = lazy(() => import("@/pages/checkout-success"));
@@ -190,6 +192,7 @@ function Router() {
         "distribution",
         "business",
         "campaigns",
+        "ugc",
         "earnings",
         "products",
         "automations",
@@ -236,6 +239,7 @@ function Router() {
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
       <Route path="/legal/ai-recording" component={TrustPolicyPage} />
       <Route path="/review/cut/:token" component={CutStudioReviewPage} />
+      <Route path="/ugc/creator/:id" component={UgcCreatorPage} />
       <Route path="/broadcast/field" component={BroadcastFieldPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
@@ -264,6 +268,7 @@ function Router() {
       <ProtectedRoute path="/earnings" component={EarningsPage} />
       <ProtectedRoute path="/moderation" component={ModerationPage} />
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
+      <ProtectedRoute path="/ugc" component={UgcPage} />
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />

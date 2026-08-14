@@ -108,6 +108,7 @@ import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
 import { registerCutStudioRoutes } from "./cut-studio";
 import { registerBroadcastStudioRoutes } from "./broadcast-studio";
+import { registerUgcRoutes } from "./ugc";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
@@ -586,6 +587,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "broadcast_sessions",
       "broadcast_audience_messages",
       "broadcast_template_catalog",
+      "ugc_creator_profiles",
+      "ugc_portfolio_items",
+      "ugc_opportunities",
+      "ugc_applications",
+      "ugc_collaborations",
+      "ugc_submissions",
+      "ugc_performance_snapshots",
+      "ugc_earnings_ledger",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -659,6 +668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAccountPrivacyRoutes(app);
   registerCutStudioRoutes(app);
   registerBroadcastStudioRoutes(app);
+  registerUgcRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 

@@ -26,6 +26,7 @@ must fail closed without breaking the native workflow.
 | Offer catalog | Explicit digital download, course, community, and membership types | implemented and locally qualified in migration 0061 |
 | Billing models | One-time checkout plus monthly/yearly recurring community or membership checkout | production-qualified with a $1 monthly Stripe sandbox membership |
 | Marketplace | Search/filter, stable detail routes, free-community discovery, paid-community offers, saved items, and durable cart | implemented and browser-qualified on mobile and desktop |
+| Native UGC | Creator portfolio, brand brief, discovery/application, selection, private review/revision, approval, performance and creator-earnings evidence | provider-independent lifecycle implemented and browser-qualified on mobile and desktop; live ad attribution and funded settlement remain separate provider gates |
 | Entitlements | Verified payment grants product access and linked community membership; cancellation/revocation removes access at the correct lifecycle point | production-qualified through signed checkout, cancellation, terminal revocation, and stale-event replay |
 | Paid-community gate | A product-linked community cannot be joined without an active entitlement and direct links route unpaid visitors to its offer | implemented and browser-qualified on mobile and desktop |
 | Learning | Course curriculum, lesson progress, assessments, completion, and entitlement enforcement | qualified before this release |
