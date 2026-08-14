@@ -66,15 +66,15 @@ repeatable side-by-side competitor benchmarks. The honest starting state is:
 | Commerce and creator monetization | Platform/creator money separation and Stripe sandbox lifecycle have strong evidence | `not_benchmarked` | Compare seller setup, buyer conversion, entitlement, support, refund and earnings operations |
 | Relationship Hub and automation | Native inbox, CRM and ManyChat-style automation paths are qualified; external channels remain gated | `not_benchmarked` | Compare unified-inbox throughput, automation authoring, intervention, recovery and relationship continuity |
 | Distribution | Provider-neutral orchestration is qualified; external delivery is separately gated | `not_benchmarked` | Compare one-master multichannel preparation, scheduling, failure handling and evidence collection |
-| CutStudio | Professional rendering foundations and field tests exist; specialist depth gaps remain in its studio scorecard | `parity_failed` | Close the normal-workflow gaps, then run same-source edit and review benchmarks |
-| Broadcast | Production foundations and encoder resilience evidence exist; specialist source, guest, audio and operator gaps remain | `parity_failed` | Close the normal-show gaps, then run the same show plan against broadcast references |
+| CutStudio | The bounded creator workflow is functionally qualified from private ingest through multitrack edit, captions, finishing, review, rendering and distribution handoff | `not_benchmarked` | Run the locked same-source edit and review benchmark against the authorized comparison products; provider-backed translation, diarization and model assistance remain separate gates |
+| Broadcast | The bounded locally attached production workflow is functionally qualified from scenes and sources through audio, graphics, recording, recovery and CutStudio handoff | `not_benchmarked` | Run the locked same-show benchmark against the authorized comparison products; remote guests, external destinations and regional failover remain separate provider or scale gates |
 | Business workspace and analytics | Native campaign, contact, document, revenue and performance lifecycles are qualified | `not_benchmarked` | Compare campaign setup, execution, status recovery and performance diagnosis |
 | Identity, safety, privacy and operations | Production controls and recovery evidence exist | `not_benchmarked` | Run role, abuse, privacy, incident and recovery exercises against documented SaaS expectations |
-| Cross-product connected loop | Individual links exist between several domains | `not_benchmarked` | Prove a complete create-to-revenue-to-learning loop and measure effort against the disconnected toolchain |
+| Cross-product connected loop | The native Broadcast-to-CutStudio-to-Distribution-to-relationship-automation-to-performance loop is repeatably proven on mobile and desktop | `not_benchmarked` | Run the same locked source through the disconnected comparison toolchain and record active time, exports, uploads and manual handoffs |
 
-`parity_failed` here is a roadmap state, not a statement that the current
-feature is unusable. It means known normal-workflow gaps still prevent an
-honest claim that the specialist application is no longer needed.
+`not_benchmarked` is deliberately not a parity claim. The native workflow may
+be functionally complete while the independent comparison, operator review and
+efficiency measurement are still outstanding.
 
 ## Golden-journey benchmark protocol
 
