@@ -66,6 +66,7 @@ export default function CutStudioPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [edl, setEdl] = useState<CutEdl | null>(null);
+  const edlRef = useRef<CutEdl | null>(null);
   const [history, setHistory] = useState<CutEdl[]>([]);
   const [future, setFuture] = useState<CutEdl[]>([]);
   const [revision, setRevision] = useState(0);
@@ -133,6 +134,7 @@ export default function CutStudioPage() {
       const projectMedia = next.media ?? [];
       const primaryMedia = projectMedia.find((item) => item.assetId === next.sourceAssetId) ?? projectMedia[0] ?? null;
       const templateResponse = await apiRequest("GET", `/api/cut/audio-routing-templates?businessId=${encodeURIComponent(next.businessId)}`);
+      edlRef.current = next.edl;
       setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(await reviewResponse.json() as ReviewVersion[]); setWorkspace(await workspaceResponse.json() as WorkspacePayload); setAudioTemplates(await templateResponse.json() as AudioRoutingTemplate[]); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { setBusy(""); }
@@ -147,15 +149,19 @@ export default function CutStudioPage() {
   }, [openProject]);
 
   const applyEdit = useCallback((next: CutEdl) => {
-    if (!edl) return;
+    const current = edlRef.current;
+    if (!current) return;
     const validClipIds = new Set(next.clips.flatMap((item) => item.id ? [item.id] : []));
-    const compounds = (next.compounds ?? edl.compounds ?? []).flatMap((compound) => {
+    const compounds = (next.compounds ?? current.compounds ?? []).flatMap((compound) => {
       const clipIds = compound.clipIds.filter((id) => validClipIds.has(id));
       return clipIds.length >= 2 ? [{ ...compound, clipIds }] : [];
     });
-    const complete = { ...next, graphics: next.graphics ?? edl.graphics, markers: next.markers ?? edl.markers, compounds, tracks: next.tracks ?? edl.tracks, audioBuses: next.audioBuses ?? edl.audioBuses };
-    setHistory((items) => [...items.slice(-49), edl]); setFuture([]); setEdl(complete);
-  }, [edl]);
+    const complete = { ...next, graphics: next.graphics ?? current.graphics, markers: next.markers ?? current.markers, compounds, tracks: next.tracks ?? current.tracks, audioBuses: next.audioBuses ?? current.audioBuses };
+    edlRef.current = complete;
+    setHistory((items) => [...items.slice(-49), current]); setFuture([]); setEdl(complete);
+  }, []);
+
+  useEffect(() => { edlRef.current = edl; }, [edl]);
 
   useEffect(() => {
     if (!edl) return;
@@ -177,6 +183,7 @@ export default function CutStudioPage() {
         const response = await apiRequest("PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(revision) });
         const saved = await response.json() as CutEdl;
         const nextRevision = Number(response.headers.get("X-EDL-Rev"));
+        edlRef.current = saved;
         setRevision(nextRevision); setEdl(saved); setProject((value) => value ? { ...value, edl: saved, revision: nextRevision } : value); setSaveStatus("Saved");
       } catch (error) { setSaveStatus("Save failed"); setMessage(error instanceof Error ? error.message : "Could not save the edit"); }
     }, 800);
@@ -830,16 +837,17 @@ export default function CutStudioPage() {
   };
 
   const saveAudioRoutingTemplate = async () => {
-    if (!project || !edl || edl.version !== 3 || !audioTemplateName.trim()) return;
+    const currentEdl = edlRef.current;
+    if (!project || !currentEdl || currentEdl.version !== 3 || !audioTemplateName.trim()) return;
     const defaults = { dialogue: "Dialogue", music: "Music", effects: "Effects" };
     const audioTracks = timelineTracks.filter((track) => track.startsWith("a"));
     const payload: CutAudioRoutingTemplatePayload = {
-      audioBuses: (["dialogue", "music", "effects"] as const).map((id) => edl.audioBuses?.find((item) => item.id === id) ?? { id, name: defaults[id], gain: 1, muted: false }),
+      audioBuses: (["dialogue", "music", "effects"] as const).map((id) => currentEdl.audioBuses?.find((item) => item.id === id) ?? { id, name: defaults[id], gain: 1, muted: false }),
       trackRouting: audioTracks.map((track, index) => {
-        const settings = edl.tracks?.find((item) => item.track === track);
+        const settings = currentEdl.tracks?.find((item) => item.track === track);
         return { track, bus: settings?.bus ?? (index === 0 ? "dialogue" : index === 1 ? "music" : "effects"), gain: settings?.gain ?? 1, muted: settings?.muted ?? false };
       }),
-      duckingTracks: Array.from(new Set(edl.clips.filter((item) => (item.track ?? "").startsWith("a") && item.duckUnderVoice).map((item) => item.track!))),
+      duckingTracks: Array.from(new Set(currentEdl.clips.filter((item) => (item.track ?? "").startsWith("a") && item.duckUnderVoice).map((item) => item.track!))),
       finishing: { cleanAudio, audioPreset, masterGainDb },
     };
     setBusy("audio-template"); setMessage("");

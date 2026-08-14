@@ -2,8 +2,6 @@ import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
-import { Toaster } from "@/components/ui/toaster";
-import BottomNavigation from "@/components/layout/BottomNavigation";
 import {
   Component,
   lazy,
@@ -12,17 +10,19 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from "react";
-import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
-import ChatInterface from "@/components/ai/ChatInterface";
-import NotificationBell from "@/components/notifications/NotificationBell";
-import NotificationPanel from "@/components/notifications/NotificationPanel";
-import ToastContainer from "@/components/notifications/ToastContainer";
-import { MessageButton } from "@/components/messages";
+import { useAppStore } from "@/lib/stores";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 import { routeChrome } from "./lib/route-chrome";
 import { captureClientException, capturePageView } from "./lib/posthog";
 import AuthPage from "@/pages/auth-page";
+
+const BottomNavigation = lazy(
+  () => import("@/components/layout/BottomNavigation"),
+);
+const ApplicationOverlays = lazy(
+  () => import("@/components/layout/ApplicationOverlays"),
+);
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
@@ -317,10 +317,7 @@ function Router() {
 }
 
 function AppContent() {
-  const { isOpen } = useAIChatStore();
   const { currentUser } = useAppStore();
-  const { isNotificationPanelOpen, closeNotificationPanel } =
-    useNotifications();
   const [location] = useLocation();
   const chrome = routeChrome(location);
 
@@ -346,12 +343,13 @@ function AppContent() {
             </Suspense>
           </RouteErrorBoundary>
         </div>
-        {chrome.showBottomNavigation && <BottomNavigation />}
-        {isOpen && <ChatInterface />}
+        {!chrome.isAuth && (
+          <Suspense fallback={null}>
+            {chrome.showBottomNavigation && <BottomNavigation />}
+            <ApplicationOverlays />
+          </Suspense>
+        )}
       </div>
-      <Toaster />
-      <ToastContainer />
-      <MessageButton showTrigger={false} />
     </>
   );
 }
