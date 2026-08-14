@@ -148,6 +148,7 @@ const workspaceNoteSchema = z.object({
   positionMs: z.number().int().min(0).max(43_200_000).default(0),
 });
 const idSchema = z.string().uuid();
+const proxyRequestSchema = z.object({ mediaId: z.string().uuid() });
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
 
@@ -661,6 +662,47 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
   }
 }
 
+async function createProxyJob(jobId: string, project: typeof cutStudioProjects.$inferSelect, requestInput: unknown) {
+  const request = proxyRequestSchema.parse(requestInput);
+  const [media] = await db.select().from(cutStudioProjectMedia).where(and(
+    eq(cutStudioProjectMedia.id, request.mediaId),
+    eq(cutStudioProjectMedia.projectId, project.id),
+    eq(cutStudioProjectMedia.ownerUserId, project.ownerUserId),
+  )).limit(1);
+  if (!media || media.mediaKind !== "video") throw Object.assign(new Error("Only project video can create an editing proxy"), { code: "proxy_source_required" });
+  const original = await ownedAsset(project.ownerUserId, media.assetId);
+  if (!original || original.visibility !== "private" || original.status !== "ready") throw new Error("The original private media is unavailable");
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-proxy-"));
+  const inputPath = path.join(temp, original.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "original-media");
+  const outputName = `${path.parse(original.originalFilename ?? media.name).name.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80) || "media"}-proxy.mp4`;
+  const outputPath = path.join(temp, outputName);
+  try {
+    await materializePrivateAsset(original.storageKey, inputPath);
+    const probed = await probeMedia(inputPath);
+    if (!probed.hasVideo) throw Object.assign(new Error("The selected media does not contain video"), { code: "proxy_source_required" });
+    await db.update(cutStudioJobs).set({ progress: .25, detail: "Creating lightweight editing media" }).where(eq(cutStudioJobs.id, jobId));
+    await runProcess("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", "scale=w='min(1280,iw)':h=-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", ...(probed.hasAudio ? ["-c:a", "aac", "-b:a", "96k"] : ["-an"]), "-movflags", "+faststart", outputPath], 20 * 60_000, jobId);
+    const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-proxy", filename: outputName, mimeType: "video/mp4" });
+    const [artifact] = await db.insert(assets).values({
+      ownerUserId: project.ownerUserId,
+      businessId: project.businessId,
+      kind: "video",
+      storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local",
+      storageKey: stored.storageKey,
+      publicUrl: null,
+      mimeType: "video/mp4",
+      sizeBytes: stored.sizeBytes,
+      visibility: "private",
+      status: "ready",
+      originalFilename: outputName,
+      metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, proxyForAssetId: original.id, projectMediaId: media.id, maxWidth: 1280 },
+    }).returning();
+    return { artifact, output: { filename: outputName, mediaId: media.id, originalAssetId: original.id, maxWidth: 1280, codec: "h264", container: "mp4" } };
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+}
+
 async function processJob(jobId: string) {
   if (running.has(jobId)) return;
   running.add(jobId);
@@ -702,6 +744,16 @@ async function processJob(jobId: string) {
         return;
       }
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.render.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, ...result.output }, idempotencyKey: `cutstudio:${jobId}:render.ready` });
+    } else if (claimed.kind === "proxy") {
+      const result = await createProxyJob(jobId, project, claimed.request);
+      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Editing proxy ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, finishedAt: new Date() })
+        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).returning();
+      if (!completed) {
+        await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
+        await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
+        return;
+      }
+      await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.proxy.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, mediaId: result.output.mediaId, originalAssetId: result.output.originalAssetId }, idempotencyKey: `cutstudio:${jobId}:proxy.ready` });
     }
   } catch (error) {
     console.error("CutStudio job failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
@@ -1090,6 +1142,21 @@ export function registerCutStudioRoutes(app: Express) {
     const asset = await ownedAsset(req.dbUser!.id, media.assetId);
     if (!asset || asset.visibility !== "private" || asset.status !== "ready") return res.status(404).json({ message: "Project media not found" });
     res.json(await privateReadDescriptor(asset, `/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(media.id)}/media-file`));
+  });
+  cut.post("/api/cut/projects/:id/media-library/:mediaId/proxy", attachUser, async (req, res) => {
+    noStore(res);
+    const project = await ownedProject(req.dbUser!.id, req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
+    if (!media) return res.status(404).json({ message: "Project media not found" });
+    if (media.mediaKind !== "video") return res.status(409).json({ message: "Only video media needs an editing proxy" });
+    const recent = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.kind, "proxy"))).orderBy(desc(cutStudioJobs.createdAt)).limit(50);
+    const existing = recent.find((job) => job.request?.mediaId === media.id && ["queued", "running", "done"].includes(job.state));
+    if (existing) return res.status(existing.state === "done" ? 200 : 202).json(existing);
+    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before creating a proxy" });
+    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind: "proxy", request: { mediaId: media.id }, detail: "Editing proxy queued" }).returning();
+    queueJob(job.id);
+    res.status(202).json(job);
   });
   cut.get("/api/cut/projects/:id/media-library/:mediaId/media-file", attachUser, async (req, res) => {
     noStore(res);

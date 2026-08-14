@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutAudioRoutingTemplatePayloadSchema, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseCubeLutData, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, createCutMulticamGroup, cutAudioRoutingTemplatePayloadSchema, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseCubeLutData, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, switchCutMulticamAngle, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -268,6 +268,24 @@ describe("CutStudio edit decision list", () => {
       { id: "mic", start: 0, end: 4, track: "a1", timelineStart: 0 },
     ] }, 4), ["primary", "mic"], "Linked take", "compound_take");
     expect(splitCutAt(splitSource, 2).compounds?.[0].clipIds).toEqual(["primary_a", "primary_b", "mic"]);
+  });
+
+  it("materializes synchronized camera switches into a render-effective primary track", () => {
+    const cameraAssetId = "00000000-0000-4000-8000-000000000101";
+    const initial = validateCutEdl({ version: 3, clips: [
+      { id: "program", label: "Program", start: 0, end: 12, track: "v1", timelineStart: 0 },
+      { id: "camera", label: "Camera A", assetId: cameraAssetId, start: 0, end: 12, track: "v2", timelineStart: 0, transform: { x: 0, y: 0, width: 1, height: 1, opacity: 0 } },
+    ] }, 12);
+    const grouped = createCutMulticamGroup(initial, ["program", "camera"], "Interview", "multicam_interview");
+    expect(grouped.multicamGroups?.[0]).toMatchObject({ label: "Interview", duration: 12, angles: [{ label: "Program", assetId: null }, { label: "Camera A", assetId: cameraAssetId }], switches: [{ at: 0, angleId: "angle_01" }] });
+    const switched = switchCutMulticamAngle(grouped, "multicam_interview", 4.5, "angle_02");
+    expect(switched.clips.filter((clip) => clip.track === "v1")).toMatchObject([
+      { assetId: undefined, start: 0, end: 4.5, timelineStart: 0, label: "Program" },
+      { assetId: cameraAssetId, start: 4.5, end: 12, timelineStart: 4.5, label: "Camera A" },
+    ]);
+    expect(validateCutEdl(switched, 12).multicamGroups?.[0].switches).toHaveLength(2);
+    const replaced = switchCutMulticamAngle(switched, "multicam_interview", 4.5, "angle_01");
+    expect(replaced.multicamGroups?.[0].switches.find((item) => item.at === 4.5)?.angleId).toBe("angle_01");
   });
 
   it("turns speaker-labeled transcript order into the primary story timeline", () => {

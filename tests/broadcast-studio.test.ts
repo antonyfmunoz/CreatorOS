@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyBroadcastBrandKit, applyBroadcastScenePreset, applyBroadcastSourcePreset, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, removeBroadcastScenePreset, removeBroadcastSourcePreset, saveBroadcastScenePreset, saveBroadcastSourcePreset, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
-import { buildBroadcastTeeOutput, isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { applyBroadcastBrandKit, applyBroadcastScenePreset, applyBroadcastSourcePreset, broadcastDestinationInputSchema, broadcastSessionStartSchema, createBroadcastSceneFromTemplate, defaultBroadcastStudioConfig, duplicateBroadcastScene, removeBroadcastScenePreset, removeBroadcastSourcePreset, saveBroadcastScenePreset, saveBroadcastSourcePreset, transitionBroadcastScene, validateBroadcastStudioConfig } from "../shared/broadcast-studio";
+import { broadcastOutputDimensions, buildBroadcastTeeOutput, buildBroadcastVariantFilters, buildBroadcastVariantPlan, isPrivateBroadcastAddress, maskBroadcastDestinationUrl } from "../server/broadcast-studio";
 
 describe("CreativesOS Broadcast scene graph", () => {
   it("starts with an independently owned preview/program scene", () => {
@@ -61,6 +65,22 @@ describe("CreativesOS Broadcast scene graph", () => {
     }
   });
 
+  it("supports bounded operator transitions beyond a cut or dissolve", () => {
+    const base = defaultBroadcastStudioConfig();
+    for (const type of ["fade", "dip", "wipe", "slide"] as const) {
+      expect(validateBroadcastStudioConfig({ ...base, transition: { type, durationMs: 750 } }).transition).toEqual({ type, durationMs: 750 });
+    }
+    expect(() => validateBroadcastStudioConfig({ ...base, transition: { type: "spin", durationMs: 750 } })).toThrow();
+  });
+
+  it("persists provider-neutral audience, goal, sponsor, and tipping widgets", () => {
+    const base = defaultBroadcastStudioConfig();
+    const source = base.scenes[0].sources[0];
+    const configured = validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, type: "widget", text: null, muted: true, widget: { kind: "tip_jar", title: "Support the show", value: 425, target: 1_000, currency: "USD", maxItems: 3 } }] }] });
+    expect(configured.scenes[0].sources[0].widget).toEqual({ kind: "tip_jar", title: "Support the show", value: 425, target: 1_000, currency: "USD", maxItems: 3 });
+    expect(() => validateBroadcastStudioConfig({ ...base, scenes: [{ ...base.scenes[0], sources: [{ ...source, type: "widget", widget: { kind: "tip_jar", title: "Broken", value: 2, target: 0, currency: "usd", maxItems: 3 } }] }] })).toThrow();
+  });
+
   it("rejects internal destination addresses and never exposes URL credentials", () => {
     expect(isPrivateBroadcastAddress("127.0.0.1")).toBe(true);
     expect(isPrivateBroadcastAddress("10.1.2.3")).toBe(true);
@@ -76,6 +96,8 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(() => validateBroadcastStudioConfig({ ...base, canvas: { width: 1920, height: 1920, fps: 30 } })).toThrow(/production profile/i);
     const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
     expect(broadcastSessionStartSchema.parse({ outputMode: "stream", destinationIds: ids, sourceMode: "browser" }).destinationIds).toEqual(ids);
+    expect(broadcastDestinationInputSchema.parse({ name: "Main", protocol: "rtmps", ingestUrl: "rtmps://video.example/live", streamKey: "secret" })).toMatchObject({ outputLayout: "program", framingMode: "fit" });
+    expect(broadcastDestinationInputSchema.parse({ name: "Vertical", protocol: "rtmps", ingestUrl: "rtmps://video.example/live", streamKey: "secret", outputLayout: "portrait", framingMode: "fill" })).toMatchObject({ outputLayout: "portrait", framingMode: "fill" });
   });
 
   it("isolates destination failures inside a single encoded fan-out", () => {
@@ -87,6 +109,76 @@ describe("CreativesOS Broadcast scene graph", () => {
     expect(output).toContain("[f=mpegts:onfail=ignore]srt://video-two.example:9000?streamid=key");
     expect(output.split("|")).toHaveLength(2);
     expect(buildBroadcastTeeOutput([{ protocol: "rtmp", url: "rtmp://video.example/live/key|backup" }])).toContain("key\\|backup");
+  });
+
+  it("deduplicates independently framed destination encodes", () => {
+    expect(broadcastOutputDimensions("program", { width: 1280, height: 720 })).toEqual({ width: 1280, height: 720 });
+    expect(broadcastOutputDimensions("portrait", { width: 1280, height: 720 })).toEqual({ width: 1080, height: 1920 });
+    const plan = buildBroadcastVariantPlan([
+      { outputLayout: "program", framingMode: "fit" },
+      { outputLayout: "portrait", framingMode: "fill" },
+      { outputLayout: "portrait", framingMode: "fill" },
+      { outputLayout: "square", framingMode: "fit" },
+    ], { width: 1280, height: 720 });
+    expect(plan.variants).toEqual([
+      expect.objectContaining({ key: "1280x720:fit", width: 1280, height: 720, framingMode: "fit" }),
+      expect.objectContaining({ key: "1080x1920:fill", width: 1080, height: 1920, framingMode: "fill" }),
+      expect.objectContaining({ key: "1080x1080:fit", width: 1080, height: 1080, framingMode: "fit" }),
+    ]);
+    expect(plan.destinationVariantIndexes).toEqual([0, 1, 1, 2]);
+    const filters = buildBroadcastVariantFilters(plan.variants);
+    expect(filters.videoMaps).toEqual(["[variant_0]", "[variant_1]", "[variant_2]"]);
+    expect(filters.filterComplex).toContain("split=3[variant_input_0][variant_input_1][variant_input_2]");
+    expect(filters.filterComplex).toContain("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920");
+    expect(filters.filterComplex).toContain("scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080");
+    expect(buildBroadcastTeeOutput([{ protocol: "rtmps", url: "rtmps://video.example/live/key", videoStreamIndex: 2 }])).toContain("select='v\\:2,a\\:0'");
+    expect(() => buildBroadcastVariantPlan([{ outputLayout: "cinema", framingMode: "fit" }], { width: 1280, height: 720 })).toThrow();
+  });
+
+  it("executes the independent fit and fill filter graph in FFmpeg", () => {
+    const filters = buildBroadcastVariantFilters([
+      { framingMode: "fit", width: 320, height: 180 },
+      { framingMode: "fill", width: 180, height: 320 },
+    ]);
+    const result = spawnSync("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=1",
+      "-filter_complex", filters.filterComplex,
+      "-map", filters.videoMaps[0], "-map", filters.videoMaps[1],
+      "-frames:v", "1", "-f", "null", "-",
+    ], { encoding: "utf8", windowsHide: true });
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it("encodes horizontal and vertical tee outputs from one program input", () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "creativesos-dual-output-"));
+    try {
+      const filters = buildBroadcastVariantFilters([
+        { framingMode: "fit", width: 320, height: 180 },
+        { framingMode: "fill", width: 180, height: 320 },
+      ]);
+      const tee = buildBroadcastTeeOutput([
+        { protocol: "rtmp", url: "landscape.flv", videoStreamIndex: 0 },
+        { protocol: "rtmp", url: "portrait.flv", videoStreamIndex: 1 },
+      ]);
+      const encoded = spawnSync("ffmpeg", [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=5:duration=1",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
+        "-filter_complex", filters.filterComplex,
+        "-map", filters.videoMaps[0], "-map", filters.videoMaps[1], "-map", "1:a:0",
+        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-f", "tee", tee,
+      ], { cwd: workspace, encoding: "utf8", windowsHide: true });
+      expect(encoded.status, encoded.stderr).toBe(0);
+      expect(statSync(path.join(workspace, "landscape.flv")).size).toBeGreaterThan(0);
+      expect(statSync(path.join(workspace, "portrait.flv")).size).toBeGreaterThan(0);
+      for (const [filename, expected] of [["landscape.flv", "320,180"], ["portrait.flv", "180,320"]] as const) {
+        const probe = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", filename], { cwd: workspace, encoding: "utf8", windowsHide: true });
+        expect(probe.status, probe.stderr).toBe(0);
+        expect(probe.stdout.trim()).toBe(expected);
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   it("creates reusable production scenes and applies a persistent brand kit", () => {

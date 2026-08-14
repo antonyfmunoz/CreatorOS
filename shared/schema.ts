@@ -2753,6 +2753,73 @@ export const broadcastStudioVersions = pgTable(
   }),
 );
 
+// Capture nodes are portable contributors rather than provider accounts. A
+// native Android app, desktop capture agent, remote guest, or dedicated encoder
+// can pair once, publish replay-protected health, and receive a bounded remote
+// encoding directive without gaining the creator's web session or destination
+// credentials.
+export const broadcastCaptureNodes = pgTable(
+  "broadcast_capture_nodes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studioId: uuid("studio_id").references(() => broadcastStudios.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("ready"),
+    capabilities: json("capabilities").$type<import("./broadcast-field").CaptureCapabilities>().notNull(),
+    configuration: json("configuration").$type<import("./broadcast-field").CaptureNodeConfiguration>().notNull(),
+    deviceSecretHash: text("device_secret_hash").notNull(),
+    lastTelemetry: json("last_telemetry").$type<import("./broadcast-field").CaptureTelemetry | null>(),
+    lastDirective: json("last_directive").$type<import("./broadcast-field").CaptureEncodingDirective | null>(),
+    lastSequence: integer("last_sequence").notNull().default(0),
+    lastSeenAt: timestamp("last_seen_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    studioUpdatedIdx: index("broadcast_capture_nodes_studio_updated_idx").on(table.studioId, table.updatedAt),
+    ownerUpdatedIdx: index("broadcast_capture_nodes_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+    deviceSecretUnique: unique("broadcast_capture_nodes_device_secret_unique").on(table.deviceSecretHash),
+  }),
+);
+
+export const broadcastCaptureInvitations = pgTable(
+  "broadcast_capture_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studioId: uuid("studio_id").references(() => broadcastStudios.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({ studioExpiresIdx: index("broadcast_capture_invitations_studio_expires_idx").on(table.studioId, table.expiresAt) }),
+);
+
+// A bounded telemetry history supports field diagnosis and competitive network
+// qualification while the latest snapshot remains directly available on the
+// node. Device sequence numbers make retries idempotent and reject replay.
+export const broadcastCaptureTelemetry = pgTable(
+  "broadcast_capture_telemetry",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: uuid("node_id").references(() => broadcastCaptureNodes.id, { onDelete: "cascade" }).notNull(),
+    sequence: integer("sequence").notNull(),
+    state: text("state").notNull(),
+    snapshot: json("snapshot").$type<import("./broadcast-field").CaptureTelemetry>().notNull(),
+    directive: json("directive").$type<import("./broadcast-field").CaptureEncodingDirective>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    nodeSequenceUnique: unique("broadcast_capture_telemetry_node_sequence_unique").on(table.nodeId, table.sequence),
+    nodeCreatedIdx: index("broadcast_capture_telemetry_node_created_idx").on(table.nodeId, table.createdAt),
+  }),
+);
+
 // Brand identity is stored outside an individual studio so a creator can keep
 // every show visually consistent without rebuilding colors and logos for each
 // broadcast. The business key preserves a clean path to shared team libraries.
@@ -2809,6 +2876,8 @@ export const broadcastDestinations = pgTable(
     protocol: text("protocol").notNull(),
     ingestUrl: text("ingest_url").notNull(),
     streamKeyCiphertext: text("stream_key_ciphertext").notNull(),
+    outputLayout: text("output_layout").notNull().default("program"),
+    framingMode: text("framing_mode").notNull().default("fit"),
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

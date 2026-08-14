@@ -1,6 +1,6 @@
 # Creation Studios golden benchmark handoff
 
-Last prepared: 2026-08-13
+Last prepared: 2026-08-14
 
 This is the remaining competitive-evidence gate for CutStudio and Broadcast.
 It is not an implementation backlog. Native provider-independent functionality
@@ -35,10 +35,13 @@ cross-application handoffs.
    correction and one removed filler/dead-air segment.
 3. Apply voice finishing, music ducking, a visual grade and publish-safe
    loudness/true-peak controls.
-4. Produce landscape and vertical variants with captions.
-5. Send a time-coded review, make one requested change and render the approved
+4. Create a multicamera group, make at least three timed angle switches, use a
+   lightweight editing proxy, and prove that the approved render still uses
+   the original source lineage.
+5. Produce landscape and vertical variants with captions.
+6. Send a time-coded review, make one requested change and render the approved
    master.
-6. In CreativesOS, continue directly into Distribution without exporting and
+7. In CreativesOS, continue directly into Distribution without exporting and
    re-uploading the approved master.
 
 Comparison family: CapCut, Descript, Premiere Pro and DaVinci Resolve. The
@@ -49,18 +52,27 @@ untested products remain `not_benchmarked`.
 
 1. Build a branded show with camera, screen, microphone, media, title, lower
    third, ticker and countdown sources.
-2. Prepare at least three scenes and verify preview/program switching, source
-   order, chroma/color treatment, audio routing, sync, balance and monitoring.
-3. Record a 20-minute show with one pause/resume, one marker, one replay-buffer
+2. Prepare at least three scenes and verify live multiview, preview/program
+   switching, all supported transitions, source order, chroma/color treatment,
+   audio routing, sync, balance, monitoring, and one native audience widget.
+3. Pair a field device, direct it through ready/live/standby/pause, exercise
+   camera/microphone/recovery-recording controls, and retain telemetry during a
+   network degradation/recovery cycle. Repeat phone control at the target
+   mobile viewport.
+4. Produce simultaneous landscape and portrait destination variants and record
+   the dimensions, framing mode, encoder load, output isolation and recovery.
+5. Record a 20-minute show with one pause/resume, one marker, one replay-buffer
    capture and isolated local source tracks.
-4. Exercise an output interruption and demonstrate recovery without losing the
+6. Exercise an output interruption and demonstrate recovery without losing the
    local recording or configuration.
-5. Open the completed program and isolated sources directly in CutStudio while
+7. Open the completed program and isolated sources directly in CutStudio while
    preserving markers and lineage.
 
-Comparison family: OBS Studio, StreamYard, Restream and Riverside. Remote guest
-quality and external destination delivery are scored only after the relevant
-providers and authorized destination accounts are activated.
+Comparison family: OBS Studio, StreamYard, Restream, Riverside, Streamlabs,
+PRISM Live Studio, Larix Broadcaster and IRL Pro. Remote guest quality,
+native-device capture quality and external destination delivery are scored only
+after the relevant providers, devices and authorized destination accounts are
+activated.
 
 ## Connected-workflow comparison
 

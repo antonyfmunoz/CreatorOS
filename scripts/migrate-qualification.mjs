@@ -79,6 +79,9 @@ const requiredTables = [
   "broadcast_destination_receipts",
   "broadcast_audience_messages",
   "broadcast_template_catalog",
+  "broadcast_capture_nodes",
+  "broadcast_capture_invitations",
+  "broadcast_capture_telemetry",
 ];
 
 const requiredColumns = {

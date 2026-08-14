@@ -561,6 +561,27 @@
       "when": 1786633200000,
       "tag": "0079_conversation_read_states",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786716000000,
+      "tag": "0080_broadcast_capture_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1786719600000,
+      "tag": "0081_cut_studio_editing_proxies",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1786723200000,
+      "tag": "0082_broadcast_destination_layouts",
+      "breakpoints": true
     }
   ]
 }

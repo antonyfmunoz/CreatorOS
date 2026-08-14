@@ -27,6 +27,7 @@ export const broadcastSourceSchema = z.object({
     "image",
     "text",
     "color",
+    "widget",
   ]),
   assetId: z.string().uuid().nullable().default(null),
   lutAssetId: z.string().uuid().nullable().default(null),
@@ -81,6 +82,14 @@ export const broadcastSourceSchema = z.object({
     animation: z.enum(["none", "fade", "slide", "rise", "wipe", "pop", "pulse"]).default("none"),
     animationSpeed: z.number().finite().min(0.25).max(3).default(1),
   }).optional(),
+  widget: z.object({
+    kind: z.enum(["chat_box", "event_list", "goal", "sponsor_banner", "tip_jar"]),
+    title: z.string().trim().max(120).default("Live activity"),
+    value: z.number().finite().min(0).max(1_000_000_000).default(0),
+    target: z.number().finite().positive().max(1_000_000_000).default(100),
+    currency: z.string().trim().regex(/^[A-Z]{3}$/).default("USD"),
+    maxItems: z.number().int().min(1).max(10).default(3),
+  }).optional(),
 });
 
 export const broadcastSceneSchema = z.object({
@@ -123,7 +132,7 @@ export const broadcastStudioConfigSchema = z.object({
   programSceneId: safeId,
   studioMode: z.boolean().default(true),
   transition: z.object({
-    type: z.enum(["cut", "fade"]).default("cut"),
+    type: z.enum(["cut", "fade", "dip", "wipe", "slide"]).default("cut"),
     durationMs: z.number().int().min(0).max(3000).default(300),
   }),
   masterMuted: z.boolean().default(false),
@@ -149,6 +158,8 @@ export const broadcastDestinationInputSchema = z.object({
   protocol: z.enum(["rtmp", "rtmps", "srt"]),
   ingestUrl: z.string().trim().url().max(1_000),
   streamKey: z.string().trim().min(1).max(500),
+  outputLayout: z.enum(["program", "landscape", "portrait", "square"]).default("program"),
+  framingMode: z.enum(["fit", "fill"]).default("fit"),
 });
 
 export const broadcastSessionStartSchema = z.object({
@@ -305,7 +316,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
     zOrder,
     visible: true,
     locked: false,
-    muted: type === "text" || type === "image" || type === "color" || type === "test_pattern",
+    muted: type === "text" || type === "image" || type === "color" || type === "test_pattern" || type === "widget",
     volume: 1,
     audioProcessing: { highPassHz: 20, lowPassHz: 20_000, compressor: false, monitor: false, routeToProgram: true, bus: "dialogue", syncOffsetMs: 0, stereoBalance: 0, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     blendMode: "source-over",

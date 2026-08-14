@@ -64,6 +64,7 @@ const CutStudioReviewPage = lazy(() => import("@/pages/cut-studio-review"));
 const CutStudioWorkspacePage = lazy(() => import("@/pages/cut-studio-workspace"));
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BroadcastAudiencePage = lazy(() => import("@/pages/broadcast-audience"));
+const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
 const CourseBuilder = lazy(() => import("@/pages/course-builder"));
@@ -254,6 +255,7 @@ function Router() {
       <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
       <ProtectedRoute path="/cut-studio/workspace/:id" component={CutStudioWorkspacePage} />
       <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
+      <ProtectedRoute path="/broadcast/control/:id" component={BroadcastControlPage} />
       <ProtectedRoute path="/broadcast/audience/:id" component={BroadcastAudiencePage} />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
       <ProtectedRoute path="/business/approvals" component={UmhApprovalsPage} />
@@ -332,7 +334,7 @@ function AppContent() {
         Skip to main content
       </a>
       <div
-        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location === "/broadcast" || location.startsWith("/cut-studio") ? " app-container-workspace" : ""}`}
+        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location.startsWith("/broadcast") || location.startsWith("/cut-studio") ? " app-container-workspace" : ""}`}
       >
         <div id="main-content" tabIndex={-1} className="tab-content">
           <RouteErrorBoundary>

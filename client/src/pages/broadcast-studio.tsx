@@ -45,6 +45,7 @@ import type {
   BroadcastSource,
   BroadcastStudioConfig,
 } from "@shared/broadcast-studio";
+import type { CaptureNodeConfiguration } from "@shared/broadcast-field";
 import {
   applyBroadcastBrandKit,
   applyBroadcastScenePreset,
@@ -77,6 +78,8 @@ type Destination = {
   ingestUrl: string;
   hasStreamKey: boolean;
   status: string;
+  outputLayout: "program" | "landscape" | "portrait" | "square";
+  framingMode: "fit" | "fill";
 };
 type Session = {
   id: string;
@@ -126,6 +129,24 @@ type AudiencePayload = { access: { productionTeam: boolean; canModerate: boolean
 type TeamTemplate = { id: string; kind: "scene" | "source"; name: string; payload: BroadcastScene | BroadcastSource; access: { canDelete: boolean }; updatedAt: string };
 type StudioVersion = { id: string; revision: number; name: string; reason: "save" | "restore"; createdAt: string; actor: { id: number; username: string; displayName: string } | null; access: { canRestore: boolean } };
 type BroadcastLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } }; access: { canRemove: boolean } };
+type CaptureNode = {
+  id: string;
+  name: string;
+  kind: "android" | "ios" | "desktop" | "remote_guest" | "encoder";
+  status: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+  configuration: CaptureNodeConfiguration;
+  lastTelemetry: null | {
+    state: string;
+    links: Array<{ id: string; type: string; active: boolean; uplinkKbps: number; rttMs: number; jitterMs: number; packetLossPct: number }>;
+    encoder: { videoBitrateKbps: number; fps: number; droppedFrames: number };
+    device: { batteryPct: number | null; charging: boolean | null; thermalState: string; availableStorageMb: number | null };
+    recording: { active: boolean; pendingSegments: number; durationMs: number };
+  };
+  lastDirective: null | { videoBitrateKbps: number; fps: number; width: number; height: number; reason: string; disconnectSlate: boolean };
+};
+type CaptureInvitation = { token: string; expiresAt: string; claimUrl: string };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -162,6 +183,7 @@ type IsolatedTrackCapture = {
 type ActiveTransition = {
   from: BroadcastScene;
   to: BroadcastScene;
+  type: "fade" | "dip" | "wipe" | "slide";
   startedAt: number;
   durationMs: number;
 };
@@ -231,6 +253,8 @@ export default function BroadcastStudioPage() {
     protocol: "rtmps",
     ingestUrl: "",
     streamKey: "",
+    outputLayout: "program",
+    framingMode: "fit",
   });
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -252,8 +276,11 @@ export default function BroadcastStudioPage() {
   const [audienceCtaLabel, setAudienceCtaLabel] = useState("");
   const [audienceCtaUrl, setAudienceCtaUrl] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
+  const [captureInvitation, setCaptureInvitation] = useState<CaptureInvitation | null>(null);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
+  const sceneCanvases = useRef(new Map<string, HTMLCanvasElement>());
+  const lastMultiviewRender = useRef(0);
   const liveStreams = useRef(new Map<string, MediaStream>());
   const mediaElements = useRef(
     new Map<string, HTMLVideoElement | HTMLImageElement>(),
@@ -320,6 +347,12 @@ export default function BroadcastStudioPage() {
     enabled: Boolean(session?.id),
     refetchInterval: session?.state === "live" ? 2_000 : false,
   });
+  const captureNodesQuery = useQuery<CaptureNode[]>({
+    queryKey: ["/api/broadcast/studios", studio?.id, "capture-nodes"],
+    queryFn: async () => (await apiRequest("GET", `/api/broadcast/studios/${studio!.id}/capture-nodes`)).json(),
+    enabled: Boolean(studio?.id),
+    refetchInterval: 5_000,
+  });
   const destinations = destinationsQuery.data ?? [];
   const businessMedia = businessMediaQuery.data ?? [];
   const assets = Array.from(new Map([...(assetsQuery.data ?? []), ...businessMedia].map((asset) => [asset.id, asset])).values()).filter(
@@ -328,6 +361,46 @@ export default function BroadcastStudioPage() {
   const brandKits = brandKitsQuery.data ?? [];
   const teamTemplates = teamTemplatesQuery.data ?? [];
   const broadcastLuts = broadcastLutsQuery.data ?? [];
+  const captureNodes = captureNodesQuery.data ?? [];
+
+  const createCaptureInvitation = useCallback(async () => {
+    if (!studio) return;
+    setBusy("capture-invitation");
+    try {
+      const response = await apiRequest("POST", `/api/broadcast/studios/${studio.id}/capture-invitations`, { expiresInMinutes: 15 });
+      const invitation = await response.json() as CaptureInvitation;
+      setCaptureInvitation(invitation);
+      setMessage("A one-time field-device pairing code is ready for 15 minutes.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "A pairing code could not be created");
+    } finally { setBusy(""); }
+  }, [studio]);
+
+  const revokeCaptureNode = useCallback(async (node: CaptureNode) => {
+    if (!studio) return;
+    setBusy(`capture-node:${node.id}`);
+    try {
+      await apiRequest("DELETE", `/api/broadcast/studios/${studio.id}/capture-nodes/${node.id}`);
+      await captureNodesQuery.refetch();
+      setMessage(`${node.name} can no longer contribute to this studio.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The capture device could not be revoked");
+    } finally { setBusy(""); }
+  }, [captureNodesQuery, studio]);
+
+  const configureCaptureNode = useCallback(async (node: CaptureNode, changes: Partial<CaptureNodeConfiguration>, success: string) => {
+    if (!studio || studio.access?.role !== "owner") return;
+    setBusy(`capture-node:${node.id}`);
+    try {
+      await apiRequest("PATCH", `/api/broadcast/studios/${studio.id}/capture-nodes/${node.id}`, {
+        configuration: { ...node.configuration, ...changes },
+      });
+      await captureNodesQuery.refetch();
+      setMessage(success);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The field-device command could not be applied");
+    } finally { setBusy(""); }
+  }, [captureNodesQuery, studio]);
 
   const saveBrandKit = useCallback(async () => {
     if (!config || !brandKitName.trim()) return;
@@ -765,10 +838,11 @@ export default function BroadcastStudioPage() {
       canvas: HTMLCanvasElement | null,
       scene: BroadcastScene | null,
       showSelection = false,
+      thumbnail = false,
     ) => {
       if (!canvas || !scene) return;
-      canvas.width = config.canvas.width;
-      canvas.height = config.canvas.height;
+      canvas.width = thumbnail ? 256 : config.canvas.width;
+      canvas.height = thumbnail ? Math.max(144, Math.round(256 * config.canvas.height / config.canvas.width)) : config.canvas.height;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.fillStyle = scene.background;
@@ -850,6 +924,50 @@ export default function BroadcastStudioPage() {
               ctx.font = `500 ${Math.max(13, h * 0.2 * presentation.fontScale)}px Inter, sans-serif`;
               ctx.fillText(presentation.secondaryText, textX, h * 0.7, w - padding * 2);
             }
+          }
+        } else if (source.type === "widget" && source.widget) {
+          const widget = source.widget;
+          const messages = (audienceQuery.data?.messages ?? []).filter((item) => item.status === "visible").slice(0, widget.maxItems).reverse();
+          ctx.fillStyle = "rgba(9,9,11,.92)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = config.brandKit.primaryColor;
+          ctx.fillRect(0, 0, Math.max(6, w * .018), h);
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = config.brandKit.textColor;
+          ctx.font = `700 ${Math.max(14, h * .12)}px Inter, sans-serif`;
+          ctx.fillText(widget.title, w * .07, h * .14, w * .86);
+          if (widget.kind === "chat_box" || widget.kind === "event_list") {
+            const rowHeight = Math.max(18, (h * .72) / Math.max(1, widget.maxItems));
+            messages.forEach((message, index) => {
+              const y = h * .3 + index * rowHeight;
+              ctx.fillStyle = message.kind === "cta" ? config.brandKit.primaryColor : "#a1a1aa";
+              ctx.font = `700 ${Math.max(11, rowHeight * .28)}px Inter, sans-serif`;
+              ctx.fillText(message.authorName, w * .07, y, w * .25);
+              ctx.fillStyle = config.brandKit.textColor;
+              ctx.font = `500 ${Math.max(11, rowHeight * .27)}px Inter, sans-serif`;
+              ctx.fillText(message.body, w * .32, y, w * .61);
+            });
+            if (!messages.length) {
+              ctx.fillStyle = "#71717a";
+              ctx.font = `500 ${Math.max(12, h * .09)}px Inter, sans-serif`;
+              ctx.fillText("Waiting for live audience activity", w * .07, h * .55, w * .86);
+            }
+          } else if (widget.kind === "goal" || widget.kind === "tip_jar") {
+            const progress = Math.max(0, Math.min(1, widget.value / widget.target));
+            const formatted = widget.kind === "tip_jar" ? new Intl.NumberFormat(undefined, { style: "currency", currency: widget.currency, maximumFractionDigits: 0 }).format(widget.value) : String(Math.round(widget.value));
+            const target = widget.kind === "tip_jar" ? new Intl.NumberFormat(undefined, { style: "currency", currency: widget.currency, maximumFractionDigits: 0 }).format(widget.target) : String(Math.round(widget.target));
+            ctx.font = `800 ${Math.max(20, h * .24)}px Inter, sans-serif`;
+            ctx.fillStyle = config.brandKit.textColor;
+            ctx.fillText(`${formatted} / ${target}`, w * .07, h * .48, w * .86);
+            ctx.fillStyle = "#27272a";
+            ctx.fillRect(w * .07, h * .68, w * .86, h * .12);
+            ctx.fillStyle = config.brandKit.primaryColor;
+            ctx.fillRect(w * .07, h * .68, w * .86 * progress, h * .12);
+          } else {
+            ctx.fillStyle = config.brandKit.textColor;
+            ctx.font = `800 ${Math.max(18, h * .22)}px Inter, sans-serif`;
+            ctx.fillText(source.text ?? "Sponsored by your partner", w * .07, h * .55, w * .86);
           }
         } else if (source.type === "color" || source.type === "test_pattern") {
           const gradient = ctx.createLinearGradient(0, 0, w, h);
@@ -968,6 +1086,11 @@ export default function BroadcastStudioPage() {
     };
     const loop = () => {
       drawScene(previewCanvas.current, previewScene, true);
+      const now = performance.now();
+      if (now - lastMultiviewRender.current >= 100) {
+        for (const scene of config.scenes) drawScene(sceneCanvases.current.get(scene.id) ?? null, scene, false, true);
+        lastMultiviewRender.current = now;
+      }
       const active = transitionFrame.current;
       if (active && programCanvas.current) {
         transitionCanvases.current ??= {
@@ -986,10 +1109,34 @@ export default function BroadcastStudioPage() {
             (performance.now() - active.startedAt) /
               Math.max(1, active.durationMs),
           );
+          ctx.clearRect(0, 0, target.width, target.height);
           ctx.globalAlpha = 1;
-          ctx.drawImage(transitionCanvases.current.from, 0, 0);
-          ctx.globalAlpha = progress;
-          ctx.drawImage(transitionCanvases.current.to, 0, 0);
+          if (active.type === "slide") {
+            ctx.drawImage(transitionCanvases.current.from, -progress * target.width, 0);
+            ctx.drawImage(transitionCanvases.current.to, (1 - progress) * target.width, 0);
+          } else if (active.type === "wipe") {
+            ctx.drawImage(transitionCanvases.current.from, 0, 0);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, target.width * progress, target.height);
+            ctx.clip();
+            ctx.drawImage(transitionCanvases.current.to, 0, 0);
+            ctx.restore();
+          } else if (active.type === "dip") {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, target.width, target.height);
+            if (progress < 0.5) {
+              ctx.globalAlpha = 1 - progress * 2;
+              ctx.drawImage(transitionCanvases.current.from, 0, 0);
+            } else {
+              ctx.globalAlpha = (progress - 0.5) * 2;
+              ctx.drawImage(transitionCanvases.current.to, 0, 0);
+            }
+          } else {
+            ctx.drawImage(transitionCanvases.current.from, 0, 0);
+            ctx.globalAlpha = progress;
+            ctx.drawImage(transitionCanvases.current.to, 0, 0);
+          }
           ctx.globalAlpha = 1;
           if (progress >= 1) transitionFrame.current = null;
         }
@@ -1049,10 +1196,11 @@ export default function BroadcastStudioPage() {
       previewScene.id === programScene.id
     )
       return;
-    if (config.transition.type === "fade")
+    if (config.transition.type !== "cut")
       transitionFrame.current = {
         from: programScene,
         to: previewScene,
+        type: config.transition.type,
         startedAt: performance.now(),
         durationMs: config.transition.durationMs,
       };
@@ -1253,23 +1401,25 @@ export default function BroadcastStudioPage() {
       })();
     }
   }, [broadcastLuts]);
-  const addSource = (type: BroadcastSource["type"], graphicStyle: "plain" | "lower_third" | "ticker" | "countdown" = "plain") => {
+  const addSource = (type: BroadcastSource["type"], graphicStyle: "plain" | "lower_third" | "ticker" | "countdown" = "plain", widgetKind: NonNullable<BroadcastSource["widget"]>["kind"] = "chat_box") => {
     if (!previewScene) return;
     const id = safeId("source");
     const source: BroadcastSource = {
       ...sourceDefaults,
       id,
-      name: type === "text" ? graphicStyle === "lower_third" ? "Lower third" : graphicStyle === "ticker" ? "Ticker" : graphicStyle === "countdown" ? "Countdown" : "Text" : type.replace("_", " "),
+      name: type === "text" ? graphicStyle === "lower_third" ? "Lower third" : graphicStyle === "ticker" ? "Ticker" : graphicStyle === "countdown" ? "Countdown" : "Text" : type === "widget" ? widgetKind.replace("_", " ") : type.replace("_", " "),
       type,
       text: type === "text" ? graphicStyle === "ticker" ? "Your live announcement scrolls here" : graphicStyle === "countdown" ? "Countdown" : "Your headline" : null,
       color: type === "color" ? "#1d9bf0" : type === "text" ? "#ffffff" : null,
       presentation: type === "text" ? { ...sourceDefaults.presentation, style: graphicStyle, align: graphicStyle === "plain" ? "center" : "left", backgroundColor: graphicStyle === "plain" ? null : "#101014", secondaryText: graphicStyle === "lower_third" ? "Role or call to action" : null, countdownEndsAt: graphicStyle === "countdown" ? Date.now() + 300_000 : null } : sourceDefaults.presentation,
+      widget: type === "widget" ? { kind: widgetKind, title: widgetKind === "chat_box" ? "Live chat" : widgetKind === "event_list" ? "Recent activity" : widgetKind === "goal" ? "Community goal" : widgetKind === "tip_jar" ? "Support the show" : "Presented by", value: 0, target: 100, currency: "USD", maxItems: 3 } : undefined,
       zOrder: previewScene.sources.length,
       muted:
         type === "text" ||
         type === "image" ||
         type === "color" ||
-        type === "test_pattern",
+        type === "test_pattern" ||
+        type === "widget",
     };
     updatePreviewScene((scene) => ({
       ...scene,
@@ -1949,15 +2099,23 @@ export default function BroadcastStudioPage() {
                   onClick={() =>
                     setConfig({ ...config, previewSceneId: scene.id })
                   }
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs ${scene.id === config.previewSceneId ? "bg-[#1d9bf0] font-bold text-black" : "bg-zinc-900 text-zinc-300"}`}
+                  className={`group relative w-full overflow-hidden rounded-lg border text-left text-xs ${scene.id === config.previewSceneId ? "border-[#1d9bf0] bg-[#1d9bf0]/10 font-bold text-white" : scene.id === config.programSceneId ? "border-red-600 bg-zinc-900 text-zinc-300" : "border-zinc-800 bg-zinc-900 text-zinc-300"}`}
                 >
-                  <span>{index + 1}</span>
-                  <span className="truncate">{scene.name}</span>
+                  <canvas
+                    ref={(node) => { if (node) sceneCanvases.current.set(scene.id, node); else sceneCanvases.current.delete(scene.id); }}
+                    aria-label={`${scene.name} multiview preview`}
+                    className="aspect-video w-full bg-black object-cover"
+                  />
+                  <span className="flex items-center gap-2 px-2 py-1.5">
+                    <span>{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate">{scene.name}</span>
+                  </span>
                   {scene.id === config.programSceneId && (
-                    <span className="ml-auto rounded bg-red-600 px-1.5 py-.5 text-[9px] text-white">
+                    <span className="absolute right-1.5 top-1.5 rounded bg-red-600 px-1.5 py-.5 text-[9px] text-white">
                       PGM
                     </span>
                   )}
+                  {scene.id === config.previewSceneId && scene.id !== config.programSceneId && <span className="absolute right-1.5 top-1.5 rounded bg-[#1d9bf0] px-1.5 py-.5 text-[9px] text-black">PVW</span>}
                 </button>
               ))}
             </div>
@@ -2148,6 +2306,12 @@ export default function BroadcastStudioPage() {
               <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("text", "ticker")}>Ticker</Button>
               <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("text", "countdown")}>Countdown</Button>
             </div>
+            <div className="mt-2 grid grid-cols-2 gap-1">
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("widget", "plain", "chat_box")}>Chat widget</Button>
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("widget", "plain", "event_list")}>Event list</Button>
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("widget", "plain", "goal")}>Goal</Button>
+              <Button size="sm" variant="outline" className="text-[10px]" onClick={() => addSource("widget", "plain", "tip_jar")}>Tip jar</Button>
+            </div>
             {selectedSource && (
               <Button
                 className="mt-2 w-full"
@@ -2248,7 +2412,7 @@ export default function BroadcastStudioPage() {
                   ...config,
                   transition: {
                     ...config.transition,
-                    type: e.target.value as "cut" | "fade",
+                    type: e.target.value as "cut" | "fade" | "dip" | "wipe" | "slide",
                   },
                 })
               }
@@ -2256,12 +2420,15 @@ export default function BroadcastStudioPage() {
             >
               <option value="cut">Cut</option>
               <option value="fade">Fade</option>
+              <option value="dip">Dip to black</option>
+              <option value="wipe">Wipe</option>
+              <option value="slide">Slide</option>
             </select>
-            {config.transition.type === "fade" && (
+            {config.transition.type !== "cut" && (
               <label className="flex items-center gap-2 text-xs text-zinc-500">
                 <span>Duration</span>
                 <Input
-                  aria-label="Fade duration milliseconds"
+                  aria-label="Transition duration milliseconds"
                   className="h-9 w-24 border-zinc-700 bg-black"
                   type="number"
                   min={100}
@@ -2573,6 +2740,75 @@ export default function BroadcastStudioPage() {
           </Panel>
         </section>
         <aside className="space-y-3">
+          <Panel title="Field capture" icon={Radio}>
+            <div className="space-y-3">
+              <p className="text-xs leading-5 text-zinc-500">
+                Pair an Android, desktop, guest, or dedicated encoder without sharing your account or destination keys. Devices report network, encoder, battery, thermal, and recovery health here.
+              </p>
+              {studio && <Button size="sm" variant="outline" className="w-full" onClick={() => setLocation(`/broadcast/control/${studio.id}`)}><MonitorUp className="mr-1.5 h-3.5 w-3.5"/>Open phone controller</Button>}
+              {studio?.access?.role === "owner" && <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                disabled={Boolean(busy)}
+                onClick={() => void createCaptureInvitation()}
+              >
+                {busy === "capture-invitation" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+                Pair field device
+              </Button>}
+              {captureInvitation && <div className="rounded-xl border border-[#1d9bf0]/30 bg-[#1d9bf0]/5 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">One-time pairing code</div>
+                <div className="mt-1 break-all font-mono text-xs text-white">{captureInvitation.token}</div>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={async () => {
+                    await navigator.clipboard.writeText(JSON.stringify({ claimUrl: captureInvitation.claimUrl, token: captureInvitation.token }));
+                    setMessage("Secure pairing bundle copied.");
+                  }}><Copy className="mr-1.5 h-3.5 w-3.5" />Copy setup</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setCaptureInvitation(null)}>Hide</Button>
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-zinc-500">Expires {new Date(captureInvitation.expiresAt).toLocaleTimeString()}. It can be claimed once.</p>
+              </div>}
+              <div className="space-y-2">
+                {captureNodes.filter((node) => !node.revokedAt).map((node) => {
+                  const activeLinks = node.lastTelemetry?.links.filter((link) => link.active) ?? [];
+                  const uplink = activeLinks.reduce((sum, link) => sum + link.uplinkKbps, 0);
+                  return <div key={node.id} className="rounded-xl border border-zinc-800 bg-black p-3">
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${node.status === "live" ? "animate-pulse bg-emerald-400" : node.status === "degraded" || node.status === "reconnecting" ? "bg-amber-400" : node.status === "error" || node.status === "offline" ? "bg-red-500" : "bg-zinc-500"}`}/>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-bold text-zinc-200">{node.name}</div>
+                        <div className="text-[10px] uppercase text-zinc-600">{node.kind.replace("_", " ")} · {node.status}</div>
+                      </div>
+                      {studio?.access?.role === "owner" && <button aria-label={`Revoke ${node.name}`} className="text-zinc-600 hover:text-red-400" disabled={Boolean(busy)} onClick={() => void revokeCaptureNode(node)}><Trash2 className="h-3.5 w-3.5" /></button>}
+                    </div>
+                    {node.lastTelemetry ? <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-zinc-500">
+                      <span>{Math.round(uplink / 100) / 10} Mbps uplink</span>
+                      <span>{node.lastTelemetry.encoder.fps.toFixed(0)} fps</span>
+                      <span>{node.lastTelemetry.device.batteryPct === null ? "Battery unknown" : `${Math.round(node.lastTelemetry.device.batteryPct)}% battery`}</span>
+                      <span className={node.lastTelemetry.device.thermalState === "serious" || node.lastTelemetry.device.thermalState === "critical" ? "text-amber-400" : ""}>{node.lastTelemetry.device.thermalState} thermal</span>
+                      {node.lastDirective && <span className="col-span-2 border-t border-zinc-900 pt-2">Director: {node.lastDirective.width}×{node.lastDirective.height} · {node.lastDirective.fps} fps · {node.lastDirective.videoBitrateKbps} kbps ({node.lastDirective.reason})</span>}
+                    </div> : <p className="mt-2 text-[10px] text-zinc-600">Waiting for the first device heartbeat.</p>}
+                    {studio?.access?.role === "owner" && <div className="mt-3 space-y-2 border-t border-zinc-900 pt-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] text-zinc-500">Director state<select aria-label={`${node.name} director state`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.requestedState} disabled={Boolean(busy)} onChange={(event) => void configureCaptureNode(node, { requestedState: event.target.value as CaptureNodeConfiguration["requestedState"] }, `${node.name} was directed to ${event.target.value}.`)}><option value="ready">Ready</option><option value="live">Live</option><option value="standby">Standby</option><option value="paused">Pause</option><option value="stopped">Stop</option></select></label>
+                        <label className="text-[10px] text-zinc-500">Capture mode<select aria-label={`${node.name} capture mode`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.captureMode} disabled={Boolean(busy)} onChange={(event) => void configureCaptureNode(node, { captureMode: event.target.value as CaptureNodeConfiguration["captureMode"] }, `${node.name} capture mode updated.`)}><option value="camera">Camera</option><option value="screen">Screen</option><option value="audio_only">Audio only</option></select></label>
+                        <label className="text-[10px] text-zinc-500">Camera<select aria-label={`${node.name} camera facing`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.cameraFacing} disabled={Boolean(busy) || node.configuration.captureMode !== "camera"} onChange={(event) => void configureCaptureNode(node, { cameraFacing: event.target.value as CaptureNodeConfiguration["cameraFacing"] }, `${node.name} camera switched.`)}><option value="rear">Rear</option><option value="front">Front</option></select></label>
+                        <label className="text-[10px] text-zinc-500">Lens<select aria-label={`${node.name} camera lens`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.cameraLens} disabled={Boolean(busy) || node.configuration.captureMode !== "camera"} onChange={(event) => void configureCaptureNode(node, { cameraLens: event.target.value as CaptureNodeConfiguration["cameraLens"] }, `${node.name} lens updated.`)}><option value="auto">Auto</option><option value="wide">Wide</option><option value="ultrawide">Ultra-wide</option><option value="telephoto">Telephoto</option></select></label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" variant="outline" disabled={Boolean(busy) || node.configuration.captureMode !== "camera"} aria-label={`${node.configuration.torchEnabled ? "Turn off" : "Turn on"} ${node.name} torch`} onClick={() => void configureCaptureNode(node, { torchEnabled: !node.configuration.torchEnabled }, `${node.name} torch ${node.configuration.torchEnabled ? "disabled" : "enabled"}.`)}>{node.configuration.torchEnabled ? "Torch on" : "Torch off"}</Button>
+                        <Button size="sm" variant="outline" disabled={Boolean(busy)} aria-label={`${node.configuration.microphoneMuted ? "Unmute" : "Mute"} ${node.name} microphone`} onClick={() => void configureCaptureNode(node, { microphoneMuted: !node.configuration.microphoneMuted }, `${node.name} microphone ${node.configuration.microphoneMuted ? "unmuted" : "muted"}.`)}>{node.configuration.microphoneMuted ? <VolumeX className="mr-1 h-3.5 w-3.5 text-red-400" /> : <Volume2 className="mr-1 h-3.5 w-3.5" />}{node.configuration.microphoneMuted ? "Muted" : "Mic live"}</Button>
+                        <Button size="sm" variant="outline" disabled={Boolean(busy)} aria-label={`${node.configuration.localRecordingEnabled ? "Stop" : "Start"} ${node.name} local recording`} onClick={() => void configureCaptureNode(node, { localRecordingEnabled: !node.configuration.localRecordingEnabled }, `${node.name} recovery recording ${node.configuration.localRecordingEnabled ? "stopped" : "started"}.`)}>{node.configuration.localRecordingEnabled ? "Recovery rec on" : "Recovery rec off"}</Button>
+                        <label className="text-[10px] text-zinc-500">Location<select aria-label={`${node.name} location sharing`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.locationSharing} disabled={Boolean(busy)} onChange={(event) => void configureCaptureNode(node, { locationSharing: event.target.value as CaptureNodeConfiguration["locationSharing"] }, `${node.name} location policy updated.`)}><option value="off">Off</option><option value="approximate">Approximate</option><option value="exact">Exact</option></select></label>
+                      </div>
+                      <p className="text-[9px] leading-4 text-zinc-600">Commands use the device-authenticated control channel. Location is off by default and never enabled implicitly.</p>
+                    </div>}
+                  </div>;
+                })}
+                {!captureNodes.filter((node) => !node.revokedAt).length && <div className="rounded-xl border border-dashed border-zinc-800 p-3 text-center text-[10px] text-zinc-600">No field devices paired</div>}
+              </div>
+            </div>
+          </Panel>
           <Panel title="Inspector" icon={Settings2}>
             {selectedSource ? (
               <div className="space-y-3">
@@ -2660,6 +2896,13 @@ export default function BroadcastStudioPage() {
                     <Control label="Text scale" value={(selectedSource.presentation ?? sourceDefaults.presentation).fontScale} min={0.25} max={2} onChange={(value) => updateSource(selectedSource.id, { presentation: { ...(selectedSource.presentation ?? sourceDefaults.presentation), fontScale: value } }, false)} onCommit={() => config && void persist(config)}/>
                   </>
                 )}
+                {selectedSource.type === "widget" && selectedSource.widget && <div className="space-y-3 rounded-xl border border-zinc-800 bg-black p-3">
+                  <label className="block text-xs text-zinc-500">Widget type<select aria-label="Widget type" className="mt-1 h-9 w-full rounded-lg border border-zinc-800 bg-black px-3" value={selectedSource.widget.kind} onChange={(event) => updateSource(selectedSource.id, { widget: { ...selectedSource.widget!, kind: event.target.value as NonNullable<BroadcastSource["widget"]>["kind"] } })}><option value="chat_box">Chat box</option><option value="event_list">Event list</option><option value="goal">Goal</option><option value="tip_jar">Tip jar</option><option value="sponsor_banner">Sponsor banner</option></select></label>
+                  <label className="block text-xs text-zinc-500">Title<Input aria-label="Widget title" className="mt-1 border-zinc-800 bg-black" value={selectedSource.widget.title} onChange={(event) => updateSource(selectedSource.id, { widget: { ...selectedSource.widget!, title: event.target.value } }, false)} onBlur={() => config && void persist(config)}/></label>
+                  {(selectedSource.widget.kind === "goal" || selectedSource.widget.kind === "tip_jar") && <div className="grid grid-cols-2 gap-2"><label className="text-xs text-zinc-500">Current<Input aria-label="Widget current value" className="mt-1 border-zinc-800 bg-black" type="number" min={0} value={selectedSource.widget.value} onChange={(event) => updateSource(selectedSource.id, { widget: { ...selectedSource.widget!, value: Math.max(0, Number(event.target.value)) } }, false)} onBlur={() => config && void persist(config)}/></label><label className="text-xs text-zinc-500">Target<Input aria-label="Widget target value" className="mt-1 border-zinc-800 bg-black" type="number" min={1} value={selectedSource.widget.target} onChange={(event) => updateSource(selectedSource.id, { widget: { ...selectedSource.widget!, target: Math.max(1, Number(event.target.value)) } }, false)} onBlur={() => config && void persist(config)}/></label></div>}
+                  {(selectedSource.widget.kind === "chat_box" || selectedSource.widget.kind === "event_list") && <Control label="Visible items" value={selectedSource.widget.maxItems} min={1} max={10} onChange={(value) => updateSource(selectedSource.id, { widget: { ...selectedSource.widget!, maxItems: Math.round(value) } }, false)} onCommit={() => config && void persist(config)}/>}
+                  {selectedSource.widget.kind === "sponsor_banner" && <label className="block text-xs text-zinc-500">Sponsor text<Input aria-label="Sponsor text" className="mt-1 border-zinc-800 bg-black" value={selectedSource.text ?? ""} onChange={(event) => updateSource(selectedSource.id, { text: event.target.value }, false)} onBlur={() => config && void persist(config)}/></label>}
+                </div>}
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
@@ -3097,11 +3340,11 @@ export default function BroadcastStudioPage() {
             </p>
           </Panel>
           <Panel title="Destinations" icon={Radio}>
-            <p className="mb-2 text-[10px] leading-4 text-zinc-500">Select up to eight outputs. One encoded program is fanned out securely to every selected destination.</p>
+            <p className="mb-2 text-[10px] leading-4 text-zinc-500">Select up to eight outputs. Each destination can keep the program canvas or receive an independently encoded landscape, portrait, or square variant.</p>
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {destinations.length ? destinations.map((destination) => {
                 const selected = destinationIds.includes(destination.id);
-                return <div key={destination.id} className={`flex items-center gap-2 rounded-lg border px-2 py-2 ${selected ? "border-[#1d9bf0] bg-[#1d9bf0]/10" : "border-zinc-800 bg-black"}`}><label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs"><input type="checkbox" aria-label={`Stream to ${destination.name}`} checked={selected} disabled={!selected && destinationIds.length >= 8} onChange={() => setDestinationIds((items) => selected ? items.filter((id) => id !== destination.id) : [...items, destination.id])}/><span className="truncate">{destination.name}</span><span className="ml-auto text-[9px] text-zinc-600">{destination.protocol.toUpperCase()}</span></label><button type="button" className="text-[10px] font-bold text-[#1d9bf0]" onClick={async () => { try { const result = await (await apiRequest("POST", `/api/broadcast/destinations/${destination.id}/test`, {})).json() as { detail: string }; setMessage(result.detail); } catch (error) { setMessage(error instanceof Error ? error.message : "Test failed"); } }}>Test</button></div>;
+                return <div key={destination.id} className={`flex items-center gap-2 rounded-lg border px-2 py-2 ${selected ? "border-[#1d9bf0] bg-[#1d9bf0]/10" : "border-zinc-800 bg-black"}`}><label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs"><input type="checkbox" aria-label={`Stream to ${destination.name}`} checked={selected} disabled={!selected && destinationIds.length >= 8} onChange={() => setDestinationIds((items) => selected ? items.filter((id) => id !== destination.id) : [...items, destination.id])}/><span className="truncate">{destination.name}</span><span className="ml-auto text-[9px] text-zinc-600">{destination.protocol.toUpperCase()} · {destination.outputLayout}{destination.outputLayout !== "program" ? ` ${destination.framingMode}` : ""}</span></label><button type="button" className="text-[10px] font-bold text-[#1d9bf0]" onClick={async () => { try { const result = await (await apiRequest("POST", `/api/broadcast/destinations/${destination.id}/test`, {})).json() as { detail: string }; setMessage(result.detail); } catch (error) { setMessage(error instanceof Error ? error.message : "Test failed"); } }}>Test</button></div>;
               }) : <p className="rounded-lg bg-black p-3 text-xs text-zinc-600">Add a destination to enable live output.</p>}
             </div>
             <div className="mt-2 flex gap-2">
@@ -3132,6 +3375,8 @@ export default function BroadcastStudioPage() {
                       protocol: "rtmps",
                       ingestUrl: "",
                       streamKey: "",
+                      outputLayout: "program",
+                      framingMode: "fit",
                     });
                     setDestinationOpen(false);
                     destinationsQuery.refetch();
@@ -3171,6 +3416,10 @@ export default function BroadcastStudioPage() {
                   <option value="rtmp">RTMP</option>
                   <option value="srt">SRT</option>
                 </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[10px] text-zinc-500">Output layout<select aria-label="Destination output layout" className="mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-xs" value={destinationForm.outputLayout} onChange={(event) => setDestinationForm({ ...destinationForm, outputLayout: event.target.value })}><option value="program">Program canvas</option><option value="landscape">Landscape 16:9</option><option value="portrait">Portrait 9:16</option><option value="square">Square 1:1</option></select></label>
+                  <label className="text-[10px] text-zinc-500">Framing<select aria-label="Destination framing mode" className="mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-xs" value={destinationForm.framingMode} disabled={destinationForm.outputLayout === "program"} onChange={(event) => setDestinationForm({ ...destinationForm, framingMode: event.target.value })}><option value="fit">Fit with padding</option><option value="fill">Fill and crop</option></select></label>
+                </div>
                 <Input
                   required
                   type="url"

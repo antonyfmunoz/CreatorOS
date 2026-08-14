@@ -6,7 +6,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createBroadcastSceneFromTemplate } from "../shared/broadcast-studio";
 
 function ownerFor(testInfo: TestInfo) {
@@ -295,13 +295,21 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
     page.getByText("Production settings", { exact: true }),
   ).toBeVisible();
 
+  await page.getByRole("button", { name: "Destination", exact: true }).click();
+  await page.getByPlaceholder("Destination name").fill("Vertical field output");
+  await page.getByLabel("Destination output layout").selectOption("portrait");
+  await page.getByLabel("Destination framing mode").selectOption("fill");
+  await expect(page.getByLabel("Destination output layout")).toHaveValue("portrait");
+  await expect(page.getByLabel("Destination framing mode")).toHaveValue("fill");
+  await page.getByRole("button", { name: "Destination", exact: true }).click();
+
   const record = page.getByRole("button", { name: "Record" });
   await expect(record).toBeDisabled();
   await page.getByRole("checkbox").check();
   await expect(record).toBeEnabled();
 
   await page.getByLabel("Transition type").selectOption("fade");
-  await expect(page.getByLabel("Fade duration milliseconds")).toBeVisible();
+  await expect(page.getByLabel("Transition duration milliseconds")).toBeVisible();
   await page.getByRole("button", { name: "Add text" }).click();
   await expect(page.getByRole("button", { name: "Text", exact: true })).toBeVisible();
   await page.getByLabel("Source preset name").fill("Reusable headline");
@@ -317,7 +325,7 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await page.getByLabel("Scene preset name").fill("Weekly show");
   await page.getByRole("button", { name: "Save scene preset" }).click();
   await page.getByRole("button", { name: "Apply Weekly show scene preset" }).click();
-  await expect(page.getByRole("button", { name: "3 Weekly show", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Weekly show multiview preview")).toBeVisible();
   await page.getByRole("button", { name: "Transition to program" }).click();
   await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
   await page.getByLabel("Overlay motion").selectOption("fade");
@@ -337,7 +345,7 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByLabel("Enable chroma key")).toBeChecked();
   await page.getByLabel("Surface brand color").fill("#112233");
   await page.getByRole("button", { name: "Apply to branded graphics" }).click();
-  await expect(page.getByText(/Operator keys:/)).toBeVisible();
+  await expect(page.getByText(/Operator keys:/)).toHaveCount(1);
   await page.getByLabel("Broadcast resolution").selectOption("1080x1920");
   await expect(page.getByLabel("Broadcast resolution")).toHaveValue("1080x1920");
 
@@ -357,6 +365,129 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
     studio.config?.scenes?.some((scene) => scene.sources?.some((source) => source.name === "Lower third" && source.presentation?.animation === "fade")),
   )).toBe(true);
   expect(persistedStudios.some((studio: { config?: { scenePresets?: Array<{ name: string }> } }) => studio.config?.scenePresets?.some((preset) => preset.name === "Weekly show"))).toBe(true);
+});
+
+test("Broadcast renders live multiview, native goal widgets, and operator transitions", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Multiview studio ${Date.now()}` });
+  await expectOk(createdResponse);
+  const created = await createdResponse.json();
+  const withInterview = createBroadcastSceneFromTemplate(created.config, "interview", "scene_interview");
+  const baseSource = withInterview.scenes[0].sources[0];
+  const config = {
+    ...withInterview,
+    transition: { type: "wipe", durationMs: 350 },
+    scenes: withInterview.scenes.map((scene, index) => index === 1 ? {
+      ...scene,
+      sources: [...scene.sources, {
+        ...baseSource,
+        id: "source_goal",
+        name: "Launch goal",
+        type: "widget",
+        text: null,
+        widget: { kind: "goal", title: "Launch members", value: 42, target: 100, currency: "USD", maxItems: 3 },
+        muted: true,
+        zOrder: scene.sources.length,
+      }],
+    } : scene),
+  };
+  const savedResponse = await api(page, owner, "PUT", `/api/broadcast/studios/${created.id}`, { name: created.name, config }, { "If-Match": String(created.revision) });
+  await expectOk(savedResponse);
+
+  await page.goto(`/broadcast?studio=${created.id}`);
+  const multiview = page.getByLabel(/multiview preview/);
+  await expect(multiview).toHaveCount(2);
+  await expect.poll(async () => multiview.evaluateAll((canvases) => canvases.map((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    const alpha = element.getContext("2d")?.getImageData(0, 0, 1, 1).data[3] ?? 0;
+    return { width: element.width, alpha };
+  }))).toEqual([{ width: 256, alpha: 255 }, { width: 256, alpha: 255 }]);
+  await page.getByRole("button", { name: "Launch goal", exact: true }).click();
+  await expect(page.getByLabel("Widget type")).toHaveValue("goal");
+  await expect(page.getByLabel("Widget current value")).toHaveValue("42");
+  await expect(page.getByLabel("Widget target value")).toHaveValue("100");
+  await page.getByLabel("Widget title").fill("Launch goal updated");
+  await page.getByLabel("Widget title").press("Tab");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}`);
+    await expectOk(response);
+    return (await response.json()).config.scenes[1].sources.find((source: { id: string }) => source.id === "source_goal")?.widget?.title;
+  }).toBe("Launch goal updated");
+  await page.getByRole("button", { name: /Two-person interview multiview preview/ }).click();
+  await expect(page.getByLabel("Transition type")).toHaveValue("wipe");
+  await page.getByRole("button", { name: "Transition to program" }).click();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}`);
+    await expectOk(response);
+    const studio = await response.json();
+    return studio.config.scenes.find((scene: { id: string }) => scene.id === studio.config.programSceneId)?.name;
+  }).toBe("Two-person interview");
+});
+
+test("Broadcast phone controller operates scenes, program sources, markers, and safe output stop", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Phone control ${Date.now()}` });
+  await expectOk(createdResponse);
+  const created = await createdResponse.json();
+  const configured = createBroadcastSceneFromTemplate(created.config, "interview", `remote_${Date.now()}`.slice(0, 32));
+  const saveResponse = await api(page, owner, "PUT", `/api/broadcast/studios/${created.id}`, { name: created.name, config: configured }, { "If-Match": String(created.revision) });
+  await expectOk(saveResponse);
+  const saved = await saveResponse.json();
+  const startResponse = await api(page, owner, "POST", `/api/broadcast/studios/${created.id}/sessions`, { outputMode: "recording", sourceMode: "test_pattern", destinationIds: [], videoBitrateKbps: 800, audioBitrateKbps: 64 });
+  await expectOk(startResponse);
+  const session = await startResponse.json();
+
+  const invitationResponse = await api(page, owner, "POST", `/api/broadcast/studios/${created.id}/capture-invitations`, { expiresInMinutes: 15 });
+  await expectOk(invitationResponse);
+  const invitation = await invitationResponse.json();
+  const claimResponse = await page.request.post("/api/broadcast/capture/claim", { data: {
+    token: invitation.token,
+    name: "Remote phone camera",
+    kind: "android",
+    capabilities: { transports: ["srt"], videoCodecs: ["h264"], maxWidth: 1920, maxHeight: 1080, maxFps: 30 },
+  } });
+  await expectOk(claimResponse);
+
+  await page.goto(`/broadcast/control/${created.id}`);
+  await expect(page.getByRole("heading", { name: created.name })).toBeVisible();
+  await expect(page.getByLabel("Remote program and preview")).toContainText("Main");
+  await page.getByRole("button", { name: "Preview scene Two-person interview" }).click();
+  await expect(page.getByLabel("Remote program and preview")).toContainText("Two-person interview");
+  await page.getByRole("button", { name: /Take|fade|dip|wipe|slide/i }).click();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}`);
+    await expectOk(response);
+    const studio = await response.json();
+    return studio.config.scenes.find((scene: { id: string }) => scene.id === studio.config.programSceneId)?.name;
+  }).toBe("Two-person interview");
+  await page.getByRole("button", { name: "Mute Host camera" }).click();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}`);
+    const studio = await response.json();
+    const program = studio.config.scenes.find((scene: { id: string }) => scene.id === studio.config.programSceneId);
+    return program.sources.find((source: { name: string }) => source.name === "Host camera")?.muted;
+  }).toBe(true);
+  await page.getByRole("button", { name: "Direct Remote phone camera standby" }).click();
+  await expect(page.getByRole("status")).toContainText("directed to standby");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${created.id}/capture-nodes`);
+    await expectOk(response);
+    return (await response.json())[0]?.configuration?.requestedState;
+  }).toBe("standby");
+  await page.getByRole("button", { name: "Highlight" }).click();
+  await expect(page.getByRole("status")).toContainText("Highlight marker added");
+  await page.getByRole("button", { name: "Stop output" }).click();
+  await expect(page.getByRole("status")).toContainText("Output stopped safely");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/sessions/${session.id}`);
+    await expectOk(response);
+    return (await response.json()).state;
+  }, { timeout: 20_000, intervals: [250, 500] }).toBe("complete");
+  const stoppedResponse = await api(page, owner, "GET", `/api/broadcast/sessions/${session.id}`);
+  expect(await stoppedResponse.json()).toMatchObject({ state: "complete", markers: [expect.objectContaining({ label: "Remote highlight" })] });
+  await expect(page.getByRole("navigation")).toHaveCount(0);
 });
 
 test("Broadcast shares portable scene and source templates across a business", async ({ page }, testInfo) => {
@@ -417,7 +548,28 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
   const projectResponse = await api(page, owner, "GET", `/api/cut/projects/${projectId}`);
   await expectOk(projectResponse);
   const projectData = await projectResponse.json();
-  expect(projectData).toMatchObject({ sourceAssetId: program.id, edl: { version: 3, clips: expect.arrayContaining([expect.objectContaining({ id: "broadcast_program", track: "v1", volume: 1 }), expect.objectContaining({ assetId: camera.id, track: "v2", groupId: "broadcast_sources", volume: 0, transform: expect.objectContaining({ opacity: 0 }) })]) }, media: expect.arrayContaining([expect.objectContaining({ assetId: program.id }), expect.objectContaining({ assetId: camera.id, name: "Field camera" })]) });
+  expect(projectData).toMatchObject({ sourceAssetId: program.id, edl: { version: 3, clips: expect.arrayContaining([expect.objectContaining({ label: "Program recording", track: "v1", volume: 1, groupId: expect.stringContaining("broadcast_multicam") }), expect.objectContaining({ assetId: camera.id, track: "v2", groupId: "broadcast_sources", volume: 0, transform: expect.objectContaining({ opacity: 0 }) })]), multicamGroups: [expect.objectContaining({ label: "Broadcast multicam", angles: [expect.objectContaining({ label: "Program recording", assetId: null }), expect.objectContaining({ label: "Field camera", assetId: camera.id })], switches: [expect.objectContaining({ at: 0, angleId: "angle_01" })] })] }, media: expect.arrayContaining([expect.objectContaining({ assetId: program.id }), expect.objectContaining({ assetId: camera.id, name: "Field camera" })]) });
+  await expect(page.getByLabel("Multicam angle editor")).toBeVisible();
+  await page.getByLabel("Timeline monitor").locator("video").evaluate((video: HTMLVideoElement) => {
+    video.currentTime = 1;
+    video.dispatchEvent(new Event("timeupdate"));
+  });
+  await page.getByRole("button", { name: "Take multicam angle Field camera" }).click();
+  const switchedProject = await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${projectId}`);
+    await expectOk(response);
+    const value = await response.json();
+    return value.edl.multicamGroups[0].switches.length > 1 ? value : null;
+  }, { timeout: 15_000, intervals: [250, 500] }).not.toBeNull().then(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${projectId}`);
+    await expectOk(response);
+    return response.json();
+  });
+  expect(switchedProject.edl.multicamGroups[0].switches).toEqual(expect.arrayContaining([expect.objectContaining({ at: expect.closeTo(1, 1), angleId: "angle_02" })]));
+  expect(switchedProject.edl.clips).toEqual(expect.arrayContaining([
+    expect.objectContaining({ track: "v1", label: "Program recording", start: 0, end: expect.closeTo(1, 1) }),
+    expect.objectContaining({ track: "v1", assetId: camera.id, start: expect.closeTo(1, 1), end: 2 }),
+  ]));
   const repeated = await api(page, owner, "POST", `/api/broadcast/sessions/${session.id}/cut-studio`, {});
   await expectOk(repeated);
   expect(await repeated.json()).toMatchObject({ reused: true, project: { id: projectId } });
@@ -444,7 +596,7 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
       ],
     }],
   };
-  const transcriptResponse = await api(page, owner, "PUT", `/api/cut/projects/${projectId}/transcript`, transcript, { "If-Match": String(projectData.revision) });
+  const transcriptResponse = await api(page, owner, "PUT", `/api/cut/projects/${projectId}/transcript`, transcript, { "If-Match": String(switchedProject.revision) });
   await expectOk(transcriptResponse);
   const highlightResponse = await api(page, owner, "POST", `/api/cut/projects/${projectId}/highlights`, {});
   await expectOk(highlightResponse);
@@ -454,6 +606,16 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
   await expectOk(renderResponse);
   const renderJob = await renderResponse.json();
   await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${renderJob.id}`)).json()).state, { timeout: 75_000, intervals: [500, 1_000] }).toBe("done");
+  const renderMediaResponse = await api(page, owner, "GET", `/api/cut/jobs/${renderJob.id}/media`);
+  await expectOk(renderMediaResponse);
+  const renderMedia = await renderMediaResponse.json() as { url: string };
+  const renderedFileResponse = await page.request.get(renderMedia.url);
+  await expectOk(renderedFileResponse);
+  const renderedPath = testInfo.outputPath("broadcast-multicam-render.mp4");
+  writeFileSync(renderedPath, await renderedFileResponse.body());
+  const selectedAnglePixel = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", "1.5", "-i", renderedPath, "-vf", "scale=1:1", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  expect(selectedAnglePixel[2]).toBeGreaterThan(selectedAnglePixel[0] + 30);
+  expect(selectedAnglePixel[2]).toBeGreaterThan(selectedAnglePixel[1] + 30);
 
   await page.goto(`/cut-studio?project=${projectId}`);
   await expect(page.getByRole("heading", { name: /Connected production.*recording/ })).toBeVisible();
@@ -851,4 +1013,95 @@ test("Broadcast records and inventories a direct source-quality isolated track",
   expect(track).toMatchObject({ sourceType: "camera", mimeType: expect.stringContaining("video/webm"), sizeBytes: expect.any(Number) });
   expect(track.sizeBytes).toBeGreaterThan(0);
   expect((await api(page, owner === 1 ? 2 : 1, "GET", `/api/broadcast/sessions/${track.sessionId}`)).status()).toBe(404);
+});
+
+test("Broadcast securely pairs, directs, monitors, and revokes a field capture node", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const studioResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `IRL field studio ${Date.now()}` });
+  await expectOk(studioResponse);
+  const studio = await studioResponse.json();
+
+  expect((await api(page, peer, "POST", `/api/broadcast/studios/${studio.id}/capture-invitations`, { expiresInMinutes: 15 })).status()).toBe(404);
+  const invitationResponse = await api(page, owner, "POST", `/api/broadcast/studios/${studio.id}/capture-invitations`, { expiresInMinutes: 15 });
+  await expectOk(invitationResponse);
+  const invitation = await invitationResponse.json() as { token: string; claimUrl: string };
+  expect(invitation).toMatchObject({ token: expect.any(String), claimUrl: expect.stringContaining("/api/broadcast/capture/claim") });
+
+  const claimResponse = await page.request.post("/api/broadcast/capture/claim", { data: {
+    token: invitation.token,
+    name: "Android field camera",
+    kind: "android",
+    capabilities: {
+      transports: ["srt", "whip", "rtmps"], videoCodecs: ["h264", "h265"], maxWidth: 3840, maxHeight: 2160, maxFps: 60,
+      cameraCount: 3, audioInputCount: 2, hardwareEncoding: true, localRecording: true, backgroundCapture: true,
+      screenCapture: true, adaptiveBitrate: true, connectionBonding: true, talkback: true, remoteControl: true,
+    },
+  } });
+  await expectOk(claimResponse);
+  const claim = await claimResponse.json() as { node: { id: string }; deviceSecret: string };
+  expect(claim.deviceSecret).toHaveLength(43);
+  expect((await page.request.post("/api/broadcast/capture/claim", { data: { token: invitation.token, name: "Replay", kind: "android", capabilities: { transports: ["srt"], videoCodecs: ["h264"], maxWidth: 1920, maxHeight: 1080, maxFps: 30 } } })).status()).toBe(410);
+
+  const telemetry = {
+    sequence: 1,
+    capturedAt: new Date().toISOString(),
+    state: "live",
+    links: [
+      { id: "wifi", type: "wifi", active: true, uplinkKbps: 7_000, rttMs: 45, jitterMs: 7, packetLossPct: 0.2 },
+      { id: "5g", type: "cellular", active: true, uplinkKbps: 4_000, rttMs: 92, jitterMs: 15, packetLossPct: 0.8 },
+    ],
+    encoder: { videoBitrateKbps: 4_500, audioBitrateKbps: 128, fps: 30, droppedFrames: 2, encodedFrames: 2_000, queueMs: 18 },
+    device: { batteryPct: 71, charging: false, thermalState: "nominal", availableStorageMb: 18_000 },
+    recording: { active: true, pendingSegments: 0, durationMs: 66_000 },
+  };
+  const telemetryResponse = await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: telemetry });
+  await expectOk(telemetryResponse);
+  expect(await telemetryResponse.json()).toMatchObject({ acceptedSequence: 1, status: "live", directive: { reason: "stable", width: 1920, height: 1080, fps: 30, disconnectSlate: true } });
+  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: telemetry })).status()).toBe(409);
+  const invalidDeviceSecret = ["invalid", "capture", "credential"].join("-");
+  expect((await page.request.get(`/api/broadcast/capture/nodes/${claim.node.id}/configuration`, { headers: { authorization: `Bearer ${invalidDeviceSecret}` } })).status()).toBe(401);
+
+  const nodesResponse = await api(page, owner, "GET", `/api/broadcast/studios/${studio.id}/capture-nodes`);
+  await expectOk(nodesResponse);
+  const nodes = await nodesResponse.json();
+  expect(nodes).toEqual([expect.objectContaining({ id: claim.node.id, name: "Android field camera", kind: "android", status: "live", lastSequence: 1 })]);
+  expect(nodes[0]).not.toHaveProperty("deviceSecretHash");
+  expect((await api(page, peer, "GET", `/api/broadcast/studios/${studio.id}/capture-nodes`)).status()).toBe(404);
+
+  const configuredResponse = await api(page, owner, "PATCH", `/api/broadcast/studios/${studio.id}/capture-nodes/${claim.node.id}`, {
+    configuration: {
+      ...nodes[0].configuration,
+      requestedState: "standby",
+      cameraFacing: "front",
+      cameraLens: "wide",
+      torchEnabled: true,
+      microphoneMuted: true,
+      localRecordingEnabled: true,
+      recordingSegmentSeconds: 120,
+      locationSharing: "approximate",
+    },
+  });
+  await expectOk(configuredResponse);
+  expect(await configuredResponse.json()).toMatchObject({ configuration: { requestedState: "standby", cameraFacing: "front", cameraLens: "wide", torchEnabled: true, microphoneMuted: true, locationSharing: "approximate" } });
+  expect((await api(page, peer, "PATCH", `/api/broadcast/studios/${studio.id}/capture-nodes/${claim.node.id}`, { configuration: nodes[0].configuration })).status()).toBe(404);
+
+  const configurationResponse = await page.request.get(`/api/broadcast/capture/nodes/${claim.node.id}/configuration`, { headers: { authorization: `Bearer ${claim.deviceSecret}` } });
+  await expectOk(configurationResponse);
+  expect(await configurationResponse.json()).toMatchObject({ nodeId: claim.node.id, configuration: { requestedState: "standby", cameraFacing: "front", cameraLens: "wide", microphoneMuted: true, locationSharing: "approximate" } });
+
+  await page.goto(`/broadcast?studio=${studio.id}`);
+  await expect(page.getByText("Field capture", { exact: true })).toBeVisible();
+  await expect(page.getByText("Android field camera", { exact: true })).toBeVisible();
+  await expect(page.getByText(/11 Mbps uplink/)).toBeVisible();
+  await expect(page.getByText(/Director: 1920×1080/)).toBeVisible();
+  await expect(page.getByLabel("Android field camera director state")).toHaveValue("standby");
+  await page.getByLabel("Android field camera director state").selectOption("live");
+  await expect(page.getByText("Android field camera was directed to live.")).toBeVisible();
+  await expect(page.getByLabel("Android field camera director state")).toHaveValue("live");
+
+  const revokeResponse = await api(page, owner, "DELETE", `/api/broadcast/studios/${studio.id}/capture-nodes/${claim.node.id}`);
+  expect(revokeResponse.status()).toBe(204);
+  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: { ...telemetry, sequence: 2 } })).status()).toBe(401);
 });

@@ -1,12 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { Express, Request, Response } from "express";
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   broadcastDestinationInputSchema,
@@ -16,11 +17,21 @@ import {
   defaultBroadcastStudioConfig,
   validateBroadcastStudioConfig,
 } from "@shared/broadcast-studio";
-import { parseCubeLut, validateCutEdl } from "@shared/cut-studio";
+import {
+  captureCapabilitiesSchema,
+  captureNodeClaimSchema,
+  captureNodeConfigurationSchema,
+  captureTelemetrySchema,
+  recommendCaptureEncoding,
+} from "@shared/broadcast-field";
+import { createCutMulticamGroup, parseCubeLut, validateCutEdl } from "@shared/cut-studio";
 import {
   assets,
   broadcastAudienceMessages,
   broadcastBrandKits,
+  broadcastCaptureInvitations,
+  broadcastCaptureNodes,
+  broadcastCaptureTelemetry,
   broadcastDestinationReceipts,
   broadcastDestinations,
   broadcastSessionMarkers,
@@ -111,6 +122,42 @@ const broadcastLutInputSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(255),
 });
+const captureInvitationInputSchema = z.object({
+  expiresInMinutes: z.number().int().min(5).max(60).default(15),
+});
+const captureNodeUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  configuration: captureNodeConfigurationSchema.optional(),
+});
+
+function hashCaptureSecret(value: string) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function publicCaptureNode(row: typeof broadcastCaptureNodes.$inferSelect) {
+  const { deviceSecretHash: _deviceSecretHash, ...safe } = row;
+  return safe;
+}
+
+async function authenticatedCaptureNode(req: Request) {
+  const authorization = req.header("authorization") ?? "";
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9_-]{32,256})$/);
+  if (!match) return null;
+  const [node] = await db.select().from(broadcastCaptureNodes).where(and(
+    eq(broadcastCaptureNodes.deviceSecretHash, hashCaptureSecret(match[1])),
+    isNull(broadcastCaptureNodes.revokedAt),
+  )).limit(1);
+  return node ?? null;
+}
+
+function captureDeviceRoute(handler: (req: Request, res: Response) => Promise<unknown>) {
+  return (req: Request, res: Response) => {
+    void handler(req, res).catch((error) => {
+      console.error("Capture device request failed:", error instanceof Error ? error.message : error);
+      if (!res.headersSent) res.status(500).json({ message: "The capture control plane could not complete this request" });
+    });
+  };
+}
 
 function portableTemplatePayload(input: z.infer<typeof templateCatalogInputSchema>) {
   if (input.kind === "source") return { ...input.payload, assetId: null };
@@ -247,13 +294,57 @@ function destinationWithKey(row: typeof broadcastDestinations.$inferSelect) {
   else url.pathname = `${url.pathname.replace(/\/+$/, "")}/${key}`;
   return url.toString();
 }
-export function buildBroadcastTeeOutput(destinations: Array<{ protocol: string; url: string }>) {
+export function buildBroadcastTeeOutput(destinations: Array<{ protocol: string; url: string; videoStreamIndex?: number }>) {
   if (!destinations.length) throw new Error("At least one stream destination is required");
   return destinations.map((destination) => {
     const format = destination.protocol === "srt" ? "mpegts" : "flv";
     const escapedUrl = destination.url.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
-    return `[f=${format}:onfail=ignore]${escapedUrl}`;
+    const selection = destination.videoStreamIndex === undefined ? "" : `:select='v\\:${destination.videoStreamIndex},a\\:0'`;
+    return `[f=${format}:onfail=ignore${selection}]${escapedUrl}`;
   }).join("|");
+}
+
+type BroadcastOutputLayout = "program" | "landscape" | "portrait" | "square";
+type BroadcastFramingMode = "fit" | "fill";
+
+export function broadcastOutputDimensions(layout: BroadcastOutputLayout, program: { width: number; height: number }) {
+  if (layout === "program") return program;
+  if (layout === "landscape") return { width: 1920, height: 1080 };
+  if (layout === "portrait") return { width: 1080, height: 1920 };
+  return { width: 1080, height: 1080 };
+}
+
+export function buildBroadcastVariantPlan(
+  destinations: Array<{ outputLayout: string; framingMode: string }>,
+  program: { width: number; height: number },
+) {
+  const variants: Array<{ key: string; outputLayout: BroadcastOutputLayout; framingMode: BroadcastFramingMode; width: number; height: number }> = [];
+  const destinationVariantIndexes = destinations.map((destination) => {
+    const outputLayout = z.enum(["program", "landscape", "portrait", "square"]).parse(destination.outputLayout);
+    const framingMode = z.enum(["fit", "fill"]).parse(destination.framingMode);
+    const dimensions = broadcastOutputDimensions(outputLayout, program);
+    const key = `${dimensions.width}x${dimensions.height}:${framingMode}`;
+    let index = variants.findIndex((variant) => variant.key === key);
+    if (index < 0) {
+      index = variants.length;
+      variants.push({ key, outputLayout, framingMode, ...dimensions });
+    }
+    return index;
+  });
+  return { variants, destinationVariantIndexes };
+}
+
+export function buildBroadcastVariantFilters(variants: Array<{ framingMode: BroadcastFramingMode; width: number; height: number }>) {
+  if (!variants.length) throw new Error("At least one output variant is required");
+  const splitOutputs = variants.map((_, index) => `[variant_input_${index}]`).join("");
+  const filters = [`[0:v:0]split=${variants.length}${splitOutputs}`];
+  variants.forEach((variant, index) => {
+    const scale = variant.framingMode === "fill"
+      ? `scale=${variant.width}:${variant.height}:force_original_aspect_ratio=increase,crop=${variant.width}:${variant.height}`
+      : `scale=${variant.width}:${variant.height}:force_original_aspect_ratio=decrease,pad=${variant.width}:${variant.height}:(ow-iw)/2:(oh-ih)/2:black`;
+    filters.push(`[variant_input_${index}]${scale},setsar=1[variant_${index}]`);
+  });
+  return { filterComplex: filters.join(";"), videoMaps: variants.map((_, index) => `[variant_${index}]`) };
 }
 async function ownedStudio(userId: number, id: string) {
   const [row] = await db
@@ -482,9 +573,13 @@ function buildFfmpegArgs(
       "sine=frequency=440:sample_rate=48000",
     );
   else args.push("-fflags", "+genpts", "-f", "webm", "-i", "pipe:0");
+  const variantPlan = input.outputMode === "stream" ? buildBroadcastVariantPlan(destinations, { width, height }) : null;
+  if (variantPlan && (variantPlan.variants.length > 1 || variantPlan.variants[0]?.key !== `${width}x${height}:fit`)) {
+    const variantFilters = buildBroadcastVariantFilters(variantPlan.variants);
+    args.push("-filter_complex", variantFilters.filterComplex);
+    variantFilters.videoMaps.forEach((map) => args.push("-map", map));
+  } else args.push("-map", "0:v:0");
   args.push(
-    "-map",
-    "0:v:0",
     "-map",
     input.sourceMode === "test_pattern" ? "1:a:0" : "0:a:0?",
     "-c:v",
@@ -524,7 +619,7 @@ function buildFfmpegArgs(
       "1",
       "-fifo_options",
       "attempt_recovery=1:recovery_wait_time=2:restart_with_keyframe=1:drop_pkts_on_overflow=1:queue_size=120",
-      buildBroadcastTeeOutput(destinations.map((destination) => ({ protocol: destination.protocol, url: destinationWithKey(destination) }))),
+      buildBroadcastTeeOutput(destinations.map((destination, index) => ({ protocol: destination.protocol, url: destinationWithKey(destination), videoStreamIndex: variantPlan?.destinationVariantIndexes[index] ?? 0 }))),
     );
   }
   else if (outputPath)
@@ -620,6 +715,175 @@ async function launchRuntime(
 }
 
 export function registerBroadcastStudioRoutes(app: Express) {
+  app.post("/api/broadcast/capture/claim", captureDeviceRoute(async (req, res) => {
+    noStore(res);
+    const parsed = captureNodeClaimSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const tokenHash = hashCaptureSecret(parsed.data.token);
+    const deviceSecret = randomBytes(32).toString("base64url");
+    const now = new Date();
+    const configuration = captureNodeConfigurationSchema.parse({});
+    const node = await db.transaction(async (transaction) => {
+      const [invitation] = await transaction.select().from(broadcastCaptureInvitations).where(and(
+        eq(broadcastCaptureInvitations.tokenHash, tokenHash),
+        isNull(broadcastCaptureInvitations.consumedAt),
+        gt(broadcastCaptureInvitations.expiresAt, now),
+      )).limit(1);
+      if (!invitation) return null;
+      const consumed = await transaction.update(broadcastCaptureInvitations).set({ consumedAt: now }).where(and(
+        eq(broadcastCaptureInvitations.id, invitation.id),
+        isNull(broadcastCaptureInvitations.consumedAt),
+      )).returning({ id: broadcastCaptureInvitations.id });
+      if (!consumed.length) return null;
+      const [studio] = await transaction.select().from(broadcastStudios).where(eq(broadcastStudios.id, invitation.studioId)).limit(1);
+      if (!studio) return null;
+      const [created] = await transaction.insert(broadcastCaptureNodes).values({
+        studioId: studio.id,
+        ownerUserId: invitation.ownerUserId,
+        businessId: studio.businessId,
+        name: parsed.data.name,
+        kind: parsed.data.kind,
+        status: "ready",
+        capabilities: captureCapabilitiesSchema.parse(parsed.data.capabilities),
+        configuration,
+        deviceSecretHash: hashCaptureSecret(deviceSecret),
+      }).returning();
+      return created;
+    });
+    if (!node) return res.status(410).json({ message: "This pairing code is invalid, expired, or already used" });
+    await emitProjectionEvent({
+      aggregateType: "broadcast_studio",
+      aggregateId: node.studioId,
+      eventType: "broadcast.capture_node.paired",
+      actorUserId: node.ownerUserId,
+      payload: { businessId: node.businessId, nodeId: node.id, kind: node.kind },
+      idempotencyKey: `broadcast:${node.studioId}:capture-node:${node.id}:paired`,
+    });
+    res.status(201).json({
+      node: publicCaptureNode(node),
+      deviceSecret,
+      telemetryUrl: `/api/broadcast/capture/nodes/${node.id}/telemetry`,
+    });
+  }));
+
+  app.post("/api/broadcast/capture/nodes/:id/telemetry", captureDeviceRoute(async (req, res) => {
+    noStore(res);
+    const node = await authenticatedCaptureNode(req);
+    if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
+    const parsed = captureTelemetrySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    if (parsed.data.sequence <= node.lastSequence) return res.status(409).json({ message: "Telemetry sequence was already accepted" });
+    const configuration = captureNodeConfigurationSchema.parse(node.configuration);
+    const capabilities = captureCapabilitiesSchema.parse(node.capabilities);
+    const directive = recommendCaptureEncoding(parsed.data, configuration, capabilities, node.lastDirective ?? undefined);
+    const status = parsed.data.state === "pairing" ? "ready" : parsed.data.state;
+    const accepted = await db.transaction(async (transaction) => {
+      const [updated] = await transaction.update(broadcastCaptureNodes).set({
+        status,
+        lastTelemetry: parsed.data,
+        lastDirective: directive,
+        lastSequence: parsed.data.sequence,
+        lastSeenAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(broadcastCaptureNodes.id, node.id),
+        isNull(broadcastCaptureNodes.revokedAt),
+        lt(broadcastCaptureNodes.lastSequence, parsed.data.sequence),
+      )).returning();
+      if (!updated) return null;
+      await transaction.insert(broadcastCaptureTelemetry).values({
+        nodeId: node.id,
+        sequence: parsed.data.sequence,
+        state: parsed.data.state,
+        snapshot: parsed.data,
+        directive,
+      });
+      await transaction.execute(sql`delete from broadcast_capture_telemetry where id in (select id from broadcast_capture_telemetry where node_id = ${node.id} order by sequence desc offset 500)`);
+      return updated;
+    });
+    if (!accepted) return res.status(409).json({ message: "A newer telemetry sample was already accepted" });
+    res.status(202).json({
+      acceptedSequence: parsed.data.sequence,
+      status: accepted.status,
+      configuration: captureNodeConfigurationSchema.parse(accepted.configuration),
+      directive,
+    });
+  }));
+
+  app.get("/api/broadcast/capture/nodes/:id/configuration", captureDeviceRoute(async (req, res) => {
+    noStore(res);
+    const node = await authenticatedCaptureNode(req);
+    if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
+    res.json({
+      nodeId: node.id,
+      status: node.status,
+      configuration: captureNodeConfigurationSchema.parse(node.configuration),
+      lastAcceptedSequence: node.lastSequence,
+      directive: node.lastDirective,
+    });
+  }));
+
+  app.get("/api/broadcast/studios/:id/capture-nodes", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Studio not found" });
+    const nodes = await db.select().from(broadcastCaptureNodes).where(eq(broadcastCaptureNodes.studioId, access.studio.id)).orderBy(desc(broadcastCaptureNodes.updatedAt));
+    res.json(nodes.map(publicCaptureNode));
+  });
+
+  app.post("/api/broadcast/studios/:id/capture-invitations", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = captureInvitationInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
+    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + parsed.data.expiresInMinutes * 60_000);
+    await db.transaction(async (transaction) => {
+      await transaction.delete(broadcastCaptureInvitations).where(and(
+        eq(broadcastCaptureInvitations.studioId, studio.id),
+        lt(broadcastCaptureInvitations.expiresAt, new Date()),
+      ));
+      await transaction.insert(broadcastCaptureInvitations).values({
+        studioId: studio.id,
+        ownerUserId: req.dbUser!.id,
+        tokenHash: hashCaptureSecret(token),
+        expiresAt,
+      });
+    });
+    res.status(201).json({
+      token,
+      expiresAt,
+      claimUrl: `${req.protocol}://${req.get("host")}/api/broadcast/capture/claim`,
+    });
+  });
+
+  app.patch("/api/broadcast/studios/:id/capture-nodes/:nodeId", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = captureNodeUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
+    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const [updated] = await db.update(broadcastCaptureNodes).set({
+      ...(parsed.data.name ? { name: parsed.data.name } : {}),
+      ...(parsed.data.configuration ? { configuration: parsed.data.configuration } : {}),
+      updatedAt: new Date(),
+    }).where(and(eq(broadcastCaptureNodes.id, req.params.nodeId), eq(broadcastCaptureNodes.studioId, studio.id), isNull(broadcastCaptureNodes.revokedAt))).returning();
+    if (!updated) return res.status(404).json({ message: "Capture node not found" });
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: studio.id, eventType: "broadcast.capture_node.configured", actorUserId: req.dbUser!.id, payload: { businessId: studio.businessId, nodeId: updated.id }, idempotencyKey: `broadcast:${studio.id}:capture-node:${updated.id}:configuration:${updated.updatedAt.getTime()}` });
+    res.json(publicCaptureNode(updated));
+  });
+
+  app.delete("/api/broadcast/studios/:id/capture-nodes/:nodeId", attachUser, async (req, res) => {
+    noStore(res);
+    const studio = await ownedStudio(req.dbUser!.id, req.params.id);
+    if (!studio) return res.status(404).json({ message: "Studio not found" });
+    const [revoked] = await db.update(broadcastCaptureNodes).set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(broadcastCaptureNodes.id, req.params.nodeId), eq(broadcastCaptureNodes.studioId, studio.id), isNull(broadcastCaptureNodes.revokedAt))).returning();
+    if (!revoked) return res.status(404).json({ message: "Capture node not found" });
+    await emitProjectionEvent({ aggregateType: "broadcast_studio", aggregateId: studio.id, eventType: "broadcast.capture_node.revoked", actorUserId: req.dbUser!.id, payload: { businessId: studio.businessId, nodeId: revoked.id }, idempotencyKey: `broadcast:${studio.id}:capture-node:${revoked.id}:revoked` });
+    res.status(204).end();
+  });
+
   app.get("/api/broadcast/brand-kits", attachUser, async (req, res) => {
     noStore(res);
     const kits = await db
@@ -1104,6 +1368,8 @@ export function registerBroadcastStudioRoutes(app: Express) {
         protocol: parsed.data.protocol,
         ingestUrl: parsed.data.ingestUrl,
         streamKeyCiphertext: encryptSocialToken(parsed.data.streamKey),
+        outputLayout: parsed.data.outputLayout,
+        framingMode: parsed.data.framingMode,
       })
       .returning();
     res.status(201).json(publicDestination(row));
@@ -1133,6 +1399,8 @@ export function registerBroadcastStudioRoutes(app: Express) {
         protocol: parsed.data.protocol,
         ingestUrl: parsed.data.ingestUrl,
         streamKeyCiphertext: encryptSocialToken(parsed.data.streamKey),
+        outputLayout: parsed.data.outputLayout,
+        framingMode: parsed.data.framingMode,
         updatedAt: new Date(),
       })
       .where(eq(broadcastDestinations.id, current.id))
@@ -1656,12 +1924,14 @@ export function registerBroadcastStudioRoutes(app: Express) {
           transform: { x: 0, y: 0, width: 1, height: 1, opacity: mediaKind === "video" ? 0 : 1 },
         }];
       });
-      const edl = validateCutEdl({
+      let edl = validateCutEdl({
         version: 3,
         clips: [{ id: "broadcast_program", label: "Program recording", start: 0, end: duration, speed: 1, volume: 1, fadeIn: 0, fadeOut: 0, transition: "cut", track: "v1", timelineStart: 0, transform: { x: 0, y: 0, width: 1, height: 1, opacity: 1 } }, ...importedClips],
         markers: markers.map((marker) => ({ id: `broadcast_${marker.id}`, label: marker.label.slice(0, 80), position: Math.min(duration, marker.positionMs / 1_000), kind: marker.kind === "highlight" ? "beat" : "note", color: marker.kind === "issue" ? "#f59e0b" : marker.kind === "highlight" ? "#1d9bf0" : "#f43f5e" })),
         tracks: Array.from(new Set(["v1", ...importedClips.map((clip) => clip.track)])).map((track) => ({ track, locked: false, hidden: false, muted: false, solo: false, gain: 1 })),
       }, duration);
+      const cameraAngleIds = importedClips.filter((clip) => clip.track.startsWith("v")).map((clip) => clip.id);
+      if (cameraAngleIds.length) edl = createCutMulticamGroup(edl, ["broadcast_program", ...cameraAngleIds], "Broadcast multicam", `broadcast_multicam_${session.id.replaceAll("-", "").slice(0, 24)}`);
       const projectName = `${studio?.name ?? "Broadcast"} recording · ${session.createdAt.toISOString().slice(0, 10)}`;
       const [project] = await tx.insert(cutStudioProjects).values({ ownerUserId: req.dbUser!.id, businessId: session.businessId, sourceAssetId: recording.id, name: projectName, duration, mediaKind: "video", edl }).returning();
       const mediaRows = [{ projectId: project.id, assetId: recording.id, ownerUserId: req.dbUser!.id, name: recording.originalFilename ?? "Broadcast program recording", mediaKind: "video", duration }, ...tracks.flatMap((track) => {

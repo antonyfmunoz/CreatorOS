@@ -80,6 +80,25 @@ export const cutCompoundSchema = z.object({
   collapsed: z.boolean().default(true),
 });
 
+export const cutMulticamGroupSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  label: z.string().trim().min(1).max(80),
+  timelineStart: z.number().finite().min(0).max(43_200),
+  duration: z.number().finite().positive().max(43_200),
+  angles: z.array(z.object({
+    id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+    label: z.string().trim().min(1).max(80),
+    assetId: z.string().uuid().nullable(),
+    sourceStart: z.number().finite().min(0).max(43_200),
+    sourceEnd: z.number().finite().positive().max(43_200),
+  })).min(2).max(16),
+  switches: z.array(z.object({
+    id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+    at: z.number().finite().min(0).max(43_200),
+    angleId: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  })).min(1).max(500),
+});
+
 export const cutTrackSettingsSchema = z.object({
   track: z.string().regex(/^[va][1-8]$/),
   locked: z.boolean().default(false),
@@ -123,6 +142,7 @@ export const cutEdlSchema = z.object({
   graphics: z.array(cutGraphicSchema).max(50).optional(),
   markers: z.array(cutMarkerSchema).max(200).optional(),
   compounds: z.array(cutCompoundSchema).max(50).optional(),
+  multicamGroups: z.array(cutMulticamGroupSchema).max(20).optional(),
   tracks: z.array(cutTrackSettingsSchema).max(16).optional(),
   audioBuses: z.array(cutAudioBusSchema).max(3).optional(),
 });
@@ -164,6 +184,7 @@ export type CutEdl = z.infer<typeof cutEdlSchema>;
 export type CutGraphic = z.infer<typeof cutGraphicSchema>;
 export type CutMarker = z.infer<typeof cutMarkerSchema>;
 export type CutCompound = z.infer<typeof cutCompoundSchema>;
+export type CutMulticamGroup = z.infer<typeof cutMulticamGroupSchema>;
 export type CutTrackSettings = z.infer<typeof cutTrackSettingsSchema>;
 export type CutAudioBus = z.infer<typeof cutAudioBusSchema>;
 export type CutAudioRoutingTemplatePayload = z.infer<typeof cutAudioRoutingTemplatePayloadSchema>;
@@ -309,10 +330,99 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
     }
   }
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];
+  const multicamGroups = parsed.version === 3 ? (parsed.multicamGroups ?? []).map((group) => {
+    const angleIds = new Set(group.angles.map((angle) => angle.id));
+    if (angleIds.size !== group.angles.length) throw new Error("Multicam angle identifiers must be unique");
+    if (group.timelineStart + group.duration > duration + 0.001) throw new Error("A multicam group must remain inside the project");
+    for (const angle of group.angles) {
+      if (angle.sourceEnd <= angle.sourceStart || angle.sourceEnd - angle.sourceStart + 0.001 < group.duration) throw new Error("Every multicam angle must cover the group duration");
+    }
+    const switchTimes = new Set<number>();
+    for (const item of group.switches) {
+      if (!angleIds.has(item.angleId)) throw new Error("Every multicam switch must reference an angle");
+      if (item.at >= group.duration) throw new Error("A multicam switch must remain inside its group");
+      const rounded = Math.round(item.at * 1_000);
+      if (switchTimes.has(rounded)) throw new Error("Multicam switches must use unique times");
+      switchTimes.add(rounded);
+    }
+    if (!group.switches.some((item) => item.at === 0)) throw new Error("A multicam group must select its opening angle at zero");
+    return { ...group, switches: [...group.switches].sort((left, right) => left.at - right.at) };
+  }) : [];
   const usedTracks = new Set(clips.map((clip) => clip.track ?? "v1"));
   const tracks = parsed.version === 3 ? Array.from(new Map((parsed.tracks ?? []).filter((track) => usedTracks.has(track.track)).map((track) => [track.track, track])).values()) : [];
   const audioBuses = parsed.version === 3 ? Array.from(new Map((parsed.audioBuses ?? []).map((bus) => [bus.id, bus])).values()) : [];
-  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds, tracks, audioBuses };
+  return { version: parsed.version === 3 ? 3 : 2, clips, graphics: parsed.graphics ?? [], markers: parsed.markers ?? [], compounds, multicamGroups, tracks, audioBuses };
+}
+
+function materializeMulticamGroup(edl: CutEdl, group: CutMulticamGroup): CutEdl {
+  const groupEnd = group.timelineStart + group.duration;
+  const switches = [...group.switches].sort((left, right) => left.at - right.at);
+  const generated: CutClip[] = switches.map((item, index) => {
+    const angle = group.angles.find((candidate) => candidate.id === item.angleId)!;
+    const nextAt = switches[index + 1]?.at ?? group.duration;
+    return {
+      id: `${group.id}_${String(index).padStart(3, "0")}`.slice(0, 80),
+      assetId: angle.assetId ?? undefined,
+      label: angle.label,
+      start: angle.sourceStart + item.at,
+      end: angle.sourceStart + nextAt,
+      speed: 1,
+      volume: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      transition: "cut",
+      track: "v1",
+      timelineStart: group.timelineStart + item.at,
+      groupId: group.id,
+      transform: { x: 0, y: 0, width: 1, height: 1, opacity: 1 },
+    };
+  });
+  const retained = edl.clips.filter((clip) => {
+    if ((clip.track ?? "v1") !== "v1") return true;
+    if (clip.groupId === group.id) return false;
+    const clipStart = clip.timelineStart ?? 0;
+    const clipEnd = clipStart + (clip.end - clip.start) / (clip.speed ?? 1);
+    return clipEnd <= group.timelineStart + 0.001 || clipStart >= groupEnd - 0.001;
+  });
+  return { ...edl, clips: [...retained, ...generated].sort((left, right) => (left.timelineStart ?? 0) - (right.timelineStart ?? 0)) };
+}
+
+export function createCutMulticamGroup(
+  edl: CutEdl,
+  angleClipIds: string[],
+  label = "Multicam sequence",
+  groupId = `multicam_${Date.now()}`,
+): CutEdl {
+  if (edl.version !== 3) return edl;
+  const selected = angleClipIds.flatMap((id) => {
+    const clip = edl.clips.find((candidate) => candidate.id === id && (candidate.track ?? "v1").startsWith("v"));
+    return clip ? [clip] : [];
+  });
+  if (selected.length < 2) return edl;
+  const timelineStart = Math.max(...selected.map((clip) => clip.timelineStart ?? 0));
+  const duration = Math.min(...selected.map((clip) => (clip.end - clip.start) / (clip.speed ?? 1)));
+  if (!Number.isFinite(duration) || duration <= 0.05) return edl;
+  const angles = selected.map((clip, index) => ({
+    id: `angle_${String(index + 1).padStart(2, "0")}`,
+    label: clip.label ?? `Angle ${index + 1}`,
+    assetId: clip.assetId ?? null,
+    sourceStart: clip.start,
+    sourceEnd: clip.start + duration,
+  }));
+  const group = cutMulticamGroupSchema.parse({ id: groupId, label, timelineStart, duration, angles, switches: [{ id: `${groupId}_opening`.slice(0, 80), at: 0, angleId: angles[0].id }] });
+  const next = { ...edl, multicamGroups: [...(edl.multicamGroups ?? []).filter((item) => item.id !== group.id), group] };
+  return materializeMulticamGroup(next, group);
+}
+
+export function switchCutMulticamAngle(edl: CutEdl, groupId: string, timelineTime: number, angleId: string): CutEdl {
+  if (edl.version !== 3) return edl;
+  const group = edl.multicamGroups?.find((item) => item.id === groupId);
+  if (!group || !group.angles.some((angle) => angle.id === angleId)) return edl;
+  const at = Math.max(0, Math.min(group.duration - 0.001, timelineTime - group.timelineStart));
+  const roundedAt = Math.round(at * 1_000) / 1_000;
+  const switches = [...group.switches.filter((item) => Math.abs(item.at - roundedAt) > 0.0005), { id: `${group.id}_${Math.round(roundedAt * 1_000)}_${angleId}`.slice(0, 80), at: roundedAt, angleId }].sort((left, right) => left.at - right.at);
+  const updated = cutMulticamGroupSchema.parse({ ...group, switches });
+  return materializeMulticamGroup({ ...edl, multicamGroups: edl.multicamGroups!.map((item) => item.id === group.id ? updated : item) }, updated);
 }
 
 export function cutDuration(edl: CutEdl | null | undefined) {
@@ -339,7 +449,7 @@ export function removeCutRange(edl: CutEdl, start: number, end: number, duration
     }
   }
   const normalized = normalizeCutClips(clips, duration, edl.version);
-  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), tracks: edl.tracks } : edl;
+  return normalized.length ? { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), multicamGroups: edl.multicamGroups, tracks: edl.tracks, audioBuses: edl.audioBuses } : edl;
 }
 
 export function restoreCutRange(edl: CutEdl, start: number, end: number, duration?: number): CutEdl {
@@ -353,7 +463,7 @@ export function restoreCutRange(edl: CutEdl, start: number, end: number, duratio
     else merged.push({ ...range });
   }
   const normalized = normalizeCutClips([...merged, ...overlays], duration, edl.version);
-  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized), tracks: edl.tracks };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized), multicamGroups: edl.multicamGroups, tracks: edl.tracks, audioBuses: edl.audioBuses };
 }
 
 export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
@@ -368,7 +478,7 @@ export function splitCutAt(edl: CutEdl, seconds: number): CutEdl {
     else clips.push(clip);
   }
   const normalized = normalizeCutClips(clips.map((clip, index) => ({ ...clip, label: `clip${String(index).padStart(2, "0")}` })), undefined, edl.version);
-  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), tracks: edl.tracks };
+  return { version: edl.version === 3 ? 3 : 2, clips: normalized, graphics: edl.graphics, markers: edl.markers, compounds: reconcileCutCompounds(edl.compounds, normalized, replacements), multicamGroups: edl.multicamGroups, tracks: edl.tracks, audioBuses: edl.audioBuses };
 }
 
 export function cutTimelinePoints(edl: CutEdl, excludeClipIds: string[] = []) {

@@ -39,6 +39,44 @@ async function uploadPrivate(page: Page, owner: number, filePath: string, name: 
   return (await response.json()).asset as { id: string };
 }
 
+test("CutStudio creates a private lightweight proxy while preserving original edit lineage", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const directory = testInfo.outputPath("proxy-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/proxy-original.mp4`;
+  const proxyPath = `${directory}/proxy-output.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24:duration=1", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  const source = await uploadPrivate(page, owner, sourcePath, "proxy-original.mp4", "video/mp4", "video");
+  const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Proxy workflow ${Date.now()}`, duration: 1, mediaKind: "video" });
+  await expectOk(createdResponse);
+  const project = await createdResponse.json();
+  const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  const loaded = await loadedResponse.json();
+  const primary = loaded.media.find((media: { assetId: string }) => media.assetId === source.id);
+  expect((await api(page, peer, "POST", `/api/cut/projects/${project.id}/media-library/${primary.id}/proxy`, {})).status()).toBe(404);
+
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: `Create editing proxy for ${primary.name}` }).click();
+  await expect(page.getByText(/using a lightweight editing proxy/)).toBeVisible({ timeout: 60_000 });
+  const completedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  const completed = await completedResponse.json();
+  const proxy = completed.jobs.find((job: { kind: string; state: string; output?: { mediaId?: string } }) => job.kind === "proxy" && job.state === "done" && job.output?.mediaId === primary.id);
+  expect(proxy).toMatchObject({ artifactAssetId: expect.any(String), output: { originalAssetId: source.id, maxWidth: 1280, codec: "h264", container: "mp4" } });
+  expect(completed.edl.clips[0]).not.toHaveProperty("assetId");
+  expect(completed.sourceAssetId).toBe(source.id);
+  const mediaResponse = await api(page, owner, "GET", `/api/cut/jobs/${proxy.id}/media`);
+  await expectOk(mediaResponse);
+  const fileResponse = await page.request.get((await mediaResponse.json()).url);
+  await expectOk(fileResponse);
+  writeFileSync(proxyPath, await fileResponse.body());
+  const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name", "-of", "json", proxyPath], { encoding: "utf8" }));
+  expect(probe.streams[0]).toMatchObject({ width: 1280, height: 720, codec_name: "h264" });
+  await expect(page.getByRole("button", { name: `Use editing proxy for ${primary.name}` })).toBeVisible();
+});
+
 test("CutStudio validates and renders a private cube LUT", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);
