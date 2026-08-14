@@ -101,7 +101,7 @@ import {
 } from "drizzle-orm";
 import { normalizeCartProductIds } from "../shared/cart";
 import { normalizeProductCommercialTerms } from "../shared/product-catalog";
-import { setupAuth, attachUser } from "./auth";
+import { setupAuth, attachUser, redirectAnonymousHome } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
 import { kickAutomationProcessing } from "./automation-engine";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
@@ -653,6 +653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Set up authentication routes and middleware
   setupAuth(app);
+  app.get("/", redirectAnonymousHome);
   registerAutomationRoutes(app);
   registerRelationshipHubRoutes(app);
   registerAccountPrivacyRoutes(app);

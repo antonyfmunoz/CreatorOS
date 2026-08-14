@@ -22,6 +22,7 @@ import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 import { routeChrome } from "./lib/route-chrome";
 import { captureClientException, capturePageView } from "./lib/posthog";
+import AuthPage from "@/pages/auth-page";
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
@@ -32,7 +33,6 @@ const Marketplace = lazy(() => import("@/pages/marketplace"));
 const AI = lazy(() => import("@/pages/ai"));
 const Communities = lazy(() => import("@/pages/communities"));
 const Profile = lazy(() => import("@/pages/profile"));
-const AuthPage = lazy(() => import("@/pages/auth-page"));
 const SavedPostsPage = lazy(() => import("@/pages/saved-posts"));
 const FollowersPage = lazy(() => import("@/pages/followers"));
 const FollowingPage = lazy(() => import("@/pages/following"));

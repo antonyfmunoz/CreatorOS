@@ -168,6 +168,41 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+export function anonymousHomeRedirectPath(input: {
+  localIdentity: boolean;
+  userId: string | null;
+  hasClerkHandshake: boolean;
+}): string | null {
+  if (input.localIdentity || input.userId || input.hasClerkHandshake) return null;
+  return "/auth/login";
+}
+
+/**
+ * Send signed-out home requests directly to the login route before the SPA is
+ * downloaded. This removes an avoidable protected-route render and redirect,
+ * while Clerk handshake requests and signed-in sessions still reach the app.
+ */
+export function redirectAnonymousHome(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  let userId: string | null = null;
+  try {
+    ({ userId } = getAuth(req));
+  } catch {
+    userId = null;
+  }
+  const redirectPath = anonymousHomeRedirectPath({
+    localIdentity: usesLocalQualificationIdentity(),
+    userId,
+    hasClerkHandshake:
+      "__clerk_handshake" in req.query || "__clerk_synced" in req.query,
+  });
+  if (redirectPath) return res.redirect(302, redirectPath);
+  return next();
+}
+
 /**
  * Middleware that resolves the authenticated Clerk user to a DB user and
  * attaches it as `req.dbUser`. Use after (or in place of) requireAuth on any
