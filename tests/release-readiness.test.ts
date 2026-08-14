@@ -123,6 +123,7 @@ describe("CreativesOS release readiness", () => {
       },
       broadcastStudio: {
         sceneComposer: "configured",
+        privateLutWorkflow: "configured",
         sceneTemplates: "configured",
         reusableScenePresets: "configured",
         reusableSourcePresets: "configured",
@@ -198,6 +199,7 @@ describe("CreativesOS release readiness", () => {
     });
     expect(result.broadcastStudio).toEqual({
       sceneComposer: "configured",
+      privateLutWorkflow: "configured",
       sceneTemplates: "configured",
       reusableScenePresets: "configured",
       reusableSourcePresets: "configured",

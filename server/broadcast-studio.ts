@@ -16,7 +16,7 @@ import {
   defaultBroadcastStudioConfig,
   validateBroadcastStudioConfig,
 } from "@shared/broadcast-studio";
-import { validateCutEdl } from "@shared/cut-studio";
+import { parseCubeLut, validateCutEdl } from "@shared/cut-studio";
 import {
   assets,
   broadcastAudienceMessages,
@@ -41,6 +41,7 @@ import {
   materializePrivateAsset,
   persistPrivateFile,
   promotePrivateAsset,
+  removeStoredAsset,
 } from "./asset-storage";
 import { businessRoleCanAdminister, businessRoleCanManage, ensureDefaultBusiness, userBusinessRole } from "./businesses";
 import { db } from "./db";
@@ -105,6 +106,11 @@ const mediaLibraryInputSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(255).optional(),
 });
+const broadcastLutInputSchema = z.object({
+  businessId: z.string().uuid(),
+  assetId: z.string().uuid(),
+  name: z.string().trim().min(1).max(255),
+});
 
 function portableTemplatePayload(input: z.infer<typeof templateCatalogInputSchema>) {
   if (input.kind === "source") return { ...input.payload, assetId: null };
@@ -146,8 +152,8 @@ const runtimes = new Map<string, Runtime>();
 function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
 }
-async function privateBroadcastMediaDescriptor(asset: typeof assets.$inferSelect) {
-  if (asset.storageProvider === "local" && process.env.NODE_ENV !== "production") return { url: `/api/broadcast/media/${asset.id}/stream`, expiresAt: null };
+async function privateBroadcastMediaDescriptor(asset: typeof assets.$inferSelect, localUrl = `/api/broadcast/media/${asset.id}/stream`) {
+  if (asset.storageProvider === "local" && process.env.NODE_ENV !== "production") return { url: localUrl, expiresAt: null };
   return createPrivateAssetReadUrl(asset.storageKey);
 }
 async function streamPrivateBroadcastMedia(res: Response, asset: typeof assets.$inferSelect) {
@@ -834,6 +840,60 @@ export function registerBroadcastStudioRoutes(app: Express) {
     res.status(204).end();
   });
 
+  app.get("/api/broadcast/luts", attachUser, async (req, res) => {
+    noStore(res);
+    const businessId = z.string().uuid().safeParse(req.query.businessId);
+    if (!businessId.success || !(await userBusinessRole(req.dbUser!.id, businessId.data))) return res.status(404).json({ message: "LUT library not found" });
+    const rows = await db.select().from(assets).where(and(eq(assets.businessId, businessId.data), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready"), sql`${assets.metadata} ->> 'broadcastLut' = 'true'`)).orderBy(desc(assets.createdAt)).limit(100);
+    res.json(rows.map((asset) => ({ id: asset.id, name: asset.originalFilename, sizeBytes: asset.sizeBytes, metadata: asset.metadata, access: { canRemove: asset.ownerUserId === req.dbUser!.id } })));
+  });
+
+  app.post("/api/broadcast/luts", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = broadcastLutInputSchema.safeParse(req.body);
+    if (!parsed.success || !businessRoleCanManage(await userBusinessRole(req.dbUser!.id, parsed.data.businessId))) return res.status(404).json({ message: "LUT library not found" });
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, parsed.data.assetId), eq(assets.ownerUserId, req.dbUser!.id), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!asset || (asset.businessId && asset.businessId !== parsed.data.businessId)) return res.status(400).json({ message: "The private LUT asset is not ready" });
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-broadcast-lut-"));
+    const lutPath = path.join(temp, "candidate.cube");
+    try {
+      await materializePrivateAsset(asset.storageKey, lutPath);
+      const descriptor = parseCubeLut(await fs.readFile(lutPath, "utf8"));
+      const priorMetadata = asset.metadata && typeof asset.metadata === "object" ? asset.metadata as Record<string, unknown> : {};
+      const [registered] = await db.update(assets).set({ businessId: parsed.data.businessId, originalFilename: parsed.data.name.endsWith(".cube") ? parsed.data.name : `${parsed.data.name}.cube`, metadata: { ...priorMetadata, cubeLut: descriptor, broadcastLut: true, validatedAt: new Date().toISOString() } }).where(and(eq(assets.id, asset.id), eq(assets.ownerUserId, req.dbUser!.id))).returning();
+      await emitProjectionEvent({ aggregateType: "broadcast_lut", aggregateId: registered.id, eventType: "broadcast.lut.registered", actorUserId: req.dbUser!.id, payload: { businessId: parsed.data.businessId, size: descriptor.size, entryCount: descriptor.entryCount }, idempotencyKey: `broadcast:lut:${registered.id}:registered` });
+      res.status(201).json({ id: registered.id, name: registered.originalFilename, sizeBytes: registered.sizeBytes, metadata: registered.metadata, access: { canRemove: true } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The LUT file is invalid";
+      await removeStoredAsset(asset.storageKey, "private").catch(() => undefined);
+      await db.update(assets).set({ status: "rejected", metadata: { rejectionReason: message } }).where(eq(assets.id, asset.id));
+      res.status(400).json({ message });
+    } finally { await fs.rm(temp, { recursive: true, force: true }); }
+  });
+
+  app.get("/api/broadcast/luts/:id/access", attachUser, async (req, res) => {
+    noStore(res);
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.id), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!asset?.businessId || !(await userBusinessRole(req.dbUser!.id, asset.businessId))) return res.status(404).json({ message: "LUT not found" });
+    res.json(await privateBroadcastMediaDescriptor(asset, `/api/broadcast/luts/${asset.id}/stream`));
+  });
+
+  app.get("/api/broadcast/luts/:id/stream", attachUser, async (req, res) => {
+    noStore(res);
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.id), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!asset?.businessId || !(await userBusinessRole(req.dbUser!.id, asset.businessId))) return res.status(404).json({ message: "LUT not found" });
+    await streamPrivateBroadcastMedia(res, asset);
+  });
+
+  app.delete("/api/broadcast/luts/:id", attachUser, async (req, res) => {
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.id), eq(assets.kind, "cut-lut"), sql`${assets.metadata} ->> 'broadcastLut' = 'true'`)).limit(1);
+    if (!asset?.businessId || asset.ownerUserId !== req.dbUser!.id) return res.status(404).json({ message: "LUT not found" });
+    const studios = await db.select({ config: broadcastStudios.config }).from(broadcastStudios).where(eq(broadcastStudios.businessId, asset.businessId));
+    if (studios.some((studio) => validateBroadcastStudioConfig(studio.config).scenes.some((scene) => scene.sources.some((source) => source.lutAssetId === asset.id)))) return res.status(409).json({ message: "Remove this LUT from every studio source before removing it from the library" });
+    await db.update(assets).set({ metadata: { ...(asset.metadata as Record<string, unknown>), broadcastLut: false, broadcastLutRemovedAt: new Date().toISOString() } }).where(eq(assets.id, asset.id));
+    res.status(204).end();
+  });
+
   app.get("/api/broadcast/studios", attachUser, async (req, res) => {
     noStore(res);
     const [owned, collaborations] = await Promise.all([db
@@ -905,6 +965,11 @@ export function registerBroadcastStudioRoutes(app: Express) {
       return res.status(400).json({
         message: error instanceof Error ? error.message : "Invalid studio",
       });
+    }
+    const lutIds = Array.from(new Set(config.scenes.flatMap((scene) => scene.sources.flatMap((source) => source.lutAssetId ? [source.lutAssetId] : []))));
+    if (lutIds.length) {
+      const availableLuts = await db.select({ id: assets.id }).from(assets).where(and(inArray(assets.id, lutIds), eq(assets.businessId, studio.businessId), eq(assets.kind, "cut-lut"), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+      if (availableLuts.length !== lutIds.length) return res.status(400).json({ message: "Every source LUT must be a private LUT from this production business" });
     }
     const name =
       typeof req.body?.name === "string"

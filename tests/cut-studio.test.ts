@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutAudioRoutingTemplatePayloadSchema, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutAudioRoutingTemplatePayloadSchema, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseCubeLutData, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -71,6 +71,7 @@ describe("CutStudio edit decision list", () => {
   it("validates bounded three-dimensional cube LUTs", () => {
     const cube = `TITLE "Green transform"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n${Array.from({ length: 8 }, () => "0 1 0").join("\n")}`;
     expect(parseCubeLut(cube)).toEqual({ title: "Green transform", size: 2, entryCount: 8 });
+    expect(parseCubeLutData(cube)).toMatchObject({ domainMin: [0, 0, 0], domainMax: [1, 1, 1], entries: Array.from({ length: 8 }, () => [0, 1, 0]) });
     expect(() => parseCubeLut("LUT_3D_SIZE 2\n0 0 0")).toThrow(/expected 8/i);
     expect(() => parseCubeLut("LUT_3D_SIZE 2\n<script>")).toThrow(/unsupported/i);
   });

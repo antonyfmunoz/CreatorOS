@@ -189,6 +189,7 @@ export function getReleaseReadiness(
     },
     broadcastStudio: {
       sceneComposer: "configured",
+      privateLutWorkflow: "configured",
       sceneTemplates: "configured",
       reusableScenePresets: "configured",
       reusableSourcePresets: "configured",

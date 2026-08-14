@@ -172,10 +172,12 @@ export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;
 export type CutRippleMode = "off" | "track" | "linked";
 
-export function parseCubeLut(value: string) {
+export function parseCubeLutData(value: string) {
   const lines = value.split(/\r?\n/).map((line) => line.replace(/#.*$/, "").trim()).filter(Boolean);
   let title: string | null = null;
   let size: number | null = null;
+  let domainMin: [number, number, number] = [0, 0, 0];
+  let domainMax: [number, number, number] = [1, 1, 1];
   const entries: number[][] = [];
   for (const line of lines) {
     if (/^TITLE\s+/i.test(line)) {
@@ -191,6 +193,8 @@ export function parseCubeLut(value: string) {
     if (/^DOMAIN_(?:MIN|MAX)\s+/i.test(line)) {
       const values = line.split(/\s+/).slice(1).map(Number);
       if (values.length !== 3 || values.some((item) => !Number.isFinite(item))) throw new Error("LUT domain values are invalid");
+      if (/^DOMAIN_MIN/i.test(line)) domainMin = values as [number, number, number];
+      else domainMax = values as [number, number, number];
       continue;
     }
     const values = line.split(/\s+/).map(Number);
@@ -199,7 +203,13 @@ export function parseCubeLut(value: string) {
   }
   if (!size) throw new Error("LUT_3D_SIZE is required");
   if (entries.length !== size ** 3) throw new Error(`Expected ${size ** 3} LUT color entries but received ${entries.length}`);
-  return { title, size, entryCount: entries.length };
+  if (domainMin.some((value, index) => value >= domainMax[index])) throw new Error("LUT domain minimum must be lower than its maximum");
+  return { title, size, entryCount: entries.length, domainMin, domainMax, entries };
+}
+
+export function parseCubeLut(value: string) {
+  const { title, size, entryCount } = parseCubeLutData(value);
+  return { title, size, entryCount };
 }
 
 export function parseEbur128Summary(value: string) {

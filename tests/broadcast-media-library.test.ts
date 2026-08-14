@@ -20,6 +20,7 @@ describe("Broadcast business media library", () => {
     expect(client).toContain('"POST", "/api/broadcast/media"');
     expect(client).toContain("addBusinessMediaToScene");
     expect(server).toContain("broadcastLibrary: false");
-    expect(server).not.toContain('removeStoredAsset(asset.storageKey, "private")');
+    const removeMediaRoute = server.slice(server.indexOf('app.delete("/api/broadcast/media/:id"'), server.indexOf('app.get("/api/broadcast/luts"'));
+    expect(removeMediaRoute).not.toContain("removeStoredAsset");
   });
 });

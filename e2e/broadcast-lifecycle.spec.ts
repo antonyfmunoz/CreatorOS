@@ -58,6 +58,31 @@ async function uploadPrivateBroadcastImage(page: Page, owner: number, name: stri
   return (await response.json()).asset as { id: string };
 }
 
+async function uploadPrivateBroadcastLut(page: Page, owner: number, name: string, contents: string) {
+  const response = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-lut", visibility: "private", "cut-lut": { name, mimeType: "text/plain", buffer: Buffer.from(contents) } } });
+  await expectOk(response);
+  return (await response.json()).asset as { id: string };
+}
+
+test("Broadcast validates a private LUT and renders its color transform into program output", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const owner = ownerFor(testInfo); const peer = owner === 1 ? 2 : 1;
+  const redPng = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=16x16", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "pipe:1"]);
+  const photoResponse = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "photo", visibility: "private", photo: { name: "red-source.png", mimeType: "image/png", buffer: redPng } } });
+  await expectOk(photoResponse); const photo = (await photoResponse.json()).asset as { id: string };
+  const lut = await uploadPrivateBroadcastLut(page, owner, "live-green.cube", `TITLE "Live green"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n${Array.from({ length: 8 }, () => "0 1 0").join("\n")}\n`);
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `LUT studio ${Date.now()}` }); await expectOk(createdResponse); const studio = await createdResponse.json();
+  await expectOk(await api(page, owner, "POST", "/api/broadcast/media", { businessId: studio.businessId, assetId: photo.id, name: "red-source.png" }));
+  const registeredResponse = await api(page, owner, "POST", "/api/broadcast/luts", { businessId: studio.businessId, assetId: lut.id, name: "live-green.cube" }); await expectOk(registeredResponse);
+  expect((await api(page, peer, "POST", "/api/broadcast/luts", { businessId: studio.businessId, assetId: lut.id, name: "stolen.cube" })).status()).toBe(404);
+  const original = studio.config.scenes[0].sources[0];
+  const config = { ...studio.config, scenes: studio.config.scenes.map((scene: Record<string, unknown>, index: number) => index ? scene : { ...scene, sources: [{ ...original, name: "Graded red source", type: "image", assetId: photo.id, lutAssetId: lut.id, text: null, color: null, transform: { ...original.transform, x: 0, y: 0, width: 1, height: 1 } }] }) };
+  await expectOk(await api(page, owner, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config }, { "If-Match": String(studio.revision) }));
+  expect((await api(page, owner, "DELETE", `/api/broadcast/luts/${lut.id}`)).status()).toBe(409);
+  await page.goto("/broadcast"); await expect(page.getByRole("heading", { name: studio.name })).toBeVisible(); await expect(page.getByLabel("Broadcast source LUT")).toHaveValue(lut.id);
+  await expect.poll(async () => page.getByLabel("Program canvas").evaluate((node) => { const canvas = node as HTMLCanvasElement; const pixel = canvas.getContext("2d")!.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data; return pixel[0] < 80 && pixel[1] > 150 && pixel[2] < 80; }), { timeout: 20_000 }).toBe(true);
+});
+
 test("Broadcast Studio completes an owner-scoped encoder and private recording lifecycle", async ({
   page,
 }, testInfo) => {

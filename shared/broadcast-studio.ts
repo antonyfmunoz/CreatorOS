@@ -29,6 +29,7 @@ export const broadcastSourceSchema = z.object({
     "color",
   ]),
   assetId: z.string().uuid().nullable().default(null),
+  lutAssetId: z.string().uuid().nullable().default(null),
   text: z.string().max(500).nullable().default(null),
   color: z
     .string()
@@ -183,6 +184,7 @@ export function defaultBroadcastStudioConfig(): BroadcastStudioConfig {
             name: "Welcome title",
             type: "text",
             assetId: null,
+            lutAssetId: null,
             text: "CreativesOS Live",
             color: "#ffffff",
             transform: {
@@ -296,6 +298,7 @@ function templateSource(id: string, name: string, type: BroadcastSource["type"],
     name,
     type,
     assetId: null,
+    lutAssetId: null,
     text: null,
     color: null,
     transform,

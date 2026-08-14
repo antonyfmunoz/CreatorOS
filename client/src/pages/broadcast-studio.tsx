@@ -37,6 +37,8 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { apiRequest } from "@/lib/queryClient";
+import { createBroadcastLutRenderer } from "@/lib/broadcast-lut";
+import { parseCubeLutData } from "@shared/cut-studio";
 import type {
   BroadcastScene,
   BroadcastSceneTemplate,
@@ -123,6 +125,7 @@ type AudienceMessage = { id: string; kind: "comment" | "cta"; authorName: string
 type AudiencePayload = { access: { productionTeam: boolean; canModerate: boolean }; messages: AudienceMessage[] };
 type TeamTemplate = { id: string; kind: "scene" | "source"; name: string; payload: BroadcastScene | BroadcastSource; access: { canDelete: boolean }; updatedAt: string };
 type StudioVersion = { id: string; revision: number; name: string; reason: "save" | "restore"; createdAt: string; actor: { id: number; username: string; displayName: string } | null; access: { canRestore: boolean } };
+type BroadcastLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } }; access: { canRemove: boolean } };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -165,6 +168,7 @@ type ActiveTransition = {
 
 const sourceDefaults = {
   assetId: null,
+  lutAssetId: null,
   text: null,
   color: null,
   zOrder: 0,
@@ -274,6 +278,9 @@ export default function BroadcastStudioPage() {
     to: HTMLCanvasElement;
   } | null>(null);
   const chromaCanvases = useRef(new Map<string, HTMLCanvasElement>());
+  const lutData = useRef(new Map<string, ReturnType<typeof parseCubeLutData>>());
+  const lutRenderers = useRef(new Map<string, NonNullable<ReturnType<typeof createBroadcastLutRenderer>>>());
+  const loadingLuts = useRef(new Set<string>());
 
   const studiosQuery = useQuery<Studio[]>({
     queryKey: ["/api/broadcast/studios"],
@@ -298,6 +305,11 @@ export default function BroadcastStudioPage() {
     queryFn: async () => (await apiRequest("GET", `/api/broadcast/media?businessId=${studio!.businessId}`)).json(),
     enabled: Boolean(studio?.businessId),
   });
+  const broadcastLutsQuery = useQuery<BroadcastLut[]>({
+    queryKey: ["/api/broadcast/luts", studio?.businessId],
+    queryFn: async () => (await apiRequest("GET", `/api/broadcast/luts?businessId=${studio!.businessId}`)).json(),
+    enabled: Boolean(studio?.businessId),
+  });
   const audienceQuery = useQuery<AudiencePayload>({
     queryKey: ["/api/broadcast/sessions", session?.id, "audience"],
     queryFn: async () => (await apiRequest("GET", `/api/broadcast/sessions/${session!.id}/audience`)).json(),
@@ -311,6 +323,7 @@ export default function BroadcastStudioPage() {
   );
   const brandKits = brandKitsQuery.data ?? [];
   const teamTemplates = teamTemplatesQuery.data ?? [];
+  const broadcastLuts = broadcastLutsQuery.data ?? [];
 
   const saveBrandKit = useCallback(async () => {
     if (!config || !brandKitName.trim()) return;
@@ -673,6 +686,26 @@ export default function BroadcastStudioPage() {
       ),
     [updatePreviewScene],
   );
+  const uploadBroadcastLut = useCallback(async (file: File) => {
+    if (!studio || !selectedSource || !/\.cube$/i.test(file.name) || file.size <= 0 || file.size > 8 * 1024 * 1024) return setMessage("Choose a .cube 3D LUT up to 8 MB.");
+    setBusy("broadcast-lut"); let assetId: string | null = null;
+    try {
+      try {
+        const intent = await (await apiRequest("POST", "/api/assets/upload-intents", { kind: "cut-lut", filename: file.name, mimeType: "text/plain", sizeBytes: file.size, visibility: "private" })).json() as { asset: { id: string }; upload: { uploadUrl: string } };
+        assetId = intent.asset.id; const uploaded = await fetch(intent.upload.uploadUrl, { method: "PUT", headers: { "Content-Type": "text/plain" }, body: file });
+        if (!uploaded.ok) throw new Error("Direct upload failed"); await apiRequest("POST", `/api/assets/${assetId}/complete`, {});
+      } catch (directError) {
+        if (assetId) await apiRequest("DELETE", `/api/assets/${assetId}`, {}).catch(() => undefined);
+        const form = new FormData(); form.append("kind", "cut-lut"); form.append("visibility", "private"); form.append("cut-lut", file, file.name);
+        const response = await fetch("/api/assets/upload-proxy", { method: "POST", credentials: "include", body: form });
+        if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { message?: string }).message ?? (directError instanceof Error ? directError.message : "LUT upload failed"));
+        assetId = ((await response.json()) as { asset: { id: string } }).asset.id;
+      }
+      const registered = await (await apiRequest("POST", "/api/broadcast/luts", { businessId: studio.businessId, assetId, name: file.name })).json() as BroadcastLut;
+      await broadcastLutsQuery.refetch(); updateSource(selectedSource.id, { lutAssetId: registered.id }); setMessage(`${registered.name} is applied to ${selectedSource.name} and will be rendered into program output.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "The LUT could not be imported"); }
+    finally { setBusy(""); }
+  }, [broadcastLutsQuery, selectedSource, studio, updateSource]);
   const updateProgramSource = useCallback(
     (sourceId: string, patch: Partial<BroadcastSource>, save = true) => {
       if (!config || !programScene || studioRef.current?.access?.canEdit === false) return;
@@ -835,6 +868,19 @@ export default function BroadcastStudioPage() {
             const sy = sh * t.cropTop;
             const sourceW = sw * (1 - t.cropLeft - t.cropRight);
             const sourceH = sh * (1 - t.cropTop - t.cropBottom);
+            let renderedMedia: CanvasImageSource = media;
+            let renderedX = sx; let renderedY = sy; let renderedWidth = sourceW; let renderedHeight = sourceH;
+            const cube = source.lutAssetId ? lutData.current.get(source.lutAssetId) : null;
+            if (cube) {
+              const renderer = lutRenderers.current.get(source.id) ?? createBroadcastLutRenderer();
+              if (renderer) {
+                lutRenderers.current.set(source.id, renderer);
+                try {
+                  renderedMedia = renderer.render(media, cube, w, h, { left: t.cropLeft, right: t.cropRight, top: t.cropTop, bottom: t.cropBottom });
+                  renderedX = 0; renderedY = 0; renderedWidth = w; renderedHeight = h;
+                } catch { /* Browser cannot accelerate this source; preserve the ungraded feed. */ }
+              }
+            }
             if (source.chromaKey.enabled) {
               const scratch = chromaCanvases.current.get(source.id) ?? document.createElement("canvas");
               chromaCanvases.current.set(source.id, scratch);
@@ -844,7 +890,7 @@ export default function BroadcastStudioPage() {
               const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
               if (scratchContext) {
                 scratchContext.clearRect(0, 0, scratch.width, scratch.height);
-                scratchContext.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, scratch.width, scratch.height);
+                scratchContext.drawImage(renderedMedia, renderedX, renderedY, renderedWidth, renderedHeight, 0, 0, scratch.width, scratch.height);
                 try {
                   const pixels = scratchContext.getImageData(0, 0, scratch.width, scratch.height);
                   const key = source.chromaKey.color;
@@ -860,10 +906,10 @@ export default function BroadcastStudioPage() {
                   scratchContext.putImageData(pixels, 0, 0);
                   ctx.drawImage(scratch, 0, 0, w, h);
                 } catch {
-                  ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
+                  ctx.drawImage(renderedMedia, renderedX, renderedY, renderedWidth, renderedHeight, 0, 0, w, h);
                 }
               }
-            } else ctx.drawImage(media, sx, sy, sourceW, sourceH, 0, 0, w, h);
+            } else ctx.drawImage(renderedMedia, renderedX, renderedY, renderedWidth, renderedHeight, 0, 0, w, h);
           } else {
             ctx.fillStyle = "#18181b";
             ctx.fillRect(0, 0, w, h);
@@ -1179,6 +1225,21 @@ export default function BroadcastStudioPage() {
       })();
     }
   }, [assets, previewScene?.sources]);
+  useEffect(() => {
+    for (const lut of broadcastLuts) {
+      if (lutData.current.has(lut.id) || loadingLuts.current.has(lut.id)) continue;
+      loadingLuts.current.add(lut.id);
+      void (async () => {
+        try {
+          const access = await (await apiRequest("GET", `/api/broadcast/luts/${lut.id}/access`)).json() as { url: string };
+          const response = await fetch(access.url, { credentials: access.url.startsWith("/") ? "include" : "omit" });
+          if (!response.ok) throw new Error("LUT download failed");
+          lutData.current.set(lut.id, parseCubeLutData(await response.text()));
+        } catch { setMessage(`${lut.name} could not be loaded`); }
+        finally { loadingLuts.current.delete(lut.id); }
+      })();
+    }
+  }, [broadcastLuts]);
   const addSource = (type: BroadcastSource["type"], graphicStyle: "plain" | "lower_third" | "ticker" | "countdown" = "plain") => {
     if (!previewScene) return;
     const id = safeId("source");
@@ -2146,6 +2207,7 @@ export default function BroadcastStudioPage() {
           <div className="grid gap-3 lg:grid-cols-2">
             <CanvasPanel label="PREVIEW">
               <canvas
+                aria-label="Preview canvas"
                 ref={previewCanvas}
                 className="max-h-[56vh] w-full bg-black object-contain"
                 style={{ aspectRatio: `${config.canvas.width}/${config.canvas.height}` }}
@@ -2157,6 +2219,7 @@ export default function BroadcastStudioPage() {
             </CanvasPanel>
             <CanvasPanel label="PROGRAM" live={Boolean(activeSession)}>
               <canvas
+                aria-label="Program canvas"
                 ref={programCanvas}
                 className="max-h-[56vh] w-full bg-black object-contain"
                 style={{ aspectRatio: `${config.canvas.width}/${config.canvas.height}` }}
@@ -2797,6 +2860,11 @@ export default function BroadcastStudioPage() {
                   }
                   onCommit={() => config && void persist(config)}
                 />
+                {["camera", "screen", "media", "image"].includes(selectedSource.type) && <div className="col-span-full rounded-xl border border-zinc-800 bg-black p-3">
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold">Creative LUT</p><p className="mt-1 text-[10px] leading-4 text-zinc-500">A private calibrated 3D color look, rendered into preview, recording, and stream output.</p></div><label className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900"><input aria-label="Import Broadcast .cube LUT" className="sr-only" type="file" accept=".cube,text/plain" disabled={busy === "broadcast-lut"} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBroadcastLut(file); }}/>{busy === "broadcast-lut" ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Palette className="mr-1 h-3 w-3"/>}Import LUT</label></div>
+                  <select aria-label="Broadcast source LUT" className="mt-3 h-9 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-xs text-white" value={selectedSource.lutAssetId ?? ""} onChange={(event) => updateSource(selectedSource.id, { lutAssetId: event.target.value || null })}><option value="">No LUT</option>{broadcastLuts.map((lut) => <option key={lut.id} value={lut.id}>{lut.name}{lut.metadata?.cubeLut?.size ? ` · ${lut.metadata.cubeLut.size}³` : ""}</option>)}</select>
+                  {selectedSource.lutAssetId && <p className="mt-2 text-[10px] text-emerald-300">LUT active · GPU color pipeline</p>}
+                </div>}
                 <Control
                   label="Brightness"
                   value={selectedSource.filters.brightness}
