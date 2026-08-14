@@ -9711,8 +9711,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Edit a message
   app.patch("/api/messages/:id", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
-      const { content, isEdited } = req.body;
+      const messageId = Number(req.params.id);
+      const content = typeof req.body.content === "string" ? req.body.content.trim() : "";
+      if (!Number.isInteger(messageId) || messageId <= 0 || !content || content.length > 10_000) {
+        return res.status(400).json({ message: "A valid message and content are required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)
@@ -9740,7 +9743,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete a message
   app.delete("/api/messages/:id", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
+      const messageId = Number(req.params.id);
+      if (!Number.isInteger(messageId) || messageId <= 0) {
+        return res.status(400).json({ message: "A valid message is required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)
@@ -9763,8 +9769,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Add/update reaction to a message
   app.post("/api/messages/:id/reaction", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
-      const { reaction } = req.body;
+      const messageId = Number(req.params.id);
+      const reaction = typeof req.body.reaction === "string" ? req.body.reaction.trim() : "";
+      if (!Number.isInteger(messageId) || messageId <= 0 || !reaction || reaction.length > 64) {
+        return res.status(400).json({ message: "A valid message and reaction are required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)

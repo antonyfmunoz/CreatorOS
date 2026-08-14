@@ -17,6 +17,7 @@ import {
   conversations, type Conversation, type InsertConversation,
   conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
   directMessages, type DirectMessage, type InsertDirectMessage,
+  conversationReadStates,
   stories, type Story, type InsertStory,
   savedPosts, type SavedPost, type InsertSavedPost,
   postLikes,
@@ -47,6 +48,11 @@ type ProductInput = InsertProduct & {
   billingInterval?: "month" | "year" | null;
 };
 type ProductUpdate = Pick<ProductInput, "title" | "description" | "price" | "category" | "imageUrl" | "payoutMode" | "status" | "productType" | "billingModel" | "billingInterval"> & { businessId?: string | null; communityId?: number | null };
+type ConversationSummary = Conversation & {
+  participants: (ConversationParticipant & { user: User })[];
+  lastMessage: (DirectMessage & { sender: User }) | null;
+  unreadCount: number;
+};
 
 // Storage interface for the application
 export interface IStorage {
@@ -168,7 +174,7 @@ export interface IStorage {
   deleteAllNotifications(userId: number): Promise<void>;
   
   // Conversation operations
-  getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]>;
+  getConversationsByUserId(userId: number): Promise<ConversationSummary[]>;
   getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined>;
   getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]>;
   createConversation(userIds: number[], name?: string, isGroup?: boolean): Promise<Conversation>;
@@ -214,6 +220,7 @@ export class MemStorage implements IStorage {
   private conversations: Map<number, Conversation>;
   private conversationParticipants: Map<number, ConversationParticipant>;
   private directMessages: Map<number, DirectMessage>;
+  private conversationReadCursors: Map<string, number>;
   private stories: Map<number, Story>;
   private followers: Map<number, Follower>;
   
@@ -256,6 +263,7 @@ export class MemStorage implements IStorage {
     this.conversations = new Map();
     this.conversationParticipants = new Map();
     this.directMessages = new Map();
+    this.conversationReadCursors = new Map();
     this.stories = new Map();
     this.followers = new Map();
     
@@ -1540,7 +1548,7 @@ export class MemStorage implements IStorage {
   }
 
   // Conversation operations
-  async getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]> {
+  async getConversationsByUserId(userId: number): Promise<ConversationSummary[]> {
     // Get all conversation participants for the user
     const userParticipations = Array.from(this.conversationParticipants.values())
       .filter(participant => participant.userId === userId);
@@ -1557,7 +1565,17 @@ export class MemStorage implements IStorage {
           return { ...p, user };
         });
       
-      return { ...conversation, participants };
+      const messages = Array.from(this.directMessages.values())
+        .filter((message) => message.conversationId === conversation.id)
+        .sort((left, right) => left.id - right.id);
+      const last = messages.at(-1);
+      const cursor = this.conversationReadCursors.get(`${conversation.id}:${userId}`) ?? 0;
+      return {
+        ...conversation,
+        participants,
+        lastMessage: last ? { ...last, sender: this.users.get(last.senderId)! } : null,
+        unreadCount: messages.filter((message) => message.senderId !== userId && message.id > cursor).length,
+      };
     }).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
@@ -1623,6 +1641,13 @@ export class MemStorage implements IStorage {
     };
     
     this.conversationParticipants.set(id, participant);
+    const lastMessageId = Math.max(
+      0,
+      ...Array.from(this.directMessages.values())
+        .filter((message) => message.conversationId === conversationId)
+        .map((message) => message.id),
+    );
+    this.conversationReadCursors.set(`${conversationId}:${userId}`, lastMessageId);
     
     // Update the conversation's update timestamp
     conversation.updatedAt = now;
@@ -1638,6 +1663,7 @@ export class MemStorage implements IStorage {
     if (!participant) throw new Error('Participant not found');
     
     this.conversationParticipants.delete(participant.id);
+    this.conversationReadCursors.delete(`${conversationId}:${userId}`);
     
     // Update the conversation's update timestamp
     const conversation = this.conversations.get(conversationId)!;
@@ -1658,6 +1684,7 @@ export class MemStorage implements IStorage {
       
     for (const participant of participantsToDelete) {
       this.conversationParticipants.delete(participant.id);
+      this.conversationReadCursors.delete(`${conversationId}:${participant.userId}`);
     }
     
     // Delete all messages in this conversation
@@ -1759,15 +1786,13 @@ export class MemStorage implements IStorage {
   }
   
   async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
-    // Get all messages in the conversation
-    const messages = Array.from(this.directMessages.values())
-      .filter(msg => msg.conversationId === conversationId && msg.senderId !== userId && !msg.read);
-      
-    // Mark each message as read
-    for (const message of messages) {
-      message.read = true;
-      this.directMessages.set(message.id, message);
-    }
+    const lastMessageId = Math.max(
+      0,
+      ...Array.from(this.directMessages.values())
+        .filter((message) => message.conversationId === conversationId)
+        .map((message) => message.id),
+    );
+    this.conversationReadCursors.set(`${conversationId}:${userId}`, lastMessageId);
   }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {
@@ -1775,15 +1800,14 @@ export class MemStorage implements IStorage {
     const userParticipations = Array.from(this.conversationParticipants.values())
       .filter(participant => participant.userId === userId);
     
-    const conversationIds = userParticipations.map(p => p.conversationId);
-    
-    // Count unread messages in those conversations where the user is not the sender
-    return Array.from(this.directMessages.values())
-      .filter(message => 
-        conversationIds.includes(message.conversationId) && 
-        message.senderId !== userId && 
-        !message.read
+    return userParticipations.reduce((total, participation) => {
+      const cursor = this.conversationReadCursors.get(`${participation.conversationId}:${userId}`) ?? 0;
+      return total + Array.from(this.directMessages.values()).filter((message) =>
+        message.conversationId === participation.conversationId
+        && message.senderId !== userId
+        && message.id > cursor
       ).length;
+    }, 0);
   }
   
   // Story operations
@@ -2994,7 +3018,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Conversation operations
-  async getConversationsByUserId(userId: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] })[]> {
+  async getConversationsByUserId(userId: number): Promise<ConversationSummary[]> {
     // Find conversations where the user is a participant
     const userParticipations = await db
       .select({
@@ -3015,7 +3039,7 @@ export class DatabaseStorage implements IStorage {
     const conversationIds = userParticipations.map(row => row.conversation.id);
 
     // For each conversation, get all participants with their user info
-    const result = [];
+    const result: ConversationSummary[] = [];
     for (const conversationId of conversationIds) {
       const conversation = userParticipations.find(row => row.conversation.id === conversationId)?.conversation;
       
@@ -3035,9 +3059,38 @@ export class DatabaseStorage implements IStorage {
           user: row.user,
         }));
 
+        const [readState] = await db
+          .select({ lastReadMessageId: conversationReadStates.lastReadMessageId })
+          .from(conversationReadStates)
+          .where(and(
+            eq(conversationReadStates.conversationId, conversationId),
+            eq(conversationReadStates.userId, userId),
+          ))
+          .limit(1);
+        const cursor = readState?.lastReadMessageId ?? 0;
+        const [lastMessageRow] = await db
+          .select({ message: directMessages, sender: users })
+          .from(directMessages)
+          .innerJoin(users, eq(directMessages.senderId, users.id))
+          .where(eq(directMessages.conversationId, conversationId))
+          .orderBy(desc(directMessages.id))
+          .limit(1);
+        const [unread] = await db
+          .select({ count: count() })
+          .from(directMessages)
+          .where(and(
+            eq(directMessages.conversationId, conversationId),
+            ne(directMessages.senderId, userId),
+            gt(directMessages.id, cursor),
+          ));
+
         result.push({
           ...conversation,
           participants,
+          lastMessage: lastMessageRow
+            ? { ...lastMessageRow.message, sender: lastMessageRow.sender }
+            : null,
+          unreadCount: unread?.count ?? 0,
         });
       }
     }
@@ -3130,6 +3183,23 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
+    const [latest] = await db
+      .select({ id: sql<number>`coalesce(max(${directMessages.id}), 0)` })
+      .from(directMessages)
+      .where(eq(directMessages.conversationId, conversationId));
+    await db.insert(conversationReadStates).values({
+      conversationId,
+      userId,
+      lastReadMessageId: Number(latest?.id ?? 0),
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [conversationReadStates.conversationId, conversationReadStates.userId],
+      set: {
+        lastReadMessageId: Number(latest?.id ?? 0),
+        updatedAt: new Date(),
+      },
+    });
+
     return participant;
   }
 
@@ -3151,6 +3221,10 @@ export class DatabaseStorage implements IStorage {
           eq(conversationParticipants.userId, userId)
         )
       );
+    await db.delete(conversationReadStates).where(and(
+      eq(conversationReadStates.conversationId, conversationId),
+      eq(conversationReadStates.userId, userId),
+    ));
   }
   
   async deleteConversation(conversationId: number): Promise<void> {
@@ -3282,19 +3356,23 @@ export class DatabaseStorage implements IStorage {
   }
   
   async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
-    // Mark all messages as read where the user is not the sender
-    await db
-      .update(directMessages)
-      .set({
-        read: true,
-      })
-      .where(
-        and(
-          eq(directMessages.conversationId, conversationId),
-          not(eq(directMessages.senderId, userId)),
-          eq(directMessages.read, false)
-        )
-      );
+    const [latest] = await db
+      .select({ id: sql<number>`coalesce(max(${directMessages.id}), 0)` })
+      .from(directMessages)
+      .where(eq(directMessages.conversationId, conversationId));
+    const now = new Date();
+    await db.insert(conversationReadStates).values({
+      conversationId,
+      userId,
+      lastReadMessageId: Number(latest?.id ?? 0),
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [conversationReadStates.conversationId, conversationReadStates.userId],
+      set: {
+        lastReadMessageId: Number(latest?.id ?? 0),
+        updatedAt: now,
+      },
+    });
   }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {
@@ -3310,21 +3388,27 @@ export class DatabaseStorage implements IStorage {
       return 0;
     }
 
-    const conversationIds = userParticipations.map(row => row.conversationId);
-    
-    // Count unread messages in those conversations where the user is not the sender
-    const result = await db
-      .select({ count: count() })
-      .from(directMessages)
-      .where(
-        and(
-          inArray(directMessages.conversationId, conversationIds),
-          not(eq(directMessages.senderId, userId)),
-          eq(directMessages.read, false)
-        )
-      );
-
-    return result[0].count;
+    let total = 0;
+    for (const participation of userParticipations) {
+      const [state] = await db
+        .select({ lastReadMessageId: conversationReadStates.lastReadMessageId })
+        .from(conversationReadStates)
+        .where(and(
+          eq(conversationReadStates.conversationId, participation.conversationId),
+          eq(conversationReadStates.userId, userId),
+        ))
+        .limit(1);
+      const [unread] = await db
+        .select({ count: count() })
+        .from(directMessages)
+        .where(and(
+          eq(directMessages.conversationId, participation.conversationId),
+          ne(directMessages.senderId, userId),
+          gt(directMessages.id, state?.lastReadMessageId ?? 0),
+        ));
+      total += unread?.count ?? 0;
+    }
+    return total;
   }
   
   // Story operations

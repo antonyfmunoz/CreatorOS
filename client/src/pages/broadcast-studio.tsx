@@ -3241,7 +3241,11 @@ export default function BroadcastStudioPage() {
             </div>
             <div className="mt-3 space-y-2">
               {studio.sessions
-                ?.filter((item) => item.recordingAssetId)
+                ?.filter(
+                  (item) =>
+                    Boolean(item.recordingAssetId) ||
+                    (item.tracks?.length ?? 0) > 0,
+                )
                 .slice(0, 5)
                 .map((item) => (
                   <div
@@ -3250,9 +3254,17 @@ export default function BroadcastStudioPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span>{new Date(item.createdAt).toLocaleString()}</span>
-                      <span className="text-emerald-400">ready</span>
+                      <span
+                        className={
+                          item.recordingAssetId
+                            ? "text-emerald-400"
+                            : "text-amber-400"
+                        }
+                      >
+                        {item.recordingAssetId ? "ready" : "program processing"}
+                      </span>
                     </div>
-                    <div className="mt-2 flex gap-2">
+                    {item.recordingAssetId && <div className="mt-2 flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -3295,7 +3307,7 @@ export default function BroadcastStudioPage() {
                       >
                         Edit in CutStudio
                       </Button>}
-                    </div>
+                    </div>}
                     {(item.tracks?.length ?? 0) > 0 && <div className="mt-2 space-y-1 border-t border-zinc-900 pt-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Isolated source recordings</p>
                       {item.tracks!.map((track) => <div key={track.id} className="flex items-center gap-2 rounded-md bg-zinc-950 px-2 py-1.5">

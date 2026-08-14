@@ -20,10 +20,15 @@ function integerMetadata(metadata: Record<string, unknown>, key: string) {
 export const nativeRelationshipCapabilities = {
   "message.receive": true,
   "message.send": true,
-  "message.edit": true,
-  "message.delete": true,
-  "message.react": true,
-  "message.mark_read": true,
+  // Native chat supports these operations through its participant-authorized
+  // conversation routes. They are deliberately not advertised by the
+  // provider-neutral delivery adapter until RelationshipOutboundAction carries
+  // their required native message/conversation identifiers and idempotency
+  // receipts.
+  "message.edit": false,
+  "message.delete": false,
+  "message.react": false,
+  "message.mark_read": false,
   "media.audio": true,
   "media.voice_note": true,
   "receipt.delivered": true,

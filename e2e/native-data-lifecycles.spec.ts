@@ -105,23 +105,68 @@ test("direct and group messaging enforce participants and survive reload", async
   const duplicate = await api(page, owner, "POST", "/api/conversations", { userIds: [owner, peer], isGroup: false });
   await expectOk(duplicate);
   expect((await duplicate.json()).id).toBe(direct.id);
+  // The qualification seed may already contain history for this direct pair.
+  // Establish a deterministic cursor for both actors before measuring the new
+  // message rather than assuming the conversation starts empty.
+  await expectOk(await api(page, owner, "PATCH", `/api/conversations/${direct.id}/read`));
+  await expectOk(await api(page, peer, "PATCH", `/api/conversations/${direct.id}/read`));
   const messageResponse = await api(page, owner, "POST", "/api/messages", { conversationId: direct.id, content: `Message ${marker}` });
   await expectOk(messageResponse);
   const message = await messageResponse.json();
+
+  const peerBeforeRead = await api(page, peer, "GET", `/api/users/${peer}/conversations`);
+  await expectOk(peerBeforeRead);
+  expect((await peerBeforeRead.json()).find((item: { id: number }) => item.id === direct.id)).toMatchObject({
+    unreadCount: 1,
+    lastMessage: { id: message.id, content: `Message ${marker}`, senderId: owner },
+  });
+  expect((await api(page, third, "PATCH", `/api/conversations/${direct.id}/read`)).status()).toBe(403);
+  await expectOk(await api(page, peer, "PATCH", `/api/conversations/${direct.id}/read`));
+  const peerAfterRead = await api(page, peer, "GET", `/api/users/${peer}/conversations`);
+  await expectOk(peerAfterRead);
+  expect((await peerAfterRead.json()).find((item: { id: number }) => item.id === direct.id).unreadCount).toBe(0);
+
+  expect((await api(page, peer, "PATCH", `/api/messages/${message.id}`, { content: "Unauthorized edit" })).status()).toBe(403);
+  const edited = await api(page, owner, "PATCH", `/api/messages/${message.id}`, { content: `Edited ${marker}` });
+  await expectOk(edited);
+  expect((await edited.json()).content).toBe(`Edited ${marker}`);
   await expectOk(await api(page, peer, "POST", "/api/messages", { conversationId: direct.id, content: `Reply ${marker}`, replyToMessageId: message.id }));
   await expectOk(await api(page, peer, "POST", `/api/messages/${message.id}/reaction`, { reaction: "heart" }));
+  expect((await api(page, third, "POST", `/api/messages/${message.id}/reaction`, { reaction: "heart" })).status()).toBe(403);
   expect((await api(page, third, "GET", `/api/conversations/${direct.id}/messages`)).status()).toBe(403);
+  const ownerBeforeRead = await api(page, owner, "GET", `/api/users/${owner}/conversations`);
+  await expectOk(ownerBeforeRead);
+  expect((await ownerBeforeRead.json()).find((item: { id: number }) => item.id === direct.id).unreadCount).toBe(1);
+  await expectOk(await api(page, owner, "PATCH", `/api/conversations/${direct.id}/read`));
   const messages = await api(page, owner, "GET", `/api/conversations/${direct.id}/messages`);
   await expectOk(messages);
-  expect((await messages.json()).map((item: { content: string }) => item.content)).toEqual(expect.arrayContaining([`Message ${marker}`, `Reply ${marker}`]));
+  expect((await messages.json()).map((item: { content: string }) => item.content)).toEqual(expect.arrayContaining([`Edited ${marker}`, `Reply ${marker}`]));
 
   const groupResponse = await api(page, owner, "POST", "/api/conversations", { userIds: [owner, peer, third], name: `Field team ${marker}`, isGroup: true });
   await expectOk(groupResponse);
   const group = await groupResponse.json();
   await expectOk(await api(page, third, "POST", "/api/messages", { conversationId: group.id, content: `Group message ${marker}` }));
+  const ownerGroupBeforeRead = await api(page, owner, "GET", `/api/users/${owner}/conversations`);
+  const peerGroupBeforeRead = await api(page, peer, "GET", `/api/users/${peer}/conversations`);
+  await expectOk(ownerGroupBeforeRead);
+  await expectOk(peerGroupBeforeRead);
+  expect((await ownerGroupBeforeRead.json()).find((item: { id: number }) => item.id === group.id).unreadCount).toBe(1);
+  expect((await peerGroupBeforeRead.json()).find((item: { id: number }) => item.id === group.id).unreadCount).toBe(1);
+  await expectOk(await api(page, owner, "PATCH", `/api/conversations/${group.id}/read`));
+  const ownerGroupAfterRead = await api(page, owner, "GET", `/api/users/${owner}/conversations`);
+  const peerGroupStillUnread = await api(page, peer, "GET", `/api/users/${peer}/conversations`);
+  await expectOk(ownerGroupAfterRead);
+  await expectOk(peerGroupStillUnread);
+  expect((await ownerGroupAfterRead.json()).find((item: { id: number }) => item.id === group.id).unreadCount).toBe(0);
+  expect((await peerGroupStillUnread.json()).find((item: { id: number }) => item.id === group.id).unreadCount).toBe(1);
   const conversationList = await api(page, owner, "GET", `/api/users/${owner}/conversations`);
   await expectOk(conversationList);
   expect((await conversationList.json()).some((item: { id: number; name?: string }) => item.id === group.id && item.name?.includes(marker))).toBeTruthy();
+
+  await expectOk(await api(page, owner, "DELETE", `/api/messages/${message.id}`));
+  const afterDelete = await api(page, owner, "GET", `/api/conversations/${direct.id}/messages`);
+  await expectOk(afterDelete);
+  expect((await afterDelete.json()).some((item: { id: number }) => item.id === message.id)).toBe(false);
 });
 
 test("notification read state and account isolation persist", async ({ page }, testInfo) => {

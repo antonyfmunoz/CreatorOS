@@ -3890,6 +3890,34 @@ export const directMessages = pgTable("direct_messages", {
   reactions: json("reactions").default({}).notNull(), // Stores user reactions: { userId: reactionType }
 });
 
+// Read position is participant-scoped. The legacy direct_messages.read flag
+// cannot represent group-chat state because one participant reading a message
+// must not clear it for everyone else.
+export const conversationReadStates = pgTable(
+  "conversation_read_states",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: integer("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    lastReadMessageId: integer("last_read_message_id").default(0).notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    participantUnique: unique("conversation_read_states_participant_unique").on(
+      table.conversationId,
+      table.userId,
+    ),
+    userUpdatedIdx: index("conversation_read_states_user_updated_idx").on(
+      table.userId,
+      table.updatedAt,
+    ),
+  }),
+);
+
 export const insertDirectMessageSchema = createInsertSchema(
   directMessages,
 ).pick({
@@ -4766,6 +4794,7 @@ export type InsertConversationParticipant = z.infer<
 
 export type DirectMessage = typeof directMessages.$inferSelect;
 export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;
+export type ConversationReadState = typeof conversationReadStates.$inferSelect;
 
 export type Story = typeof stories.$inferSelect;
 export type InsertStory = z.infer<typeof insertStorySchema>;

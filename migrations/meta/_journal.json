@@ -554,6 +554,13 @@
       "when": 1786629600000,
       "tag": "0078_broadcast_studio_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786633200000,
+      "tag": "0079_conversation_read_states",
+      "breakpoints": true
     }
   ]
 }
