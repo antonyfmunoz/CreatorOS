@@ -68,4 +68,5 @@ test("Broadcast Field securely pairs a browser camera and obeys director control
 
   expect((await ownerApi(page, owner, "DELETE", `/api/broadcast/studios/${studio.id}/capture-nodes/${node.id}`)).status()).toBe(204);
   await expect(page.getByText(/director revoked this device/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Pairing code")).toHaveValue("");
 });

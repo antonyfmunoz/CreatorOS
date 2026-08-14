@@ -76,6 +76,7 @@ export default function BroadcastFieldPage() {
     stream?.getTracks().forEach((track) => track.stop());
     clearFieldSession();
     setSession(null);
+    setToken("");
     setStream(null);
     setHeartbeat("idle");
     setMessage(reason);
@@ -91,6 +92,7 @@ export default function BroadcastFieldPage() {
       const next = { nodeId: data.node.id, deviceSecret: data.deviceSecret, telemetryUrl: data.telemetryUrl, sequence: 0 };
       sequenceRef.current = 0;
       saveFieldSession(next);
+      setToken("");
       setSession(next);
       window.history.replaceState({}, "", "/broadcast/field");
       setMessage(`${data.node.name} is securely paired. Start the preview to arm this camera.`);
