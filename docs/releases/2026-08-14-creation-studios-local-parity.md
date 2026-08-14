@@ -58,6 +58,7 @@ the common live-widget jobs are native sources.
 
 Commit `374a8f6` deployed as Fly release v307, followed by field-camera commit
 `d0132b3` as Fly release v308 and credential-cleanup commit `5ab1d58` as v309.
+Measured-transport commit `f5ccd53` then deployed as Fly release v310.
 The release command and the post-deployment
 verifier both confirmed all 83 migrations, `/api/health`
 returned `ok`, `/api/ready` returned `release_ready`, and the active machine
@@ -92,7 +93,7 @@ gates, relationship release, backup/restore, a clean 581-file source-secret
 scan, zero production dependency vulnerabilities and a 200-request capacity
 probe with zero failures.
 
-Fly releases v308 and v309 passed production health/readiness and machine checks.
+Fly releases v308 through v310 passed production health/readiness and machine checks.
 A signed-in two-tab field test claimed a one-time camera link, removed its token
 from the URL, exposed the paired device to the operator with LiveKit reported
 ready, and delivered director state, camera-facing and microphone commands to

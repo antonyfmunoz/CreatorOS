@@ -80,7 +80,7 @@ field evidence.
 | Connected creation loop | Completed Broadcast programs, isolated sources and markers open directly as lineage-preserving CutStudio projects without export/re-upload | `verified_complete` (native) | One generated source now passes the mobile and desktop golden journey: private Broadcast program and isolated track, idempotent CutStudio handoff, transcript correction, deterministic highlights, kinetic-caption render, public distribution promotion, native publication, post-scoped comment automation, second-user keyword comment, public reply, DM and post analytics. External destinations remain provider gates. |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
-| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v309 production readiness pass across all 83 migrations; production migrations use a transaction-scoped advisory lock safe for the database transaction pooler |
+| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v310 production readiness pass across all 83 migrations; production migrations use a transaction-scoped advisory lock safe for the database transaction pooler |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
@@ -109,7 +109,7 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] Empty PostgreSQL migration qualification and the v309 production release ledger both pass across all 83 migrations.
+- [x] Empty PostgreSQL migration qualification and the v310 production release ledger both pass across all 83 migrations.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
 - [x] The 126-execution isolated PostgreSQL browser matrix (63 journeys on mobile and desktop) covers every provider-independent capability and material local role transition above.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
@@ -148,7 +148,7 @@ from that focused pass. A later targeted four-execution run also proves the
 operator's bitrate, RTT, jitter and loss readouts while sender-delta unit tests
 cover the LiveKit measurement math.
 
-This qualification plus the v309 production checks are release evidence. They are not evidence of a
+This qualification plus the v310 production checks are release evidence. They are not evidence of a
 native phone-binary, physical-camera/background-capture field test, an authorized
 competitor benchmark, live third-party destinations, remote guests, regional
 encoder failover or external AI/transcription behavior.
