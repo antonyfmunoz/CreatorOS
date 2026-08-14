@@ -37,6 +37,7 @@ import {
 import { attachUser } from "./auth";
 import {
   createPrivateAssetReadUrl,
+  materializePrivateAsset,
   persistPrivateFile,
   promotePrivateAsset,
 } from "./asset-storage";
@@ -98,6 +99,11 @@ const templateCatalogInputSchema = z.discriminatedUnion("kind", [
   z.object({ businessId: z.string().uuid(), kind: z.literal("scene"), name: z.string().trim().min(1).max(80), payload: broadcastSceneSchema }),
   z.object({ businessId: z.string().uuid(), kind: z.literal("source"), name: z.string().trim().min(1).max(80), payload: broadcastSourceSchema }),
 ]);
+const mediaLibraryInputSchema = z.object({
+  businessId: z.string().uuid(),
+  assetId: z.string().uuid(),
+  name: z.string().trim().min(1).max(255).optional(),
+});
 
 function portableTemplatePayload(input: z.infer<typeof templateCatalogInputSchema>) {
   if (input.kind === "source") return { ...input.payload, assetId: null };
@@ -138,6 +144,26 @@ const runtimes = new Map<string, Runtime>();
 
 function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
+}
+async function privateBroadcastMediaDescriptor(asset: typeof assets.$inferSelect) {
+  if (asset.storageProvider === "local" && process.env.NODE_ENV !== "production") return { url: `/api/broadcast/media/${asset.id}/stream`, expiresAt: null };
+  return createPrivateAssetReadUrl(asset.storageKey);
+}
+async function streamPrivateBroadcastMedia(res: Response, asset: typeof assets.$inferSelect) {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-broadcast-media-"));
+  const outputPath = path.join(temp, asset.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "media.bin");
+  try {
+    await materializePrivateAsset(asset.storageKey, outputPath);
+    res.type(asset.mimeType ?? "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${path.basename(outputPath)}"`);
+    res.sendFile(outputPath, { acceptRanges: true }, (error) => {
+      void fs.rm(temp, { recursive: true, force: true });
+      if (error && !res.headersSent) res.status(500).end();
+    });
+  } catch (error) {
+    await fs.rm(temp, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 function publicDestination(row: typeof broadcastDestinations.$inferSelect) {
   const { streamKeyCiphertext: _secret, ...safe } = row;
@@ -689,6 +715,121 @@ export function registerBroadcastStudioRoutes(app: Express) {
     const role = await userBusinessRole(req.dbUser!.id, template.businessId);
     if (template.ownerUserId !== req.dbUser!.id && !businessRoleCanAdminister(role)) return res.status(404).json({ message: "Studio template not found" });
     await db.delete(broadcastTemplateCatalog).where(eq(broadcastTemplateCatalog.id, template.id));
+    res.status(204).end();
+  });
+
+  app.get("/api/broadcast/media", attachUser, async (req, res) => {
+    noStore(res);
+    const businessId = z.string().uuid().safeParse(req.query.businessId);
+    if (!businessId.success) return res.status(400).json({ message: "A valid business is required" });
+    const role = await userBusinessRole(req.dbUser!.id, businessId.data);
+    if (!role) return res.status(404).json({ message: "Media library not found" });
+    const rows = await db.select({
+      id: assets.id,
+      businessId: assets.businessId,
+      ownerUserId: assets.ownerUserId,
+      kind: assets.kind,
+      mimeType: assets.mimeType,
+      originalFilename: assets.originalFilename,
+      visibility: assets.visibility,
+      status: assets.status,
+      sizeBytes: assets.sizeBytes,
+      createdAt: assets.createdAt,
+    }).from(assets).where(and(
+      eq(assets.businessId, businessId.data),
+      eq(assets.visibility, "private"),
+      eq(assets.status, "ready"),
+      inArray(assets.kind, ["photo", "video"]),
+      sql`${assets.metadata} ->> 'broadcastLibrary' = 'true'`,
+    )).orderBy(desc(assets.createdAt)).limit(200);
+    res.json(rows.map((asset) => ({
+      ...asset,
+      library: true,
+      access: { canRemove: asset.ownerUserId === req.dbUser!.id || businessRoleCanAdminister(role) },
+    })));
+  });
+
+  app.post("/api/broadcast/media", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = mediaLibraryInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid media asset" });
+    const role = await userBusinessRole(req.dbUser!.id, parsed.data.businessId);
+    if (!businessRoleCanManage(role)) return res.status(404).json({ message: "Media library not found" });
+    const [asset] = await db.select().from(assets).where(and(
+      eq(assets.id, parsed.data.assetId),
+      eq(assets.ownerUserId, req.dbUser!.id),
+      eq(assets.visibility, "private"),
+      eq(assets.status, "ready"),
+      inArray(assets.kind, ["photo", "video"]),
+    )).limit(1);
+    if (!asset) return res.status(404).json({ message: "Private production media not found" });
+    const [shared] = await db.update(assets).set({
+      businessId: parsed.data.businessId,
+      originalFilename: parsed.data.name ?? asset.originalFilename,
+      metadata: { ...asset.metadata, broadcastLibrary: true, broadcastLibraryAddedAt: new Date().toISOString() },
+    }).where(and(eq(assets.id, asset.id), eq(assets.ownerUserId, req.dbUser!.id))).returning();
+    await emitProjectionEvent({
+      aggregateType: "broadcast_media",
+      aggregateId: shared.id,
+      eventType: "broadcast.media.shared",
+      actorUserId: req.dbUser!.id,
+      payload: { businessId: parsed.data.businessId, kind: shared.kind },
+      idempotencyKey: `broadcast:media:${shared.id}:shared`,
+    });
+    res.status(201).json({ ...shared, library: true, access: { canRemove: true } });
+  });
+
+  app.get("/api/broadcast/media/:id/access", attachUser, async (req, res) => {
+    try {
+      noStore(res);
+      const parsedId = idSchema.safeParse(req.params.id);
+      if (!parsedId.success) return res.status(400).json({ message: "Invalid media asset" });
+      const [asset] = await db.select().from(assets).where(and(
+        eq(assets.id, parsedId.data),
+        eq(assets.visibility, "private"),
+        eq(assets.status, "ready"),
+        sql`${assets.metadata} ->> 'broadcastLibrary' = 'true'`,
+      )).limit(1);
+      if (!asset?.businessId || !(await userBusinessRole(req.dbUser!.id, asset.businessId))) return res.status(404).json({ message: "Media asset not found" });
+      res.json(await privateBroadcastMediaDescriptor(asset));
+    } catch (error) {
+      console.error("Unable to issue Broadcast media access:", error);
+      res.status(500).json({ message: "Unable to access production media" });
+    }
+  });
+
+  app.get("/api/broadcast/media/:id/stream", attachUser, async (req, res) => {
+    try {
+      noStore(res);
+      const parsedId = idSchema.safeParse(req.params.id);
+      if (!parsedId.success) return res.status(400).json({ message: "Invalid media asset" });
+      const [asset] = await db.select().from(assets).where(and(
+        eq(assets.id, parsedId.data),
+        eq(assets.visibility, "private"),
+        eq(assets.status, "ready"),
+        sql`${assets.metadata} ->> 'broadcastLibrary' = 'true'`,
+      )).limit(1);
+      if (!asset?.businessId || !(await userBusinessRole(req.dbUser!.id, asset.businessId))) return res.status(404).json({ message: "Media asset not found" });
+      await streamPrivateBroadcastMedia(res, asset);
+    } catch (error) {
+      console.error("Unable to stream Broadcast media:", error);
+      if (!res.headersSent) res.status(500).json({ message: "Unable to stream production media" });
+    }
+  });
+
+  app.delete("/api/broadcast/media/:id", attachUser, async (req, res) => {
+    const parsedId = idSchema.safeParse(req.params.id);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid media asset" });
+    const [asset] = await db.select().from(assets).where(and(
+      eq(assets.id, parsedId.data),
+      eq(assets.visibility, "private"),
+      eq(assets.status, "ready"),
+      sql`${assets.metadata} ->> 'broadcastLibrary' = 'true'`,
+    )).limit(1);
+    if (!asset?.businessId) return res.status(404).json({ message: "Media asset not found" });
+    const role = await userBusinessRole(req.dbUser!.id, asset.businessId);
+    if (asset.ownerUserId !== req.dbUser!.id && !businessRoleCanAdminister(role)) return res.status(404).json({ message: "Media asset not found" });
+    await db.update(assets).set({ metadata: { ...asset.metadata, broadcastLibrary: false, broadcastLibraryRemovedAt: new Date().toISOString() } }).where(eq(assets.id, asset.id));
     res.status(204).end();
   });
 

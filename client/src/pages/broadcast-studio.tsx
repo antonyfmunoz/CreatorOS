@@ -99,11 +99,15 @@ type Session = {
 };
 type Asset = {
   id: string;
+  businessId?: string | null;
   kind: string;
   mimeType: string | null;
   originalFilename: string | null;
   visibility: string;
   status: string;
+  sizeBytes?: number | null;
+  library?: boolean;
+  access?: { canRemove: boolean };
 };
 type BrandLibraryKit = {
   id: string;
@@ -286,6 +290,11 @@ export default function BroadcastStudioPage() {
     queryFn: async () => (await apiRequest("GET", `/api/broadcast/templates?businessId=${studio!.businessId}`)).json(),
     enabled: Boolean(studio?.businessId),
   });
+  const businessMediaQuery = useQuery<Asset[]>({
+    queryKey: ["/api/broadcast/media", studio?.businessId],
+    queryFn: async () => (await apiRequest("GET", `/api/broadcast/media?businessId=${studio!.businessId}`)).json(),
+    enabled: Boolean(studio?.businessId),
+  });
   const audienceQuery = useQuery<AudiencePayload>({
     queryKey: ["/api/broadcast/sessions", session?.id, "audience"],
     queryFn: async () => (await apiRequest("GET", `/api/broadcast/sessions/${session!.id}/audience`)).json(),
@@ -293,11 +302,9 @@ export default function BroadcastStudioPage() {
     refetchInterval: session?.state === "live" ? 2_000 : false,
   });
   const destinations = destinationsQuery.data ?? [];
-  const assets = (assetsQuery.data ?? []).filter(
-    (asset) =>
-      asset.status === "ready" &&
-      (asset.mimeType?.startsWith("video/") ||
-        asset.mimeType?.startsWith("image/")),
+  const businessMedia = businessMediaQuery.data ?? [];
+  const assets = Array.from(new Map([...(assetsQuery.data ?? []), ...businessMedia].map((asset) => [asset.id, asset])).values()).filter(
+    (asset) => asset.status === "ready" && (asset.mimeType?.startsWith("video/") || asset.mimeType?.startsWith("image/")),
   );
   const brandKits = brandKitsQuery.data ?? [];
   const teamTemplates = teamTemplatesQuery.data ?? [];
@@ -561,6 +568,57 @@ export default function BroadcastStudioPage() {
     catch (error) { setMessage(error instanceof Error ? error.message : "Team template could not be removed"); }
     finally { setBusy(""); }
   }, [teamTemplatesQuery]);
+  const uploadBusinessMedia = useCallback(async (file: File) => {
+    if (!studio || (!file.type.startsWith("image/") && !file.type.startsWith("video/"))) return setMessage("Choose an image or video production asset.");
+    setBusy("business-media-upload");
+    let assetId: string | null = null;
+    try {
+      const kind = file.type.startsWith("image/") ? "photo" : "video";
+      try {
+        const intent = (await (await apiRequest("POST", "/api/assets/upload-intents", { kind, filename: file.name, mimeType: file.type, sizeBytes: file.size, visibility: "private" })).json()) as { asset: { id: string }; upload: { uploadUrl: string } };
+        assetId = intent.asset.id;
+        const uploaded = await fetch(intent.upload.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+        if (!uploaded.ok) throw new Error("Direct upload failed");
+        await apiRequest("POST", `/api/assets/${assetId}/complete`, {});
+      } catch (directError) {
+        if (assetId) await apiRequest("DELETE", `/api/assets/${assetId}`, {}).catch(() => undefined);
+        const form = new FormData();
+        form.append("kind", kind); form.append("visibility", "private"); form.append(kind, file);
+        const uploaded = await fetch("/api/assets/upload-proxy", { method: "POST", credentials: "include", body: form });
+        if (!uploaded.ok) {
+          const body = await uploaded.json().catch(() => ({})) as { message?: string };
+          throw new Error(body.message ?? (directError instanceof Error ? directError.message : "Media upload failed"));
+        }
+        assetId = ((await uploaded.json()) as { asset: { id: string } }).asset.id;
+      }
+      await apiRequest("POST", "/api/broadcast/media", { businessId: studio.businessId, assetId, name: file.name });
+      await Promise.all([businessMediaQuery.refetch(), assetsQuery.refetch()]);
+      setMessage(`${file.name} is available across this business's Broadcast studios.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Business media could not be uploaded"); }
+    finally { setBusy(""); }
+  }, [assetsQuery, businessMediaQuery, studio]);
+  const removeBusinessMedia = useCallback(async (asset: Asset) => {
+    setBusy(`business-media-delete:${asset.id}`);
+    try { await apiRequest("DELETE", `/api/broadcast/media/${asset.id}`); await businessMediaQuery.refetch(); setMessage(`${asset.originalFilename ?? "Media"} was removed from the business library. Existing studio scenes keep their private asset reference.`); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Business media could not be removed"); }
+    finally { setBusy(""); }
+  }, [businessMediaQuery]);
+  const addBusinessMediaToScene = useCallback(async (asset: Asset) => {
+    if (!config || !previewScene) return;
+    const id = safeId("source");
+    const source: BroadcastSource = {
+      ...sourceDefaults,
+      id,
+      name: asset.originalFilename ?? (asset.mimeType?.startsWith("image/") ? "Shared image" : "Shared video"),
+      type: asset.mimeType?.startsWith("image/") ? "image" : "media",
+      assetId: asset.id,
+      zOrder: previewScene.sources.length,
+      muted: asset.mimeType?.startsWith("image/") ?? false,
+    };
+    await persist(validateBroadcastStudioConfig({ ...config, scenes: config.scenes.map((scene) => scene.id === previewScene.id ? { ...scene, sources: [...scene.sources, source] } : scene) }));
+    setSelectedSourceId(id);
+    setMessage(`${source.name} was added from the business media library.`);
+  }, [config, persist, previewScene]);
 
   const updatePreviewScene = useCallback(
     (change: (scene: BroadcastScene) => BroadcastScene, save = true) => {
@@ -1042,7 +1100,7 @@ export default function BroadcastStudioPage() {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
     const access = (await (
-      await apiRequest("GET", `/api/assets/${assetId}/access`)
+      await apiRequest("GET", asset.library ? `/api/broadcast/media/${assetId}/access` : `/api/assets/${assetId}/access`)
     ).json()) as { url: string };
     if (asset.mimeType?.startsWith("image/")) {
       const image = new window.Image();
@@ -1073,7 +1131,7 @@ export default function BroadcastStudioPage() {
       loadingAssetSources.current.add(source.id);
       void (async () => {
         try {
-          const access = (await (await apiRequest("GET", `/api/assets/${asset.id}/access`)).json()) as { url: string };
+          const access = (await (await apiRequest("GET", asset.library ? `/api/broadcast/media/${asset.id}/access` : `/api/assets/${asset.id}/access`)).json()) as { url: string };
           if (asset.mimeType?.startsWith("image/")) {
             const image = new window.Image();
             image.crossOrigin = "anonymous";
@@ -2028,6 +2086,14 @@ export default function BroadcastStudioPage() {
             <Input aria-label="Business template name" className="mt-3 h-9 border-zinc-800 bg-black text-xs" value={teamTemplateName} onChange={(event) => setTeamTemplateName(event.target.value)} placeholder="Weekly show layout" maxLength={80}/>
             <div className="mt-2 grid grid-cols-2 gap-2"><Button size="sm" variant="outline" aria-label="Save scene to business library" disabled={!teamTemplateName.trim() || config.scenes.length >= 20} onClick={() => void saveTeamTemplate("scene")}><Save className="mr-1 h-3.5 w-3.5"/>Scene</Button><Button size="sm" variant="outline" aria-label="Save source to business library" disabled={!teamTemplateName.trim() || !selectedSource} onClick={() => void saveTeamTemplate("source")}><Save className="mr-1 h-3.5 w-3.5"/>Source</Button></div>
             <div className="mt-3 space-y-2">{teamTemplates.length ? teamTemplates.map((template) => <div key={template.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{template.name}</span><span className="text-[10px] uppercase text-zinc-600">{template.kind}</span></span><Button size="sm" variant="outline" aria-label={`Apply ${template.name} business template`} disabled={template.kind === "scene" ? config.scenes.length >= 20 : previewScene.sources.length >= 32} onClick={() => void applyTeamTemplate(template)}>Add</Button>{template.access.canDelete && <button aria-label={`Delete ${template.name} business template`} disabled={busy === `team-template-delete:${template.id}`} onClick={() => void deleteTeamTemplate(template)}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button>}</div>) : <p className="py-3 text-center text-xs text-zinc-600">No business templates yet.</p>}</div>
+          </Panel>
+          <Panel title="Business media library" icon={Image}>
+            <p className="text-[11px] leading-5 text-zinc-500">Upload approved private graphics and video once, then reuse them across every Broadcast studio in this business. Team access follows business roles.</p>
+            <label className="mt-3 flex h-9 cursor-pointer items-center justify-center rounded-lg border border-zinc-700 text-xs font-bold hover:bg-zinc-900">
+              <input className="sr-only" type="file" accept="image/*,video/*" disabled={busy === "business-media-upload"} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadBusinessMedia(file); event.currentTarget.value = ""; }}/>
+              <Plus className="mr-1.5 h-3.5 w-3.5"/>{busy === "business-media-upload" ? "Uploading…" : "Add shared media"}
+            </label>
+            <div className="mt-3 space-y-2">{businessMedia.length ? businessMedia.map((asset) => <div key={asset.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-[9px] font-bold text-zinc-500">{asset.mimeType?.startsWith("image/") ? "IMG" : "VID"}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{asset.originalFilename ?? "Production media"}</span><span className="text-[10px] text-zinc-600">{formatBytes(asset.sizeBytes)} · private</span></span><Button size="sm" variant="outline" aria-label={`Add ${asset.originalFilename ?? "media"} from business library`} disabled={previewScene.sources.length >= 32} onClick={() => void addBusinessMediaToScene(asset)}>Add</Button>{asset.access?.canRemove && <button aria-label={`Remove ${asset.originalFilename ?? "media"} from business library`} disabled={busy === `business-media-delete:${asset.id}`} onClick={() => void removeBusinessMedia(asset)}><Trash2 className="h-3.5 w-3.5 text-zinc-600"/></button>}</div>) : <p className="py-3 text-center text-xs text-zinc-600">No shared production media yet.</p>}</div>
           </Panel>
           <Panel title="Brand kit" icon={Palette}>
             <p className="mb-3 text-[11px] leading-5 text-zinc-500">Set this studio's identity or save it once for reuse across every broadcast studio in your account.</p>

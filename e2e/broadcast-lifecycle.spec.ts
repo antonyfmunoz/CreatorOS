@@ -51,6 +51,13 @@ async function uploadPrivateBroadcastFixture(page: Page, owner: number, filePath
   return (await response.json()).asset as { id: string };
 }
 
+async function uploadPrivateBroadcastImage(page: Page, owner: number, name: string) {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNkYPj/n4GBgYGJAQoAHgQCAfKxWiAAAAAASUVORK5CYII=", "base64");
+  const response = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "photo", visibility: "private", photo: { name, mimeType: "image/png", buffer: png } } });
+  await expectOk(response);
+  return (await response.json()).asset as { id: string };
+}
+
 test("Broadcast Studio completes an owner-scoped encoder and private recording lifecycle", async ({
   page,
 }, testInfo) => {
@@ -563,6 +570,62 @@ test("Broadcast brand library persists across studios and supports safe removal"
   const kits = await kitsResponse.json();
   expect(kits.some((kit: { name: string; surfaceColor: string }) => kit.name === "Operator brand kit" && kit.surfaceColor === "#112233")).toBe(true);
   expect(kits.some((kit: { name: string }) => kit.name === "Disposable field kit")).toBe(false);
+});
+
+test("Broadcast business media stays private and remains reusable across studios", async ({ page }) => {
+  test.setTimeout(90_000);
+  const owner = 1;
+  const operator = 3;
+  const peer = 2;
+  await page.context().setExtraHTTPHeaders({ "x-creativesos-demo-user": String(owner) });
+  const filename = `shared-production-${Date.now()}.png`;
+  const firstResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Media source studio ${Date.now()}` });
+  await expectOk(firstResponse);
+  const first = await firstResponse.json();
+  const asset = await uploadPrivateBroadcastImage(page, owner, filename);
+  const sharedResponse = await api(page, owner, "POST", "/api/broadcast/media", { businessId: first.businessId, assetId: asset.id, name: filename });
+  await expectOk(sharedResponse);
+  expect((await sharedResponse.json()).library).toBe(true);
+  const libraryResponse = await api(page, owner, "GET", `/api/broadcast/media?businessId=${first.businessId}`);
+  await expectOk(libraryResponse);
+  expect(await libraryResponse.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: asset.id, originalFilename: filename, library: true })]));
+  const ownerAccess = await api(page, owner, "GET", `/api/broadcast/media/${asset.id}/access`);
+  await expectOk(ownerAccess);
+  const descriptor = await ownerAccess.json() as { url: string };
+  const streamed = await api(page, owner, "GET", descriptor.url);
+  await expectOk(streamed);
+  expect(streamed.headers()["content-type"]).toContain("image/png");
+  const operatorLibrary = await api(page, operator, "GET", `/api/broadcast/media?businessId=${first.businessId}`);
+  await expectOk(operatorLibrary);
+  expect(await operatorLibrary.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: asset.id, access: { canRemove: false } })]));
+  await expectOk(await api(page, operator, "GET", `/api/broadcast/media/${asset.id}/access`));
+  expect((await api(page, peer, "GET", `/api/broadcast/media/${asset.id}/access`)).status()).toBe(404);
+
+  const secondResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Media destination studio ${Date.now()}` });
+  await expectOk(secondResponse);
+  const second = await secondResponse.json();
+  await page.goto("/broadcast");
+  await page.getByRole("combobox", { name: "Broadcast studio", exact: true }).selectOption(second.id);
+  await expect(page.getByRole("heading", { name: second.name })).toBeVisible();
+  const addFromLibrary = page.getByRole("button", { name: `Add ${filename} from business library` });
+  await expect(addFromLibrary).toBeVisible();
+  await addFromLibrary.click();
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/broadcast/studios/${second.id}`);
+    await expectOk(response);
+    return (await response.json()).config.scenes.flatMap((scene: { sources: Array<{ assetId: string | null }> }) => scene.sources).some((source: { assetId: string | null }) => source.assetId === asset.id);
+  }).toBe(true);
+
+  await page.getByRole("button", { name: `Remove ${filename} from business library` }).click();
+  await expect(page.getByRole("button", { name: `Add ${filename} from business library` })).toHaveCount(0);
+  expect((await api(page, owner, "GET", `/api/broadcast/media/${asset.id}/access`)).status()).toBe(404);
+  const retainedAssetAccess = await api(page, owner, "GET", `/api/assets/${asset.id}/access`);
+  await expectOk(retainedAssetAccess);
+  const retainedDescriptor = await retainedAssetAccess.json() as { url: string };
+  await expectOk(await api(page, owner, "GET", retainedDescriptor.url));
+  const retained = await api(page, owner, "GET", `/api/broadcast/studios/${second.id}`);
+  await expectOk(retained);
+  expect((await retained.json()).config.scenes.flatMap((scene: { sources: Array<{ assetId: string | null }> }) => scene.sources).some((source: { assetId: string | null }) => source.assetId === asset.id)).toBe(true);
 });
 
 test("Broadcast studio library creates renames switches and guards deletion", async ({ page }, testInfo) => {

@@ -119,6 +119,7 @@ import { syncLegacyNativeConversation } from "./relationship-native-sync";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { emitProjectionEvent, registerUmhRoutes } from "./umh";
 import { processDueDistributionJobs } from "./distribution";
@@ -137,6 +138,7 @@ import {
   createPrivateAssetReadUrl,
   discardUploadedFiles,
   inspectDirectUpload,
+  materializePrivateAsset,
   persistPrivateFile,
   persistUpload,
   removeStoredAsset,
@@ -1471,10 +1473,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .status(403)
             .json({ message: "You do not have access to this private asset" });
       }
+      if (asset.storageProvider === "local" && process.env.NODE_ENV !== "production")
+        return res.json({ url: `/api/assets/${asset.id}/stream`, expiresAt: null });
       return res.json(await createPrivateAssetReadUrl(asset.storageKey));
     } catch (error) {
       console.error("Unable to issue asset access URL:", error);
       return res.status(500).json({ message: "Unable to access asset" });
+    }
+  });
+
+  app.get("/api/assets/:id/stream", attachUser, async (req, res) => {
+    let temp: string | null = null;
+    try {
+      res.set("Cache-Control", "no-store");
+      const [asset] = await db.select().from(assets).where(eq(assets.id, req.params.id)).limit(1);
+      if (!asset || asset.status !== "ready" || asset.visibility !== "private") return res.status(404).json({ message: "Asset not found" });
+      if (asset.ownerUserId !== req.dbUser!.id) {
+        const [entitledAccess] = await db.select({ id: assetProductAccess.id }).from(assetProductAccess).innerJoin(entitlements, and(
+          eq(entitlements.productId, assetProductAccess.productId),
+          eq(entitlements.userId, req.dbUser!.id),
+          eq(entitlements.status, "active"),
+        )).where(eq(assetProductAccess.assetId, asset.id)).limit(1);
+        if (!entitledAccess) return res.status(403).json({ message: "You do not have access to this private asset" });
+      }
+      temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "creativesos-private-asset-"));
+      const outputPath = path.join(temp, asset.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "asset.bin");
+      await materializePrivateAsset(asset.storageKey, outputPath);
+      res.type(asset.mimeType ?? "application/octet-stream");
+      res.setHeader("Content-Disposition", `inline; filename="${path.basename(outputPath)}"`);
+      res.sendFile(outputPath, { acceptRanges: true }, (error) => {
+        if (temp) void fs.promises.rm(temp, { recursive: true, force: true });
+        if (error && !res.headersSent) res.status(500).end();
+      });
+    } catch (error) {
+      if (temp) await fs.promises.rm(temp, { recursive: true, force: true }).catch(() => undefined);
+      console.error("Unable to stream private asset:", error);
+      if (!res.headersSent) return res.status(500).json({ message: "Unable to stream asset" });
     }
   });
 
