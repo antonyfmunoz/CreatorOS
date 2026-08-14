@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistUpload } from "../server/asset-storage";
+import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistUpload, promotePrivateAsset } from "../server/asset-storage";
 import { monthlyAssetQuotaFor, normalizeAssetVisibility, validateAssetUpload } from "../server/asset-policy";
 import { apiRateLimiter, assetUploadRateLimiter, securityHeaders } from "../server/security";
 
@@ -91,6 +91,24 @@ describe("production safety boundaries", () => {
     }
   });
 
+  it("promotes private local media for field tests while keeping production fail-closed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-promote-"));
+    process.env.NODE_ENV = "test";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = root;
+    try {
+      const privateAsset = await persistPrivateBuffer({ body: Buffer.from("render"), ownerUserId: 8, kind: "cut-render", filename: "render.mp4", mimeType: "video/mp4" });
+      const publicAsset = await promotePrivateAsset({ storageKey: privateAsset.storageKey, ownerUserId: 8, kind: "video", filename: "render.mp4", mimeType: "video/mp4" });
+      expect(publicAsset.sizeBytes).toBe(6);
+      expect(publicAsset.publicUrl).toMatch(/^\/uploads\/creativesos\/test\/public\/users\/8\/video\//);
+      await expect(fs.readFile(path.resolve(root, publicAsset.storageKey), "utf8")).resolves.toBe("render");
+      process.env.NODE_ENV = "production";
+      await expect(promotePrivateAsset({ storageKey: privateAsset.storageKey, ownerUserId: 8, kind: "video", filename: "render.mp4", mimeType: "video/mp4" })).rejects.toThrow("requires R2");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("enforces visibility, type, size, and conservative monthly asset quotas", () => {
     expect(normalizeAssetVisibility("private")).toBe("private");
     expect(normalizeAssetVisibility("published")).toBeNull();
@@ -100,6 +118,7 @@ describe("production safety boundaries", () => {
     expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/plain", sizeBytes: 2_048, visibility: "private" })).toBeNull();
     expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/html", sizeBytes: 2_048, visibility: "private" })).toMatch(/not allowed/i);
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
+    expect(monthlyAssetQuotaFor("video")).toEqual({ maxBytes: 25 * 1024 * 1024 * 1024, maxAssets: 200 });
   });
 
   it("uses unguessable, environment-scoped keys for direct uploads", () => {

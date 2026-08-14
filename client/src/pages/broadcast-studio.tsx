@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import {
   ArrowDown,
   ArrowLeft,
@@ -216,6 +216,8 @@ function exactConfig(
 
 export default function BroadcastStudioPage() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const requestedStudioId = useMemo(() => new URLSearchParams(search).get("studio"), [search]);
   const queryClient = useQueryClient();
   const [studio, setStudio] = useState<Studio | null>(null);
   const [config, setConfig] = useState<BroadcastStudioConfig | null>(null);
@@ -268,6 +270,8 @@ export default function BroadcastStudioPage() {
   } | null>(null);
   const meterContexts = useRef(new Map<string, AudioContext>());
   const studioRef = useRef<Studio | null>(null);
+  const studioOpenSequence = useRef(0);
+  const previousStudioId = useRef<string | null>(null);
   const latestRequestedConfig = useRef<BroadcastStudioConfig | null>(null);
   const persistQueue = useRef<Promise<void>>(Promise.resolve());
   const pendingSaves = useRef(0);
@@ -384,14 +388,18 @@ export default function BroadcastStudioPage() {
     null;
 
   const openStudio = useCallback(async (id: string) => {
+    const requestSequence = ++studioOpenSequence.current;
     const [studioResponse, versionsResponse] = await Promise.all([apiRequest("GET", `/api/broadcast/studios/${id}`), apiRequest("GET", `/api/broadcast/studios/${id}/versions`)]);
     const value = (await studioResponse.json()) as Studio;
+    const versions = await versionsResponse.json() as StudioVersion[];
+    if (requestSequence !== studioOpenSequence.current) return;
+    if (studioRef.current?.id && studioRef.current.id !== value.id) previousStudioId.current = studioRef.current.id;
     setStudio(value);
     studioRef.current = value;
     setStudioNameDraft(value.name);
     setDeleteStudioArmed(false);
     setConfig(value.config);
-    setStudioVersions(await versionsResponse.json() as StudioVersion[]);
+    setStudioVersions(versions);
     latestRequestedConfig.current = value.config;
     setSelectedSourceId(
       value.config.scenes.find(
@@ -403,11 +411,15 @@ export default function BroadcastStudioPage() {
         ["starting", "live", "stopping"].includes(item.state),
       ) ?? null;
     setSession(active);
-  }, []);
+    setLocation(`/broadcast?studio=${encodeURIComponent(value.id)}`, { replace: true });
+  }, [setLocation]);
   useEffect(() => {
-    if (!studio && studiosQuery.data?.length)
-      void openStudio(studiosQuery.data[0].id);
-  }, [studio, studiosQuery.data, openStudio]);
+    if (studio || !studiosQuery.data?.length) return;
+    const requested = requestedStudioId
+      ? studiosQuery.data.find((item) => item.id === requestedStudioId)
+      : null;
+    void openStudio(requested?.id ?? studiosQuery.data[0].id);
+  }, [studio, studiosQuery.data, openStudio, requestedStudioId]);
 
   const persist = useCallback(
     async (next: BroadcastStudioConfig, nextName = studio?.name) => {
@@ -520,7 +532,8 @@ export default function BroadcastStudioPage() {
       const remaining = (await (await apiRequest("GET", "/api/broadcast/studios")).json()) as Studio[];
       queryClient.setQueryData(["/api/broadcast/studios"], remaining);
       setDeleteStudioArmed(false);
-      await openStudio(remaining[0].id);
+      const fallback = remaining.find((item) => item.id === previousStudioId.current) ?? remaining[0];
+      await openStudio(fallback.id);
       setMessage(`${current.name} was deleted.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Studio could not be deleted");

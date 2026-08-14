@@ -460,19 +460,35 @@ export async function processScheduledAutomations() {
 }
 
 let automationTimer: NodeJS.Timeout | undefined;
+let automationTick: Promise<void> | null = null;
+let automationTickRequested = false;
+
+export function kickAutomationProcessing() {
+  automationTickRequested = true;
+  if (automationTick) return automationTick;
+
+  automationTick = (async () => {
+    try {
+      while (automationTickRequested) {
+        automationTickRequested = false;
+        await processAutomationTriggerEvents();
+        await processScheduledAutomations();
+        await processDueAutomationRuns();
+      }
+    } catch (error) {
+      console.error("Automation processing failed:", sanitizeAutomationError(error));
+    } finally {
+      automationTick = null;
+      if (automationTickRequested) void kickAutomationProcessing();
+    }
+  })();
+
+  return automationTick;
+}
 
 export function scheduleAutomationProcessing() {
   if (automationTimer) return;
-  const tick = async () => {
-    try {
-      await processAutomationTriggerEvents();
-      await processScheduledAutomations();
-      await processDueAutomationRuns();
-    } catch (error) {
-      console.error("Automation processing failed:", sanitizeAutomationError(error));
-    }
-  };
-  void tick();
-  automationTimer = setInterval(() => void tick(), 5_000);
+  void kickAutomationProcessing();
+  automationTimer = setInterval(() => void kickAutomationProcessing(), 5_000);
   automationTimer.unref();
 }

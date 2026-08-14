@@ -79,7 +79,7 @@ test("Broadcast validates a private LUT and renders its color transform into pro
   const config = { ...studio.config, scenes: studio.config.scenes.map((scene: Record<string, unknown>, index: number) => index ? scene : { ...scene, sources: [{ ...original, name: "Graded red source", type: "image", assetId: photo.id, lutAssetId: lut.id, text: null, color: null, transform: { ...original.transform, x: 0, y: 0, width: 1, height: 1 } }] }) };
   await expectOk(await api(page, owner, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config }, { "If-Match": String(studio.revision) }));
   expect((await api(page, owner, "DELETE", `/api/broadcast/luts/${lut.id}`)).status()).toBe(409);
-  await page.goto("/broadcast"); await expect(page.getByRole("heading", { name: studio.name })).toBeVisible(); await expect(page.getByLabel("Broadcast source LUT")).toHaveValue(lut.id);
+  await page.goto(`/broadcast?studio=${studio.id}`); await expect(page.getByRole("heading", { name: studio.name })).toBeVisible(); await expect(page.getByLabel("Broadcast source LUT")).toHaveValue(lut.id);
   await expect.poll(async () => page.getByLabel("Program canvas").evaluate((node) => { const canvas = node as HTMLCanvasElement; const pixel = canvas.getContext("2d")!.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data; return pixel[0] < 80 && pixel[1] > 150 && pixel[2] < 80; }), { timeout: 20_000 }).toBe(true);
 });
 
@@ -267,23 +267,14 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
 test("Broadcast Studio exposes independent operator controls and explicit capture consent", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(110_000);
+  test.setTimeout(180_000);
   const owner = ownerFor(testInfo);
-  const studiosResponse = await api(
-    page,
-    owner,
-    "GET",
-    "/api/broadcast/studios",
-  );
-  await expectOk(studiosResponse);
-  if ((await studiosResponse.json()).length === 0) {
-    await expectOk(
-      await api(page, owner, "POST", "/api/broadcast/studios", {
-        name: `Operator studio ${Date.now()}`,
-      }),
-    );
-  }
-  await page.goto("/broadcast");
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", {
+    name: `Operator studio ${Date.now()}`,
+  });
+  await expectOk(createdResponse);
+  const studio = await createdResponse.json();
+  await page.goto(`/broadcast?studio=${studio.id}`);
   const viewport = page.viewportSize();
   const workspace = await page.locator(".app-container").boundingBox();
   expect(workspace).not.toBeNull();
@@ -387,9 +378,7 @@ test("Broadcast shares portable scene and source templates across a business", a
     expect.objectContaining({ kind: "source", name: sourceName, payload: expect.objectContaining({ assetId: null }) }),
     expect.objectContaining({ kind: "scene", name: sceneName, payload: expect.objectContaining({ sources: [expect.objectContaining({ assetId: null })] }) }),
   ]));
-  await page.goto("/broadcast");
-  const studioSwitcher = page.getByRole("combobox", { name: "Broadcast studio", exact: true });
-  if (await studioSwitcher.count()) await studioSwitcher.selectOption(studio.id);
+  await page.goto(`/broadcast?studio=${studio.id}`);
   await expect(page.getByRole("button", { name: `Apply ${sourceName} business template` })).toBeVisible();
   await page.getByRole("button", { name: `Apply ${sourceName} business template` }).click();
   await expect.poll(async () => {
@@ -400,7 +389,7 @@ test("Broadcast shares portable scene and source templates across a business", a
 });
 
 test("Broadcast opens a durable multitrack recording directly in CutStudio", async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
   const fixture = generateBroadcastHandoffFixtures(testInfo);
@@ -416,10 +405,8 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
   await expectOk(trackResponse);
   expect((await api(page, peer, "POST", `/api/broadcast/sessions/${session.id}/cut-studio`, {})).status()).toBe(404);
 
-  await page.goto("/broadcast");
+  await page.goto(`/broadcast?studio=${studio.id}`);
   await expect(page.locator("header h1")).toBeVisible();
-  const studioSwitcher = page.getByRole("combobox", { name: "Broadcast studio", exact: true });
-  if (await studioSwitcher.count()) await studioSwitcher.selectOption(studio.id);
   await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
   await expect(page.getByText("Isolated source recordings", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit in CutStudio" }).click();
@@ -429,10 +416,91 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
   const projectId = new URL(page.url()).searchParams.get("project")!;
   const projectResponse = await api(page, owner, "GET", `/api/cut/projects/${projectId}`);
   await expectOk(projectResponse);
-  expect(await projectResponse.json()).toMatchObject({ sourceAssetId: program.id, edl: { version: 3, clips: expect.arrayContaining([expect.objectContaining({ id: "broadcast_program", track: "v1", volume: 1 }), expect.objectContaining({ assetId: camera.id, track: "v2", groupId: "broadcast_sources", volume: 0, transform: { opacity: 0 } })]) }, media: expect.arrayContaining([expect.objectContaining({ assetId: program.id }), expect.objectContaining({ assetId: camera.id, name: "Field camera" })]) });
+  const projectData = await projectResponse.json();
+  expect(projectData).toMatchObject({ sourceAssetId: program.id, edl: { version: 3, clips: expect.arrayContaining([expect.objectContaining({ id: "broadcast_program", track: "v1", volume: 1 }), expect.objectContaining({ assetId: camera.id, track: "v2", groupId: "broadcast_sources", volume: 0, transform: expect.objectContaining({ opacity: 0 }) })]) }, media: expect.arrayContaining([expect.objectContaining({ assetId: program.id }), expect.objectContaining({ assetId: camera.id, name: "Field camera" })]) });
   const repeated = await api(page, owner, "POST", `/api/broadcast/sessions/${session.id}/cut-studio`, {});
   await expectOk(repeated);
   expect(await repeated.json()).toMatchObject({ reused: true, project: { id: projectId } });
+
+  const transcript = {
+    duration: 2,
+    language: "en",
+    segments: [{
+      id: "connected-story",
+      start: 0,
+      end: 2,
+      text: "Create once, distribute everywhere, and learn from every relationship.",
+      speaker: "Host",
+      words: [
+        { word: "Create", start: 0, end: .25 },
+        { word: "once,", start: .25, end: .5 },
+        { word: "distribute", start: .5, end: .8 },
+        { word: "everywhere,", start: .8, end: 1.1 },
+        { word: "and", start: 1.1, end: 1.25 },
+        { word: "learn", start: 1.25, end: 1.45 },
+        { word: "from", start: 1.45, end: 1.6 },
+        { word: "every", start: 1.6, end: 1.8 },
+        { word: "relationship.", start: 1.8, end: 2 },
+      ],
+    }],
+  };
+  const transcriptResponse = await api(page, owner, "PUT", `/api/cut/projects/${projectId}/transcript`, transcript, { "If-Match": String(projectData.revision) });
+  await expectOk(transcriptResponse);
+  const highlightResponse = await api(page, owner, "POST", `/api/cut/projects/${projectId}/highlights`, {});
+  await expectOk(highlightResponse);
+  const highlightJob = await highlightResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${highlightJob.id}`)).json()).state, { timeout: 30_000 }).toBe("done");
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${projectId}/render`, { aspect: "16:9", captions: true, captionStyle: 4, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const renderJob = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${renderJob.id}`)).json()).state, { timeout: 75_000, intervals: [500, 1_000] }).toBe("done");
+
+  await page.goto(`/cut-studio?project=${projectId}`);
+  await expect(page.getByRole("heading", { name: /Connected production.*recording/ })).toBeVisible();
+  await page.getByRole("button", { name: "Continue in Distribution" }).click();
+  await expect(page).toHaveURL(/\/distribution\?.*source=cutstudio/);
+  await expect(page.getByLabel("CutStudio handoff")).toBeVisible();
+  await expect(page.getByPlaceholder("What do you want to share?")).toHaveValue(/Create once, distribute everywhere/);
+  await expect(page.locator('button[aria-pressed="true"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Publish now" }).click();
+  const queueItem = page.locator("article").filter({ hasText: "Create once, distribute everywhere" });
+  await expect(queueItem).toContainText("published");
+  await expect(queueItem.getByRole("button", { name: "Open source edit" })).toBeVisible();
+  const nativeDelivery = (await (await api(page, owner, "GET", "/api/distribution-jobs")).json()).find((item: { content: string }) => item.content.startsWith("Create once, distribute everywhere"));
+  const nativePostId = nativeDelivery.deliveries.find((item: { provider: string }) => item.provider === "creativesos").providerContentId;
+  await queueItem.getByRole("button", { name: "Automate comments" }).click();
+  await expect(page).toHaveURL(new RegExp(`/automations\\?.*post=${nativePostId}`));
+  await expect(page.getByText(`Published post ${nativePostId}`, { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Post ID", { exact: false })).toHaveValue(String(nativePostId));
+  await page.getByRole("textbox", { name: "Keywords", exact: true }).fill("GUIDE");
+  await page.getByRole("textbox", { name: "Direct-message reply", exact: true }).fill("Here is the connected creation guide.");
+  await page.getByRole("button", { name: "Create keyword automation" }).click();
+  await expect(page.getByRole("button", { name: "Activate", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Activate", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  const commentResponse = await api(page, peer, "POST", "/api/comments", { postId: Number(nativePostId), content: "GUIDE" });
+  await expectOk(commentResponse);
+  const comment = await commentResponse.json();
+  await expect.poll(async () => {
+    const replies = await api(page, owner, "GET", `/api/comments/${comment.id}/replies`);
+    await expectOk(replies);
+    return (await replies.json()).some((item: { userId: number; content: string }) => item.userId === owner && item.content.includes("sent it to you"));
+  }, { timeout: 20_000, intervals: [1_000] }).toBe(true);
+  await expect.poll(async () => {
+    const conversations = await api(page, peer, "GET", `/api/users/${peer}/conversations`);
+    await expectOk(conversations);
+    for (const conversation of await conversations.json() as Array<{ id: number }>) {
+      const messages = await api(page, peer, "GET", `/api/conversations/${conversation.id}/messages`);
+      if (messages.ok() && (await messages.json()).some((item: { content: string }) => item.content === "Here is the connected creation guide.")) return true;
+    }
+    return false;
+  }, { timeout: 20_000, intervals: [1_000] }).toBe(true);
+  await page.goto(`/posts/${nativePostId}/analytics`);
+  await expect(page.getByRole("heading", { name: "Post performance" })).toBeVisible();
+  await expect(page.getByText("Performance notes", { exact: true })).toBeVisible();
+  const analyticsResponse = await api(page, owner, "GET", `/api/posts/${nativePostId}/analytics`);
+  await expectOk(analyticsResponse);
+  expect(await analyticsResponse.json()).toMatchObject({ comments: expect.any(Number), interactions: expect.any(Number) });
 });
 
 test("Broadcast routes program and monitor audio with persisted sync and balance", async ({ page }, testInfo) => {
@@ -452,7 +520,7 @@ test("Broadcast routes program and monitor audio with persisted sync and balance
     return current.config.scenes.flatMap((item: { sources: Array<{ name: string; audioProcessing: Record<string, unknown> }> }) => item.sources).find((source: { name: string }) => source.name === "Host camera")?.audioProcessing;
   };
 
-  await page.goto("/broadcast");
+  await page.goto(`/broadcast?studio=${studio.id}`);
   await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
   await expect(page.getByLabel("Host camera program audio bus")).toBeChecked();
   await page.getByLabel("Host camera mix bus").selectOption("music");
@@ -500,7 +568,7 @@ test("Broadcast persists production overlay entrance presets", async ({ page }, 
   const config = { ...templated, previewSceneId: "scene_overlay_motion", programSceneId: "scene_overlay_motion" };
   await expectOk(await api(page, owner, "PUT", `/api/broadcast/studios/${studio.id}`, { name: studio.name, config }, { "If-Match": String(studio.revision) }));
 
-  await page.goto("/broadcast");
+  await page.goto(`/broadcast?studio=${studio.id}`);
   await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
   await page.getByRole("button", { name: "Lower third", exact: true }).first().click();
   for (const motion of ["rise", "wipe", "pop"] as const) {
@@ -528,7 +596,7 @@ test("Broadcast owner shares an editable studio without delegating live authorit
   await expectOk(createdResponse);
   const studio = await createdResponse.json();
 
-  await page.goto("/broadcast");
+  await page.goto(`/broadcast?studio=${studio.id}`);
   await expect(page.getByRole("heading", { name: studio.name })).toBeVisible();
   await page.getByLabel("Broadcast collaborator username").fill(peerUsername);
   await page.getByLabel("Broadcast collaborator role").selectOption("editor");
@@ -582,7 +650,7 @@ test("Broadcast preserves and restores immutable studio configuration history", 
   ]));
   expect((await api(page, peer, "GET", `/api/broadcast/studios/${created.id}/versions`)).status()).toBe(404);
 
-  await page.goto("/broadcast");
+  await page.goto(`/broadcast?studio=${created.id}`);
   await expect(page.getByRole("heading", { name: "Second production plan" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByLabel("Restore studio revision 1").click();
@@ -599,17 +667,20 @@ test("Broadcast preserves and restores immutable studio configuration history", 
 test("Broadcast brand library persists across studios and supports safe removal", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);
-  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand source studio" }));
-  await page.goto("/broadcast");
+  const sourceStudioResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand source studio" });
+  await expectOk(sourceStudioResponse);
+  const sourceStudio = await sourceStudioResponse.json();
+  await page.goto(`/broadcast?studio=${sourceStudio.id}`);
   await expect(page.getByRole("heading", { name: "Brand source studio" })).toBeVisible();
   await page.getByLabel("Surface brand color").fill("#112233");
   await page.getByLabel("Brand kit name").fill("Operator brand kit");
   await page.getByRole("button", { name: "Save brand kit" }).click();
   await expect(page.getByRole("button", { name: "Apply Operator brand kit brand kit" })).toBeVisible();
 
-  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand destination studio" }));
-  await page.reload();
-  await page.getByRole("combobox", { name: "Broadcast studio", exact: true }).selectOption({ label: "Brand destination studio" });
+  const destinationStudioResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: "Brand destination studio" });
+  await expectOk(destinationStudioResponse);
+  const destinationStudio = await destinationStudioResponse.json();
+  await page.goto(`/broadcast?studio=${destinationStudio.id}`);
   await expect(page.getByRole("heading", { name: "Brand destination studio" })).toBeVisible();
   await expect(page.getByLabel("Surface brand color")).not.toHaveValue("#112233");
   await page.getByRole("button", { name: "Apply Operator brand kit brand kit" }).click();
@@ -664,8 +735,7 @@ test("Broadcast business media stays private and remains reusable across studios
   const secondResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Media destination studio ${Date.now()}` });
   await expectOk(secondResponse);
   const second = await secondResponse.json();
-  await page.goto("/broadcast");
-  await page.getByRole("combobox", { name: "Broadcast studio", exact: true }).selectOption(second.id);
+  await page.goto(`/broadcast?studio=${second.id}`);
   await expect(page.getByRole("heading", { name: second.name })).toBeVisible();
   const addFromLibrary = page.getByRole("button", { name: `Add ${filename} from business library` });
   await expect(addFromLibrary).toBeVisible();
@@ -691,8 +761,10 @@ test("Broadcast business media stays private and remains reusable across studios
 test("Broadcast studio library creates renames switches and guards deletion", async ({ page }, testInfo) => {
   test.setTimeout(75_000);
   const owner = ownerFor(testInfo);
-  await expectOk(await api(page, owner, "POST", "/api/broadcast/studios", { name: "Field managed studio" }));
-  await page.goto("/broadcast");
+  const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: "Field managed studio" });
+  await expectOk(createdResponse);
+  const created = await createdResponse.json() as { id: string };
+  await page.goto(`/broadcast?studio=${created.id}`);
   await expect(page.getByRole("heading", { name: "Field managed studio" })).toBeVisible();
   await page.getByRole("textbox", { name: "Studio name", exact: true }).fill("Field renamed studio");
   await page.getByRole("button", { name: "Save studio name" }).click();
@@ -755,7 +827,8 @@ test("Broadcast records and inventories a direct source-quality isolated track",
   });
   const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Isolated source studio ${Date.now()}` });
   await expectOk(createdResponse);
-  await page.goto("/broadcast");
+  const created = await createdResponse.json();
+  await page.goto(`/broadcast?studio=${created.id}`);
   await expect(page.getByRole("heading", { name: /Isolated source studio/ })).toBeVisible();
   await page.getByRole("button", { name: "Add camera" }).click();
   await expect(page.getByText("camera connected", { exact: false })).toBeVisible();

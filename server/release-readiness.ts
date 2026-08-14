@@ -106,6 +106,13 @@ export function getReleaseReadiness(
       scheduler: "embedded",
       authority: "native",
     },
+    connectedCreationLoop: {
+      broadcastToEdit: "configured",
+      captionedRender: "configured",
+      distributionHandoff: "configured",
+      nativeRelationshipAutomation: "configured",
+      performanceFeedback: "configured",
+    },
     relationshipHub: {
       kernel: "configured",
       nativeInbox: "configured",

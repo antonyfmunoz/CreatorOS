@@ -35,10 +35,12 @@ export function validateAssetUpload(request: AssetUploadRequest): string | null 
 }
 
 export function monthlyAssetQuotaFor(kind: string) {
-  // These deliberately conservative application-level limits protect spend while
-  // demand is unknown. Paid plan policy can expand them later without changing
-  // provider credentials or upload protocol.
-  return kind === "video"
-    ? { maxBytes: 2 * 1024 * MEBIBYTE, maxAssets: 20 }
-    : { maxBytes: 500 * MEBIBYTE, maxAssets: 200 };
+  // Starter production limits remain bounded for spend control, but a normal
+  // creator workstation must be able to produce several assets per day. Usage
+  // is counted per asset kind so a LUT, image, or audio upload cannot consume a
+  // creator's video allowance.
+  if (kind === "video") return { maxBytes: 25 * 1024 * MEBIBYTE, maxAssets: 200 };
+  if (kind === "download") return { maxBytes: 50 * 1024 * MEBIBYTE, maxAssets: 500 };
+  if (kind === "cut-lut") return { maxBytes: 256 * MEBIBYTE, maxAssets: 500 };
+  return { maxBytes: 10 * 1024 * MEBIBYTE, maxAssets: 2_000 };
 }

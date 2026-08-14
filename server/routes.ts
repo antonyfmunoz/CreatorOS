@@ -103,6 +103,7 @@ import { normalizeCartProductIds } from "../shared/cart";
 import { normalizeProductCommercialTerms } from "../shared/product-catalog";
 import { setupAuth, attachUser } from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
+import { kickAutomationProcessing } from "./automation-engine";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
 import { registerCutStudioRoutes } from "./cut-studio";
@@ -1047,6 +1048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(
             and(
               eq(assets.ownerUserId, req.dbUser!.id),
+              eq(assets.kind, kind),
               gt(assets.createdAt, since),
               not(eq(assets.status, "deleted")),
             ),
@@ -1218,6 +1220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(
             and(
               eq(assets.ownerUserId, req.dbUser!.id),
+              eq(assets.kind, kind),
               gt(assets.createdAt, since),
               not(eq(assets.status, "deleted")),
             ),
@@ -3000,6 +3003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           linkTo: `/profile/${post.userId}`,
         });
       }
+      void kickAutomationProcessing();
       res.status(201).json(comment);
     } catch (error) {
       console.error("Error creating comment:", error);
@@ -9696,6 +9700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
       await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: conversationId, currentUserId: req.dbUser!.id });
+      void kickAutomationProcessing();
       res.status(201).json(message);
     } catch (error) {
       console.error("Error creating message:", error);

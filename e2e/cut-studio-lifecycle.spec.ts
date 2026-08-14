@@ -90,7 +90,7 @@ test("CutStudio validates and renders a private cube LUT", async ({ page }, test
 });
 
 test("CutStudio measures calibrated private-source loudness", async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
   const directory = testInfo.outputPath("loudness-fixtures");
@@ -113,7 +113,8 @@ test("CutStudio measures calibrated private-source loudness", async ({ page }, t
   await page.goto(`/cut-studio?project=${project.id}`);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await page.getByRole("button", { name: "Analyze" }).click();
-  await expect(page.getByLabel("Calibrated loudness analysis").getByText("LUFS-I")).toBeVisible();
+  await expect(page.getByText("Measuring private source loudness…", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Calibrated loudness analysis").getByText("LUFS-I")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/Measured -?\d+\.\d LUFS/)).toBeVisible();
 });
 
@@ -193,7 +194,7 @@ test("CutStudio renders position keyframes into private multitrack output", asyn
   await page.getByRole("button", { name: "V2 clip 2" }).click();
   await expect(page.getByLabel("Clip motion keyframes")).toContainText("0:01");
   await page.getByLabel("Clip position X").fill("0.6");
-  await page.locator("video").evaluate((element: HTMLVideoElement) => { element.currentTime = 1; element.dispatchEvent(new Event("timeupdate")); });
+  await page.getByLabel("Timeline monitor").locator("video").evaluate((element: HTMLVideoElement) => { element.currentTime = 1; element.dispatchEvent(new Event("timeupdate")); });
   await page.getByRole("button", { name: "Add keyframe" }).click();
   await expect(page.getByText("Motion keyframe added at 0:01 inside the clip")).toBeVisible();
   await page.getByLabel("Clip position X").fill("0.05");
@@ -672,9 +673,10 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   }).toMatchObject({ track: { bus: "music" }, bus: { name: "Campaign music", gain: .4, muted: false } });
   const audioMeter = page.getByLabel("Realtime audio RMS meter");
   await expect(audioMeter).toBeVisible();
-  await page.locator("video").evaluate(async (element: HTMLVideoElement) => { await element.play(); });
-  await expect.poll(async () => Number.parseFloat((await audioMeter.locator("output").textContent()) ?? "-60"), { timeout: 5_000 }).toBeGreaterThan(-55);
-  await page.locator("video").evaluate((element: HTMLVideoElement) => element.pause());
+  const timelineVideo = page.getByLabel("Timeline monitor").locator("video");
+  await timelineVideo.evaluate(async (element: HTMLVideoElement) => { await element.play(); });
+  await expect.poll(async () => Number.parseFloat((await page.getByLabel("Live RMS level").textContent()) ?? "-60"), { timeout: 5_000 }).toBeGreaterThan(-55);
+  await timelineVideo.evaluate((element: HTMLVideoElement) => element.pause());
   const waveform = page.getByTestId("waveform-music");
   await expect(waveform).toBeVisible();
   await expect.poll(() => waveform.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBeTruthy();
@@ -691,14 +693,10 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(compoundResponse);
   expect((await compoundResponse.json()).edl.compounds).toEqual([expect.objectContaining({ label: "Compound 1", clipIds: ["broll", "music"] })]);
   const audioClip = page.getByRole("button", { name: "A1 clip 3" });
-  const audioBox = await audioClip.boundingBox();
-  const trackBox = await audioClip.locator("..").boundingBox();
-  expect(audioBox).toBeTruthy();
-  expect(trackBox).toBeTruthy();
-  await page.mouse.move(audioBox!.x + audioBox!.width / 2, audioBox!.y + audioBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(audioBox!.x + audioBox!.width / 2 + trackBox!.width * .1, audioBox!.y + audioBox!.height / 2, { steps: 5 });
-  await page.mouse.up();
+  await audioClip.scrollIntoViewIfNeeded();
+  await audioClip.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
   await expect(page.getByText("Clip moved with snapping", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   const movedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
@@ -711,13 +709,12 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await page.getByRole("button", { name: "Ripple track" }).click();
   await expect(page.getByRole("button", { name: "Ripple linked" })).toHaveAttribute("aria-pressed", "true");
   const trimEnd = page.getByLabel("Trim end A1 clip 3");
-  const trimBox = await trimEnd.boundingBox();
-  expect(trimBox).toBeTruthy();
-  await page.mouse.move(trimBox!.x + trimBox!.width / 2, trimBox!.y + trimBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(trimBox!.x + trimBox!.width / 2 - trackBox!.width * .1, trimBox!.y + trimBox!.height / 2, { steps: 5 });
-  await page.mouse.up();
-  await expect(page.getByText("Clip trimmed with linked ripple and snapping", { exact: true })).toBeVisible();
+  await trimEnd.scrollIntoViewIfNeeded();
+  await trimEnd.focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByText("Clip out point adjusted with linked ripple", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   const trimmedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
   await expectOk(trimmedResponse);

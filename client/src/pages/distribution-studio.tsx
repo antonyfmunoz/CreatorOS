@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   Clock3,
   Image,
   Link2,
+  MessageCircle,
   Send,
   Upload,
   Video,
@@ -40,6 +42,10 @@ type LibraryAsset = {
   originalFilename: string | null;
   status: string;
   visibility: string;
+  metadata?: {
+    cutStudioProjectId?: string;
+    cutStudioJobId?: string;
+  };
 };
 
 type AssetUploadIntent = {
@@ -83,12 +89,20 @@ export default function DistributionStudio() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<StudioTab>("compose");
-  const [content, setContent] = useState("");
-  const [format, setFormat] = useState<DistributionJob["format"]>("Text");
+  const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const initialAssetId = initialParams.get("asset");
+  const initialFormat = initialParams.get("format");
+  const sourceProjectId = initialParams.get("source") === "cutstudio" ? initialParams.get("project") : null;
+  const [content, setContent] = useState(initialParams.get("content")?.slice(0, 2_200) ?? "");
+  const [format, setFormat] = useState<DistributionJob["format"]>(
+    new Set(["Text", "Image", "Video", "Story"]).has(initialFormat ?? "")
+      ? initialFormat as DistributionJob["format"]
+      : "Text",
+  );
   const [selectedPlatforms, setSelectedPlatforms] = useState<
     DistributionPlatform[]
   >(["CreativesOS"]);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>(initialAssetId ? [initialAssetId] : []);
   const [schedule, setSchedule] = useState(false);
   const [scheduledFor, setScheduledFor] = useState("");
   const [isUploadingAsset, setIsUploadingAsset] = useState(false);
@@ -376,6 +390,13 @@ export default function DistributionStudio() {
 
       {tab === "compose" && (
         <section className="p-4">
+          {sourceProjectId && (
+            <section className="mb-4 rounded-2xl border border-[#1d9bf0]/40 bg-[#1d9bf0]/10 p-4" aria-label="CutStudio handoff">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#1d9bf0]">CutStudio render attached</p>
+              <p className="mt-1 text-sm font-bold">Finish the message, choose channels, and publish.</p>
+              <button type="button" className="mt-2 text-xs font-bold text-white underline" onClick={() => setLocation(`/cut-studio?project=${encodeURIComponent(sourceProjectId)}`)}>Return to the edit</button>
+            </section>
+          )}
           {campaignContext && linkedDeliverable && (
             <section className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
@@ -470,6 +491,8 @@ export default function DistributionStudio() {
                     return (
                       <button
                         key={asset.id}
+                        aria-label={`Select ${asset.originalFilename ?? `${asset.kind} asset`}`}
+                        aria-pressed={selected}
                         onClick={() =>
                           setSelectedAssetIds((ids) =>
                             selected
@@ -661,6 +684,17 @@ export default function DistributionStudio() {
                       )}
                     </div>
                   )}
+                  {(() => {
+                    const nativePostId = job.deliveries?.find((delivery) => delivery.provider === "creativesos" && delivery.status === "published")?.providerContentId;
+                    const lineageAsset = readyAssets.find((asset) => job.assetIds?.includes(asset.id) && asset.metadata?.cutStudioProjectId);
+                    if (!nativePostId && !lineageAsset) return null;
+                    return <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3">
+                      {lineageAsset?.metadata?.cutStudioProjectId && <Button size="sm" variant="ghost" className="text-zinc-300 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation(`/cut-studio?project=${encodeURIComponent(lineageAsset.metadata!.cutStudioProjectId!)}`)}><Video className="mr-1.5 h-3.5 w-3.5"/>Open source edit</Button>}
+                      {nativePostId && <Button size="sm" variant="ghost" className="text-zinc-300 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation(`/post/${nativePostId}`)}><Send className="mr-1.5 h-3.5 w-3.5"/>Open post</Button>}
+                      {nativePostId && <Button size="sm" variant="ghost" className="text-zinc-300 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation(`/automations?flow=comment&scope=native&post=${encodeURIComponent(nativePostId)}`)}><MessageCircle className="mr-1.5 h-3.5 w-3.5"/>Automate comments</Button>}
+                      {nativePostId && <Button size="sm" variant="ghost" className="text-zinc-300 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation(`/posts/${nativePostId}/analytics`)}><BarChart3 className="mr-1.5 h-3.5 w-3.5"/>Performance</Button>}
+                    </div>;
+                  })()}
                   {new Set(["needs_connection", "needs_provider", "failed", "canceled"]).has(job.status) && (
                     <div className="mt-3 flex gap-2">
                       <Button size="sm" variant="outline" className="border-zinc-700 bg-black text-white hover:bg-zinc-900 hover:text-white" disabled={changeQueueJob.isPending} onClick={() => changeQueueJob.mutate({ id: job.id, action: "retry" })}>Retry</Button>

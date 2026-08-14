@@ -201,6 +201,16 @@ export async function promotePrivateAsset(input: {
   mimeType: string;
 }) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  if (provider === "local") {
+    if (process.env.NODE_ENV === "production") throw new Error("Publishing private media requires R2 asset storage");
+    const sourcePath = localStoragePath(input.storageKey);
+    const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "public");
+    const destinationPath = localStoragePath(key);
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    await fs.copyFile(sourcePath, destinationPath);
+    const stored = await fs.stat(destinationPath);
+    return { storageKey: key, publicUrl: `/uploads/${key.replace(/\\/g, "/")}`, sizeBytes: stored.size };
+  }
   if (provider !== "r2") throw new Error("Publishing private media requires R2 asset storage");
   const privateStore = r2BucketFor("private");
   const publicStore = r2BucketFor("public");

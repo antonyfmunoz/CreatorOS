@@ -45,6 +45,13 @@ describe("CreativesOS release readiness", () => {
         scheduler: "embedded",
         authority: "native",
       },
+      connectedCreationLoop: {
+        broadcastToEdit: "configured",
+        captionedRender: "configured",
+        distributionHandoff: "configured",
+        nativeRelationshipAutomation: "configured",
+        performanceFeedback: "configured",
+      },
       relationshipHub: {
         kernel: "configured",
         nativeInbox: "configured",
@@ -177,6 +184,13 @@ describe("CreativesOS release readiness", () => {
     ]);
     expect(result.authentication.mode).toBe("test");
     expect(result.federation.qualification).toBe("not_configured");
+    expect(result.connectedCreationLoop).toEqual({
+      broadcastToEdit: "configured",
+      captionedRender: "configured",
+      distributionHandoff: "configured",
+      nativeRelationshipAutomation: "configured",
+      performanceFeedback: "configured",
+    });
     expect(result.relationshipHub).toEqual({
       kernel: "configured",
       nativeInbox: "configured",

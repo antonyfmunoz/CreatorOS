@@ -75,10 +75,13 @@ The defensible advantage is the connected loop:
 
 `Broadcast recording -> CutStudio project -> highlights/captions -> Distribution Studio -> unified inbox automation -> marketplace/earnings -> performance feedback`
 
-The first handoff is now native and durable: a completed Broadcast recording can
-open directly as an idempotent CutStudio multitrack project, carrying the private
-program asset, available isolated source recordings, production markers, tenant
-ownership, and source lineage without an export or re-upload.
+The native loop is now field-proven on mobile and desktop with one generated
+source: private Broadcast program and isolated track, idempotent CutStudio
+handoff, transcript correction, deterministic highlights, kinetic-caption
+render, public promotion into a preselected Distribution Studio draft, native
+publication, post-scoped keyword automation, a second-user comment, public
+reply, direct message, and post analytics. The lineage remains visible from the
+published queue back to the source edit without an export or re-upload.
 
 The studios only qualify as competitively complete when that loop has durable
 receipts, user-visible status, owner/role authorization, retry behavior, and a
