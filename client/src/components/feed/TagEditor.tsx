@@ -402,12 +402,12 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
               </div>
             </div>
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <img 
-                src="/placeholder-tshirt.jpg" 
-                alt="Example item"
-                className="max-w-full max-h-full object-contain cursor-pointer" 
-              />
+            <div className="flex h-full w-full flex-col items-center justify-center px-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-zinc-400">
+                <UserPlus aria-hidden="true" size={24} />
+              </span>
+              <p className="mt-4 text-sm font-semibold text-white">Choose a photo before tagging people</p>
+              <p className="mt-2 max-w-xs text-xs leading-5 text-zinc-500">Tags are placed directly on the photo selected for this post.</p>
             </div>
           )}
         </div>
