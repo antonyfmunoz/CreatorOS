@@ -14,8 +14,9 @@ export function routeChrome(pathname: string) {
   const isFocusedSearch = pathname === "/search";
   const isReview = pathname.startsWith("/review/");
   const isBroadcastControl = pathname.startsWith("/broadcast/control/");
+  const isBroadcastField = pathname === "/broadcast/field";
   return {
-    isAuth: isAuth || isReview || isBroadcastControl,
-    showBottomNavigation: !isAuth && !isConference && !isTrust && !isFocusedSearch && !isReview && !isBroadcastControl,
+    isAuth: isAuth || isReview || isBroadcastControl || isBroadcastField,
+    showBottomNavigation: !isAuth && !isConference && !isTrust && !isFocusedSearch && !isReview && !isBroadcastControl && !isBroadcastField,
   };
 }

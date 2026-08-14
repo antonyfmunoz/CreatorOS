@@ -1,0 +1,14 @@
+{
+  "name": "CreativesOS Field Camera",
+  "short_name": "COS Field",
+  "description": "Private remote camera, director control, telemetry, and local recovery for CreativesOS Broadcast.",
+  "start_url": "/broadcast/field",
+  "scope": "/broadcast/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "any",
+  "icons": [
+    { "src": "/field-capture-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

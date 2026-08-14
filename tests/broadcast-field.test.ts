@@ -56,6 +56,17 @@ describe("Broadcast Field capture control plane", () => {
     });
   });
 
+  it("accepts truthful browser field-camera capabilities without claiming native SRT or H.264", () => {
+    expect(captureReadiness({
+      ...capabilities,
+      transports: ["webrtc"],
+      videoCodecs: ["vp8", "vp9"],
+      hardwareEncoding: false,
+      backgroundCapture: false,
+      connectionBonding: false,
+    })).toEqual({ ready: false, blockers: ["h264_required_for_universal_fallback", "hardware_encoder_required"] });
+  });
+
   it("aggregates bonded uplinks conservatively", () => {
     const value = telemetry({ links: [
       { id: "wifi", type: "wifi", active: true, uplinkKbps: 8_000, rttMs: 40, jitterMs: 4, packetLossPct: 0.1 },

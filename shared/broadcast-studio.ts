@@ -30,6 +30,7 @@ export const broadcastSourceSchema = z.object({
     "widget",
   ]),
   assetId: z.string().uuid().nullable().default(null),
+  captureNodeId: z.string().uuid().nullable().optional(),
   lutAssetId: z.string().uuid().nullable().default(null),
   text: z.string().max(500).nullable().default(null),
   color: z

@@ -62,6 +62,7 @@ import {
   isSocialTokenEncryptionConfigured,
 } from "./social-oauth";
 import { emitProjectionEvent } from "./umh";
+import { createBroadcastLiveKitToken, getLiveKitConfiguration } from "./livekit";
 
 const idSchema = z.string().uuid();
 const studioInputSchema = z.object({
@@ -160,8 +161,8 @@ function captureDeviceRoute(handler: (req: Request, res: Response) => Promise<un
 }
 
 function portableTemplatePayload(input: z.infer<typeof templateCatalogInputSchema>) {
-  if (input.kind === "source") return { ...input.payload, assetId: null };
-  return { ...input.payload, sources: input.payload.sources.map((source) => ({ ...source, assetId: null })) };
+  if (input.kind === "source") return { ...input.payload, assetId: null, captureNodeId: null };
+  return { ...input.payload, sources: input.payload.sources.map((source) => ({ ...source, assetId: null, captureNodeId: null })) };
 }
 const studioCollaboratorInputSchema = z.object({
   username: z.string().trim().min(1).max(64),
@@ -823,12 +824,44 @@ export function registerBroadcastStudioRoutes(app: Express) {
     });
   }));
 
+  app.get("/api/broadcast/capture/nodes/:id/media-token", captureDeviceRoute(async (req, res) => {
+    noStore(res);
+    const node = await authenticatedCaptureNode(req);
+    if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
+    const configuration = getLiveKitConfiguration();
+    if (!configuration) return res.status(503).json({ message: "Real-time field transport is not configured" });
+    res.json(await createBroadcastLiveKitToken(configuration, {
+      studioId: node.studioId,
+      identity: `capture-node-${node.id}`,
+      name: node.name,
+      role: "field_camera",
+      canPublish: true,
+      canSubscribe: false,
+    }));
+  }));
+
   app.get("/api/broadcast/studios/:id/capture-nodes", attachUser, async (req, res) => {
     noStore(res);
     const access = await studioAccess(req.dbUser!.id, req.params.id);
     if (!access) return res.status(404).json({ message: "Studio not found" });
     const nodes = await db.select().from(broadcastCaptureNodes).where(eq(broadcastCaptureNodes.studioId, access.studio.id)).orderBy(desc(broadcastCaptureNodes.updatedAt));
     res.json(nodes.map(publicCaptureNode));
+  });
+
+  app.get("/api/broadcast/studios/:id/media-token", attachUser, async (req, res) => {
+    noStore(res);
+    const access = await studioAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Studio not found" });
+    const configuration = getLiveKitConfiguration();
+    if (!configuration) return res.status(503).json({ message: "Real-time field transport is not configured" });
+    res.json(await createBroadcastLiveKitToken(configuration, {
+      studioId: access.studio.id,
+      identity: `broadcast-operator-${req.dbUser!.id}-${randomBytes(6).toString("hex")}`,
+      name: "Broadcast operator",
+      role: "operator",
+      canPublish: false,
+      canSubscribe: true,
+    }));
   });
 
   app.post("/api/broadcast/studios/:id/capture-invitations", attachUser, async (req, res) => {
@@ -855,6 +888,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
       token,
       expiresAt,
       claimUrl: `${req.protocol}://${req.get("host")}/api/broadcast/capture/claim`,
+      fieldUrl: `${req.protocol}://${req.get("host")}/broadcast/field?token=${encodeURIComponent(token)}`,
     });
   });
 

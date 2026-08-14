@@ -65,6 +65,7 @@ const CutStudioWorkspacePage = lazy(() => import("@/pages/cut-studio-workspace")
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BroadcastAudiencePage = lazy(() => import("@/pages/broadcast-audience"));
 const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
+const BroadcastFieldPage = lazy(() => import("@/pages/broadcast-field"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
 const CourseBuilder = lazy(() => import("@/pages/course-builder"));
@@ -235,6 +236,7 @@ function Router() {
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
       <Route path="/legal/ai-recording" component={TrustPolicyPage} />
       <Route path="/review/cut/:token" component={CutStudioReviewPage} />
+      <Route path="/broadcast/field" component={BroadcastFieldPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />

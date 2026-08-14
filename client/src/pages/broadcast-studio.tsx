@@ -39,6 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import { apiRequest } from "@/lib/queryClient";
 import { createBroadcastLutRenderer } from "@/lib/broadcast-lut";
 import { parseCubeLutData } from "@shared/cut-studio";
+import { Room, RoomEvent } from "livekit-client";
 import type {
   BroadcastScene,
   BroadcastSceneTemplate,
@@ -146,7 +147,7 @@ type CaptureNode = {
   };
   lastDirective: null | { videoBitrateKbps: number; fps: number; width: number; height: number; reason: string; disconnectSlate: boolean };
 };
-type CaptureInvitation = { token: string; expiresAt: string; claimUrl: string };
+type CaptureInvitation = { token: string; expiresAt: string; claimUrl: string; fieldUrl: string };
 type RuntimeCapture = {
   recorder: MediaRecorder;
   sessionId: string;
@@ -277,6 +278,8 @@ export default function BroadcastStudioPage() {
   const [audienceCtaUrl, setAudienceCtaUrl] = useState("");
   const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
   const [captureInvitation, setCaptureInvitation] = useState<CaptureInvitation | null>(null);
+  const [fieldTransportStatus, setFieldTransportStatus] = useState<"idle" | "connecting" | "live" | "unavailable" | "error">("idle");
+  const [fieldFeedRevision, setFieldFeedRevision] = useState(0);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
   const programCanvas = useRef<HTMLCanvasElement>(null);
   const sceneCanvases = useRef(new Map<string, HTMLCanvasElement>());
@@ -312,6 +315,8 @@ export default function BroadcastStudioPage() {
   const lutData = useRef(new Map<string, ReturnType<typeof parseCubeLutData>>());
   const lutRenderers = useRef(new Map<string, NonNullable<ReturnType<typeof createBroadcastLutRenderer>>>());
   const loadingLuts = useRef(new Set<string>());
+  const fieldRoom = useRef<Room | null>(null);
+  const fieldStreams = useRef(new Map<string, MediaStream>());
 
   const studiosQuery = useQuery<Studio[]>({
     queryKey: ["/api/broadcast/studios"],
@@ -362,6 +367,71 @@ export default function BroadcastStudioPage() {
   const teamTemplates = teamTemplatesQuery.data ?? [];
   const broadcastLuts = broadcastLutsQuery.data ?? [];
   const captureNodes = captureNodesQuery.data ?? [];
+
+  const syncFieldSourceMedia = useCallback((source: BroadcastSource) => {
+    if (!source.captureNodeId) return;
+    const stream = fieldStreams.current.get(source.captureNodeId);
+    if (!stream) return;
+    let video = mediaElements.current.get(source.id);
+    if (!(video instanceof HTMLVideoElement)) {
+      video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      mediaElements.current.set(source.id, video);
+    }
+    video.srcObject = stream;
+    void video.play().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    for (const source of config?.scenes.flatMap((scene) => scene.sources) ?? []) syncFieldSourceMedia(source);
+  }, [config, syncFieldSourceMedia]);
+
+  useEffect(() => {
+    if (!studio?.id) { setFieldTransportStatus("idle"); return; }
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    fieldRoom.current = room;
+    let cancelled = false;
+    const nodeIdFromIdentity = (identity: string) => identity.startsWith("capture-node-") ? identity.slice("capture-node-".length) : null;
+    room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      const nodeId = nodeIdFromIdentity(participant.identity);
+      if (!nodeId) return;
+      const stream = fieldStreams.current.get(nodeId) ?? new MediaStream();
+      if (!stream.getTracks().some((item) => item.id === track.mediaStreamTrack.id)) stream.addTrack(track.mediaStreamTrack);
+      fieldStreams.current.set(nodeId, stream);
+      setFieldFeedRevision((current) => current + 1);
+      for (const source of studioRef.current?.config.scenes.flatMap((scene) => scene.sources) ?? []) {
+        if (source.captureNodeId === nodeId) syncFieldSourceMedia(source);
+      }
+    });
+    room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+      const nodeId = nodeIdFromIdentity(participant.identity);
+      const stream = nodeId ? fieldStreams.current.get(nodeId) : null;
+      const mediaTrack = stream?.getTracks().find((item) => item.id === track.mediaStreamTrack.id);
+      if (mediaTrack) stream?.removeTrack(mediaTrack);
+      if (nodeId && !stream?.getTracks().length) fieldStreams.current.delete(nodeId);
+      setFieldFeedRevision((current) => current + 1);
+    });
+    room.on(RoomEvent.Disconnected, () => { if (!cancelled) setFieldTransportStatus("error"); });
+    void (async () => {
+      try {
+        setFieldTransportStatus("connecting");
+        const response = await apiRequest("GET", `/api/broadcast/studios/${studio.id}/media-token`);
+        const data = await response.json() as { token: string; serverUrl: string };
+        await room.connect(data.serverUrl, data.token);
+        if (!cancelled) setFieldTransportStatus("live");
+      } catch (error) {
+        if (cancelled) return;
+        setFieldTransportStatus(error instanceof Error && /not configured/i.test(error.message) ? "unavailable" : "error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      fieldRoom.current = null;
+      fieldStreams.current.clear();
+      void room.disconnect();
+    };
+  }, [studio?.id, syncFieldSourceMedia]);
 
   const createCaptureInvitation = useCallback(async () => {
     if (!studio) return;
@@ -1428,6 +1498,22 @@ export default function BroadcastStudioPage() {
     setSelectedSourceId(id);
     if (["camera", "screen", "microphone"].includes(type))
       void attachMedia(source);
+  };
+
+  const addFieldSource = (node: CaptureNode) => {
+    if (!previewScene || previewScene.sources.some((source) => source.captureNodeId === node.id)) return;
+    const source: BroadcastSource = {
+      ...sourceDefaults,
+      id: safeId("field"),
+      name: node.name,
+      type: "camera",
+      captureNodeId: node.id,
+      zOrder: previewScene.sources.length,
+    };
+    updatePreviewScene((scene) => ({ ...scene, sources: [...scene.sources, source] }));
+    setSelectedSourceId(source.id);
+    syncFieldSourceMedia(source);
+    setMessage(`${node.name} was added to Preview. Use Transition to take it live.`);
   };
 
   const compositeStream = () => {
@@ -2745,6 +2831,7 @@ export default function BroadcastStudioPage() {
               <p className="text-xs leading-5 text-zinc-500">
                 Pair an Android, desktop, guest, or dedicated encoder without sharing your account or destination keys. Devices report network, encoder, battery, thermal, and recovery health here.
               </p>
+              <div className={`rounded-lg px-2.5 py-2 text-[10px] font-bold uppercase ${fieldTransportStatus === "live" ? "bg-emerald-500/10 text-emerald-300" : fieldTransportStatus === "unavailable" ? "bg-amber-500/10 text-amber-300" : fieldTransportStatus === "error" ? "bg-red-500/10 text-red-300" : "bg-zinc-900 text-zinc-500"}`}>Field media · {fieldTransportStatus === "live" ? "operator ready" : fieldTransportStatus === "unavailable" ? "provider not configured" : fieldTransportStatus}</div>
               {studio && <Button size="sm" variant="outline" className="w-full" onClick={() => setLocation(`/broadcast/control/${studio.id}`)}><MonitorUp className="mr-1.5 h-3.5 w-3.5"/>Open phone controller</Button>}
               {studio?.access?.role === "owner" && <Button
                 size="sm"
@@ -2760,10 +2847,11 @@ export default function BroadcastStudioPage() {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">One-time pairing code</div>
                 <div className="mt-1 break-all font-mono text-xs text-white">{captureInvitation.token}</div>
                 <div className="mt-2 flex gap-2">
+                  <Button size="sm" className="flex-1 bg-[#1d9bf0] text-black hover:bg-[#1d9bf0]/90" onClick={() => window.open(captureInvitation.fieldUrl, "_blank", "noopener,noreferrer")}><Camera className="mr-1.5 h-3.5 w-3.5"/>Open camera</Button>
                   <Button size="sm" variant="outline" className="flex-1" onClick={async () => {
-                    await navigator.clipboard.writeText(JSON.stringify({ claimUrl: captureInvitation.claimUrl, token: captureInvitation.token }));
-                    setMessage("Secure pairing bundle copied.");
-                  }}><Copy className="mr-1.5 h-3.5 w-3.5" />Copy setup</Button>
+                    await navigator.clipboard.writeText(captureInvitation.fieldUrl);
+                    setMessage("Secure field-camera link copied.");
+                  }}><Copy className="mr-1.5 h-3.5 w-3.5" />Copy link</Button>
                   <Button size="sm" variant="ghost" onClick={() => setCaptureInvitation(null)}>Hide</Button>
                 </div>
                 <p className="mt-2 text-[10px] leading-4 text-zinc-500">Expires {new Date(captureInvitation.expiresAt).toLocaleTimeString()}. It can be claimed once.</p>
@@ -2789,6 +2877,7 @@ export default function BroadcastStudioPage() {
                       {node.lastDirective && <span className="col-span-2 border-t border-zinc-900 pt-2">Director: {node.lastDirective.width}×{node.lastDirective.height} · {node.lastDirective.fps} fps · {node.lastDirective.videoBitrateKbps} kbps ({node.lastDirective.reason})</span>}
                     </div> : <p className="mt-2 text-[10px] text-zinc-600">Waiting for the first device heartbeat.</p>}
                     {studio?.access?.role === "owner" && <div className="mt-3 space-y-2 border-t border-zinc-900 pt-3">
+                      <Button key={`${node.id}:${fieldFeedRevision}`} size="sm" className="w-full bg-[#1d9bf0] text-black hover:bg-[#1d9bf0]/90" disabled={!fieldStreams.current.has(node.id) || previewScene?.sources.some((source) => source.captureNodeId === node.id)} onClick={() => addFieldSource(node)}>{previewScene?.sources.some((source) => source.captureNodeId === node.id) ? "In preview" : fieldStreams.current.has(node.id) ? "Add camera to preview" : "Waiting for camera feed"}</Button>
                       <div className="grid grid-cols-2 gap-2">
                         <label className="text-[10px] text-zinc-500">Director state<select aria-label={`${node.name} director state`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.requestedState} disabled={Boolean(busy)} onChange={(event) => void configureCaptureNode(node, { requestedState: event.target.value as CaptureNodeConfiguration["requestedState"] }, `${node.name} was directed to ${event.target.value}.`)}><option value="ready">Ready</option><option value="live">Live</option><option value="standby">Standby</option><option value="paused">Pause</option><option value="stopped">Stop</option></select></label>
                         <label className="text-[10px] text-zinc-500">Capture mode<select aria-label={`${node.name} capture mode`} className="mt-1 h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-white" value={node.configuration.captureMode} disabled={Boolean(busy)} onChange={(event) => void configureCaptureNode(node, { captureMode: event.target.value as CaptureNodeConfiguration["captureMode"] }, `${node.name} capture mode updated.`)}><option value="camera">Camera</option><option value="screen">Screen</option><option value="audio_only">Audio only</option></select></label>

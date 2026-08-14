@@ -1026,8 +1026,8 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
   expect((await api(page, peer, "POST", `/api/broadcast/studios/${studio.id}/capture-invitations`, { expiresInMinutes: 15 })).status()).toBe(404);
   const invitationResponse = await api(page, owner, "POST", `/api/broadcast/studios/${studio.id}/capture-invitations`, { expiresInMinutes: 15 });
   await expectOk(invitationResponse);
-  const invitation = await invitationResponse.json() as { token: string; claimUrl: string };
-  expect(invitation).toMatchObject({ token: expect.any(String), claimUrl: expect.stringContaining("/api/broadcast/capture/claim") });
+  const invitation = await invitationResponse.json() as { token: string; claimUrl: string; fieldUrl: string };
+  expect(invitation).toMatchObject({ token: expect.any(String), claimUrl: expect.stringContaining("/api/broadcast/capture/claim"), fieldUrl: expect.stringContaining("/broadcast/field?token=") });
 
   const claimResponse = await page.request.post("/api/broadcast/capture/claim", { data: {
     token: invitation.token,

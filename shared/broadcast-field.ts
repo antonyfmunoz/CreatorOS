@@ -8,12 +8,12 @@ export const captureNodeKindSchema = z.enum([
   "encoder",
 ]);
 
-export const captureTransportSchema = z.enum(["srt", "whip", "rtmps"]);
-export const captureCodecSchema = z.enum(["h264", "h265", "av1"]);
+export const captureTransportSchema = z.enum(["srt", "whip", "webrtc", "rtmps"]);
+export const captureCodecSchema = z.enum(["h264", "h265", "av1", "vp8", "vp9"]);
 
 export const captureCapabilitiesSchema = z.object({
-  transports: z.array(captureTransportSchema).min(1).max(3),
-  videoCodecs: z.array(captureCodecSchema).min(1).max(3),
+  transports: z.array(captureTransportSchema).min(1).max(4),
+  videoCodecs: z.array(captureCodecSchema).min(1).max(5),
   maxWidth: z.number().int().min(640).max(7680),
   maxHeight: z.number().int().min(360).max(4320),
   maxFps: z.number().int().min(15).max(240),
@@ -234,7 +234,7 @@ export function captureReadiness(capabilitiesInput: CaptureCapabilities) {
   const capabilities = captureCapabilitiesSchema.parse(capabilitiesInput);
   const blockers: string[] = [];
   if (!capabilities.videoCodecs.includes("h264")) blockers.push("h264_required_for_universal_fallback");
-  if (!capabilities.transports.some((transport) => transport === "srt" || transport === "whip")) blockers.push("resilient_transport_required");
+  if (!capabilities.transports.some((transport) => transport === "srt" || transport === "whip" || transport === "webrtc")) blockers.push("resilient_transport_required");
   if (!capabilities.hardwareEncoding) blockers.push("hardware_encoder_required");
   if (!capabilities.localRecording) blockers.push("local_recovery_recording_required");
   if (!capabilities.adaptiveBitrate) blockers.push("adaptive_bitrate_required");

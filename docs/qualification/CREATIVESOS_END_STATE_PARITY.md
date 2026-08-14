@@ -76,11 +76,11 @@ field evidence.
 | AI relationship copilot | Governed suggestions, evidence citations, injection boundary, human review and execution re-check | `provider_pending` | Native review/state proof plus model-provider inference round trip |
 | Cloned voice | Attestation, consent, exact-script approval, disclosure, private artifact lifecycle and revocation | `provider_pending` | Voice-provider enrollment/generation/delivery/revocation/deletion proof |
 | CutStudio | Durable multitrack editing, captions, audio/color/brand controls, review, rendering, multicam and reusable asset lineage | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive) | The bounded creator workflow now includes Broadcast multicam handoff, synchronized angle switching, private edit proxies and original-source render lineage. Competitive parity still requires the locked same-source human review benchmark; translated captions, provider transcription/diarization, vision/model assistance and scalable 4K worker evidence remain external or scale gates. |
-| Broadcast | Multi-studio live production, scenes/sources/audio, collaboration, recording, resilient delivery, field capture and operator evidence | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive); `provider_pending` (remote/external) | The bounded workflow now includes program/preview multiview, transition rendering, native audience widgets, destination-specific landscape/portrait/square variants, a phone operator surface, and secure native-capable field-node pairing, telemetry, continuity and director controls. Competitive parity still requires the locked same-show human review benchmark; a distributable Android/iOS capture shell and real-device/network endurance run are device gates, while remote guests, external live destinations and regional encoder failover remain provider or scale gates. |
+| Broadcast | Multi-studio live production, scenes/sources/audio, collaboration, recording, resilient delivery, field capture and operator evidence | `verified_complete` (provider-independent web runtime); `not_benchmarked` (competitive); `provider_pending` (external destinations) | The bounded workflow now includes program/preview multiview, transition rendering, native audience widgets, destination-specific landscape/portrait/square variants, a phone operator surface, and an installable browser field camera with one-time pairing, session-only device custody, camera/mic/screen preview, director controls, truthful telemetry, local recovery segments and role-separated LiveKit media delivery into Preview/Program. Competitive parity still requires the locked same-show human review benchmark and real-device/network endurance runs; native background capture, bonded links, external live destinations and regional encoder failover remain device, provider or scale gates. |
 | Connected creation loop | Completed Broadcast programs, isolated sources and markers open directly as lineage-preserving CutStudio projects without export/re-upload | `verified_complete` (native) | One generated source now passes the mobile and desktop golden journey: private Broadcast program and isolated track, idempotent CutStudio handoff, transcript correction, deterministic highlights, kinetic-caption render, public distribution promotion, native publication, post-scoped comment automation, second-user keyword comment, public reply, DM and post analytics. External destinations remain provider gates. |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
-| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v305 production readiness pass; production migrations now use a transaction-scoped advisory lock safe for the database transaction pooler |
+| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v307 production readiness pass across all 83 migrations; production migrations use a transaction-scoped advisory lock safe for the database transaction pooler |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
@@ -109,13 +109,13 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] Empty PostgreSQL migration qualification passes locally across all 83 migrations; the last independently retained production evidence remains v305 at 80 migrations and is not silently upgraded by this local result.
+- [x] Empty PostgreSQL migration qualification and the v307 production release ledger both pass across all 83 migrations.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
-- [x] The 124-execution isolated PostgreSQL browser matrix (62 journeys on mobile and desktop) covers every provider-independent capability and material local role transition above.
+- [x] The 126-execution isolated PostgreSQL browser matrix (63 journeys on mobile and desktop) covers every provider-independent capability and material local role transition above.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
-- [x] Production field tests repeat the safe signed-in application surfaces; LiveKit join/leave, AI quota handling, Stripe connected-account delivery, refund/reversal, dispute recovery/restoration and failed-payout persistence retain their current evidence, and the v305 live authenticated checks cover Broadcast, CutStudio, Distribution, automations, profile, marketplace search/product routing and communities with clean runtime logs. The sweep directly proves route-correct active navigation across the five primary destinations plus Broadcast, CutStudio and Privacy settings. The unchanged anonymous auth entry additionally retains its Lighthouse evidence at 96 performance and 100 accessibility.
+- [x] Production field tests repeat the safe signed-in application surfaces; LiveKit join/leave, AI quota handling, Stripe connected-account delivery, refund/reversal, dispute recovery/restoration and failed-payout persistence retain their current evidence. The v307 authenticated creation-studio test created and removed an isolated Broadcast studio, persisted scenes and a native goal widget, executed a wipe transition, issued a one-time field pairing code, controlled program state at 390x884 without horizontal overflow, and created a real private R2-backed CutStudio proxy while preserving original render lineage. Earlier live checks continue to cover Distribution, automations, profile, marketplace search/product routing and communities with clean runtime logs. The unchanged anonymous auth entry retains its Lighthouse evidence at 96 performance and 100 accessibility.
 - [x] Provider-disabled states are honest: mixed native/external distribution remains `needs_connection`, retries preserve one native receipt, and unconfigured realtime/AI/channel surfaces fail closed.
 - [ ] Provider credentials, legal publication, UMH-side pairing and irreversible production actions remain explicit handoff gates.
 
@@ -124,9 +124,9 @@ styling:
 This section records local evidence for the current worktree without rewriting
 older production evidence:
 
-- 74 unit/integration files and 302 tests passed, followed by TypeScript checks,
+- 75 unit/integration files and 307 tests passed, followed by TypeScript checks,
   production builds, Worker validation and bundle budgets;
-- 124 isolated PostgreSQL browser executions passed across mobile and desktop,
+- 126 isolated PostgreSQL browser executions passed across mobile and desktop,
   including secure field-node pairing and replay rejection, remote director
   configuration, phone operation, live multiview/widgets/transitions,
   multicam angle rendering and proxy/original-lineage behavior;
@@ -136,12 +136,18 @@ older production evidence:
 - all 83 migrations passed from an empty database, and a backup created from
   that schema restored with the required tables and no orphaned direct
   messages;
-- the source-secret scan covered 574 tracked files, the production dependency
+- the source-secret scan covered 581 source files, the production dependency
   audit reported zero vulnerabilities, and the 200-request/20-concurrency
   capacity probe completed with zero failures.
 
-This is provider-independent local release evidence. It is not evidence of a
-new production deployment, a native phone-binary field test, an authorized
+The subsequent field-camera slice adds 5 unit assertions and a two-viewport
+isolated PostgreSQL browser journey covering one-time pairing, preview,
+heartbeat sequencing, director state and mute commands, and revocation. The
+complete 126-execution matrix passed rather than inferring release readiness
+from that focused pass.
+
+This is local release evidence. It is not evidence of a
+new production deployment, a native phone-binary or background-capture field test, an authorized
 competitor benchmark, live third-party destinations, remote guests, regional
 encoder failover or external AI/transcription behavior.
 
