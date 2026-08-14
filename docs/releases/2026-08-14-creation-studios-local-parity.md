@@ -57,7 +57,8 @@ the common live-widget jobs are native sources.
 ## Production release evidence
 
 Commit `374a8f6` deployed as Fly release v307, followed by field-camera commit
-`d0132b3` as Fly release v308. The release command and the post-deployment
+`d0132b3` as Fly release v308 and credential-cleanup commit `5ab1d58` as v309.
+The release command and the post-deployment
 verifier both confirmed all 83 migrations, `/api/health`
 returned `ok`, `/api/ready` returned `release_ready`, and the active machine
 passed its HTTP health check with R2 private delivery configured.
@@ -91,11 +92,13 @@ gates, relationship release, backup/restore, a clean 581-file source-secret
 scan, zero production dependency vulnerabilities and a 200-request capacity
 probe with zero failures.
 
-Fly release v308 then passed production health/readiness and machine checks.
+Fly releases v308 and v309 passed production health/readiness and machine checks.
 A signed-in two-tab field test claimed a one-time camera link, removed its token
 from the URL, exposed the paired device to the operator with LiveKit reported
 ready, and delivered director state, camera-facing and microphone commands to
 the device. Revocation returned the device to the pairing boundary and the
-temporary studio was deleted. The automated in-app browser had no granted
+temporary studio was deleted. A second v309 test proved the consumed code is
+also cleared from the pairing form after revocation; its temporary device and
+studio were removed. The automated in-app browser had no granted
 physical camera, so an actual camera track publication and network endurance
 run remain an explicit real-device gate rather than inferred evidence.
