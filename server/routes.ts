@@ -573,6 +573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "relationship_audit_events",
       "production_backups",
       "cut_studio_projects",
+      "cut_studio_audio_templates",
       "cut_studio_jobs",
       "cut_studio_versions",
       "cut_studio_review_links",

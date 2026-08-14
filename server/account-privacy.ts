@@ -134,6 +134,7 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from contacts where user_id = ${userId} order by created_at`),
       exportRows(sql`select * from documents where user_id = ${userId} order by created_at`),
       exportRows(sql`select * from cut_studio_projects where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_audio_templates where owner_user_id = ${userId} order by updated_at`),
       exportRows(sql`select * from cut_studio_jobs where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from cut_studio_versions where owner_user_id = ${userId} order by created_at`),
       exportRows(sql`select id, version_id, project_id, owner_user_id, label, status, expires_at, created_at from cut_studio_review_links where owner_user_id = ${userId} order by created_at`),

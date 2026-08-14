@@ -2544,6 +2544,26 @@ export const cutStudioProjects = pgTable(
   }),
 );
 
+// Portable mix decisions shared by every editor in a business. Templates are
+// deliberately independent from project media and clip timing.
+export const cutStudioAudioTemplates = pgTable(
+  "cut_studio_audio_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    payload: json("payload").$type<import("./cut-studio").CutAudioRoutingTemplatePayload>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessNameUnique: unique("cut_studio_audio_templates_business_name_unique").on(table.businessId, table.name),
+    businessUpdatedIdx: index("cut_studio_audio_templates_business_updated_idx").on(table.businessId, table.updatedAt),
+    ownerUpdatedIdx: index("cut_studio_audio_templates_owner_updated_idx").on(table.ownerUserId, table.updatedAt),
+  }),
+);
+
 export const cutStudioProjectMedia = pgTable(
   "cut_studio_project_media",
   {

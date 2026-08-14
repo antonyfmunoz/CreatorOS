@@ -61,6 +61,7 @@ const requiredTables = [
   "creator_payout_events",
   "production_backups",
   "cut_studio_projects",
+  "cut_studio_audio_templates",
   "cut_studio_project_media",
   "cut_studio_jobs",
   "cut_studio_versions",

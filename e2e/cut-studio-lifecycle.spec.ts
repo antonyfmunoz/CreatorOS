@@ -279,6 +279,70 @@ test("CutStudio routes named audio buses into a private render", async ({ page }
   expect(await jobResponse.json()).toMatchObject({ state: "done", artifactAssetId: expect.any(String), output: { multitrack: true } });
 });
 
+test("CutStudio reuses a private business audio mix across projects", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const fixture = generateFixtures(testInfo);
+  const primary = await uploadPrivate(page, owner, fixture.primary, "template-primary.mp4", "video/mp4", "video");
+  const music = await uploadPrivate(page, owner, fixture.music, "template-music.mp3", "audio/mpeg", "audio");
+  const createProject = async (name: string) => {
+    const createdResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: primary.id, name, duration: 3, mediaKind: "video" });
+    await expectOk(createdResponse);
+    const project = await createdResponse.json();
+    await expectOk(await api(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: music.id, name: "Team music", duration: 2, mediaKind: "audio" }));
+    const loadedResponse = await api(page, owner, "GET", `/api/cut/projects/${project.id}`);
+    await expectOk(loadedResponse);
+    const loaded = await loadedResponse.json();
+    await expectOk(await api(page, owner, "PUT", `/api/cut/projects/${project.id}/edl`, { version: 3, clips: [
+      { id: "primary", start: 0, end: 3, track: "v1", timelineStart: 0 },
+      { id: "music", assetId: music.id, start: 0, end: 2, track: "a1", timelineStart: 0, volume: 1 },
+    ] }, { "If-Match": String(loaded.revision) }));
+    return project;
+  };
+  const first = await createProject(`Reusable mix source ${Date.now()}`);
+  const second = await createProject(`Reusable mix target ${Date.now()}`);
+  const templateName = `Launch mix ${Date.now()}`;
+
+  await page.goto(`/cut-studio?project=${first.id}`);
+  await expect(page.getByRole("heading", { name: first.name })).toBeVisible();
+  await page.getByRole("button", { name: "Creator mix preset" }).click();
+  await page.getByLabel("A1 audio bus").selectOption("music");
+  await page.getByLabel("Music bus name").fill("Campaign bed");
+  await page.getByLabel("Music bus gain").fill("0.4");
+  await page.getByRole("button", { name: "A1 clip 2" }).click();
+  await page.getByLabel("Duck under voice").click();
+  await page.getByLabel("Clean audio").click();
+  await page.getByLabel("Audio finish").selectOption("broadcast");
+  await page.getByLabel("Master gain").fill("2");
+  await page.getByLabel("Audio template name").fill(templateName);
+  await page.getByRole("button", { name: "Save team mix" }).click();
+  await expect(page.getByText(`Saved ${templateName} for every editor in this business`)).toBeVisible();
+
+  const templatesResponse = await api(page, owner, "GET", `/api/cut/audio-routing-templates?businessId=${first.businessId}`);
+  await expectOk(templatesResponse);
+  const template = (await templatesResponse.json()).find((item: { name: string }) => item.name === templateName);
+  expect(template).toMatchObject({ payload: { audioBuses: expect.arrayContaining([expect.objectContaining({ id: "music", name: "Campaign bed", gain: .4 })]), trackRouting: [expect.objectContaining({ track: "a1", bus: "music" })], duckingTracks: ["a1"], finishing: { cleanAudio: true, audioPreset: "broadcast", masterGainDb: 2 } } });
+  expect((await api(page, peer, "GET", `/api/cut/audio-routing-templates?businessId=${first.businessId}`)).status()).toBe(404);
+
+  await page.goto(`/cut-studio?project=${second.id}`);
+  await expect(page.getByRole("heading", { name: second.name })).toBeVisible();
+  await page.getByRole("button", { name: templateName, exact: true }).click();
+  await expect(page.getByText(`Applied ${templateName} routing, ducking, and finishing defaults`)).toBeVisible();
+  await expect(page.getByLabel("Audio finish")).toHaveValue("broadcast");
+  await expect(page.getByLabel("Master gain")).toHaveValue("2");
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/cut/projects/${second.id}`);
+    await expectOk(response);
+    const current = await response.json();
+    return { bus: current.edl.audioBuses.find((item: { id: string }) => item.id === "music"), track: current.edl.tracks.find((item: { track: string }) => item.track === "a1"), music: current.edl.clips.find((item: { id: string }) => item.id === "music") };
+  }).toMatchObject({ bus: { name: "Campaign bed", gain: .4 }, track: { bus: "music" }, music: { duckUnderVoice: true } });
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByLabel(`Delete ${templateName} audio template`).click();
+  await expect(page.getByText(`Removed ${templateName} from the shared library`)).toBeVisible();
+});
+
 test("CutStudio renders scale and opacity keyframes into private output", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const owner = ownerFor(testInfo);

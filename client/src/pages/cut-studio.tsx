@@ -4,11 +4,11 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutEdl, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
+import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl, type CutAudioRoutingTemplatePayload, type CutEdl, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio"; createdAt: string };
 type ProjectLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } } };
-type Project = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; edl: CutEdl; transcript: CutTranscript | null; revision: number; updatedAt: string; jobs?: Job[]; media?: ProjectMedia[]; luts?: ProjectLut[] };
+type Project = { id: string; businessId: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; edl: CutEdl; transcript: CutTranscript | null; revision: number; updatedAt: string; jobs?: Job[]; media?: ProjectMedia[]; luts?: ProjectLut[] };
 type Job = { id: string; kind: "transcribe" | "highlights" | "render"; state: "queued" | "running" | "done" | "error" | "cancelled"; detail: string; progress: number; artifactAssetId?: string | null; output?: { candidates?: Highlight[]; filename?: string } };
 type Highlight = { id: string; start: number; end: number; title: string; score: number };
 type CutCandidates = { fillerWords: Array<{ word: string; start: number; end: number }>; silenceGaps: Array<{ start: number; end: number }> };
@@ -19,6 +19,7 @@ type WorkspaceParticipant = { id: number; username: string; displayName: string;
 type WorkspaceNote = { id: string; body: string; positionMs: number; status: "open" | "resolved"; author: { id: number; username: string; displayName: string } | null };
 type WorkspacePayload = { participants: WorkspaceParticipant[]; notes: WorkspaceNote[] };
 type LoudnessMeasurement = { integratedLufs: number; loudnessRangeLu: number; truePeakDbfs: number; analyzedSeconds: number; standard: string; measuredAt: string };
+type AudioRoutingTemplate = { id: string; name: string; payload: CutAudioRoutingTemplatePayload; access: { canDelete: boolean } };
 
 function formatTime(value: number) {
   const seconds = Math.max(0, value || 0);
@@ -111,6 +112,8 @@ export default function CutStudioPage() {
   const [audioLevelDb, setAudioLevelDb] = useState(-60);
   const [liveLufs, setLiveLufs] = useState(-70);
   const [loudnessMeasurement, setLoudnessMeasurement] = useState<LoudnessMeasurement | null>(null);
+  const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
+  const [audioTemplateName, setAudioTemplateName] = useState("");
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
@@ -128,7 +131,8 @@ export default function CutStudioPage() {
       const projectJobs = next.jobs ?? [];
       const projectMedia = next.media ?? [];
       const primaryMedia = projectMedia.find((item) => item.assetId === next.sourceAssetId) ?? projectMedia[0] ?? null;
-      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(await reviewResponse.json() as ReviewVersion[]); setWorkspace(await workspaceResponse.json() as WorkspacePayload); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote("");
+      const templateResponse = await apiRequest("GET", `/api/cut/audio-routing-templates?businessId=${encodeURIComponent(next.businessId)}`);
+      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(await reviewResponse.json() as ReviewVersion[]); setWorkspace(await workspaceResponse.json() as WorkspacePayload); setAudioTemplates(await templateResponse.json() as AudioRoutingTemplate[]); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote("");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { setBusy(""); }
   }, []);
@@ -791,6 +795,61 @@ export default function CutStudioPage() {
     setMessage("Creator mix preset routed audio tracks to dialogue, music, and effects buses");
   };
 
+  const saveAudioRoutingTemplate = async () => {
+    if (!project || !edl || edl.version !== 3 || !audioTemplateName.trim()) return;
+    const defaults = { dialogue: "Dialogue", music: "Music", effects: "Effects" };
+    const audioTracks = timelineTracks.filter((track) => track.startsWith("a"));
+    const payload: CutAudioRoutingTemplatePayload = {
+      audioBuses: (["dialogue", "music", "effects"] as const).map((id) => edl.audioBuses?.find((item) => item.id === id) ?? { id, name: defaults[id], gain: 1, muted: false }),
+      trackRouting: audioTracks.map((track, index) => {
+        const settings = edl.tracks?.find((item) => item.track === track);
+        return { track, bus: settings?.bus ?? (index === 0 ? "dialogue" : index === 1 ? "music" : "effects"), gain: settings?.gain ?? 1, muted: settings?.muted ?? false };
+      }),
+      duckingTracks: Array.from(new Set(edl.clips.filter((item) => (item.track ?? "").startsWith("a") && item.duckUnderVoice).map((item) => item.track!))),
+      finishing: { cleanAudio, audioPreset, masterGainDb },
+    };
+    setBusy("audio-template"); setMessage("");
+    try {
+      const response = await apiRequest("POST", "/api/cut/audio-routing-templates", { businessId: project.businessId, name: audioTemplateName.trim(), payload });
+      const template = await response.json() as AudioRoutingTemplate;
+      setAudioTemplates((current) => [template, ...current.filter((item) => item.id !== template.id && item.name !== template.name)]);
+      setAudioTemplateName("");
+      setMessage(`Saved ${template.name} for every editor in this business`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save the audio template"); }
+    finally { setBusy(""); }
+  };
+
+  const applyAudioRoutingTemplate = (template: AudioRoutingTemplate) => {
+    if (!edl || edl.version !== 3) return;
+    const routing = new Map(template.payload.trackRouting.map((item) => [item.track, item]));
+    const duckingTracks = new Set(template.payload.duckingTracks);
+    const currentAudioTracks = timelineTracks.filter((track) => track.startsWith("a"));
+    applyEdit({
+      ...edl,
+      tracks: [
+        ...(edl.tracks ?? []).filter((item) => !currentAudioTracks.includes(item.track)),
+        ...currentAudioTracks.map((track) => {
+          const current = edl.tracks?.find((item) => item.track === track) ?? { track, locked: false, hidden: false, muted: false, solo: false, gain: 1 };
+          const saved = routing.get(track);
+          return saved ? { ...current, bus: saved.bus, gain: saved.gain, muted: saved.muted } : current;
+        }),
+      ],
+      audioBuses: template.payload.audioBuses,
+      clips: edl.clips.map((item) => (item.track ?? "").startsWith("a") ? { ...item, duckUnderVoice: duckingTracks.has(item.track!) } : item),
+    });
+    setCleanAudio(template.payload.finishing.cleanAudio);
+    setAudioPreset(template.payload.finishing.audioPreset);
+    setMasterGainDb(template.payload.finishing.masterGainDb);
+    setMessage(`Applied ${template.name} routing, ducking, and finishing defaults`);
+  };
+
+  const deleteAudioRoutingTemplate = async (template: AudioRoutingTemplate) => {
+    if (!window.confirm(`Remove ${template.name} from this business? Existing project mixes will not change.`)) return;
+    await apiRequest("DELETE", `/api/cut/audio-routing-templates/${template.id}`);
+    setAudioTemplates((current) => current.filter((item) => item.id !== template.id));
+    setMessage(`Removed ${template.name} from the shared library`);
+  };
+
   if (!project || !edl) return (
     <main className="min-h-screen bg-black pb-24 text-white">
       <header className="sticky top-0 z-20 flex h-14 items-center border-b border-zinc-800 bg-black px-4"><Button variant="ghost" size="icon" onClick={() => setLocation("/create")} aria-label="Back"><ArrowLeft /></Button><Film className="ml-2 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 text-lg font-bold">CutStudio</h1></header>
@@ -844,7 +903,14 @@ export default function CutStudioPage() {
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Live loudness</span><div className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output><output aria-label="Live short-term loudness" className="w-24 text-right font-mono text-xs font-bold text-[#1d9bf0]">{liveLufs.toFixed(1)} LUFS-S</output></div><div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Calibrated loudness analysis"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">EBU R128 loudness</p><p className="mt-1 text-[10px] text-zinc-600">Live LUFS-S uses a rolling three-second K-weighted estimate. Analyze provides calibrated integrated evidence for the private source.</p></div><Button size="sm" variant="outline" disabled={busy === "loudness"} onClick={() => void analyzeLoudness()}>{busy === "loudness" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Volume2 className="mr-1.5 h-3.5 w-3.5"/>}Analyze</Button></div>{loudnessMeasurement && <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.integratedLufs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LUFS-I</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.truePeakDbfs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">dBTP</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.loudnessRangeLu.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LRA · LU</span></div></div>}</div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-zinc-500">{formatTime(playhead)} / {formatTime(timelineDuration)} · {edl.clips.length} clips · {edl.markers?.length ?? 0} markers · {edl.compounds?.length ?? 0} compounds</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant={snapEnabled ? "default" : "outline"} onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}><Magnet className="mr-1.5 h-4 w-4"/>Snap</Button><Button size="sm" variant={rippleMode !== "off" ? "default" : "outline"} onClick={cycleRippleMode} aria-label={`Ripple ${rippleMode}`} aria-pressed={rippleMode !== "off"}>Ripple {rippleMode}</Button><Button size="sm" variant={rollingEnabled ? "default" : "outline"} onClick={() => setRollingEnabled((value) => !value)} aria-pressed={rollingEnabled}>Roll edit</Button><Button size="sm" variant="outline" onClick={addTimelineMarker}><Flag className="mr-1.5 h-4 w-4"/>Marker</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={groupSelectedClips}><Link2 className="mr-1.5 h-4 w-4"/>Group</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.clips.find((item) => item.id === id)?.groupId)} onClick={ungroupSelectedClips}><Unlink2 className="mr-1.5 h-4 w-4"/>Ungroup</Button><Button size="sm" variant="outline" disabled={selectedClipIds.length < 2} onClick={compoundSelectedClips}>Make compound</Button><Button size="sm" variant="outline" disabled={!selectedClipIds.some((id) => edl.compounds?.some((compound) => compound.clipIds.includes(id)))} onClick={breakApartSelectedCompound}>Break apart</Button><Button size="sm" variant="outline" disabled={edl.version !== 3 || !edl.clips[selectedClip]?.id} onClick={moveSelectionToPlayhead}>Move to playhead</Button><Button size="sm" variant="outline" onClick={() => applyEdit(splitCutAt(edl, playhead))}><Scissors className="mr-2 h-4 w-4"/>Split</Button></div></div>
-             {edl.version === 3 && timelineTracks.some((track) => track.startsWith("a")) && <div className="mb-3 rounded-xl border border-zinc-800 bg-black p-3" aria-label="Audio mix buses"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold">Audio buses</p><p className="mt-1 text-[10px] text-zinc-500">Route tracks once, then balance dialogue, music, and effects as reusable groups.</p></div><Button size="sm" variant="outline" onClick={applyAudioRoutingPreset}>Creator mix preset</Button></div><div className="mt-3 grid gap-2 sm:grid-cols-3">{(["dialogue", "music", "effects"] as const).map((id) => { const fallback = id[0].toUpperCase() + id.slice(1); const bus = edl.audioBuses?.find((item) => item.id === id) ?? { id, name: fallback, gain: 1, muted: false }; return <div key={id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2"><div className="flex items-center gap-2"><input aria-label={`${fallback} bus name`} maxLength={40} value={bus.name} className="min-w-0 flex-1 bg-transparent text-xs font-bold outline-none" onChange={(event) => updateAudioBus(id, { name: event.target.value || fallback })}/><button aria-label={`${bus.muted ? "Unmute" : "Mute"} ${fallback} bus`} onClick={() => updateAudioBus(id, { muted: !bus.muted })}>{bus.muted ? <VolumeX className="h-3.5 w-3.5 text-red-400"/> : <Volume2 className="h-3.5 w-3.5 text-zinc-400"/>}</button></div><label className="mt-2 flex items-center gap-2 text-[9px] text-zinc-500">Gain<input aria-label={`${fallback} bus gain`} type="range" min={0} max={2} step={.05} value={bus.gain} className="min-w-0 flex-1 accent-[#1d9bf0]" onChange={(event) => updateAudioBus(id, { gain: Number(event.target.value) })}/><span>{bus.gain.toFixed(2)}</span></label></div>; })}</div></div>}
+             {edl.version === 3 && timelineTracks.some((track) => track.startsWith("a")) && <div className="mb-3 rounded-xl border border-zinc-800 bg-black p-3" aria-label="Audio mix buses">
+               <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold">Audio buses</p><p className="mt-1 text-[10px] text-zinc-500">Route tracks once, then balance dialogue, music, and effects as reusable groups.</p></div><Button size="sm" variant="outline" onClick={applyAudioRoutingPreset}>Creator mix preset</Button></div>
+               <div className="mt-3 grid gap-2 sm:grid-cols-3">{(["dialogue", "music", "effects"] as const).map((id) => { const fallback = id[0].toUpperCase() + id.slice(1); const bus = edl.audioBuses?.find((item) => item.id === id) ?? { id, name: fallback, gain: 1, muted: false }; return <div key={id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2"><div className="flex items-center gap-2"><input aria-label={`${fallback} bus name`} maxLength={40} value={bus.name} className="min-w-0 flex-1 bg-transparent text-xs font-bold outline-none" onChange={(event) => updateAudioBus(id, { name: event.target.value || fallback })}/><button aria-label={`${bus.muted ? "Unmute" : "Mute"} ${fallback} bus`} onClick={() => updateAudioBus(id, { muted: !bus.muted })}>{bus.muted ? <VolumeX className="h-3.5 w-3.5 text-red-400"/> : <Volume2 className="h-3.5 w-3.5 text-zinc-400"/>}</button></div><label className="mt-2 flex items-center gap-2 text-[9px] text-zinc-500">Gain<input aria-label={`${fallback} bus gain`} type="range" min={0} max={2} step={.05} value={bus.gain} className="min-w-0 flex-1 accent-[#1d9bf0]" onChange={(event) => updateAudioBus(id, { gain: Number(event.target.value) })}/><span>{bus.gain.toFixed(2)}</span></label></div>; })}</div>
+               <div className="mt-3 border-t border-zinc-800 pt-3" aria-label="Shared audio routing templates">
+                 <div className="flex flex-wrap gap-2"><input aria-label="Audio template name" value={audioTemplateName} maxLength={80} placeholder="Team mix name" className="min-w-44 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs outline-none focus:border-[#1d9bf0]" onChange={(event) => setAudioTemplateName(event.target.value)}/><Button size="sm" variant="outline" disabled={!audioTemplateName.trim() || busy === "audio-template"} onClick={() => void saveAudioRoutingTemplate()}>{busy === "audio-template" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Save className="mr-1.5 h-3.5 w-3.5"/>}Save team mix</Button></div>
+                 <div className="mt-2 flex flex-wrap gap-2">{audioTemplates.length ? audioTemplates.map((template) => <div key={template.id} className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950"><button className="px-3 py-2 text-left text-[10px] font-bold hover:text-[#1d9bf0]" onClick={() => applyAudioRoutingTemplate(template)}>{template.name}</button>{template.access.canDelete && <button aria-label={`Delete ${template.name} audio template`} className="border-l border-zinc-800 p-2 text-zinc-500 hover:text-red-400" onClick={() => void deleteAudioRoutingTemplate(template)}><Trash2 className="h-3 w-3"/></button>}</div>) : <p className="text-[10px] text-zinc-600">Save this routing, ducking, cleanup, and mastering setup once, then reuse it across projects.</p>}</div>
+               </div>
+             </div>}
              <div className="space-y-1 rounded-xl bg-zinc-900 p-2" onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); seek(((event.clientX - box.left) / box.width) * timelineDuration); }}>
                {timelineTracks.map((track) => { const settings = edl.tracks?.find((item) => item.track === track) ?? { track, locked: false, hidden: false, muted: false, solo: false, gain: 1 }; return <div key={track} className={`relative h-14 overflow-hidden rounded-lg bg-black ${settings.locked ? "ring-1 ring-amber-700" : ""}`}>
                  <div className="absolute left-1 top-1 z-10 flex items-center gap-0.5 rounded bg-zinc-900/95 px-1 py-0.5" onClick={(event) => event.stopPropagation()}><span className="mr-1 text-[9px] font-bold text-zinc-400">{track.toUpperCase()}</span><button aria-label={`${settings.locked ? "Unlock" : "Lock"} ${track.toUpperCase()} track`} onClick={() => updateTrackSettings(track, { locked: !settings.locked })}>{settings.locked ? <Lock className="h-3 w-3 text-amber-400"/> : <Unlock className="h-3 w-3 text-zinc-500"/>}</button>{track.startsWith("v") && track !== "v1" && <button aria-label={`${settings.hidden ? "Show" : "Hide"} ${track.toUpperCase()} track`} onClick={() => updateTrackSettings(track, { hidden: !settings.hidden })}>{settings.hidden ? <EyeOff className="h-3 w-3 text-zinc-500"/> : <Eye className="h-3 w-3 text-zinc-300"/>}</button>}{(track === "v1" || track.startsWith("a")) && <button aria-label={`${settings.muted ? "Unmute" : "Mute"} ${track.toUpperCase()} track`} onClick={() => updateTrackSettings(track, { muted: !settings.muted })}>{settings.muted ? <VolumeX className="h-3 w-3 text-red-400"/> : <Volume2 className="h-3 w-3 text-zinc-300"/>}</button>}{track.startsWith("a") && <button className={`h-4 min-w-4 rounded px-0.5 text-[8px] font-black ${settings.solo ? "bg-amber-400 text-black" : "text-zinc-500"}`} aria-label={`${settings.solo ? "Unsolo" : "Solo"} ${track.toUpperCase()} track`} onClick={() => updateTrackSettings(track, { solo: !settings.solo })}>S</button>}{track.startsWith("a") && <select aria-label={`${track.toUpperCase()} audio bus`} value={settings.bus ?? ""} className="h-4 max-w-16 rounded bg-black px-0.5 text-[8px] text-zinc-400" onChange={(event) => updateTrackSettings(track, { bus: (event.target.value || undefined) as "dialogue" | "music" | "effects" | undefined })}><option value="">No bus</option><option value="dialogue">Dialogue</option><option value="music">Music</option><option value="effects">Effects</option></select>}{(track === "v1" || track.startsWith("a")) && <label className="ml-1 flex items-center gap-1 text-[8px] text-zinc-500">Gain<input aria-label={`${track.toUpperCase()} track gain`} className="h-1 w-12 accent-[#1d9bf0]" type="range" min={0} max={2} step={.05} value={settings.gain} onChange={(event) => updateTrackSettings(track, { gain: Number(event.target.value) })}/></label>}</div>

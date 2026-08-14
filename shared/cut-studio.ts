@@ -97,6 +97,26 @@ export const cutAudioBusSchema = z.object({
   muted: z.boolean().default(false),
 });
 
+export const cutAudioRoutingTemplatePayloadSchema = z.object({
+  audioBuses: z.array(cutAudioBusSchema).length(3),
+  trackRouting: z.array(z.object({
+    track: z.string().regex(/^a[1-8]$/),
+    bus: z.enum(["dialogue", "music", "effects"]),
+    gain: z.number().finite().min(0).max(2).default(1),
+    muted: z.boolean().default(false),
+  })).max(8),
+  duckingTracks: z.array(z.string().regex(/^a[1-8]$/)).max(8).default([]),
+  finishing: z.object({
+    cleanAudio: z.boolean().default(false),
+    audioPreset: z.enum(["original", "voice", "broadcast", "music"]).default("original"),
+    masterGainDb: z.number().finite().min(-12).max(12).default(0),
+  }),
+}).superRefine((value, context) => {
+  if (new Set(value.audioBuses.map((bus) => bus.id)).size !== 3) context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioBuses"], message: "Dialogue, music, and effects buses are required" });
+  if (new Set(value.trackRouting.map((track) => track.track)).size !== value.trackRouting.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["trackRouting"], message: "Each audio track may be routed once" });
+  if (new Set(value.duckingTracks).size !== value.duckingTracks.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["duckingTracks"], message: "Each ducking track may be listed once" });
+});
+
 export const cutEdlSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   clips: z.array(cutClipSchema).min(1).max(200),
@@ -146,6 +166,7 @@ export type CutMarker = z.infer<typeof cutMarkerSchema>;
 export type CutCompound = z.infer<typeof cutCompoundSchema>;
 export type CutTrackSettings = z.infer<typeof cutTrackSettingsSchema>;
 export type CutAudioBus = z.infer<typeof cutAudioBusSchema>;
+export type CutAudioRoutingTemplatePayload = z.infer<typeof cutAudioRoutingTemplatePayloadSchema>;
 export type CutTranscript = z.infer<typeof cutTranscriptSchema>;
 export type CutTranscriptWord = z.infer<typeof cutTranscriptWordSchema>;
 export type CutRenderRequest = z.infer<typeof cutRenderRequestSchema>;

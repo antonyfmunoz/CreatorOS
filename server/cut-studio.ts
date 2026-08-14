@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assets, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, notifications, users } from "@shared/schema";
+import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, notifications, users } from "@shared/schema";
 import {
   buildCmx3600Edl,
   buildKineticAssCaptions,
@@ -14,6 +14,7 @@ import {
   applyTranscriptStoryOrder,
   cutDuration,
   cutTrackEffectiveGain,
+  cutAudioRoutingTemplatePayloadSchema,
   cutRenderRequestSchema,
   cutTranscriptSchema,
   detectCutCandidates,
@@ -25,7 +26,7 @@ import {
   type CutTranscript,
 } from "@shared/cut-studio";
 import { attachUser } from "./auth";
-import { ensureDefaultBusiness } from "./businesses";
+import { businessRoleCanAdminister, businessRoleCanManage, ensureDefaultBusiness, userBusinessRole } from "./businesses";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
 import {
@@ -48,6 +49,11 @@ const projectMediaSchema = z.object({
   name: z.string().trim().min(1).max(160),
   duration: z.number().finite().positive().max(43_200),
   mediaKind: z.enum(["video", "audio"]),
+});
+const audioRoutingTemplateInputSchema = z.object({
+  businessId: z.string().uuid(),
+  name: z.string().trim().min(1).max(80),
+  payload: cutAudioRoutingTemplatePayloadSchema,
 });
 
 function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity", multiplier: number, timeVariable = "t") {
@@ -779,6 +785,46 @@ export function registerCutStudioRoutes(app: Express) {
     const [decision] = await db.insert(cutStudioReviewDecisions).values({ reviewLinkId: review.link.id, versionId: review.version.id, ...parsed.data }).returning();
     await db.update(cutStudioVersions).set({ reviewStatus: parsed.data.decision, approvedAt: parsed.data.decision === "approved" ? new Date() : null }).where(eq(cutStudioVersions.id, review.version.id));
     res.status(201).json(decision);
+  });
+  cut.get("/api/cut/audio-routing-templates", attachUser, async (req, res) => {
+    noStore(res);
+    const businessId = z.string().uuid().safeParse(req.query.businessId);
+    if (!businessId.success) return res.status(400).json({ message: "A valid business is required" });
+    const role = await userBusinessRole(req.dbUser!.id, businessId.data);
+    if (!role) return res.status(404).json({ message: "Audio template library not found" });
+    const templates = await db.select().from(cutStudioAudioTemplates)
+      .where(eq(cutStudioAudioTemplates.businessId, businessId.data))
+      .orderBy(desc(cutStudioAudioTemplates.updatedAt));
+    res.json(templates.map((template) => ({ ...template, access: { canDelete: template.ownerUserId === req.dbUser!.id || businessRoleCanAdminister(role) } })));
+  });
+  cut.post("/api/cut/audio-routing-templates", attachUser, async (req, res) => {
+    noStore(res);
+    const parsed = audioRoutingTemplateInputSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid audio routing template" });
+    const role = await userBusinessRole(req.dbUser!.id, parsed.data.businessId);
+    if (!businessRoleCanManage(role)) return res.status(404).json({ message: "Audio template library not found" });
+    const [template] = await db.insert(cutStudioAudioTemplates).values({
+      businessId: parsed.data.businessId,
+      ownerUserId: req.dbUser!.id,
+      name: parsed.data.name,
+      payload: parsed.data.payload,
+    }).onConflictDoUpdate({
+      target: [cutStudioAudioTemplates.businessId, cutStudioAudioTemplates.name],
+      set: { payload: parsed.data.payload, ownerUserId: req.dbUser!.id, updatedAt: new Date() },
+    }).returning();
+    await emitProjectionEvent({ aggregateType: "cutstudio_audio_template", aggregateId: template.id, eventType: "cutstudio.audio_template.saved", actorUserId: req.dbUser!.id, payload: { businessId: template.businessId, name: template.name }, idempotencyKey: `cutstudio:audio-template:${template.id}:${template.updatedAt.getTime()}` });
+    res.status(201).json({ ...template, access: { canDelete: true } });
+  });
+  cut.delete("/api/cut/audio-routing-templates/:id", attachUser, async (req, res) => {
+    const parsedId = idSchema.safeParse(req.params.id);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid audio routing template" });
+    const [template] = await db.select().from(cutStudioAudioTemplates).where(eq(cutStudioAudioTemplates.id, parsedId.data)).limit(1);
+    if (!template) return res.status(404).json({ message: "Audio routing template not found" });
+    const role = await userBusinessRole(req.dbUser!.id, template.businessId);
+    if (template.ownerUserId !== req.dbUser!.id && !businessRoleCanAdminister(role)) return res.status(404).json({ message: "Audio routing template not found" });
+    await db.delete(cutStudioAudioTemplates).where(eq(cutStudioAudioTemplates.id, template.id));
+    await emitProjectionEvent({ aggregateType: "cutstudio_audio_template", aggregateId: template.id, eventType: "cutstudio.audio_template.deleted", actorUserId: req.dbUser!.id, payload: { businessId: template.businessId, name: template.name }, idempotencyKey: `cutstudio:audio-template:${template.id}:deleted` });
+    res.status(204).end();
   });
   cut.get("/api/cut/projects", attachUser, async (req, res) => {
     noStore(res);

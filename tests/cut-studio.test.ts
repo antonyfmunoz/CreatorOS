@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
+import { applyTranscriptStoryOrder, audioRmsDb, breakApartCutCompound, buildCmx3600Edl, buildKineticAssCaptions, buildSrtCaptions, createCutCompound, cutAudioRoutingTemplatePayloadSchema, cutDuration, cutRenderRequestSchema, cutTimelinePoints, cutTrackEffectiveGain, detectCutCandidates, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, parseCubeLut, parseEbur128Summary, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, trimCutClip, ungroupCutClips, validateCutEdl } from "../shared/cut-studio";
 
 describe("CutStudio edit decision list", () => {
   it("normalizes, removes, restores and splits playable ranges", () => {
@@ -301,5 +301,22 @@ describe("CutStudio edit decision list", () => {
       { track: "a1", locked: false, hidden: false, muted: false, solo: true, gain: .5 },
     ]);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2, track: "v1" }], tracks: [{ track: "v1", gain: 3 }] }, 2)).toThrow();
+  });
+
+  it("validates portable audio routing templates without project media", () => {
+    const valid = cutAudioRoutingTemplatePayloadSchema.parse({
+      audioBuses: [
+        { id: "dialogue", name: "Dialogue", gain: 1, muted: false },
+        { id: "music", name: "Campaign bed", gain: .4, muted: false },
+        { id: "effects", name: "Effects", gain: .8, muted: false },
+      ],
+      trackRouting: [{ track: "a1", bus: "music", gain: .9, muted: false }],
+      duckingTracks: ["a1"],
+      finishing: { cleanAudio: true, audioPreset: "broadcast", masterGainDb: 2 },
+    });
+    expect(valid.finishing.audioPreset).toBe("broadcast");
+    expect(valid).not.toHaveProperty("assetId");
+    expect(cutAudioRoutingTemplatePayloadSchema.safeParse({ ...valid, audioBuses: [valid.audioBuses[0], valid.audioBuses[0], valid.audioBuses[2]] }).success).toBe(false);
+    expect(cutAudioRoutingTemplatePayloadSchema.safeParse({ ...valid, trackRouting: [valid.trackRouting[0], valid.trackRouting[0]] }).success).toBe(false);
   });
 });

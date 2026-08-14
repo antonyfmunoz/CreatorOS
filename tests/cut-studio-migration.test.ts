@@ -5,6 +5,7 @@ const migration = readFileSync(new URL("../migrations/0064_cut_studio.sql", impo
 const multitrackMigration = readFileSync(new URL("../migrations/0067_cut_studio_multitrack.sql", import.meta.url), "utf8");
 const reviewMigration = readFileSync(new URL("../migrations/0069_cut_studio_review.sql", import.meta.url), "utf8");
 const collaborationMigration = readFileSync(new URL("../migrations/0071_cut_studio_workspace_collaboration.sql", import.meta.url), "utf8");
+const audioTemplateMigration = readFileSync(new URL("../migrations/0077_cut_studio_audio_templates.sql", import.meta.url), "utf8");
 
 describe("CutStudio persistence migration", () => {
   it("creates owner-scoped projects and durable jobs", () => {
@@ -39,5 +40,12 @@ describe("CutStudio persistence migration", () => {
     expect(collaborationMigration).toContain('cut_studio_collaborators_project_user_unique');
     expect(collaborationMigration).toContain('cut_studio_workspace_notes_body_check');
     expect(collaborationMigration).toContain('cut_studio_workspace_notes_position_check');
+  });
+
+  it("adds a business-scoped portable audio routing template library", () => {
+    expect(audioTemplateMigration).toContain('CREATE TABLE "cut_studio_audio_templates"');
+    expect(audioTemplateMigration).toContain('cut_studio_audio_templates_business_name_unique');
+    expect(audioTemplateMigration).toContain('REFERENCES "public"."businesses"("id") ON DELETE cascade');
+    expect(audioTemplateMigration).toContain('REFERENCES "public"."users"("id") ON DELETE cascade');
   });
 });
