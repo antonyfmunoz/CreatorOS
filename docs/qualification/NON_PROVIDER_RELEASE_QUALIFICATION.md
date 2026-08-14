@@ -19,7 +19,7 @@ Qualified scope: roadmap items 1-6, excluding external provider activation and p
 - `npm run verify:browser`: passed (116/116 mobile and desktop executions against a fresh PostgreSQL database with all 80 migrations).
 - `npm run verify:relationship-release`: passed (80 migrations; relationship operations, automation kernel, native comment-to-DM, opt-out, privacy and deletion qualification).
 - `npm run verify:backup-restore`: passed (manifest verified, all 80 migrations restored, required tables present, zero orphan direct messages).
-- `npm run verify:secrets`: passed (571 source files scanned).
+- `npm run verify:secrets`: passed (572 source files scanned).
 - `npm run verify:capacity`: passed (200 requests at concurrency 20, zero failures, 244 requests/second, p50 52.9 ms, p95 156.8 ms and p99 571.4 ms in the qualification environment).
 - `npm audit --omit=dev --audit-level=moderate`: zero vulnerabilities.
 
