@@ -204,7 +204,8 @@ import {
   normalizeAssetVisibility,
   validateAssetUpload,
 } from "./asset-policy";
-import { apiRateLimiter, assetUploadRateLimiter } from "./security";
+import { assetUploadRateLimiter } from "./security";
+import { rateLimit } from "express-rate-limit";
 import {
   aiChatMessageInputSchema,
   aiChatMessagesSchema,
@@ -1867,7 +1868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/assets/:id/stream", attachUser, apiRateLimiter({ max: 240 }), async (req, res) => {
+  app.get("/api/assets/:id/stream", attachUser, rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false }), async (req, res) => {
     let temp: string | null = null;
     try {
       res.set("Cache-Control", "no-store");

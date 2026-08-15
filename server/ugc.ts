@@ -54,7 +54,7 @@ import {
   encryptSensitiveValue,
   isSensitiveDataEncryptionConfigured,
 } from "./sensitive-data";
-import { apiRateLimiter } from "./security";
+import { rateLimit } from "express-rate-limit";
 
 const idSchema = z.string().uuid();
 const reviewApplicationSchema = z.object({
@@ -1347,7 +1347,7 @@ export function registerUgcRoutes(app: Express) {
   app.get(
     "/api/ugc/submissions/:id/stream",
     attachUser,
-    apiRateLimiter({ max: 240 }),
+    rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false }),
     safe(async (req, res) => {
       let temp: string | null = null;
       try {

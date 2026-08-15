@@ -64,7 +64,8 @@ import {
 import { emitProjectionEvent } from "./umh";
 import { createBroadcastLiveKitToken, getLiveKitConfiguration } from "./livekit";
 import { queueMediaIngestJobs, recordAssetUsage, registerAssetLineage } from "./media-cloud";
-import { apiRateLimiter, assetUploadRateLimiter } from "./security";
+import { assetUploadRateLimiter } from "./security";
+import { rateLimit } from "express-rate-limit";
 
 const idSchema = z.string().uuid();
 const FIELD_CAPTURE_COOKIE = "cos_field_capture";
@@ -161,11 +162,6 @@ async function authenticatedCaptureNode(req: Request) {
   )).limit(1);
   if (cookie && node?.id !== cookie[1]) return null;
   return node ?? null;
-}
-
-function fieldCaptureCookie(nodeId: string, deviceSecret: string) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${FIELD_CAPTURE_COOKIE}=${nodeId}.${deviceSecret}; Path=/api/broadcast/capture/nodes/${nodeId}; Max-Age=86400; HttpOnly; SameSite=Strict${secure}`;
 }
 
 function captureDeviceRoute(handler: (req: Request, res: Response) => Promise<unknown>) {
@@ -735,12 +731,12 @@ async function launchRuntime(
 }
 
 export function registerBroadcastStudioRoutes(app: Express) {
-  app.post("/api/broadcast/capture/claim", apiRateLimiter({ max: 20 }), captureDeviceRoute(async (req, res) => {
+  app.post("/api/broadcast/capture/claim", rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }), captureDeviceRoute(async (req, res) => {
     noStore(res);
     const parsed = captureNodeClaimSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const tokenHash = hashCaptureSecret(parsed.data.token);
-    const deviceSecret = randomBytes(32).toString("base64url");
+    const captureCredential = randomBytes(32).toString("base64url");
     const now = new Date();
     const configuration = captureNodeConfigurationSchema.parse({});
     const node = await db.transaction(async (transaction) => {
@@ -766,7 +762,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
         status: "ready",
         capabilities: captureCapabilitiesSchema.parse(parsed.data.capabilities),
         configuration,
-        deviceSecretHash: hashCaptureSecret(deviceSecret),
+        deviceSecretHash: hashCaptureSecret(captureCredential),
       }).returning();
       return created;
     });
@@ -779,14 +775,20 @@ export function registerBroadcastStudioRoutes(app: Express) {
       payload: { businessId: node.businessId, nodeId: node.id, kind: node.kind },
       idempotencyKey: `broadcast:${node.studioId}:capture-node:${node.id}:paired`,
     });
-    res.setHeader("Set-Cookie", fieldCaptureCookie(node.id, deviceSecret));
+    res.cookie(FIELD_CAPTURE_COOKIE, `${node.id}.${captureCredential}`, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: `/api/broadcast/capture/nodes/${node.id}`,
+      maxAge: 24 * 60 * 60 * 1_000,
+    });
     res.status(201).json({
       node: publicCaptureNode(node),
       telemetryUrl: `/api/broadcast/capture/nodes/${node.id}/telemetry`,
     });
   }));
 
-  app.post("/api/broadcast/capture/nodes/:id/telemetry", apiRateLimiter({ max: 720 }), captureDeviceRoute(async (req, res) => {
+  app.post("/api/broadcast/capture/nodes/:id/telemetry", rateLimit({ windowMs: 60_000, limit: 720, standardHeaders: "draft-8", legacyHeaders: false }), captureDeviceRoute(async (req, res) => {
     noStore(res);
     const node = await authenticatedCaptureNode(req);
     if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
@@ -830,7 +832,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
     });
   }));
 
-  app.get("/api/broadcast/capture/nodes/:id/configuration", apiRateLimiter({ max: 120 }), captureDeviceRoute(async (req, res) => {
+  app.get("/api/broadcast/capture/nodes/:id/configuration", rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }), captureDeviceRoute(async (req, res) => {
     noStore(res);
     const node = await authenticatedCaptureNode(req);
     if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
@@ -843,7 +845,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
     });
   }));
 
-  app.get("/api/broadcast/capture/nodes/:id/media-token", apiRateLimiter({ max: 30 }), captureDeviceRoute(async (req, res) => {
+  app.get("/api/broadcast/capture/nodes/:id/media-token", rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false }), captureDeviceRoute(async (req, res) => {
     noStore(res);
     const node = await authenticatedCaptureNode(req);
     if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Capture-node authentication failed" });
@@ -1165,7 +1167,7 @@ export function registerBroadcastStudioRoutes(app: Express) {
     res.json(rows.map((asset) => ({ id: asset.id, name: asset.originalFilename, sizeBytes: asset.sizeBytes, metadata: asset.metadata, access: { canRemove: asset.ownerUserId === req.dbUser!.id } })));
   });
 
-  app.post("/api/broadcast/luts", attachUser, assetUploadRateLimiter({ max: 20 }), async (req, res) => {
+  app.post("/api/broadcast/luts", attachUser, rateLimit({ windowMs: 60 * 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }), assetUploadRateLimiter({ max: 20 }), async (req, res) => {
     noStore(res);
     const parsed = broadcastLutInputSchema.safeParse(req.body);
     if (!parsed.success || !businessRoleCanManage(await userBusinessRole(req.dbUser!.id, parsed.data.businessId))) return res.status(404).json({ message: "LUT library not found" });

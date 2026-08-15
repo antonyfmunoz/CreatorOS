@@ -58,15 +58,23 @@ function safeLocalUploadPath(candidate: string) {
   return resolved;
 }
 
-function safeManagedSourcePath(candidate: string) {
+async function safeManagedSourcePath(candidate: string) {
   if (!candidate || candidate.includes("\0")) throw new Error("Invalid managed source path");
-  const resolved = path.resolve(candidate);
+  const resolved = await fs.realpath(candidate);
   const roots = [managedUploadRoot(), path.resolve(os.tmpdir())];
-  const withinManagedRoot = roots.some((root) =>
-    resolved === root || resolved.startsWith(`${root}${path.sep}`),
-  );
-  if (!withinManagedRoot) throw new Error("Source path escaped the managed upload and processing directories");
-  return resolved;
+  const managedRoot = roots.find((root) => {
+    const relative = path.relative(root, resolved);
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+  });
+  if (!managedRoot) throw new Error("Source path escaped the managed upload and processing directories");
+  const relative = path.relative(managedRoot, resolved);
+  const segments = relative.split(path.sep).filter(Boolean);
+  if (segments.some((segment) => segment !== path.basename(segment) || !/^[A-Za-z0-9._-]{1,255}$/.test(segment))) {
+    throw new Error("Managed source path contains an invalid segment");
+  }
+  const confined = path.join(managedRoot, ...segments.map((segment) => path.basename(segment)));
+  if (confined !== resolved) throw new Error("Managed source path could not be confined");
+  return confined;
 }
 
 function localStoragePath(storageKey: string) {
@@ -170,7 +178,7 @@ export async function persistPrivateFile(input: {
 }) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "private");
-  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const sourcePath = await safeManagedSourcePath(input.sourcePath);
   const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
@@ -207,7 +215,7 @@ export async function persistManagedFile(input: {
   }
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "public");
-  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const sourcePath = await safeManagedSourcePath(input.sourcePath);
   const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Public production asset storage is not configured");
@@ -243,7 +251,7 @@ export async function persistManagedFileAtKey(input: {
   const expectedVisibility = input.storageKey.split("/")[2];
   if (expectedVisibility !== input.visibility) throw new Error("Managed asset key visibility does not match");
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
-  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const sourcePath = await safeManagedSourcePath(input.sourcePath);
   const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Production asset storage is not configured");
@@ -339,7 +347,7 @@ export async function persistSystemPrivateFile(input: {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider !== "r2") throw new Error("System-private storage requires R2");
   const { client, bucket } = r2BucketFor("private");
-  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const sourcePath = await safeManagedSourcePath(input.sourcePath);
   const file = await fs.stat(sourcePath);
   await client.send(new PutObjectCommand({
     Bucket: bucket,
