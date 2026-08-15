@@ -2176,7 +2176,7 @@ export default function BroadcastStudioPage() {
       </header>
       {!canEditStudio && <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-200">You have view-only access. The owner controls changes and live output.</div>}
       <div className="grid gap-3 p-3 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-        <aside className="space-y-3">
+        <aside className="relative z-10 space-y-3">
           <Panel title="Scenes" icon={Layers3}>
             <div className="space-y-1">
               {config.scenes.map((scene, index) => (
@@ -2443,7 +2443,7 @@ export default function BroadcastStudioPage() {
               <input className="sr-only" type="file" accept="image/*,video/*" disabled={busy === "business-media-upload"} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadBusinessMedia(file); event.currentTarget.value = ""; }}/>
               <Plus className="mr-1.5 h-3.5 w-3.5"/>{busy === "business-media-upload" ? "Uploading…" : "Add shared media"}
             </label>
-            <div className="mt-3 space-y-2">{businessMedia.length ? businessMedia.map((asset) => <div key={asset.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-[9px] font-bold text-zinc-500">{asset.mimeType?.startsWith("image/") ? "IMG" : "VID"}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{asset.originalFilename ?? "Production media"}</span><span className="text-[10px] text-zinc-600">{formatBytes(asset.sizeBytes)} · private</span></span><span className="relative z-10 flex shrink-0 items-center gap-1"><Button size="sm" variant="outline" className="scroll-mb-24 scroll-mt-20" aria-label={`Add ${asset.originalFilename ?? "media"} from business library`} disabled={previewScene.sources.length >= 32} onClick={() => void addBusinessMediaToScene(asset)}>Add</Button>{asset.access?.canRemove && <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0 scroll-mb-24 scroll-mt-20" aria-label={`Remove ${asset.originalFilename ?? "media"} from business library`} disabled={busy === `business-media-delete:${asset.id}`} onClick={() => void removeBusinessMedia(asset)}><Trash2 className="h-4 w-4 text-zinc-500"/></Button>}</span></div>) : <p className="py-3 text-center text-xs text-zinc-600">No shared production media yet.</p>}</div>
+            <div className="mt-3 space-y-2">{businessMedia.length ? businessMedia.map((asset) => <div key={asset.id} className="relative isolate grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-zinc-800 bg-black p-2"><span className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-900 text-[9px] font-bold text-zinc-500">{asset.mimeType?.startsWith("image/") ? "IMG" : "VID"}</span><span className="min-w-0"><span className="block truncate text-xs font-bold">{asset.originalFilename ?? "Production media"}</span><span className="text-[10px] text-zinc-600">{formatBytes(asset.sizeBytes)} · private</span></span><span className="relative z-20 flex shrink-0 items-center gap-1"><Button size="sm" variant="outline" className="scroll-mb-24 scroll-mt-20" aria-label={`Add ${asset.originalFilename ?? "media"} from business library`} disabled={previewScene.sources.length >= 32} onClick={() => void addBusinessMediaToScene(asset)}>Add</Button>{asset.access?.canRemove && <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0 scroll-mb-24 scroll-mt-20" aria-label={`Remove ${asset.originalFilename ?? "media"} from business library`} disabled={busy === `business-media-delete:${asset.id}`} onClick={() => void removeBusinessMedia(asset)}><Trash2 className="h-4 w-4 text-zinc-500"/></Button>}</span></div>) : <p className="py-3 text-center text-xs text-zinc-600">No shared production media yet.</p>}</div>
           </Panel>
           <Panel title="Brand kit" icon={Palette}>
             <p className="mb-3 text-[11px] leading-5 text-zinc-500">Set this studio's identity or save it once for reuse across every broadcast studio in your account.</p>
@@ -2466,7 +2466,7 @@ export default function BroadcastStudioPage() {
             </div>
           </Panel>
         </aside>
-        <section className="space-y-3">
+        <section className="relative z-0 space-y-3">
           <div className="grid gap-3 lg:grid-cols-2">
             <CanvasPanel label="PREVIEW">
               <canvas
@@ -2825,7 +2825,7 @@ export default function BroadcastStudioPage() {
             )}
           </Panel>
         </section>
-        <aside className="space-y-3">
+        <aside className="relative z-10 space-y-3">
           <Panel title="Field capture" icon={Radio}>
             <div className="space-y-3">
               <p className="text-xs leading-5 text-zinc-500">
@@ -3313,13 +3313,13 @@ export default function BroadcastStudioPage() {
           <Panel title="Production settings" icon={Settings2}>
             <div className="mb-4 space-y-2 border-b border-zinc-800 pb-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Studio library</p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <Input aria-label="Studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={studioNameDraft} maxLength={120} onChange={(event) => setStudioNameDraft(event.target.value)}/>
-                <Button aria-label="Save studio name" size="sm" variant="outline" disabled={!canEditStudio || !studioNameDraft.trim() || studioNameDraft.trim() === studio.name || saving || Boolean(activeSession)} onClick={() => void persist(config, studioNameDraft)}>Save</Button>
+                <Button aria-label="Save studio name" className="relative z-20" size="sm" variant="outline" disabled={!canEditStudio || !studioNameDraft.trim() || studioNameDraft.trim() === studio.name || saving || Boolean(activeSession)} onClick={() => void persist(config, studioNameDraft)}>Save</Button>
               </div>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <Input aria-label="New studio name" className="h-9 min-w-0 border-zinc-800 bg-black text-xs" value={newStudioName} maxLength={120} placeholder="New studio name" onChange={(event) => setNewStudioName(event.target.value)}/>
-                <Button aria-label="Create broadcast studio" size="sm" variant="outline" disabled={!newStudioName.trim() || busy === "studio-create" || Boolean(activeSession)} onClick={() => void createStudio()}><Plus className="mr-1 h-3.5 w-3.5"/>Create</Button>
+                <Button aria-label="Create broadcast studio" className="relative z-20" size="sm" variant="outline" disabled={!newStudioName.trim() || busy === "studio-create" || Boolean(activeSession)} onClick={() => void createStudio()}><Plus className="mr-1 h-3.5 w-3.5"/>Create</Button>
               </div>
               {studioRole === "owner" && (studiosQuery.data?.length ?? 0) > 1 && <Button className="w-full" size="sm" variant={deleteStudioArmed ? "destructive" : "ghost"} disabled={Boolean(activeSession) || busy === "studio-delete"} onClick={() => deleteStudioArmed ? void deleteCurrentStudio() : setDeleteStudioArmed(true)}>{deleteStudioArmed ? `Delete ${studio.name}` : "Prepare studio deletion"}</Button>}
               {deleteStudioArmed && <button className="w-full text-[10px] text-zinc-500" onClick={() => setDeleteStudioArmed(false)}>Cancel deletion</button>}
