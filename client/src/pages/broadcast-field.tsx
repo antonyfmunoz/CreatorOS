@@ -28,7 +28,7 @@ const defaultConfiguration: CaptureNodeConfiguration = {
 };
 
 type ConfigurationResponse = { nodeId: string; status: string; configuration: CaptureNodeConfiguration; lastAcceptedSequence: number; directive: CaptureEncodingDirective | null };
-type ClaimResponse = { node: { id: string; name: string }; deviceSecret: string; telemetryUrl: string };
+type ClaimResponse = { node: { id: string; name: string }; telemetryUrl: string };
 
 function recordingMimeType(stream: MediaStream) {
   const candidates = stream.getVideoTracks().length
@@ -93,7 +93,7 @@ export default function BroadcastFieldPage() {
       const response = await fetch("/api/broadcast/capture/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token.trim(), name: name.trim(), kind: captureNodeKind(navigator.userAgent), capabilities: browserCaptureCapabilities() }) });
       const data = await response.json() as ClaimResponse & { message?: string };
       if (!response.ok) throw new Error(data.message || "Pairing failed");
-      const next = { nodeId: data.node.id, deviceSecret: data.deviceSecret, telemetryUrl: data.telemetryUrl, sequence: 0 };
+      const next = { nodeId: data.node.id, telemetryUrl: data.telemetryUrl, sequence: 0 };
       sequenceRef.current = 0;
       saveFieldSession(next);
       setToken("");
@@ -151,7 +151,7 @@ export default function BroadcastFieldPage() {
     void (async () => {
       try {
         setTransport("connecting");
-        const response = await fetch(`/api/broadcast/capture/nodes/${session.nodeId}/media-token`, { headers: { Authorization: `Bearer ${session.deviceSecret}` } });
+        const response = await fetch(`/api/broadcast/capture/nodes/${session.nodeId}/media-token`);
         if (response.status === 503) { setTransport("unavailable"); return; }
         if (response.status === 401) { disconnect("The director revoked this device. Pair it again to reconnect."); return; }
         const data = await response.json() as { token?: string; serverUrl?: string; message?: string };
@@ -211,7 +211,7 @@ export default function BroadcastFieldPage() {
     let cancelled = false;
     const synchronize = async () => {
       try {
-        const response = await fetch(`/api/broadcast/capture/nodes/${session.nodeId}/configuration`, { headers: { Authorization: `Bearer ${session.deviceSecret}` } });
+        const response = await fetch(`/api/broadcast/capture/nodes/${session.nodeId}/configuration`);
         if (response.status === 401) return disconnect("The director revoked this device. Pair it again to reconnect.");
         if (!response.ok) throw new Error("Director sync failed");
         const data = await response.json() as ConfigurationResponse;
@@ -232,7 +232,7 @@ export default function BroadcastFieldPage() {
         const currentStream = streamRef.current;
         const startedAt = recordingStartedAtRef.current;
         const sample = await buildCaptureTelemetry({ sequence: nextSequence, configuration: currentConfiguration, stream: currentStream, recording: { active: recorderRef.current?.state === "recording", pendingSegments: segmentCountRef.current, durationMs: startedAt ? Date.now() - startedAt : 0 }, transport: transportMeasurementRef.current });
-        const response = await fetch(session.telemetryUrl, { method: "POST", headers: { Authorization: `Bearer ${session.deviceSecret}`, "Content-Type": "application/json" }, body: JSON.stringify(sample) });
+        const response = await fetch(session.telemetryUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sample) });
         if (response.status === 401) return disconnect("The director revoked this device. Pair it again to reconnect.");
         const data = await response.json() as ConfigurationResponse & { message?: string };
         if (!response.ok) throw new Error(data.message || "Heartbeat failed");

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import { createReadStream, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
+import os from "os";
 import path from "path";
 import type { AssetVisibility } from "./asset-policy";
 
@@ -54,6 +55,17 @@ function safeLocalUploadPath(candidate: string) {
   if (resolved !== uploadRoot && !resolved.startsWith(`${uploadRoot}${path.sep}`)) {
     throw new Error("Upload path escaped the managed upload directory");
   }
+  return resolved;
+}
+
+function safeManagedSourcePath(candidate: string) {
+  if (!candidate || candidate.includes("\0")) throw new Error("Invalid managed source path");
+  const resolved = path.resolve(candidate);
+  const roots = [managedUploadRoot(), path.resolve(os.tmpdir())];
+  const withinManagedRoot = roots.some((root) =>
+    resolved === root || resolved.startsWith(`${root}${path.sep}`),
+  );
+  if (!withinManagedRoot) throw new Error("Source path escaped the managed upload and processing directories");
   return resolved;
 }
 
@@ -158,12 +170,13 @@ export async function persistPrivateFile(input: {
 }) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "private");
-  const file = await fs.stat(input.sourcePath);
+  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Private production asset storage is not configured");
     const localPath = localStoragePath(key);
     await fs.mkdir(path.dirname(localPath), { recursive: true });
-    await fs.copyFile(input.sourcePath, localPath);
+    await fs.copyFile(sourcePath, localPath);
     return { storageKey: key, sizeBytes: file.size };
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
@@ -171,7 +184,7 @@ export async function persistPrivateFile(input: {
   await client.send(new PutObjectCommand({
     Bucket: bucket,
     Key: key,
-    Body: createReadStream(input.sourcePath),
+    Body: createReadStream(sourcePath),
     ContentLength: file.size,
     ContentType: input.mimeType,
     CacheControl: "private, no-store",
@@ -194,12 +207,13 @@ export async function persistManagedFile(input: {
   }
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "public");
-  const file = await fs.stat(input.sourcePath);
+  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Public production asset storage is not configured");
     const destination = localStoragePath(key);
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.copyFile(input.sourcePath, destination);
+    await fs.copyFile(sourcePath, destination);
     return { storageKey: key, publicUrl: `/uploads/${key.replace(/\\/g, "/")}`, sizeBytes: file.size };
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
@@ -207,7 +221,7 @@ export async function persistManagedFile(input: {
   await client.send(new PutObjectCommand({
     Bucket: bucket,
     Key: key,
-    Body: createReadStream(input.sourcePath),
+    Body: createReadStream(sourcePath),
     ContentLength: file.size,
     ContentType: input.mimeType,
     CacheControl: "public, max-age=31536000, immutable",
@@ -229,12 +243,13 @@ export async function persistManagedFileAtKey(input: {
   const expectedVisibility = input.storageKey.split("/")[2];
   if (expectedVisibility !== input.visibility) throw new Error("Managed asset key visibility does not match");
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
-  const file = await fs.stat(input.sourcePath);
+  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const file = await fs.stat(sourcePath);
   if (provider === "local") {
     if (process.env.NODE_ENV === "production") throw new Error("Production asset storage is not configured");
     const destination = localStoragePath(input.storageKey);
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.copyFile(input.sourcePath, destination);
+    await fs.copyFile(sourcePath, destination);
     return {
       storageKey: input.storageKey,
       publicUrl: input.visibility === "public" ? `/uploads/${input.storageKey.replace(/\\/g, "/")}` : null,
@@ -246,7 +261,7 @@ export async function persistManagedFileAtKey(input: {
   await client.send(new PutObjectCommand({
     Bucket: bucket,
     Key: input.storageKey,
-    Body: createReadStream(input.sourcePath),
+    Body: createReadStream(sourcePath),
     ContentLength: file.size,
     ContentType: input.mimeType,
     CacheControl: input.visibility === "public" ? "public, max-age=31536000, immutable" : "private, no-store",
@@ -324,11 +339,12 @@ export async function persistSystemPrivateFile(input: {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider !== "r2") throw new Error("System-private storage requires R2");
   const { client, bucket } = r2BucketFor("private");
-  const file = await fs.stat(input.sourcePath);
+  const sourcePath = safeManagedSourcePath(input.sourcePath);
+  const file = await fs.stat(sourcePath);
   await client.send(new PutObjectCommand({
     Bucket: bucket,
     Key: input.storageKey,
-    Body: createReadStream(input.sourcePath),
+    Body: createReadStream(sourcePath),
     ContentLength: file.size,
     ContentType: input.mimeType,
     CacheControl: "private, no-store",

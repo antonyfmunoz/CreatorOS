@@ -247,7 +247,7 @@ async function projectLuts(project: typeof cutStudioProjects.$inferSelect) {
 }
 
 function escapeFfmpegFilterPath(value: string) {
-  return value.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  return value.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
 }
 
 async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect, clips: CutEdl["clips"], temp: string) {
@@ -313,7 +313,7 @@ async function cutStudioFontFilter() {
   ].filter((value): value is string => Boolean(value));
   for (const candidate of candidates) {
     if (await fs.access(candidate).then(() => true).catch(() => false)) {
-      const escaped = candidate.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+      const escaped = escapeFfmpegFilterPath(candidate);
       return `fontfile='${escaped}':`;
     }
   }
@@ -378,13 +378,13 @@ async function appendCaptionFilter(filters: string[], videoLabel: string, reques
   if (request.captionStyle === 4) {
     const assPath = path.join(temp, "captions.ass");
     await fs.writeFile(assPath, buildKineticAssCaptions(transcript, edl), "utf8");
-    const escaped = assPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+    const escaped = escapeFfmpegFilterPath(assPath);
     filters.push(`[${videoLabel}]ass='${escaped}'[captioned]`);
     return "captioned";
   }
   const srtPath = path.join(temp, "captions.srt");
   await fs.writeFile(srtPath, buildSrtCaptions(transcript, edl), "utf8");
-  const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const escaped = escapeFfmpegFilterPath(srtPath);
   const style = request.captionStyle === 2 ? "FontSize=18,PrimaryColour=&H0000FFFF,Outline=2" : request.captionStyle === 3 ? "FontSize=17,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3" : "FontSize=18,PrimaryColour=&H00FFFFFF,Outline=2";
   filters.push(`[${videoLabel}]subtitles='${escaped}':force_style='${style}'[captioned]`);
   return "captioned";

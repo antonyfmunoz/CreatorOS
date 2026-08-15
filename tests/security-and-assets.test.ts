@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistUpload, promotePrivateAsset } from "../server/asset-storage";
+import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistPrivateFile, persistUpload, promotePrivateAsset } from "../server/asset-storage";
 import { monthlyAssetQuotaFor, normalizeAssetVisibility, validateAssetUpload } from "../server/asset-policy";
 import { apiRateLimiter, assetUploadRateLimiter, securityHeaders } from "../server/security";
 
@@ -89,6 +89,19 @@ describe("production safety boundaries", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("rejects processing sources outside managed upload and temporary roots", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = path.join(os.tmpdir(), "creativesos-managed-source-boundary");
+    await expect(persistPrivateFile({
+      sourcePath: path.resolve(process.cwd(), "package.json"),
+      ownerUserId: 42,
+      kind: "video",
+      filename: "outside.mp4",
+      mimeType: "video/mp4",
+    })).rejects.toThrow(/escaped the managed upload and processing directories/i);
   });
 
   it("promotes private local media for field tests while keeping production fail-closed", async () => {

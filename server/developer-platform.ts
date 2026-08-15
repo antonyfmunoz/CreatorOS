@@ -38,6 +38,7 @@ import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { db } from "./db";
 import { recordOperationalServiceEvent } from "./operations";
+import { apiRateLimiter } from "./security";
 import {
   decryptSensitiveValue,
   encryptSensitiveValue,
@@ -710,7 +711,7 @@ export function registerDeveloperPlatformRoutes(app: Express) {
     res.status(201).json({ redirectUrl: redirect.toString() });
   });
 
-  app.post("/oauth/token", async (req, res) => {
+  app.post("/oauth/token", apiRateLimiter({ max: 30 }), async (req, res) => {
     const { grant_type, client_id, client_secret, code, redirect_uri, refresh_token } = req.body ?? {};
     if (!client_id || !client_secret || !apiKeyPepper()) return res.status(400).json({ error: "invalid_request" });
     let issued: ReturnType<typeof prepareOAuthTokens>;
@@ -921,6 +922,7 @@ export function registerDeveloperPlatformRoutes(app: Express) {
 
   app.get(
     "/api/v1/profile",
+    apiRateLimiter({ max: 240 }),
     requireDeveloperScope("profile:read"),
     async (req, res) => {
       const auth = developerAuth(req)!;
@@ -941,6 +943,7 @@ export function registerDeveloperPlatformRoutes(app: Express) {
   );
   app.get(
     "/api/v1/assets",
+    apiRateLimiter({ max: 240 }),
     requireDeveloperScope("assets:read"),
     async (req, res) => {
       const auth = developerAuth(req)!;
@@ -993,6 +996,7 @@ export function registerDeveloperPlatformRoutes(app: Express) {
   );
   app.get(
     "/api/v1/products",
+    apiRateLimiter({ max: 240 }),
     requireDeveloperScope("products:read"),
     async (req, res) => {
       const auth = developerAuth(req)!;
@@ -1045,6 +1049,7 @@ export function registerDeveloperPlatformRoutes(app: Express) {
   );
   app.get(
     "/api/v1/analytics/summary",
+    apiRateLimiter({ max: 240 }),
     requireDeveloperScope("analytics:read"),
     async (req, res) => {
       const auth = developerAuth(req)!;

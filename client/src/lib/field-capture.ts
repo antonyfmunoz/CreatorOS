@@ -10,7 +10,6 @@ const RECOVERY_STORE = "segments";
 
 export type FieldCaptureSession = {
   nodeId: string;
-  deviceSecret: string;
   telemetryUrl: string;
   sequence: number;
 };
@@ -65,8 +64,8 @@ export function loadFieldSession(): FieldCaptureSession | null {
     const raw = sessionStorage.getItem(FIELD_SESSION_KEY);
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<FieldCaptureSession>;
-    if (!value.nodeId || !value.deviceSecret || !value.telemetryUrl) return null;
-    return { nodeId: value.nodeId, deviceSecret: value.deviceSecret, telemetryUrl: value.telemetryUrl, sequence: Number(value.sequence) || 0 };
+    if (!value.nodeId || !value.telemetryUrl) return null;
+    return { nodeId: value.nodeId, telemetryUrl: value.telemetryUrl, sequence: Number(value.sequence) || 0 };
   } catch {
     return null;
   }

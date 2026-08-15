@@ -1040,8 +1040,8 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
     },
   } });
   await expectOk(claimResponse);
-  const claim = await claimResponse.json() as { node: { id: string }; deviceSecret: string };
-  expect(claim.deviceSecret).toHaveLength(43);
+  const claim = await claimResponse.json() as { node: { id: string } };
+  expect(claim).not.toHaveProperty("deviceSecret");
   expect((await page.request.post("/api/broadcast/capture/claim", { data: { token: invitation.token, name: "Replay", kind: "android", capabilities: { transports: ["srt"], videoCodecs: ["h264"], maxWidth: 1920, maxHeight: 1080, maxFps: 30 } } })).status()).toBe(410);
 
   const telemetry = {
@@ -1056,10 +1056,10 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
     device: { batteryPct: 71, charging: false, thermalState: "nominal", availableStorageMb: 18_000 },
     recording: { active: true, pendingSegments: 0, durationMs: 66_000 },
   };
-  const telemetryResponse = await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: telemetry });
+  const telemetryResponse = await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { data: telemetry });
   await expectOk(telemetryResponse);
   expect(await telemetryResponse.json()).toMatchObject({ acceptedSequence: 1, status: "live", directive: { reason: "stable", width: 1920, height: 1080, fps: 30, disconnectSlate: true } });
-  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: telemetry })).status()).toBe(409);
+  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { data: telemetry })).status()).toBe(409);
   const invalidDeviceSecret = ["invalid", "capture", "credential"].join("-");
   expect((await page.request.get(`/api/broadcast/capture/nodes/${claim.node.id}/configuration`, { headers: { authorization: `Bearer ${invalidDeviceSecret}` } })).status()).toBe(401);
 
@@ -1087,7 +1087,7 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
   expect(await configuredResponse.json()).toMatchObject({ configuration: { requestedState: "standby", cameraFacing: "front", cameraLens: "wide", torchEnabled: true, microphoneMuted: true, locationSharing: "approximate" } });
   expect((await api(page, peer, "PATCH", `/api/broadcast/studios/${studio.id}/capture-nodes/${claim.node.id}`, { configuration: nodes[0].configuration })).status()).toBe(404);
 
-  const configurationResponse = await page.request.get(`/api/broadcast/capture/nodes/${claim.node.id}/configuration`, { headers: { authorization: `Bearer ${claim.deviceSecret}` } });
+  const configurationResponse = await page.request.get(`/api/broadcast/capture/nodes/${claim.node.id}/configuration`);
   await expectOk(configurationResponse);
   expect(await configurationResponse.json()).toMatchObject({ nodeId: claim.node.id, configuration: { requestedState: "standby", cameraFacing: "front", cameraLens: "wide", microphoneMuted: true, locationSharing: "approximate" } });
 
@@ -1106,5 +1106,5 @@ test("Broadcast securely pairs, directs, monitors, and revokes a field capture n
 
   const revokeResponse = await api(page, owner, "DELETE", `/api/broadcast/studios/${studio.id}/capture-nodes/${claim.node.id}`);
   expect(revokeResponse.status()).toBe(204);
-  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { headers: { authorization: `Bearer ${claim.deviceSecret}` }, data: { ...telemetry, sequence: 2 } })).status()).toBe(401);
+  expect((await page.request.post(`/api/broadcast/capture/nodes/${claim.node.id}/telemetry`, { data: { ...telemetry, sequence: 2 } })).status()).toBe(401);
 });
