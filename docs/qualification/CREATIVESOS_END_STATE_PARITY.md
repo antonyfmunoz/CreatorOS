@@ -202,7 +202,7 @@ The final reconciled release candidate adds the following current evidence:
 - backup creation, SHA manifest and disposable restore pass with 22 required
   restored tables, all 103 migration ledger entries and no orphan direct
   messages;
-- the source-secret scan covers 598 files and the production dependency audit
+- the source-secret scan covers 758 tracked source files and the production dependency audit
   reports zero vulnerabilities;
 - the 200-request, 20-concurrency capacity probe completes with zero failures,
   236.5 requests/second and 152.4 ms p95 latency on the local qualification

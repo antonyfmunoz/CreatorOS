@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+      - name: Install media qualification runtime
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: npm ci
       - run: npm run verify:secrets
       - run: npm run verify
