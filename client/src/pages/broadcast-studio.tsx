@@ -2108,7 +2108,7 @@ export default function BroadcastStudioPage() {
 
   return (
     <main className="min-h-screen bg-black pb-24 text-white">
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-zinc-800 bg-black/95 px-3 backdrop-blur">
+      <header className="relative z-30 flex min-h-14 flex-wrap items-center gap-3 border-b border-zinc-800 bg-black/95 px-3 py-2 backdrop-blur sm:sticky sm:top-0 sm:h-14 sm:flex-nowrap sm:py-0">
         <Button
           size="icon"
           variant="ghost"
@@ -2126,7 +2126,7 @@ export default function BroadcastStudioPage() {
             {(studiosQuery.data?.length ?? 0) > 1 && <select aria-label="Broadcast studio" className="h-5 max-w-28 truncate rounded border border-zinc-800 bg-black px-1 text-[10px] text-zinc-400 sm:max-w-44" value={studio.id} disabled={Boolean(activeSession) || saving} onChange={(event) => void switchStudio(event.target.value)}>{studiosQuery.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="order-2 flex w-full items-center justify-end gap-2 sm:order-none sm:ml-auto sm:w-auto">
           <span
             className={`h-2 w-2 rounded-full ${activeSession ? "animate-pulse bg-red-500" : "bg-emerald-500"}`}
           />

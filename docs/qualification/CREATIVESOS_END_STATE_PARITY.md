@@ -190,7 +190,7 @@ v311 production record:
 
 The final reconciled release candidate adds the following current evidence:
 
-- 110 unit/integration/contract files and 410 assertions pass, followed by
+- 110 unit/integration/contract files and 413 assertions pass, followed by
   TypeScript, the production Vite/esbuild build, bundle budgets and the
   Cloudflare Worker typecheck/dry run;
 - all 178 Playwright executions across 30 journey files pass on Pixel 7 and
