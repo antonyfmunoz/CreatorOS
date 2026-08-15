@@ -86,14 +86,14 @@ field evidence.
 | Connected creation loop | Completed Broadcast programs, isolated sources and markers open directly as lineage-preserving CutStudio projects without export/re-upload | `verified_complete` (native) | One generated source now passes the mobile and desktop golden journey: private Broadcast program and isolated track, idempotent CutStudio handoff, transcript correction, deterministic highlights, kinetic-caption render, public distribution promotion, native publication, post-scoped comment automation, second-user keyword comment, public reply, DM and post analytics. External destinations remain provider gates. |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
-| Shared creator platform | Media Cloud, DAM, planning, analytics/attribution, audience/notification, discovery and rights/trust foundations | `verified_complete` (local native); production refresh pending | Isolated contracts, migrations and two-viewport lifecycle journeys exist for every family. Provider-scale packaging, delivery and production-volume evidence remain separate. |
+| Shared creator platform | Media Cloud, DAM, planning, analytics/attribution, audience/notification, discovery and rights/trust foundations | `verified_complete` (native); production release verified, authenticated refresh pending | Isolated contracts, migrations and two-viewport lifecycle journeys exist for every family. The exact qualified candidate is deployed at v312 with 103-migration parity; provider-scale packaging, delivery and production-volume evidence remain separate. |
 | Owned publishing suite | Audience, Podcast, Design and Creator Site studios | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop persisted lifecycle evidence passes; external delivery/directories/domains and authorized operator comparisons remain. |
 | Commercial suite | Sponsorship, affiliate/referral, booking/ticketing and marketplace operations | `verified_complete` (local native); `not_benchmarked` (competitive) | Tenant-safe lifecycle evidence passes; funded settlement, tax/legal activation and authorized operator comparisons remain. |
 | Community engagement | Guided onboarding, required questions, evidence-based points, level ladder, badges and leaderboard | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop member and manager journeys pass, including rolling-window anti-spam behavior; Skool/Discord/Circle comparison remains. |
-| Developer platform | Scoped APIs, OpenAPI, opaque pagination, key custody, delegated OAuth, typed SDKs, sandbox tenants, reviewed app marketplace, signed webhooks, retry/dead letter and distributed rate limits | `verified_complete` (local native); production refresh pending | Mobile/desktop authorization, cross-tenant denial, atomic code exchange and refresh rotation, SSRF rejection, signed delivery, app review, sandbox expiry/revocation and database-backed limit evidence pass. Public registry publication and independently controlled third-party adoption remain release evidence. |
-| Data portability | Versioned exports, dry-run validation, atomic/idempotent imports, durable source mappings and specialized audience/podcast/media migration paths | `verified_complete` (local native); production refresh pending | Products, nested courses, contacts and inactive automation definitions import transactionally with tenant isolation, advisory locking, replay/conflict behavior and secret rejection. Imported offers remain draft; private media URLs never appear in export manifests. Representative competitor-export and production-volume reconciliation remain field evidence. |
+| Developer platform | Scoped APIs, OpenAPI, opaque pagination, key custody, delegated OAuth, typed SDKs, sandbox tenants, reviewed app marketplace, signed webhooks, retry/dead letter and distributed rate limits | `verified_complete` (native); production release verified, authenticated refresh pending | Mobile/desktop authorization, cross-tenant denial, atomic code exchange and refresh rotation, SSRF rejection, signed delivery, app review, sandbox expiry/revocation and database-backed limit evidence pass. The exact qualified candidate is deployed at v312; public registry publication and independently controlled third-party adoption remain release evidence. |
+| Data portability | Versioned exports, dry-run validation, atomic/idempotent imports, durable source mappings and specialized audience/podcast/media migration paths | `verified_complete` (native); production release verified, authenticated refresh pending | Products, nested courses, contacts and inactive automation definitions import transactionally with tenant isolation, advisory locking, replay/conflict behavior and secret rejection. Imported offers remain draft; private media URLs never appear in export manifests. The exact qualified candidate is deployed at v312; representative competitor-export and production-volume reconciliation remain field evidence. |
 | Installable web application | Privacy-safe PWA shell, offline fallback and device-protected post/message/media outbox without caching private API/navigation data | `verified_complete` (local PWA) | Manifest/service-worker contracts and mobile/desktop disconnect/reconnect journeys pass. JSON mutations are mirrored and server-idempotent; media blobs use bounded IndexedDB storage and restartable upload intents. Native iOS/Android binaries, operating-system background capture/upload, push and physical-device evidence remain Phase 6. |
-| Operations | Health/readiness, exact release identity, SLOs, error budgets, usage/cost boundaries, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` (local control plane); production refresh pending | The current worktree publishes seven SLOs, preserves `unmeasured`, meters tenant usage/cost and persists budgets, and fails production readiness closed unless source commit, full worktree fingerprint, dirty state, build identity and the exact migration ledger agree. Mobile/desktop evidence passes. v311 production readiness remains the latest deployed evidence at 84 migrations, while the current empty-database ledger passes locally at 103 migrations. |
+| Operations | Health/readiness, exact release identity, SLOs, error budgets, usage/cost boundaries, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` (native and production) | The control plane publishes seven SLOs, preserves `unmeasured`, meters tenant usage/cost and persists budgets, and fails production readiness closed unless source commit, full worktree fingerprint, dirty state, build identity and the exact migration ledger agree. Release v312 serves the exact protected-main candidate with healthy/readiness/release evidence and all 103 migrations. |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
@@ -122,13 +122,13 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] Empty PostgreSQL qualification passes all 103 current-worktree migrations; v311 remains the latest confirmed production ledger at 84 migrations until deployment access is restored.
+- [x] Empty PostgreSQL qualification and production release v312 both pass all 103 migrations.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
 - [x] The 178-execution isolated PostgreSQL browser matrix (89 journeys on mobile and desktop across 30 specifications) covers every provider-independent capability and material local role transition above.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
-- [x] Production field tests repeat the safe signed-in application surfaces; LiveKit join/leave, AI quota handling, Stripe connected-account delivery, refund/reversal, dispute recovery/restoration and failed-payout persistence retain their current evidence. The v307 authenticated creation-studio test created and removed an isolated Broadcast studio, persisted scenes and a native goal widget, executed a wipe transition, issued a one-time field pairing code, controlled program state at 390x884 without horizontal overflow, and created a real private R2-backed CutStudio proxy while preserving original render lineage. The v308 follow-up claimed an installable field camera through a one-time URL, removed the token from browser history, proved operator-side LiveKit readiness and director-to-device state/camera/microphone commands, revoked the device, rejected the consumed credential and deleted the temporary production studio. Release v309 additionally proved that revocation clears the consumed code from the field-client form as well as browser history. Release v311 deployed Native UGC, served `/ugc`, returned healthy/readiness evidence, enforced the anonymous 401 boundary, failed a nonexistent public creator portfolio closed with 404, and reverified the 84-migration ledger. Physical camera publication was not claimed because the automated in-app browser had no granted camera device. Earlier live checks continue to cover Distribution, automations, profile, marketplace search/product routing and communities with clean runtime logs. The unchanged anonymous auth entry retains its Lighthouse evidence at 96 performance and 100 accessibility.
+- [x] Production field evidence retains the earlier safe signed-in LiveKit, AI-quota, Stripe, creation-studio, Distribution, automation, profile, marketplace and community runs described below. Release v312 adds a protected-workflow deployment of the exact 110-file / 413-test / 178-browser-execution candidate, all 103 production migrations, healthy/readiness/release identity, two healthy IAD machines, separate login/registration, correct protected-route redirects, protected-API `401` boundaries, public discovery contracts, branding and security headers. A fresh authenticated v312 browser repeat is not claimed until an authorized signed-in session is available. Physical camera publication is not claimed because the automated in-app browser had no granted camera device. The unchanged anonymous auth entry retains its Lighthouse evidence at 96 performance and 100 accessibility.
 - [x] Provider-disabled states are honest: mixed native/external distribution remains `needs_connection`, retries preserve one native receipt, and unconfigured realtime/AI/channel surfaces fail closed.
 - [ ] Provider credentials, legal publication, UMH-side pairing and irreversible production actions remain explicit handoff gates.
 
@@ -168,8 +168,9 @@ encoder failover or external AI/transcription behavior.
 
 ## 2026-08-15 local desired-state closure evidence
 
-This is current-worktree evidence and does not overwrite the older deployed
-v311 production record:
+This section began as current-worktree evidence and is now paired with the
+v312 production record below. Historical v311 evidence remains independently
+valid for its earlier scope:
 
 - all 103 migrations replayed from an empty disposable PostgreSQL database,
   producing the 214-table required schema and 35 explicitly checked critical columns;
@@ -239,11 +240,32 @@ The final reconciled release candidate adds the following current evidence:
 - the final source-level placeholder scan found no skipped/fixme tests or
   unimplemented native handler; the remaining 501 responses are deliberate
   demo-mode write denials or the production-disabled demo entitlement route;
-- this is local qualification, not deployment evidence. The current Fly CLI
-  has no access token, the local Docker daemon is unavailable, and current
-  production returns the application HTML shell rather than the new JSON
-  `/api/release` contract. Therefore no production migration, container release
-  or post-deploy identity claim is made.
+- the candidate was subsequently deployed through the protected production
+  workflow; the release evidence below supersedes the earlier deployment-access
+  limitation without rewriting the local qualification measurements.
+
+## 2026-08-15 v312 production desired-state native release
+
+- GitHub production workflow run
+  [`31907133212`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31907133212)
+  completed successfully from protected `main` commit
+  `6ee7d88ac1e81d127745fe46750d7ad334de5f8d`;
+- all pre-deployment qualification gates repeated successfully, including 110
+  files / 413 tests, TypeScript, builds, bundles, Worker validation, all 103
+  migrations and 178 Pixel 7/desktop Chromium executions;
+- the private backup, production migration, Fly rollout and exact post-deploy
+  identity checks completed successfully;
+- `/api/health` and `/api/ready` return 200, zero readiness blockers and a ready
+  database; `/api/release` reports the exact source commit, clean source,
+  verified fingerprint and all 103 migrations;
+- Fly release `v312` has two started IAD machines serving image
+  `deployment-01M03KBVXT5XG7WRY7ZKM125HE`;
+- anonymous production field tests verify separate login and registration,
+  route-correct auth redirects, protected-API `401` boundaries, public posts and
+  community-discovery contracts, CreativesOS branding and security headers;
+- a fresh authenticated v312 application-route repeat remains an explicit
+  authorized-session evidence gate. No provider, competitive, physical-device,
+  UMH-side, legal or irreversible-cleanup outcome is inferred from this release.
 
 ## External activation register
 
