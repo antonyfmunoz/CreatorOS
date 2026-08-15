@@ -29,6 +29,7 @@ export interface Post {
   imageUrl?: string;
   audioUrl?: string;
   videoUrl?: string;
+  mediaAssetId?: string | null;
   location?: string | null;
   mediaType?: string;
   repostOfId?: number | null;
@@ -37,6 +38,12 @@ export interface Post {
   createdAt: string;
   user: User;
   taggedUsers?: TaggedUser[];
+  discovery?: {
+    rank: number;
+    score: number;
+    explanation: string[];
+    policyVersion: number;
+  };
 }
 
 export interface Comment {
@@ -44,6 +51,7 @@ export interface Comment {
   postId: number;
   userId: number;
   content: string;
+  visibility: "public" | "held" | "removed";
   likes: number;
   parentId: number | null;
   createdAt: string;
@@ -54,11 +62,11 @@ export interface Product {
   id: number;
   userId: number;
   businessId?: string | null;
-  payoutMode: 'platform' | 'creator';
-  status: 'draft' | 'published' | 'archived';
-  productType: 'digital_download' | 'course' | 'community' | 'membership';
-  billingModel: 'one_time' | 'recurring';
-  billingInterval?: 'month' | 'year' | null;
+  payoutMode: "platform" | "creator";
+  status: "draft" | "published" | "archived";
+  productType: "digital_download" | "course" | "community" | "membership";
+  billingModel: "one_time" | "recurring";
+  billingInterval?: "month" | "year" | null;
   title: string;
   description: string;
   price: number;
@@ -105,7 +113,7 @@ export interface AIChat {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
 }
@@ -171,7 +179,7 @@ export interface ApiError {
 
 export interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'mention' | 'follow' | 'purchase' | 'system';
+  type: "like" | "comment" | "mention" | "follow" | "purchase" | "system";
   message: string;
   read: boolean;
   createdAt: string;
@@ -213,6 +221,8 @@ export interface DirectMessage {
   replyToMessageId?: number | null;
   replyToMessage?: DirectMessage | null;
   reactions?: Record<string, number>; // Store reactions like { "❤️": 3, "👍": 2 }
+  clientMutationId?: string | null;
+  deliveryState?: "queued" | "sent";
 }
 
 export interface Story {

@@ -32,12 +32,13 @@ const storage = multer.diskStorage({
       prefix = 'audio';
     } else if (file.fieldname === 'video') {
       prefix = 'video';
+    } else if (file.fieldname === 'cut-lut') {
+      prefix = 'cut-lut';
     } else if (file.fieldname === 'media') {
       // For story uploads
       prefix = file.mimetype.startsWith('video/') ? 'story-video' : 'story-image';
     }
     
-    console.log(`Creating file with prefix: ${prefix}`);
     cb(null, `${prefix}-${uniqueSuffix}${ext}`);
   }
 });
@@ -64,10 +65,8 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     const isVideoMime = file.mimetype.startsWith('video/');
     
     if ((isImageExt && isImageMime) || (isVideoExt && isVideoMime)) {
-      console.log('Story media file accepted');
       return cb(null, true);
     } else {
-      console.log('Story media file rejected - invalid type');
       cb(new Error('Only image or video files are allowed for stories!'));
     }
   } else if (mediaType === 'photo' || file.fieldname === 'profile' || file.fieldname === 'image' || file.fieldname.startsWith('image')) {
@@ -85,7 +84,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     }
   } else if (file.fieldname === 'audio') {
     // For audio uploads
-    const allowedTypes = /mp3|wav|ogg|webm/;
+    const allowedTypes = /mp3|wav|ogg|webm|m4a|aac|flac/;
     // Check extension
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     // Check mime type (more permissive for audio)
@@ -97,6 +96,11 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     } else {
       cb(new Error('Only audio files are allowed!'));
     }
+  } else if (file.fieldname === 'cut-lut') {
+    const isCube = path.extname(file.originalname).toLowerCase() === '.cube';
+    const isText = file.mimetype === 'text/plain' || file.mimetype === 'application/octet-stream' || file.mimetype === 'application/x-cube';
+    if (isCube && isText) return cb(null, true);
+    cb(new Error('Only .cube 3D LUT files are allowed!'));
   } else if (file.fieldname === 'video') {
     // For video uploads
     const allowedTypes = /mp4|webm|mov|avi/;
@@ -112,7 +116,6 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     }
   } else {
     // Default for other file types
-    console.log('Unexpected file field:', file.fieldname);
     cb(new Error('Unexpected file field'));
   }
 };

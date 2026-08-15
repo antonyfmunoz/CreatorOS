@@ -98,9 +98,16 @@ try {
     }
 
     const [finalRow] = await transaction.unsafe(
-      'select count(*)::int as count from "drizzle"."__drizzle_migrations"',
+      'select count(*)::int as count, max(created_at)::bigint as latest from "drizzle"."__drizzle_migrations"',
     );
-    return { status: "migrated", baselineEstablished: established, migrationCount: finalRow.count };
+    const expectedLatest = migrationFiles.at(-1)?.folderMillis ?? null;
+    const actualLatest = finalRow.latest == null ? null : Number(finalRow.latest);
+    if (finalRow.count !== migrationFiles.length || actualLatest !== expectedLatest) {
+      throw new Error(
+        `Production migration ledger mismatch: expected ${migrationFiles.length} migrations ending at ${expectedLatest}, received ${finalRow.count} ending at ${actualLatest}`,
+      );
+    }
+    return { status: "migrated", baselineEstablished: established, migrationCount: finalRow.count, latestMigration: actualLatest };
   });
   console.log(JSON.stringify(result));
 } finally {

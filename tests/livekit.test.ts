@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  broadcastLiveKitRoomName,
+  createBroadcastLiveKitToken,
   createLiveKitParticipantToken,
   getLiveKitRecordingConfiguration,
   hasLiveKitPublishedMediaTrack,
@@ -179,5 +181,14 @@ describe("LiveKit community-room integration", () => {
       canSubscribe: true,
       canPublishData: false,
     });
+  });
+
+  it("isolates Broadcast field publishers from operator subscribers", async () => {
+    const configuration = { serverUrl: "wss://example.livekit.cloud", apiKey: "test-api-key", apiSecret: "test-api-secret-with-enough-entropy" };
+    const field = await createBroadcastLiveKitToken(configuration, { studioId: "studio-123", identity: "capture-node-node-123", name: "Phone camera", role: "field_camera", canPublish: true, canSubscribe: false });
+    const operator = await createBroadcastLiveKitToken(configuration, { studioId: "studio-123", identity: "broadcast-operator-7", name: "Operator", role: "operator", canPublish: false, canSubscribe: true });
+    expect(field.roomName).toBe(broadcastLiveKitRoomName("studio-123"));
+    expect(decodeJwtPayload(field.token).video).toMatchObject({ roomJoin: true, canPublish: true, canSubscribe: false, canPublishData: false });
+    expect(decodeJwtPayload(operator.token).video).toMatchObject({ roomJoin: true, canPublish: false, canSubscribe: true, canPublishData: false });
   });
 });

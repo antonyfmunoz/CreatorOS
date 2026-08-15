@@ -20,7 +20,7 @@ import {
   type AutomationDefinition,
 } from "../shared/schema";
 import { getAutomationAction, listAutomationActions } from "./automation-actions";
-import { cancelAutomationRun, createAutomationRun, decideAutomationApproval, processAutomationRun } from "./automation-engine";
+import { cancelAutomationRun, createAutomationRun, decideAutomationApproval, kickAutomationProcessing, processAutomationRun } from "./automation-engine";
 import {
   automationApprovalDecisionSchema,
   automationConfigContainsSecret,
@@ -412,7 +412,10 @@ export function registerAutomationRoutes(app: Express) {
       const input = automationEventInputSchema.parse(req.body);
       if (input.businessId && !(await userCanManageBusiness(req.dbUser!.id, input.businessId))) return res.status(403).json({ message: "Not authorized for this business workspace" });
       const [event] = await db.insert(automationTriggerEvents).values({ ownerUserId: req.dbUser!.id, businessId: input.businessId ?? null, eventType: input.eventType, payload: input.payload, idempotencyKey: input.idempotencyKey }).onConflictDoNothing().returning();
-      if (event) return res.status(202).json(event);
+      if (event) {
+        void kickAutomationProcessing();
+        return res.status(202).json(event);
+      }
       const [existing] = await db.select().from(automationTriggerEvents).where(eq(automationTriggerEvents.idempotencyKey, input.idempotencyKey)).limit(1);
       res.status(200).json(existing);
     } catch (error) {

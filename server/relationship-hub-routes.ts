@@ -6,6 +6,7 @@ import { ZodError, z } from "zod";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { ensureDefaultBusiness, userCanAdminBusiness, userCanManageBusiness } from "./businesses";
+import { emitDeveloperWebhookEvent } from "./developer-platform";
 import {
   relationshipAgentAuthorityPolicies,
   relationshipAgentSuggestions,
@@ -811,6 +812,21 @@ export function registerRelationshipHubRoutes(app: Express) {
       const input = updateRelationshipSchema.parse(req.body);
       const [updated] = await db.update(relationships).set({ ...input, updatedAt: new Date(), archivedAt: input.status === "archived" ? new Date() : existing.archivedAt }).where(eq(relationships.id, existing.id)).returning();
       await auditRelationshipAction({ businessId: existing.businessId, actorUserId: req.dbUser!.id, action: "relationship.updated", targetType: "relationship", targetId: existing.id, metadata: { changedFields: Object.keys(input) } });
+      void emitDeveloperWebhookEvent({
+        businessId: existing.businessId,
+        eventType: "relationship.updated",
+        aggregateType: "relationship",
+        aggregateId: existing.id,
+        idempotencyKey: `relationship.updated:${existing.id}:${updated.updatedAt.getTime()}`,
+        payload: {
+          relationshipId: existing.id,
+          status: updated.status,
+          lifecycleStage: updated.lifecycleStage,
+          changedFields: Object.keys(input),
+        },
+      }).catch((eventError) =>
+        console.error("Failed to emit relationship-updated webhook:", eventError),
+      );
       res.json(updated);
     } catch (error) {
       return relationshipHubError(res, error);

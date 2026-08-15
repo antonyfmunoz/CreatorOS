@@ -154,7 +154,6 @@ const Stories = ({ initialStoryId = null }: StoriesProps) => {
   // Always refresh stories data when component mounts or story is viewed
   useEffect(() => {
     refetchStories();
-    console.log('Refreshing stories data on Stories component mount');
   }, [refetchStories]);
   
   const isLoading = storiesLoading;

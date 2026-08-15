@@ -133,6 +133,22 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from revenue where user_id = ${userId} order by date`),
       exportRows(sql`select * from contacts where user_id = ${userId} order by created_at`),
       exportRows(sql`select * from documents where user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_projects where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_audio_templates where owner_user_id = ${userId} order by updated_at`),
+      exportRows(sql`select * from cut_studio_jobs where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from cut_studio_versions where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select id, version_id, project_id, owner_user_id, label, status, expires_at, created_at from cut_studio_review_links where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select c.* from cut_studio_review_comments c join cut_studio_versions v on v.id = c.version_id where v.owner_user_id = ${userId} order by c.created_at`),
+      exportRows(sql`select d.* from cut_studio_review_decisions d join cut_studio_versions v on v.id = d.version_id where v.owner_user_id = ${userId} order by d.created_at`),
+      exportRows(sql`select * from broadcast_studios where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_studio_versions where actor_user_id = ${userId} order by created_at`),
+      exportRows(sql`select id, owner_user_id, business_id, name, protocol, ingest_url, status, created_at, updated_at from broadcast_destinations where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_sessions where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_brand_kits where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_session_tracks where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_studio_collaborators where user_id = ${userId} or invited_by_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_audience_messages where author_user_id = ${userId} or moderated_by_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from broadcast_template_catalog where owner_user_id = ${userId} order by updated_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from purchases where buyer_id = ${userId} order by purchased_at`),
@@ -211,6 +227,15 @@ export async function buildAccountExport(user: User) {
       assets: creatorStudio[3], products: creatorStudio[4], campaigns: creatorStudio[5],
       aiAgents: creatorStudio[6], aiChats: creatorStudio[7], revenue: creatorStudio[8],
       contacts: creatorStudio[9], documents: creatorStudio[10],
+      cutStudioProjects: creatorStudio[11], cutStudioJobs: creatorStudio[12],
+      cutStudioVersions: creatorStudio[13], cutStudioReviewLinks: creatorStudio[14],
+      cutStudioReviewComments: creatorStudio[15], cutStudioReviewDecisions: creatorStudio[16],
+      broadcastStudios: creatorStudio[17], broadcastDestinations: creatorStudio[18], broadcastSessions: creatorStudio[19],
+      broadcastBrandKits: creatorStudio[20],
+      broadcastSessionTracks: creatorStudio[21],
+      broadcastStudioCollaborations: creatorStudio[22],
+      broadcastAudienceMessages: creatorStudio[23],
+      broadcastTemplates: creatorStudio[24],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],
@@ -292,6 +317,7 @@ async function eraseLocalAccountData(request: AccountPrivacyRequest, user: User)
 
     await tx.execute(sql`delete from businesses where owner_user_id = ${userId}`);
     await tx.execute(sql`delete from business_members where user_id = ${userId}`);
+    await tx.execute(sql`update broadcast_audience_messages set author_name = 'Deleted user', author_user_id = null where author_user_id = ${userId}`);
 
     await tx.execute(sql`delete from posts where user_id = ${userId}`);
     await tx.execute(sql`delete from comments where user_id = ${userId}`);

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User, AIAgent, AIChat, ChatMessage, Notification, Conversation, DirectMessage } from '@/types';
+import { sendOrQueueOfflineOperation } from './offline-queue';
 
 // App state store for current active tab, user, etc.
 // `currentUser` is the Clerk-backed DB user, bridged in from AuthProvider (see use-auth.tsx).
@@ -340,23 +341,30 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   sendMessage: async (conversationId: number, senderId: number, content: string, replyToMessageId = null) => {
     try {
-      const response = await fetch(`/api/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await sendOrQueueOfflineOperation({
+        ownerUserId: senderId,
+        kind: "message.send",
+        payload: {
           conversationId,
           senderId,
           content,
           read: false,
           replyToMessageId
-        })
+        },
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-      
-      const newMessage = await response.json();
+      const newMessage = result.state === "sent"
+        ? result.value as DirectMessage
+        : {
+            id: -Date.now(),
+            conversationId,
+            senderId,
+            content,
+            read: false,
+            sentAt: new Date().toISOString(),
+            replyToMessageId,
+            clientMutationId: result.id,
+            deliveryState: "queued" as const,
+          };
       
       set((state) => ({
         messages: [...state.messages, newMessage],
@@ -364,7 +372,7 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       }));
       
       // Update conversation with new last message
-      await get().fetchConversations(senderId);
+      if (result.state === "sent") await get().fetchConversations(senderId);
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -497,17 +505,13 @@ export const useMessaging = create<MessagingState>((set, get) => ({
   
   createConversation: async (userIds: number[], name?: string) => {
     try {
-      console.log('Creating conversation with userIds:', userIds, 'name:', name);
-      
       // Make sure userIds is an array and contains at least 2 members
       if (!Array.isArray(userIds) || userIds.length < 2) {
-        console.error('Invalid userIds provided. Need at least 2 users in an array:', userIds);
         throw new Error('At least two users required for a conversation');
       }
       
       // Check all userIds are numbers
       if (!userIds.every(id => typeof id === 'number')) {
-        console.error('All userIds must be numbers:', userIds);
         throw new Error('All user IDs must be numbers');
       }
       
@@ -536,7 +540,6 @@ export const useMessaging = create<MessagingState>((set, get) => ({
           });
           
           if (existingConversation) {
-            console.log('Found existing conversation:', existingConversation.id);
             // Update the client-side conversations to include this conversation
             get().setSelectedConversation(existingConversation.id);
             return existingConversation.id;
@@ -557,14 +560,11 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server response error:', response.status, errorText);
-        throw new Error(`Failed to create conversation: ${response.status} ${errorText}`);
+        const errorBody = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(errorBody?.message ?? `Failed to create conversation (${response.status})`);
       }
       
       const newConversation = await response.json();
-      console.log('Created conversation:', newConversation);
-      
       // Update conversations list
       const user = useAppStore.getState().currentUser;
       if (user) {
@@ -573,7 +573,6 @@ export const useMessaging = create<MessagingState>((set, get) => ({
       
       return newConversation.id;
     } catch (error) {
-      console.error('Error creating conversation:', error);
       throw error;
     }
   },

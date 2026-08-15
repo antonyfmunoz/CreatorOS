@@ -50,13 +50,15 @@ export default function AutomationsPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runInput, setRunInput] = useState("");
   const [chatInput, setChatInput] = useState("");
-  const [socialFlow, setSocialFlow] = useState<"comment" | "dm">("comment");
-  const [socialScope, setSocialScope] = useState<"native" | "connected">("connected");
+  const automationParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const linkedPostId = automationParams.get("post") ?? "";
+  const [socialFlow, setSocialFlow] = useState<"comment" | "dm">(automationParams.get("flow") === "dm" ? "dm" : "comment");
+  const [socialScope, setSocialScope] = useState<"native" | "connected">(automationParams.get("scope") === "native" ? "native" : "connected");
   const [socialKeywords, setSocialKeywords] = useState("");
   const [socialMatchMode, setSocialMatchMode] = useState<"exact" | "contains" | "starts_with">("exact");
   const [socialReply, setSocialReply] = useState("");
   const [socialPublicReply, setSocialPublicReply] = useState("I just sent it to you in a DM.");
-  const [socialPostId, setSocialPostId] = useState("");
+  const [socialPostId, setSocialPostId] = useState(linkedPostId);
   const [socialCooldown, setSocialCooldown] = useState("0");
 
   const businessesQuery = useQuery<Business[]>({ queryKey: ["/api/businesses"] });
@@ -241,6 +243,7 @@ export default function AutomationsPage() {
 
           <section className="px-4 pt-7">
             <div className="rounded-2xl border border-[#1d9bf0]/30 bg-[#1d9bf0]/5 p-4">
+              {linkedPostId && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs"><span><strong>Published post {linkedPostId}</strong><span className="ml-1 text-zinc-400">is selected for this workflow.</span></span><button type="button" className="shrink-0 font-bold text-white underline" onClick={() => setLocation(`/post/${encodeURIComponent(linkedPostId)}`)}>View</button></div>}
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1d9bf0]/15 text-[#1d9bf0]"><MessageCircle className="h-5 w-5" /></span>
                 <div><p className="text-xs font-bold uppercase tracking-wider text-[#1d9bf0]">Keyword replies</p><h2 className="mt-1 text-base font-bold">Turn comments and DMs into conversations</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Use one governed workflow across connected inboxes, or limit it to native CreativesOS conversations.</p></div>
@@ -250,7 +253,7 @@ export default function AutomationsPage() {
                 {(["comment", "dm"] as const).map((flow) => <button key={flow} type="button" onClick={() => setSocialFlow(flow)} className={`rounded-xl border py-2.5 text-xs font-bold ${socialFlow === flow ? "border-[#1d9bf0] bg-[#1d9bf0] text-black" : "border-zinc-800 bg-black text-zinc-400"}`}>{flow === "comment" ? "Comment keyword" : "DM keyword"}</button>)}
               </div>
               <label className="mt-4 block text-[11px] font-bold text-zinc-400">Keywords</label>
-              <input value={socialKeywords} onChange={(event) => setSocialKeywords(event.target.value)} placeholder="GUIDE, LINK, DETAILS" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+              <input aria-label="Keywords" value={socialKeywords} onChange={(event) => setSocialKeywords(event.target.value)} placeholder="GUIDE, LINK, DETAILS" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <label className="text-[11px] font-bold text-zinc-400">Match
                   <select value={socialMatchMode} onChange={(event) => setSocialMatchMode(event.target.value as typeof socialMatchMode)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-white outline-none focus:border-[#1d9bf0]"><option value="exact">Exact message</option><option value="contains">Contains keyword</option><option value="starts_with">Starts with</option></select>
@@ -263,10 +266,10 @@ export default function AutomationsPage() {
                 <label className="mt-3 block text-[11px] font-bold text-zinc-400">Public reply <span className="font-normal text-zinc-600">(optional)</span></label>
                 <input value={socialPublicReply} onChange={(event) => setSocialPublicReply(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none focus:border-[#1d9bf0]" />
                 <label className="mt-3 block text-[11px] font-bold text-zinc-400">Post ID <span className="font-normal text-zinc-600">(optional; blank means all your posts)</span></label>
-                <input inputMode="numeric" value={socialPostId} onChange={(event) => setSocialPostId(event.target.value)} placeholder="All posts" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+                <input aria-label="Post ID" inputMode="numeric" value={socialPostId} onChange={(event) => setSocialPostId(event.target.value)} placeholder="All posts" className="mt-1.5 h-11 w-full rounded-xl border border-zinc-800 bg-black px-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
               </>}
               <label className="mt-3 block text-[11px] font-bold text-zinc-400">{socialFlow === "comment" && socialScope === "connected" ? "Private reply" : "Direct-message reply"}</label>
-              <textarea value={socialReply} onChange={(event) => setSocialReply(event.target.value)} placeholder="Thanks for reaching out—here is the link you requested…" className="mt-1.5 min-h-24 w-full resize-none rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
+              <textarea aria-label="Direct-message reply" value={socialReply} onChange={(event) => setSocialReply(event.target.value)} placeholder="Thanks for reaching out—here is the link you requested…" className="mt-1.5 min-h-24 w-full resize-none rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-[#1d9bf0]" />
               <p className="mt-2 text-[10px] leading-4 text-zinc-600">STOP opts a person out. START opts them back in. Automated replies never trigger another automation.</p>
               <button type="button" onClick={() => createSocialAutomation.mutate()} disabled={createSocialAutomation.isPending} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-black disabled:opacity-50"><Plus className="h-4 w-4" />Create keyword automation</button>
             </div>

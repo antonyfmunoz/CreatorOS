@@ -68,6 +68,10 @@ export function liveKitRoomName(communityId: number, roomId: string) {
   return `creativesos-community-${communityId}-room-${roomId}`;
 }
 
+export function broadcastLiveKitRoomName(studioId: string) {
+  return `creativesos-broadcast-${studioId}`;
+}
+
 export function getLiveKitConfiguration(
   environment: LiveKitEnvironment = processLiveKitEnvironment(),
 ): LiveKitConfiguration | null {
@@ -344,5 +348,38 @@ export async function createLiveKitParticipantToken(
     serverUrl: configuration.serverUrl,
     roomName,
     participant: { identity, name: participant.displayName },
+  };
+}
+
+export async function createBroadcastLiveKitToken(
+  configuration: LiveKitConfiguration,
+  input: {
+    studioId: string;
+    identity: string;
+    name: string;
+    role: "field_camera" | "operator";
+    canPublish: boolean;
+    canSubscribe: boolean;
+  },
+) {
+  const roomName = broadcastLiveKitRoomName(input.studioId);
+  const token = new AccessToken(configuration.apiKey, configuration.apiSecret, {
+    identity: input.identity,
+    name: input.name,
+    ttl: "10m",
+    metadata: JSON.stringify({ studioId: input.studioId, role: input.role }),
+  });
+  token.addGrant({
+    roomJoin: true,
+    room: roomName,
+    canPublish: input.canPublish,
+    canSubscribe: input.canSubscribe,
+    canPublishData: false,
+  });
+  return {
+    token: await token.toJwt(),
+    serverUrl: configuration.serverUrl,
+    roomName,
+    participant: { identity: input.identity, name: input.name },
   };
 }

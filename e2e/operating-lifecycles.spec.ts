@@ -82,7 +82,10 @@ test("business workspace persists campaigns, drafts, contacts and documents with
   const { owner, peer, admin } = actors(testInfo);
   const businessesResponse = await api(page, owner, "GET", "/api/businesses");
   await expectOk(businessesResponse);
-  const business = (await businessesResponse.json())[0];
+  const business = (await businessesResponse.json()).find(
+    (item: { isDefault: boolean }) => item.isDefault,
+  );
+  expect(business).toBeTruthy();
   const marker = `${testInfo.project.name}-${Date.now()}`;
   const draftResponse = await api(page, owner, "POST", "/api/content-drafts", { businessId: business.id, kind: "post", content: `Draft ${marker}`, audience: "public" });
   await expectOk(draftResponse);
@@ -214,7 +217,10 @@ test("projection-side UMH ingress enforces signatures, replay protection and loc
   const { owner, peer } = actors(testInfo);
   const businesses = await api(page, owner, "GET", "/api/businesses");
   await expectOk(businesses);
-  const business = (await businesses.json())[0];
+  const business = (await businesses.json()).find(
+    (item: { isDefault: boolean }) => item.isDefault,
+  );
+  expect(business).toBeTruthy();
   const sendCommand = async (envelope: Record<string, unknown>, nonce = randomUUID(), valid = true) => {
     const body = JSON.stringify(envelope);
     const timestamp = new Date().toISOString();

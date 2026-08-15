@@ -77,13 +77,10 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
   };
   
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    console.log("Image clicked");
-    
     if (selectedUser) {
       // Find the img element with the specific id and get its position
       const imgElement = document.getElementById('tag-image');
       if (!imgElement) {
-        console.error("Image element with id 'tag-image' not found");
         return;
       }
 
@@ -96,15 +93,6 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
       // Clamp values between 0 and 1
       x = Math.max(0, Math.min(1, x));
       y = Math.max(0, Math.min(1, y));
-      
-      console.log("Tag position calculated:", { 
-        x, y, 
-        imgRect, 
-        clientX: e.clientX, 
-        clientY: e.clientY,
-        imageWidth: imgRect.width,
-        imageHeight: imgRect.height
-      });
       
       // Store the position first
       setTaggingPosition({ x, y });
@@ -123,17 +111,10 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
       // Clear the selected user
       setSelectedUser(null);
       
-      console.log("Tag added at position:", { x, y });
-      console.log("Updated tags:", updatedTags);
-      
       toast({
         title: "User tagged",
         description: `${selectedUser.displayName} has been tagged at the selected position.`
       });
-    } else {
-      // If not in tagging mode, we can optionally do something here.
-      // For now, we'll just log that the image was clicked with no tags to add
-      console.log("Image clicked, but no user selected for tagging");
     }
   };
   
@@ -402,12 +383,12 @@ export const TagEditor = ({ isOpen, onClose, image, onTagSave, initialTags = [] 
               </div>
             </div>
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <img 
-                src="/placeholder-tshirt.jpg" 
-                alt="Example item"
-                className="max-w-full max-h-full object-contain cursor-pointer" 
-              />
+            <div className="flex h-full w-full flex-col items-center justify-center px-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-zinc-400">
+                <UserPlus aria-hidden="true" size={24} />
+              </span>
+              <p className="mt-4 text-sm font-semibold text-white">Choose a photo before tagging people</p>
+              <p className="mt-2 max-w-xs text-xs leading-5 text-zinc-500">Tags are placed directly on the photo selected for this post.</p>
             </div>
           )}
         </div>

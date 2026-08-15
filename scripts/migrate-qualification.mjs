@@ -20,6 +20,29 @@ const requiredTables = [
   "social_connections",
   "communities",
   "community_memberships",
+  "community_onboarding_questions",
+  "community_onboarding_responses",
+  "community_point_events",
+  "community_badges",
+  "community_member_badges",
+  "developer_api_keys",
+  "developer_api_requests",
+  "developer_webhook_endpoints",
+  "developer_webhook_events",
+  "developer_webhook_deliveries",
+  "developer_api_rate_windows",
+  "operational_service_events",
+  "operational_usage_events",
+  "operational_budgets",
+  "developer_oauth_apps",
+  "developer_oauth_installations",
+  "developer_oauth_authorization_codes",
+  "developer_oauth_access_tokens",
+  "developer_oauth_refresh_tokens",
+  "developer_oauth_rate_windows",
+  "developer_sandboxes",
+  "data_import_jobs",
+  "data_import_records",
   "community_rooms",
   "community_room_recordings",
   "community_room_transcript_segments",
@@ -60,15 +83,189 @@ const requiredTables = [
   "commerce_provider_events",
   "creator_payout_events",
   "production_backups",
+  "cut_studio_projects",
+  "cut_studio_audio_templates",
+  "cut_studio_project_media",
+  "cut_studio_jobs",
+  "cut_studio_versions",
+  "cut_studio_review_links",
+  "cut_studio_review_comments",
+  "cut_studio_review_decisions",
+  "broadcast_studios",
+  "broadcast_studio_collaborators",
+  "broadcast_studio_versions",
+  "broadcast_brand_kits",
+  "broadcast_destinations",
+  "broadcast_sessions",
+  "broadcast_session_tracks",
+  "broadcast_session_markers",
+  "broadcast_destination_receipts",
+  "broadcast_audience_messages",
+  "broadcast_template_catalog",
+  "broadcast_capture_nodes",
+  "broadcast_capture_invitations",
+  "broadcast_capture_telemetry",
+  "ugc_creator_profiles",
+  "ugc_portfolio_items",
+  "ugc_opportunities",
+  "ugc_applications",
+  "ugc_collaborations",
+  "ugc_submissions",
+  "ugc_performance_snapshots",
+  "ugc_earnings_ledger",
+  "media_processing_jobs",
+  "media_renditions",
+  "media_text_tracks",
+  "asset_lineage_edges",
+  "asset_collections",
+  "asset_collection_items",
+  "media_playback_sessions",
+  "media_playback_events",
+  "asset_tags",
+  "asset_rights",
+  "asset_usage_records",
+  "analytics_events",
+  "analytics_identity_links",
+  "attribution_touches",
+  "conversion_attributions",
+  "analytics_experiments",
+  "analytics_experiment_assignments",
+  "creative_work_items",
+  "creative_work_dependencies",
+  "creative_work_approvals",
+  "audience_profiles",
+  "audience_segments",
+  "audience_segment_memberships",
+  "notification_preferences",
+  "notification_events",
+  "notification_deliveries",
+  "notification_suppressions",
+  "audience_forms",
+  "audience_form_submissions",
+  "audience_landing_pages",
+  "newsletter_blocks",
+  "newsletter_issues",
+  "newsletter_sequences",
+  "newsletter_sequence_steps",
+  "newsletter_enrollments",
+  "audience_preference_tokens",
+  "podcast_shows",
+  "podcast_seasons",
+  "podcast_episodes",
+  "podcast_destinations",
+  "podcast_private_feed_tokens",
+  "podcast_episode_comments",
+  "podcast_polls",
+  "podcast_poll_votes",
+  "design_projects",
+  "design_templates",
+  "design_versions",
+  "design_collaborators",
+  "design_review_links",
+  "design_review_comments",
+  "design_review_decisions",
+  "design_exports",
+  "creator_sites",
+  "creator_site_sections",
+  "creator_site_redirects",
+  "creator_site_domains",
+  "sponsorship_media_kits",
+  "sponsorship_rate_cards",
+  "sponsor_deals",
+  "sponsorship_proposals",
+  "sponsorship_contracts",
+  "sponsorship_milestones",
+  "sponsorship_invoices",
+  "sponsorship_performance_snapshots",
+  "sponsorship_portal_tokens",
+  "affiliate_programs",
+  "affiliate_applications",
+  "affiliate_partners",
+  "affiliate_links",
+  "affiliate_clicks",
+  "affiliate_conversions",
+  "affiliate_ledger_entries",
+  "affiliate_payouts",
+  "affiliate_fraud_signals",
+  "booking_calendars",
+  "booking_availability_rules",
+  "booking_blackouts",
+  "appointment_types",
+  "booking_reservations",
+  "booking_waitlist",
+  "event_series",
+  "event_occurrences",
+  "event_commercial_settings",
+  "event_ticket_types",
+  "event_tickets",
+  "event_waitlist",
+  "event_attendance",
+  "event_replay_entitlements",
+  "event_automation_jobs",
+  "marketplace_seller_profiles",
+  "marketplace_policy_acceptances",
+  "marketplace_promotions",
+  "marketplace_promotion_redemptions",
+  "marketplace_bundles",
+  "marketplace_bundle_items",
+  "marketplace_support_cases",
+  "marketplace_support_messages",
+  "user_blocks",
+  "user_safety_controls",
+  "competitive_benchmark_definitions",
+  "competitive_benchmark_runs",
+  "competitive_benchmark_assessments",
+  "ugc_sample_shipments",
+  "content_moderation_states",
+  "discovery_preferences",
+  "discovery_policies",
+  "discovery_exposures",
+  "search_documents",
+  "asset_provenance_claims",
+  "rights_cases",
+  "rights_case_events",
+  "repeat_infringer_strikes",
 ];
 
 const requiredColumns = {
   users: ["profile_links", "push_notifications_enabled", "color_mode"],
   products: ["product_type", "billing_model", "billing_interval"],
-  orders: ["provider_payment_reference", "provider_subscription_reference", "subscription_status", "subscription_cancel_at", "subscription_cancel_at_period_end", "financial_status", "refunded_amount", "disputed_amount", "last_provider_event_at"],
-  order_items: ["product_type_snapshot", "billing_model_snapshot", "billing_interval_snapshot"],
-  creator_payment_accounts: ["disabled_reason", "requirements_currently_due", "requirements_past_due", "country", "default_currency"],
-  creator_earnings_allocations: ["provider_event_reference", "refunded_amount", "disputed_amount", "reversed_amount"],
+  orders: [
+    "provider_payment_reference",
+    "provider_subscription_reference",
+    "subscription_status",
+    "subscription_cancel_at",
+    "subscription_cancel_at_period_end",
+    "financial_status",
+    "refunded_amount",
+    "disputed_amount",
+    "last_provider_event_at",
+    "attribution_context",
+  ],
+  order_items: [
+    "product_type_snapshot",
+    "billing_model_snapshot",
+    "billing_interval_snapshot",
+  ],
+  creator_payment_accounts: [
+    "disabled_reason",
+    "requirements_currently_due",
+    "requirements_past_due",
+    "country",
+    "default_currency",
+  ],
+  creator_earnings_allocations: [
+    "provider_event_reference",
+    "refunded_amount",
+    "disputed_amount",
+    "reversed_amount",
+  ],
+  posts: ["media_asset_id", "client_mutation_id"],
+  direct_messages: ["client_mutation_id"],
+  assets: ["client_mutation_id"],
+  comments: ["visibility"],
+  ugc_opportunities: ["sample_terms"],
+  community_memberships: ["onboarding_completed_at"],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -98,12 +295,18 @@ try {
   const columnRows = await client.unsafe(
     `select table_name, column_name from information_schema.columns where table_schema = 'public'`,
   );
-  const presentColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
-  const missingColumns = Object.entries(requiredColumns).flatMap(([table, columns]) =>
-    columns.filter((column) => !presentColumns.has(`${table}.${column}`)).map((column) => `${table}.${column}`),
+  const presentColumns = new Set(
+    columnRows.map((row) => `${row.table_name}.${row.column_name}`),
+  );
+  const missingColumns = Object.entries(requiredColumns).flatMap(
+    ([table, columns]) =>
+      columns
+        .filter((column) => !presentColumns.has(`${table}.${column}`))
+        .map((column) => `${table}.${column}`),
   );
   const expectedLatest = migrationFiles.at(-1)?.folderMillis ?? null;
-  const actualLatest = migrationRows[0]?.latest == null ? null : Number(migrationRows[0].latest);
+  const actualLatest =
+    migrationRows[0]?.latest == null ? null : Number(migrationRows[0].latest);
 
   if (migrationRows[0]?.count !== migrationFiles.length) {
     throw new Error(
@@ -111,22 +314,30 @@ try {
     );
   }
   if (actualLatest !== expectedLatest) {
-    throw new Error(`Latest migration mismatch: expected ${expectedLatest}, received ${actualLatest}`);
+    throw new Error(
+      `Latest migration mismatch: expected ${expectedLatest}, received ${actualLatest}`,
+    );
   }
   if (missing.length > 0) {
-    throw new Error(`Required tables are missing after migration: ${missing.join(", ")}`);
+    throw new Error(
+      `Required tables are missing after migration: ${missing.join(", ")}`,
+    );
   }
   if (missingColumns.length > 0) {
-    throw new Error(`Required columns are missing after migration: ${missingColumns.join(", ")}`);
+    throw new Error(
+      `Required columns are missing after migration: ${missingColumns.join(", ")}`,
+    );
   }
 
-  console.log(JSON.stringify({
-    status: "qualified",
-    migrationCount: migrationFiles.length,
-    latestMigration: expectedLatest,
-    requiredTableCount: requiredTables.length,
-    requiredColumnCount: Object.values(requiredColumns).flat().length,
-  }));
+  console.log(
+    JSON.stringify({
+      status: "qualified",
+      migrationCount: migrationFiles.length,
+      latestMigration: expectedLatest,
+      requiredTableCount: requiredTables.length,
+      requiredColumnCount: Object.values(requiredColumns).flat().length,
+    }),
+  );
 } finally {
   await client.end({ timeout: 5 });
 }

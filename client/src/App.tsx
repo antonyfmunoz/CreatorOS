@@ -2,30 +2,43 @@ import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";
-import { Toaster } from "@/components/ui/toaster";
-import BottomNavigation from "@/components/layout/BottomNavigation";
-import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
-import { useAppStore, useAIChatStore, useNotifications } from "@/lib/stores";
-import ChatInterface from "@/components/ai/ChatInterface";
-import NotificationBell from "@/components/notifications/NotificationBell";
-import NotificationPanel from "@/components/notifications/NotificationPanel";
-import ToastContainer from "@/components/notifications/ToastContainer";
-import { MessageButton } from "@/components/messages";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
+import { useAppStore } from "@/lib/stores";
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 import { routeChrome } from "./lib/route-chrome";
 import { captureClientException, capturePageView } from "./lib/posthog";
+import AuthPage from "@/pages/auth-page";
+
+const BottomNavigation = lazy(
+  () => import("@/components/layout/BottomNavigation"),
+);
+const ApplicationOverlays = lazy(
+  () => import("@/components/layout/ApplicationOverlays"),
+);
+const OfflineOperations = lazy(
+  () => import("@/components/system/OfflineOperations"),
+);
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
 // business workspaces into every download.
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Explore = lazy(() => import("@/pages/explore"));
+const CompetitiveBenchmarksPage = lazy(
+  () => import("@/pages/competitive-benchmarks"),
+);
 const Marketplace = lazy(() => import("@/pages/marketplace"));
 const AI = lazy(() => import("@/pages/ai"));
 const Communities = lazy(() => import("@/pages/communities"));
 const Profile = lazy(() => import("@/pages/profile"));
-const AuthPage = lazy(() => import("@/pages/auth-page"));
 const SavedPostsPage = lazy(() => import("@/pages/saved-posts"));
 const FollowersPage = lazy(() => import("@/pages/followers"));
 const FollowingPage = lazy(() => import("@/pages/following"));
@@ -49,29 +62,79 @@ const OrdersPage = lazy(() => import("@/pages/orders"));
 const CoursePlayer = lazy(() => import("@/pages/course-player"));
 const LearningLibraryPage = lazy(() => import("@/pages/learning-library"));
 const DistributionStudio = lazy(() => import("@/pages/distribution-studio"));
-const DistributionConnections = lazy(() => import("@/pages/distribution-connections"));
+const DistributionConnections = lazy(
+  () => import("@/pages/distribution-connections"),
+);
+const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
+const CutStudioReviewPage = lazy(() => import("@/pages/cut-studio-review"));
+const CutStudioWorkspacePage = lazy(
+  () => import("@/pages/cut-studio-workspace"),
+);
+const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
+const BroadcastAudiencePage = lazy(() => import("@/pages/broadcast-audience"));
+const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
+const BroadcastFieldPage = lazy(() => import("@/pages/broadcast-field"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
+const UgcPage = lazy(() => import("@/pages/ugc"));
+const UgcCreatorPage = lazy(() => import("@/pages/ugc-creator"));
 const CourseBuilder = lazy(() => import("@/pages/course-builder"));
 const UmhApprovalsPage = lazy(() => import("@/pages/umh-approvals"));
 const CheckoutSuccessPage = lazy(() => import("@/pages/checkout-success"));
 const EarningsPage = lazy(() => import("@/pages/earnings"));
 const ModerationPage = lazy(() => import("@/pages/moderation"));
+const AdminAppsPage = lazy(() => import("@/pages/admin-apps"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
 const PrivacySettingsPage = lazy(() => import("@/pages/privacy-settings"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const TrustCenterPage = lazy(() => import("@/pages/trust-center"));
 const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
+const MediaLibraryPage = lazy(() => import("@/pages/media-library"));
+const AnalyticsOverviewPage = lazy(() => import("@/pages/analytics-overview"));
+const ProductionPlannerPage = lazy(() => import("@/pages/production-planner"));
+const DeveloperPlatformPage = lazy(() => import("@/pages/developer-platform"));
+const DataPortabilityPage = lazy(() => import("@/pages/data-portability"));
+const OperationsPage = lazy(() => import("@/pages/operations"));
+const OAuthAuthorizePage = lazy(() => import("@/pages/oauth-authorize"));
+const AppsPage = lazy(() => import("@/pages/apps"));
+const AudienceStudioPage = lazy(() => import("@/pages/audience-studio"));
+const AudiencePublicPage = lazy(() => import("@/pages/audience-public"));
+const AudiencePreferencesPage = lazy(
+  () => import("@/pages/audience-preferences"),
+);
+const PodcastStudioPage = lazy(() => import("@/pages/podcast-studio"));
+const PodcastPublicPage = lazy(() => import("@/pages/podcast-public"));
+const DesignStudioPage = lazy(() => import("@/pages/design-studio"));
+const DesignStudioReviewPage = lazy(
+  () => import("@/pages/design-studio-review"),
+);
+const CreatorSiteStudioPage = lazy(() => import("@/pages/creator-site-studio"));
+const CreatorSitePublicPage = lazy(() => import("@/pages/creator-site-public"));
+const SponsorshipStudioPage = lazy(() => import("@/pages/sponsorship-studio"));
+const SponsorshipPortalPage = lazy(() => import("@/pages/sponsorship-portal"));
+const AffiliateStudioPage = lazy(() => import("@/pages/affiliate-studio"));
+const AffiliateProgramPage = lazy(() => import("@/pages/affiliate-program"));
+const BookingStudioPage = lazy(() => import("@/pages/booking-studio"));
+const BookingPublicPage = lazy(() => import("@/pages/booking-public"));
+const EventTicketingPage = lazy(() => import("@/pages/event-ticketing"));
+const EventOperationsPage = lazy(() => import("@/pages/event-operations"));
+const MarketplaceOperationsPage = lazy(
+  () => import("@/pages/marketplace-operations"),
+);
+const StorefrontPage = lazy(() => import("@/pages/storefront"));
+const SupportCenterPage = lazy(() => import("@/pages/support-center"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
-const QUALIFICATION_MODE = import.meta.env.VITE_CREATOROS_QUALIFICATION_MODE === "true";
+const QUALIFICATION_MODE =
+  import.meta.env.VITE_CREATOROS_QUALIFICATION_MODE === "true";
 const LOCAL_IDENTITY_MODE = DEMO_MODE || QUALIFICATION_MODE;
 
 function recoverFromStaleBuild(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  if (!/dynamically imported module|failed to fetch/i.test(message)) return false;
+  if (!/dynamically imported module|failed to fetch/i.test(message))
+    return false;
   const retryKey = `creativesos:stale-build-retry:${message}`;
   if (sessionStorage.getItem(retryKey)) return false;
   sessionStorage.setItem(retryKey, "1");
@@ -79,7 +142,10 @@ function recoverFromStaleBuild(error: unknown): boolean {
   return true;
 }
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
   state = { error: null };
 
   static getDerivedStateFromError(error: Error) {
@@ -93,13 +159,27 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
 
   render() {
     if (!this.state.error) return this.props.children;
-    return <section className="mx-auto flex min-h-[40vh] max-w-sm flex-col justify-center px-6 text-center text-white"><h1 className="text-xl font-bold">Updating CreativesOS</h1><p className="mt-2 text-sm leading-6 text-zinc-500">This page needs a fresh app version. Reload to continue.</p><button className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-black" onClick={() => window.location.reload()}>Reload</button></section>;
+    return (
+      <section className="mx-auto flex min-h-[40vh] max-w-sm flex-col justify-center px-6 text-center text-white">
+        <h1 className="text-xl font-bold">Updating CreativesOS</h1>
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          This page needs a fresh app version. Reload to continue.
+        </p>
+        <button
+          className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-black"
+          onClick={() => window.location.reload()}
+        >
+          Reload
+        </button>
+      </section>
+    );
   }
 }
 
 window.addEventListener("vite:preloadError", (event) => {
   const preloadEvent = event as Event & { payload?: unknown };
-  if (recoverFromStaleBuild(preloadEvent.payload)) preloadEvent.preventDefault();
+  if (recoverFromStaleBuild(preloadEvent.payload))
+    preloadEvent.preventDefault();
 });
 
 if (!LOCAL_IDENTITY_MODE && !CLERK_PUBLISHABLE_KEY) {
@@ -132,14 +212,55 @@ function Router() {
 
   // Update active tab when route changes
   useEffect(() => {
-    const path = location.substring(1).split('/')[0];
-    if (path === '') return setActiveTab('explore');
-    if (path === 'post') return setActiveTab('explore');
-    if (['marketplace', 'cart', 'orders', 'checkout', 'learn', 'courses'].includes(path)) return setActiveTab('marketplace');
-    if (['create', 'studio', 'distribution', 'business', 'campaigns', 'earnings', 'products', 'automations'].includes(path)) return setActiveTab('create');
-    if (['communities', 'events'].includes(path)) return setActiveTab('communities');
-    if (['profile', 'user', 'saved-posts', 'followers', 'following', 'revenue', 'contacts', 'documents', 'moderation', 'settings'].includes(path)) return setActiveTab('profile');
-    if (path === 'ai') return setActiveTab('create');
+    const path = location.substring(1).split("/")[0];
+    if (path === "") return setActiveTab("explore");
+    if (path === "post") return setActiveTab("explore");
+    if (
+      [
+        "marketplace",
+        "cart",
+        "orders",
+        "checkout",
+        "learn",
+        "courses",
+      ].includes(path)
+    )
+      return setActiveTab("marketplace");
+    if (
+      [
+        "create",
+        "studio",
+        "cut-studio",
+        "broadcast",
+        "distribution",
+        "business",
+        "campaigns",
+        "ugc",
+        "earnings",
+        "products",
+        "automations",
+        "library",
+      ].includes(path)
+    )
+      return setActiveTab("create");
+    if (["communities", "events"].includes(path))
+      return setActiveTab("communities");
+    if (
+      [
+        "profile",
+        "user",
+        "saved-posts",
+        "followers",
+        "following",
+        "revenue",
+        "contacts",
+        "documents",
+        "moderation",
+        "settings",
+      ].includes(path)
+    )
+      return setActiveTab("profile");
+    if (path === "ai") return setActiveTab("create");
   }, [location, setActiveTab]);
 
   useEffect(() => {
@@ -153,32 +274,133 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/login" component={LoginRoute} />
       <Route path="/register" component={LegacyRegisterRoute} />
-      <Route path="/logout" component={LOCAL_IDENTITY_MODE ? DemoLogoutRoute : LogoutRoute} />
+      <Route
+        path="/logout"
+        component={LOCAL_IDENTITY_MODE ? DemoLogoutRoute : LogoutRoute}
+      />
       <Route path="/trust" component={TrustCenterPage} />
       <Route path="/legal/data-deletion" component={TrustPolicyPage} />
       <Route path="/legal/community-guidelines" component={TrustPolicyPage} />
       <Route path="/legal/ai-recording" component={TrustPolicyPage} />
+      <Route path="/review/cut/:token" component={CutStudioReviewPage} />
+      <Route path="/ugc/creator/:id" component={UgcCreatorPage} />
+      <Route path="/broadcast/field" component={BroadcastFieldPage} />
+      <Route path="/subscribe/:publicId" component={AudiencePublicPage} />
+      <Route
+        path="/audience/preferences/:token"
+        component={AudiencePreferencesPage}
+      />
+      <Route path="/podcasts/:publicId" component={PodcastPublicPage} />
+      <Route path="/design/review/:token" component={DesignStudioReviewPage} />
+      <Route path="/s/:slug" component={CreatorSitePublicPage} />
+      <Route
+        path="/sponsorship/portal/:token"
+        component={SponsorshipPortalPage}
+      />
+      <Route path="/affiliates/:slug" component={AffiliateProgramPage} />
+      <Route path="/book/:slug" component={BookingPublicPage} />
+      <Route path="/events/:id/tickets" component={EventTicketingPage} />
+      <Route path="/store/:slug" component={StorefrontPage} />
+      <Route path="/apps" component={AppsPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />
       <ProtectedRoute path="/orders" component={OrdersPage} />
-      <ProtectedRoute path="/checkout/success" component={CheckoutSuccessPage} />
+      <ProtectedRoute
+        path="/checkout/success"
+        component={CheckoutSuccessPage}
+      />
       <ProtectedRoute path="/learn" component={LearningLibraryPage} />
       <ProtectedRoute path="/learn/:id" component={CoursePlayer} />
       <ProtectedRoute path="/courses/:id/manage" component={CourseBuilder} />
       <ProtectedRoute path="/studio" component={DistributionStudio} />
       <ProtectedRoute path="/distribution" component={DistributionStudio} />
-      <ProtectedRoute path="/distribution/connections" component={DistributionConnections} />
+      <ProtectedRoute
+        path="/distribution/connections"
+        component={DistributionConnections}
+      />
+      <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
+      <ProtectedRoute
+        path="/cut-studio/workspace/:id"
+        component={CutStudioWorkspacePage}
+      />
+      <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
+      <ProtectedRoute
+        path="/broadcast/control/:id"
+        component={BroadcastControlPage}
+      />
+      <ProtectedRoute
+        path="/broadcast/audience/:id"
+        component={BroadcastAudiencePage}
+      />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
+      <ProtectedRoute
+        path="/business/benchmarks"
+        component={CompetitiveBenchmarksPage}
+      />
+      <ProtectedRoute
+        path="/business/analytics"
+        component={AnalyticsOverviewPage}
+      />
+      <ProtectedRoute
+        path="/business/planner"
+        component={ProductionPlannerPage}
+      />
+      <ProtectedRoute
+        path="/business/developer"
+        component={DeveloperPlatformPage}
+      />
+      <ProtectedRoute path="/business/operations" component={OperationsPage} />
+      <ProtectedRoute path="/oauth/authorize" component={OAuthAuthorizePage} />
+      <ProtectedRoute
+        path="/business/audience"
+        component={AudienceStudioPage}
+      />
+      <ProtectedRoute path="/business/podcasts" component={PodcastStudioPage} />
+      <ProtectedRoute
+        path="/business/design/:id"
+        component={DesignStudioPage}
+      />
+      <ProtectedRoute path="/business/design" component={DesignStudioPage} />
+      <ProtectedRoute path="/business/site" component={CreatorSiteStudioPage} />
+      <ProtectedRoute
+        path="/business/sponsorship"
+        component={SponsorshipStudioPage}
+      />
+      <ProtectedRoute
+        path="/business/affiliates"
+        component={AffiliateStudioPage}
+      />
+      <ProtectedRoute
+        path="/business/booking/events/:id"
+        component={EventOperationsPage}
+      />
+      <ProtectedRoute path="/business/booking" component={BookingStudioPage} />
+      <ProtectedRoute
+        path="/business/marketplace"
+        component={MarketplaceOperationsPage}
+      />
+      <ProtectedRoute path="/support/:id" component={SupportCenterPage} />
+      <ProtectedRoute path="/support" component={SupportCenterPage} />
       <ProtectedRoute path="/business/approvals" component={UmhApprovalsPage} />
+      <ProtectedRoute path="/business/portability" component={DataPortabilityPage} />
       <ProtectedRoute path="/earnings" component={EarningsPage} />
       <ProtectedRoute path="/moderation" component={ModerationPage} />
+      <ProtectedRoute path="/admin/apps" component={AdminAppsPage} />
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
+      <ProtectedRoute path="/ugc" component={UgcPage} />
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
+      <ProtectedRoute path="/library" component={MediaLibraryPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
-      <ProtectedRoute path="/settings/privacy" component={PrivacySettingsPage} />
-      <ProtectedRoute path="/communities/:communityId/rooms/:roomId" component={CommunityRoomPage} />
+      <ProtectedRoute
+        path="/settings/privacy"
+        component={PrivacySettingsPage}
+      />
+      <ProtectedRoute
+        path="/communities/:communityId/rooms/:roomId"
+        component={CommunityRoomPage}
+      />
       <ProtectedRoute path="/communities/:id" component={Communities} />
       <ProtectedRoute path="/communities" component={Communities} />
       <ProtectedRoute path="/profile" component={Profile} />
@@ -187,16 +409,25 @@ function Router() {
       <ProtectedRoute path="/saved-posts" component={SavedPostsPage} />
       <ProtectedRoute path="/followers" component={FollowersPage} />
       <ProtectedRoute path="/followers/:id" component={FollowersPage} />
-      <ProtectedRoute path="/user/:username/followers" component={FollowersPage} />
+      <ProtectedRoute
+        path="/user/:username/followers"
+        component={FollowersPage}
+      />
       <ProtectedRoute path="/following" component={FollowingPage} />
       <ProtectedRoute path="/following/:id" component={FollowingPage} />
-      <ProtectedRoute path="/user/:username/following" component={FollowingPage} />
+      <ProtectedRoute
+        path="/user/:username/following"
+        component={FollowingPage}
+      />
       <ProtectedRoute path="/revenue" component={RevenuePage} />
       <ProtectedRoute path="/contacts" component={ContactsPage} />
       <ProtectedRoute path="/documents" component={DocumentsPage} />
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/products/:id/edit" component={OfferEditor} />
-      <ProtectedRoute path="/marketplace/product/:id" component={ProductDetail} />
+      <ProtectedRoute
+        path="/marketplace/product/:id"
+        component={ProductDetail}
+      />
       <ProtectedRoute path="/create/post" component={CreatePostPage} />
       <ProtectedRoute path="/create/event" component={CreateEventPage} />
       <ProtectedRoute path="/events/:id/edit" component={CreateEventPage} />
@@ -206,40 +437,50 @@ function Router() {
       <ProtectedRoute path="/search" component={SearchPage} />
       <ProtectedRoute path="/new-text-post" component={NewTextPostPage} />
       <ProtectedRoute path="/post/:id" component={PostDetailPage} />
-      <ProtectedRoute path="/posts/:id/analytics" component={PostAnalyticsPage} />
+      <ProtectedRoute
+        path="/posts/:id/analytics"
+        component={PostAnalyticsPage}
+      />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function AppContent() {
-  const { isOpen } = useAIChatStore();
   const { currentUser } = useAppStore();
-  const { isNotificationPanelOpen, closeNotificationPanel } = useNotifications();
   const [location] = useLocation();
   const chrome = routeChrome(location);
 
   useEffect(() => {
-    document.documentElement.dataset.colorMode = currentUser?.colorMode === "high_contrast" ? "high_contrast" : "dark";
+    document.documentElement.dataset.colorMode =
+      currentUser?.colorMode === "high_contrast" ? "high_contrast" : "dark";
   }, [currentUser?.colorMode]);
 
   return (
     <>
-      <a href="#main-content" className="skip-link">Skip to main content</a>
-      <div className={chrome.isAuth ? "app-container pb-0" : "app-container"}>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <div
+        className={`${chrome.isAuth ? "app-container pb-0" : "app-container"}${location.startsWith("/broadcast") || location.startsWith("/cut-studio") ? " app-container-workspace" : ""}`}
+      >
         <div id="main-content" tabIndex={-1} className="tab-content">
           <RouteErrorBoundary>
-            <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+            <Suspense
+              fallback={<div className="min-h-[40vh]" aria-busy="true" />}
+            >
               <Router />
             </Suspense>
           </RouteErrorBoundary>
         </div>
-        {chrome.showBottomNavigation && <BottomNavigation />}
-        {isOpen && <ChatInterface />}
+        {!chrome.isAuth && (
+          <Suspense fallback={null}>
+            <OfflineOperations />
+            {chrome.showBottomNavigation && <BottomNavigation />}
+            <ApplicationOverlays />
+          </Suspense>
+        )}
       </div>
-      <Toaster />
-      <ToastContainer />
-      <MessageButton showTrigger={false} />
     </>
   );
 }

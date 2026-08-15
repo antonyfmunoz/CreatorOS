@@ -1,0 +1,33 @@
+CREATE TABLE "podcast_shows" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "business_id" uuid NOT NULL REFERENCES "businesses"("id") ON DELETE cascade, "owner_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE restrict, "public_id" text NOT NULL UNIQUE, "title" text NOT NULL, "description" text NOT NULL DEFAULT '', "author" text NOT NULL, "owner_email" text NOT NULL, "language" text NOT NULL DEFAULT 'en', "category" text NOT NULL DEFAULT 'Society & Culture', "explicit" boolean NOT NULL DEFAULT false, "artwork_asset_id" uuid REFERENCES "assets"("id") ON DELETE set null, "website_url" text, "copyright" text NOT NULL DEFAULT '', "access" text NOT NULL DEFAULT 'public', "entitlement_product_id" integer REFERENCES "products"("id") ON DELETE set null, "status" text NOT NULL DEFAULT 'draft', "redirect_url" text, "imported_from_url" text, "created_at" timestamp NOT NULL DEFAULT now(), "updated_at" timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT "podcast_shows_business_title_unique" UNIQUE ("business_id", "title"), CONSTRAINT "podcast_shows_status_check" CHECK ("status" IN ('draft','published','paused','archived')), CONSTRAINT "podcast_shows_access_check" CHECK ("access" IN ('public','members','private'))
+);
+CREATE INDEX "podcast_shows_status_idx" ON "podcast_shows" ("business_id", "status");
+CREATE TABLE "podcast_seasons" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "show_id" uuid NOT NULL REFERENCES "podcast_shows"("id") ON DELETE cascade, "number" integer NOT NULL, "title" text NOT NULL, "description" text NOT NULL DEFAULT '', "artwork_asset_id" uuid REFERENCES "assets"("id") ON DELETE set null, "created_at" timestamp NOT NULL DEFAULT now(), "updated_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "podcast_seasons_show_number_unique" UNIQUE ("show_id", "number"), CONSTRAINT "podcast_seasons_number_check" CHECK ("number" > 0)
+);
+CREATE TABLE "podcast_episodes" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "show_id" uuid NOT NULL REFERENCES "podcast_shows"("id") ON DELETE cascade, "season_id" uuid REFERENCES "podcast_seasons"("id") ON DELETE set null, "created_by_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE restrict, "public_id" text NOT NULL UNIQUE, "title" text NOT NULL, "description" text NOT NULL DEFAULT '', "episode_type" text NOT NULL DEFAULT 'full', "episode_number" integer, "media_asset_id" uuid NOT NULL REFERENCES "assets"("id") ON DELETE restrict, "video_asset_id" uuid REFERENCES "assets"("id") ON DELETE set null, "artwork_asset_id" uuid REFERENCES "assets"("id") ON DELETE set null, "chapters" json NOT NULL DEFAULT '[]'::json, "sponsorship_markers" json NOT NULL DEFAULT '[]'::json, "explicit" boolean NOT NULL DEFAULT false, "access" text NOT NULL DEFAULT 'show_default', "duration_seconds" integer, "status" text NOT NULL DEFAULT 'draft', "scheduled_at" timestamp, "published_at" timestamp, "created_at" timestamp NOT NULL DEFAULT now(), "updated_at" timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT "podcast_episodes_show_number_unique" UNIQUE ("show_id", "episode_number"), CONSTRAINT "podcast_episodes_type_check" CHECK ("episode_type" IN ('full','trailer','bonus')), CONSTRAINT "podcast_episodes_access_check" CHECK ("access" IN ('show_default','public','members','private')), CONSTRAINT "podcast_episodes_status_check" CHECK ("status" IN ('draft','review','scheduled','published','unlisted','archived'))
+);
+CREATE INDEX "podcast_episodes_show_status_idx" ON "podcast_episodes" ("show_id", "status", "published_at");
+CREATE TABLE "podcast_destinations" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "show_id" uuid NOT NULL REFERENCES "podcast_shows"("id") ON DELETE cascade, "provider" text NOT NULL, "external_id" text, "status" text NOT NULL DEFAULT 'pending', "feed_url" text, "error_code" text, "error_message" text, "last_checked_at" timestamp, "created_at" timestamp NOT NULL DEFAULT now(), "updated_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "podcast_destinations_show_provider_unique" UNIQUE ("show_id", "provider"), CONSTRAINT "podcast_destinations_status_check" CHECK ("status" IN ('pending','submitted','active','warning','failed','disconnected'))
+);
+CREATE TABLE "podcast_private_feed_tokens" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "show_id" uuid NOT NULL REFERENCES "podcast_shows"("id") ON DELETE cascade, "user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE cascade, "token_hash" text NOT NULL UNIQUE, "expires_at" timestamp NOT NULL, "revoked_at" timestamp, "created_at" timestamp NOT NULL DEFAULT now()
+);
+CREATE INDEX "podcast_private_feed_tokens_show_user_idx" ON "podcast_private_feed_tokens" ("show_id", "user_id", "expires_at");
+CREATE TABLE "podcast_episode_comments" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "episode_id" uuid NOT NULL REFERENCES "podcast_episodes"("id") ON DELETE cascade, "user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE cascade, "parent_id" uuid REFERENCES "podcast_episode_comments"("id") ON DELETE cascade, "body" text NOT NULL, "status" text NOT NULL DEFAULT 'visible', "created_at" timestamp NOT NULL DEFAULT now(), "updated_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "podcast_episode_comments_status_check" CHECK ("status" IN ('visible','hidden','removed'))
+);
+CREATE INDEX "podcast_episode_comments_episode_idx" ON "podcast_episode_comments" ("episode_id", "created_at");
+CREATE TABLE "podcast_polls" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "episode_id" uuid NOT NULL UNIQUE REFERENCES "podcast_episodes"("id") ON DELETE cascade, "question" text NOT NULL, "options" json NOT NULL, "status" text NOT NULL DEFAULT 'open', "closes_at" timestamp, "created_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "podcast_polls_status_check" CHECK ("status" IN ('open','closed','archived'))
+);
+CREATE TABLE "podcast_poll_votes" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "poll_id" uuid NOT NULL REFERENCES "podcast_polls"("id") ON DELETE cascade, "user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE cascade, "option_id" text NOT NULL, "created_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "podcast_poll_votes_poll_user_unique" UNIQUE ("poll_id", "user_id")
+);
+
+ALTER TABLE "analytics_events" DROP CONSTRAINT "analytics_events_name_check";
+ALTER TABLE "analytics_events" ADD CONSTRAINT "analytics_events_name_check" CHECK ("event_name" IN ('content.exposed','content.engaged','media.played','relationship.started','funnel.step','product.viewed','checkout.started','purchase.completed','entitlement.activated','refund.completed','revenue.allocated','experiment.exposed','podcast.start','podcast.progress','podcast.complete'));

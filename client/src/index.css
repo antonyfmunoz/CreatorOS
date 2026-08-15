@@ -38,7 +38,8 @@
 }
 
 @keyframes pulse-slow {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1) translate(-50%, -50%);
   }
   50% {
@@ -65,7 +66,7 @@
 
 .highlighted-post {
   animation: highlight-pulse 2s ease-out;
-  border-color: theme('colors.blue.500');
+  border-color: theme("colors.blue.500");
   transition: all 0.3s ease;
 }
 
@@ -87,6 +88,10 @@
 @layer components {
   .app-container {
     @apply relative mx-auto min-h-[100dvh] w-full max-w-[720px] border-x border-zinc-900 bg-black pb-16;
+  }
+
+  .app-container-workspace {
+    @apply max-w-[1600px];
   }
 
   .tab-content {

@@ -1,15 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { formatDistanceToNow } from 'date-fns';
-import { Send, Heart, MessageCircle, ChevronRight, ChevronDown, Edit, Trash2, MoreHorizontal, X, Check, Reply } from 'lucide-react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
-import { Post as PostType, User } from '@/types';
-import type { Comment } from '@/types';
-import { useLocation } from 'wouter';
+import { useState, useEffect, useRef } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Send,
+  Heart,
+  MessageCircle,
+  ChevronRight,
+  ChevronDown,
+  Edit,
+  Trash2,
+  MoreHorizontal,
+  X,
+  Check,
+  Reply,
+} from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Post as PostType, User } from "@/types";
+import type { Comment } from "@/types";
+import { useLocation } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,20 +44,22 @@ interface CommentSectionProps {
   currentUser?: User;
 }
 
-const SingleComment = ({ 
-  comment, 
-  currentUser, 
+const SingleComment = ({
+  comment,
+  currentUser,
   onReply,
   depth = 0,
   forceShowReplies = false,
-  replyingTo = null
-}: { 
-  comment: Comment & { user: User }, 
-  currentUser?: User,
-  onReply: (parentId: number) => void,
-  depth?: number,
-  forceShowReplies?: boolean,
-  replyingTo?: number | null
+  replyingTo = null,
+  postOwnerId,
+}: {
+  comment: Comment & { user: User };
+  currentUser?: User;
+  onReply: (parentId: number) => void;
+  depth?: number;
+  forceShowReplies?: boolean;
+  replyingTo?: number | null;
+  postOwnerId: number;
 }) => {
   const [showReplies, setShowReplies] = useState(forceShowReplies);
   const [isEditing, setIsEditing] = useState(false);
@@ -56,394 +70,550 @@ const SingleComment = ({
   const queryClient = useQueryClient();
   const [_, setLocation] = useLocation();
 
-  const renderCommentContent = (content: string) => content.split(/(@\w+)/g).map((part, index) => {
-    if (!part.startsWith('@') || part.length < 2) return part;
-    const username = part.slice(1);
-    return (
-      <button
-        key={`${username}-${index}`}
-        type="button"
-        className="font-medium text-primary hover:underline"
-        onClick={() => setLocation(`/user/${encodeURIComponent(username)}`)}
-      >
-        {part}
-      </button>
-    );
-  });
-  
+  const renderCommentContent = (content: string) =>
+    content.split(/(@\w+)/g).map((part, index) => {
+      if (!part.startsWith("@") || part.length < 2) return part;
+      const username = part.slice(1);
+      return (
+        <button
+          key={`${username}-${index}`}
+          type="button"
+          className="font-medium text-primary hover:underline"
+          onClick={() => setLocation(`/user/${encodeURIComponent(username)}`)}
+        >
+          {part}
+        </button>
+      );
+    });
+
   // Check if the current user is the author of the comment
   const isAuthor = currentUser?.id === comment.userId;
-  
+  const isPostOwner = currentUser?.id === postOwnerId;
+
   // Fetch replies for this comment
   const { data: replies = [], isLoading: isLoadingReplies } = useQuery({
-    queryKey: ['/api/comments', comment.id, 'replies'],
+    queryKey: ["/api/comments", comment.id, "replies"],
     queryFn: async () => {
       const res = await fetch(`/api/comments/${comment.id}/replies`);
-      if (!res.ok) throw new Error('Failed to fetch replies');
+      if (!res.ok) throw new Error("Failed to fetch replies");
       return res.json();
-    }
-  }) as { data: (Comment & { user: User })[], isLoading: boolean };
-  
+    },
+  }) as { data: (Comment & { user: User })[]; isLoading: boolean };
+
   // We've identified the issue - we have both comment.userId and comment.user.id
   // So we need to be consistent in our navigation
-  
+
   // Update showReplies when forceShowReplies changes or when we get replies
   useEffect(() => {
     if (forceShowReplies || (replies && replies.length > 0)) {
       setShowReplies(true);
     }
   }, [forceShowReplies, replies]);
-  
+
   // State to track if the current user has liked this comment
   const [isLiked, setIsLiked] = useState(comment.likes > 0);
-  
+
   // Mutation for liking a comment
   const likeCommentMutation = useMutation({
     mutationFn: async (commentId: number) => {
-      const res = await apiRequest('POST', `/api/comments/${commentId}/like`);
+      const res = await apiRequest("POST", `/api/comments/${commentId}/like`);
       return res.json();
     },
     onMutate: async (commentId) => {
       // Capture the previous state
-      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
-      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
-      
+      await queryClient.cancelQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      const previousPostComments = queryClient.getQueryData([
+        "/api/posts",
+        comment.postId,
+        "comments",
+      ]);
+
       // Capture previous state for replies if this is a reply
       let previousReplies = null;
       if (comment.parentId) {
-        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
-        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+        await queryClient.cancelQueries({
+          queryKey: ["/api/comments", comment.parentId, "replies"],
+        });
+        previousReplies = queryClient.getQueryData([
+          "/api/comments",
+          comment.parentId,
+          "replies",
+        ]);
       }
-      
+
       // Optimistically update the comment likes
       // For top-level comments
-      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === commentId ? { ...c, likes: 1 } : c
-        );
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts", comment.postId, "comments"],
+        (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) =>
+            c.id === commentId ? { ...c, likes: 1 } : c,
+          );
+        },
+      );
+
       // For replies
       if (comment.parentId) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
-          if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === commentId ? { ...c, likes: 1 } : c
-          );
-        });
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === commentId ? { ...c, likes: 1 } : c,
+            );
+          },
+        );
       }
-      
+
       // Also update directly for replies of the current comment
-      queryClient.setQueryData(['/api/comments', commentId, 'replies'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => ({ ...c }));
-      });
-      
+      queryClient.setQueryData(
+        ["/api/comments", commentId, "replies"],
+        (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => ({ ...c }));
+        },
+      );
+
       // Mark as liked
       setIsLiked(true);
-      
+
       return { previousPostComments, previousReplies };
     },
     onSuccess: (updatedComment, _, context) => {
       // We can optionally use the returned data to synchronize our optimistic update
-      queryClient.setQueryData(['/api/posts', updatedComment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
-        );
-      });
-      
-      if (updatedComment.parentId) {
-        queryClient.setQueryData(['/api/comments', updatedComment.parentId, 'replies'], (old: any) => {
+      queryClient.setQueryData(
+        ["/api/posts", updatedComment.postId, "comments"],
+        (old: any) => {
           if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
+          return old.map((c: Comment & { user: User }) =>
+            c.id === updatedComment.id
+              ? { ...c, likes: updatedComment.likes }
+              : c,
           );
-        });
+        },
+      );
+
+      if (updatedComment.parentId) {
+        queryClient.setQueryData(
+          ["/api/comments", updatedComment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === updatedComment.id
+                ? { ...c, likes: updatedComment.likes }
+                : c,
+            );
+          },
+        );
       }
     },
     onError: (_, __, context: any) => {
       // Revert to the previous state if there was an error
       if (context?.previousPostComments) {
-        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+        queryClient.setQueryData(
+          ["/api/posts", comment.postId, "comments"],
+          context.previousPostComments,
+        );
       }
-      
+
       if (comment.parentId && context?.previousReplies) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          context.previousReplies,
+        );
       }
-      
+
       // Revert liked state
       setIsLiked(false);
-      
+
       toast({
-        title: 'Error',
-        description: 'Failed to like the comment. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to like the comment. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
-  
+
   // Mutation for unliking a comment
   // Mutation for updating a comment
   const updateCommentMutation = useMutation({
-    mutationFn: async ({ commentId, content }: { commentId: number; content: string }) => {
-      const res = await apiRequest('PUT', `/api/comments/${commentId}`, { content });
+    mutationFn: async ({
+      commentId,
+      content,
+    }: {
+      commentId: number;
+      content: string;
+    }) => {
+      const res = await apiRequest("PUT", `/api/comments/${commentId}`, {
+        content,
+      });
       return res.json();
     },
     onMutate: async ({ commentId, content }) => {
       // Capture the previous state
-      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
-      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
-      
+      await queryClient.cancelQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      const previousPostComments = queryClient.getQueryData([
+        "/api/posts",
+        comment.postId,
+        "comments",
+      ]);
+
       // Capture previous state for replies if this is a reply
       let previousReplies = null;
       if (comment.parentId) {
-        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
-        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+        await queryClient.cancelQueries({
+          queryKey: ["/api/comments", comment.parentId, "replies"],
+        });
+        previousReplies = queryClient.getQueryData([
+          "/api/comments",
+          comment.parentId,
+          "replies",
+        ]);
       }
-      
+
       // Optimistically update the comment content
       // For top-level comments
-      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === commentId ? { ...c, content } : c
-        );
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts", comment.postId, "comments"],
+        (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) =>
+            c.id === commentId ? { ...c, content } : c,
+          );
+        },
+      );
+
       // For replies
       if (comment.parentId) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
-          if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === commentId ? { ...c, content } : c
-          );
-        });
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === commentId ? { ...c, content } : c,
+            );
+          },
+        );
       }
-      
+
       return { previousPostComments, previousReplies };
     },
     onSuccess: (updatedComment) => {
       // Use the returned data to ensure the UI is in sync with the server
-      queryClient.setQueryData(['/api/posts', updatedComment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === updatedComment.id ? { ...c, content: updatedComment.content } : c
-        );
-      });
-      
-      if (updatedComment.parentId) {
-        queryClient.setQueryData(['/api/comments', updatedComment.parentId, 'replies'], (old: any) => {
+      queryClient.setQueryData(
+        ["/api/posts", updatedComment.postId, "comments"],
+        (old: any) => {
           if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === updatedComment.id ? { ...c, content: updatedComment.content } : c
+          return old.map((c: Comment & { user: User }) =>
+            c.id === updatedComment.id
+              ? { ...c, content: updatedComment.content }
+              : c,
           );
-        });
+        },
+      );
+
+      if (updatedComment.parentId) {
+        queryClient.setQueryData(
+          ["/api/comments", updatedComment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === updatedComment.id
+                ? { ...c, content: updatedComment.content }
+                : c,
+            );
+          },
+        );
       }
-      
+
       // Exit edit mode
       setIsEditing(false);
       toast({
-        title: 'Success',
-        description: 'Comment updated successfully',
+        title: "Success",
+        description: "Comment updated successfully",
       });
     },
     onError: (_, __, context: any) => {
       // Revert to the previous state if there was an error
       if (context?.previousPostComments) {
-        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+        queryClient.setQueryData(
+          ["/api/posts", comment.postId, "comments"],
+          context.previousPostComments,
+        );
       }
-      
+
       if (comment.parentId && context?.previousReplies) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          context.previousReplies,
+        );
       }
-      
+
       toast({
-        title: 'Error',
-        description: 'Failed to update the comment. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to update the comment. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
-  
+
   // Mutation for deleting a comment
   const deleteCommentMutation = useMutation({
     mutationFn: async (commentId: number) => {
       // No need to pass userId as it's taken from session
-      const res = await apiRequest('DELETE', `/api/comments/${commentId}`);
+      const res = await apiRequest("DELETE", `/api/comments/${commentId}`);
       return commentId; // Just return the ID as there's no response body for 204
     },
     onMutate: async (commentId) => {
       // Capture the previous state
-      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
-      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
-      
+      await queryClient.cancelQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      const previousPostComments = queryClient.getQueryData([
+        "/api/posts",
+        comment.postId,
+        "comments",
+      ]);
+
       // Capture previous state for replies if this is a reply
       let previousReplies = null;
       if (comment.parentId) {
-        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
-        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+        await queryClient.cancelQueries({
+          queryKey: ["/api/comments", comment.parentId, "replies"],
+        });
+        previousReplies = queryClient.getQueryData([
+          "/api/comments",
+          comment.parentId,
+          "replies",
+        ]);
       }
-      
+
       // Optimistically remove the comment
       // For top-level comments
-      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.filter((c: Comment & { user: User }) => c.id !== commentId);
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts", comment.postId, "comments"],
+        (old: any) => {
+          if (!old) return old;
+          return old.filter(
+            (c: Comment & { user: User }) => c.id !== commentId,
+          );
+        },
+      );
+
       // For replies
       if (comment.parentId) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
-          if (!old) return old;
-          return old.filter((c: Comment & { user: User }) => c.id !== commentId);
-        });
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.filter(
+              (c: Comment & { user: User }) => c.id !== commentId,
+            );
+          },
+        );
       }
-      
+
       // Clear any replies this comment had
-      queryClient.setQueryData(['/api/comments', commentId, 'replies'], []);
-      
+      queryClient.setQueryData(["/api/comments", commentId, "replies"], []);
+
       return { previousPostComments, previousReplies };
     },
     onSuccess: () => {
       // Update the post comment count directly in the cache without refetching all posts
       // This prevents posts from jumping around when comments are deleted
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => {
-          if (p.id === comment.postId) {
-            // Decrement the comment count (ensure it doesn't go below 0)
-            return { ...p, comments: Math.max(0, p.comments - 1) };
-          }
-          return p;
-        });
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts"],
+        (oldData: PostType[] | undefined) => {
+          if (!oldData) return oldData;
+          return oldData.map((p) => {
+            if (p.id === comment.postId) {
+              // Decrement the comment count (ensure it doesn't go below 0)
+              return { ...p, comments: Math.max(0, p.comments - 1) };
+            }
+            return p;
+          });
+        },
+      );
+
       // Also update the post comment count cache
-      queryClient.setQueryData(['/api/posts', comment.postId, 'comment-count'], (oldData: any) => {
-        const currentCount = oldData?.count || 0;
-        return { count: Math.max(0, currentCount - 1) };
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts", comment.postId, "comment-count"],
+        (oldData: any) => {
+          const currentCount = oldData?.count || 0;
+          return { count: Math.max(0, currentCount - 1) };
+        },
+      );
+
       // Invalidate specific queries without affecting post order
-      queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/posts', comment.postId, 'comment-count'] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/posts", comment.postId, "comment-count"],
+      });
     },
     onError: (_, __, context: any) => {
       // Revert to the previous state if there was an error
       if (context?.previousPostComments) {
-        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+        queryClient.setQueryData(
+          ["/api/posts", comment.postId, "comments"],
+          context.previousPostComments,
+        );
       }
-      
+
       if (comment.parentId && context?.previousReplies) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          context.previousReplies,
+        );
       }
-      
+
       toast({
-        title: 'Error',
-        description: 'Failed to delete the comment. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to delete the comment. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
-  
+
   const unlikeCommentMutation = useMutation({
     mutationFn: async (commentId: number) => {
-      const res = await apiRequest('POST', `/api/comments/${commentId}/unlike`);
+      const res = await apiRequest("POST", `/api/comments/${commentId}/unlike`);
       return res.json();
     },
     onMutate: async (commentId) => {
       // Capture the previous state
-      await queryClient.cancelQueries({ queryKey: ['/api/posts', comment.postId, 'comments'] });
-      const previousPostComments = queryClient.getQueryData(['/api/posts', comment.postId, 'comments']);
-      
+      await queryClient.cancelQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      const previousPostComments = queryClient.getQueryData([
+        "/api/posts",
+        comment.postId,
+        "comments",
+      ]);
+
       // Capture previous state for replies if this is a reply
       let previousReplies = null;
       if (comment.parentId) {
-        await queryClient.cancelQueries({ queryKey: ['/api/comments', comment.parentId, 'replies'] });
-        previousReplies = queryClient.getQueryData(['/api/comments', comment.parentId, 'replies']);
+        await queryClient.cancelQueries({
+          queryKey: ["/api/comments", comment.parentId, "replies"],
+        });
+        previousReplies = queryClient.getQueryData([
+          "/api/comments",
+          comment.parentId,
+          "replies",
+        ]);
       }
-      
+
       // Optimistically update the comment likes
       // For top-level comments
-      queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === commentId ? { ...c, likes: 0 } : c
-        );
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts", comment.postId, "comments"],
+        (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) =>
+            c.id === commentId ? { ...c, likes: 0 } : c,
+          );
+        },
+      );
+
       // For replies
       if (comment.parentId) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], (old: any) => {
-          if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === commentId ? { ...c, likes: 0 } : c
-          );
-        });
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === commentId ? { ...c, likes: 0 } : c,
+            );
+          },
+        );
       }
-      
+
       // Also update directly for replies of the current comment
-      queryClient.setQueryData(['/api/comments', commentId, 'replies'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => ({ ...c }));
-      });
-      
+      queryClient.setQueryData(
+        ["/api/comments", commentId, "replies"],
+        (old: any) => {
+          if (!old) return old;
+          return old.map((c: Comment & { user: User }) => ({ ...c }));
+        },
+      );
+
       // Mark as not liked
       setIsLiked(false);
-      
+
       return { previousPostComments, previousReplies };
     },
     onSuccess: (updatedComment, _, context) => {
       // We can optionally use the returned data to synchronize our optimistic update
-      queryClient.setQueryData(['/api/posts', updatedComment.postId, 'comments'], (old: any) => {
-        if (!old) return old;
-        return old.map((c: Comment & { user: User }) => 
-          c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
-        );
-      });
-      
-      if (updatedComment.parentId) {
-        queryClient.setQueryData(['/api/comments', updatedComment.parentId, 'replies'], (old: any) => {
+      queryClient.setQueryData(
+        ["/api/posts", updatedComment.postId, "comments"],
+        (old: any) => {
           if (!old) return old;
-          return old.map((c: Comment & { user: User }) => 
-            c.id === updatedComment.id ? { ...c, likes: updatedComment.likes } : c
+          return old.map((c: Comment & { user: User }) =>
+            c.id === updatedComment.id
+              ? { ...c, likes: updatedComment.likes }
+              : c,
           );
-        });
+        },
+      );
+
+      if (updatedComment.parentId) {
+        queryClient.setQueryData(
+          ["/api/comments", updatedComment.parentId, "replies"],
+          (old: any) => {
+            if (!old) return old;
+            return old.map((c: Comment & { user: User }) =>
+              c.id === updatedComment.id
+                ? { ...c, likes: updatedComment.likes }
+                : c,
+            );
+          },
+        );
       }
     },
     onError: (_, __, context: any) => {
       // Revert to the previous state if there was an error
       if (context?.previousPostComments) {
-        queryClient.setQueryData(['/api/posts', comment.postId, 'comments'], context.previousPostComments);
+        queryClient.setQueryData(
+          ["/api/posts", comment.postId, "comments"],
+          context.previousPostComments,
+        );
       }
-      
+
       if (comment.parentId && context?.previousReplies) {
-        queryClient.setQueryData(['/api/comments', comment.parentId, 'replies'], context.previousReplies);
+        queryClient.setQueryData(
+          ["/api/comments", comment.parentId, "replies"],
+          context.previousReplies,
+        );
       }
-      
+
       // Revert liked state
       setIsLiked(true);
-      
+
       toast({
-        title: 'Error',
-        description: 'Failed to unlike the comment. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to unlike the comment. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
-  
+
   const handleLike = () => {
     if (!currentUser) return;
-    
+
     if (isLiked) {
       unlikeCommentMutation.mutate(comment.id);
     } else {
       likeCommentMutation.mutate(comment.id);
     }
   };
-  
+
   // Handler for starting edit mode
   const handleEdit = () => {
     setIsEditing(true);
@@ -452,56 +622,92 @@ const SingleComment = ({
       editInputRef.current?.focus();
     }, 0);
   };
-  
+
   // Handler for saving an edited comment
   const handleSaveEdit = () => {
     if (!editedContent.trim() || !currentUser) return;
-    
+
     updateCommentMutation.mutate({
       commentId: comment.id,
-      content: editedContent
+      content: editedContent,
     });
   };
-  
+
   // Handler for deleting a comment
   const handleDelete = () => {
     setIsDeleteDialogOpen(true);
   };
-  
+
   // Handler for confirming deletion
   const handleConfirmDelete = () => {
     if (!currentUser) return;
-    
+
     deleteCommentMutation.mutate(comment.id);
     setIsDeleteDialogOpen(false);
   };
-  
+
   const toggleReplies = () => {
     setShowReplies(!showReplies);
   };
-  
+
   // Allow replies at any depth
   const canReply = true;
+
+  const moderateCommentMutation = useMutation({
+    mutationFn: async (action: "approve" | "remove") =>
+      (
+        await apiRequest("PATCH", `/api/comments/${comment.id}/moderation`, {
+          action,
+        })
+      ).json(),
+    onSuccess: (_, action) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/posts", comment.postId, "comments"],
+      });
+      if (comment.parentId) {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/comments", comment.parentId, "replies"],
+        });
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["/api/posts", comment.postId, "comment-count"],
+      });
+      toast({
+        title: action === "approve" ? "Comment approved" : "Comment removed",
+      });
+    },
+    onError: () =>
+      toast({
+        title: "Moderation action failed",
+        description: "Please try again.",
+        variant: "destructive",
+      }),
+  });
 
   return (
     <div className="flex gap-3">
       {/* Delete confirmation dialog */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Comment</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this comment? This action cannot be undone.
+              Are you sure you want to delete this comment? This action cannot
+              be undone.
             </AlertDialogDescription>
             {replies.length > 0 && (
               <div className="mt-2 text-sm font-medium text-red-500">
-                This will also delete {replies.length} {replies.length === 1 ? 'reply' : 'replies'}.
+                This will also delete {replies.length}{" "}
+                {replies.length === 1 ? "reply" : "replies"}.
               </div>
             )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
@@ -510,18 +716,21 @@ const SingleComment = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      
-      <Avatar 
+
+      <Avatar
         className="w-8 h-8 shrink-0 cursor-pointer"
         onClick={() => setLocation(`/user/${comment.user.username}`)}
       >
-        <AvatarImage src={comment.user.profileImageUrl ?? undefined} alt={comment.user.displayName} />
+        <AvatarImage
+          src={comment.user.profileImageUrl ?? undefined}
+          alt={comment.user.displayName}
+        />
         <AvatarFallback>{comment.user.displayName.charAt(0)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 space-y-2">
         <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between">
-            <p 
+            <p
               className="font-medium text-sm cursor-pointer hover:text-primary hover:underline"
               onClick={() => setLocation(`/user/${comment.user.username}`)}
             >
@@ -529,9 +738,11 @@ const SingleComment = ({
             </p>
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">
-                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                {formatDistanceToNow(new Date(comment.createdAt), {
+                  addSuffix: true,
+                })}
               </span>
-              
+
               {isAuthor && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -544,7 +755,10 @@ const SingleComment = ({
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem
+                      onClick={handleDelete}
+                      className="text-destructive focus:text-destructive"
+                    >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete
                     </DropdownMenuItem>
@@ -553,7 +767,7 @@ const SingleComment = ({
               )}
             </div>
           </div>
-          
+
           {isEditing ? (
             <div className="mt-2">
               <Textarea
@@ -562,10 +776,10 @@ const SingleComment = ({
                 onChange={(e) => setEditedContent(e.target.value)}
                 className="min-h-[60px] text-sm resize-none mb-2 bg-background text-foreground border border-gray-200 dark:border-gray-700 focus:border-primary shadow-sm"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleSaveEdit();
-                  } else if (e.key === 'Escape') {
+                  } else if (e.key === "Escape") {
                     e.preventDefault();
                     setIsEditing(false);
                     setEditedContent(comment.content);
@@ -573,8 +787,8 @@ const SingleComment = ({
                 }}
               />
               <div className="flex justify-end gap-2">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() => {
                     setIsEditing(false);
@@ -585,7 +799,7 @@ const SingleComment = ({
                   <X className="h-3 w-3 mr-1" />
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   variant="default"
                   size="sm"
                   onClick={handleSaveEdit}
@@ -598,22 +812,59 @@ const SingleComment = ({
             </div>
           ) : (
             <>
-              <p className="text-sm mt-1">{renderCommentContent(comment.content)}</p>
-              
+              {comment.visibility === "held" ? (
+                <p className="mt-1 text-xs font-medium text-amber-600">
+                  Held by restriction · visible only to you, the author, and the
+                  post owner
+                </p>
+              ) : null}
+              <p className="text-sm mt-1">
+                {renderCommentContent(comment.content)}
+              </p>
+
+              {comment.visibility === "held" && isPostOwner ? (
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    className="h-7"
+                    disabled={moderateCommentMutation.isPending}
+                    onClick={() => moderateCommentMutation.mutate("approve")}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    disabled={moderateCommentMutation.isPending}
+                    onClick={() => moderateCommentMutation.mutate("remove")}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="flex items-center gap-3 mt-2">
-                <Button 
+                <Button
                   variant="ghost"
                   size="sm"
                   className="flex items-center gap-1 px-2 h-6"
                   onClick={handleLike}
-                  disabled={likeCommentMutation.isPending || unlikeCommentMutation.isPending}
+                  disabled={
+                    likeCommentMutation.isPending ||
+                    unlikeCommentMutation.isPending
+                  }
                 >
-                  <Heart className={`h-4 w-4 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  <span className="text-xs">{isLiked ? (comment.likes > 0 ? comment.likes : 1) : 'Like'}</span>
+                  <Heart
+                    className={`h-4 w-4 ${isLiked ? "fill-rose-500 text-rose-500" : ""}`}
+                  />
+                  <span className="text-xs">
+                    {isLiked ? (comment.likes > 0 ? comment.likes : 1) : "Like"}
+                  </span>
                 </Button>
-                
+
                 {canReply && (
-                  <Button 
+                  <Button
                     variant="ghost"
                     size="sm"
                     className="flex items-center gap-1 px-2 h-6"
@@ -627,9 +878,9 @@ const SingleComment = ({
             </>
           )}
         </div>
-        
+
         {replies.length > 0 ? (
-          <Button 
+          <Button
             variant="ghost"
             size="sm"
             className="flex items-center gap-1 px-2 h-6 ml-1"
@@ -640,23 +891,26 @@ const SingleComment = ({
             ) : (
               <ChevronRight className="h-4 w-4" />
             )}
-            <span className="text-xs">{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span>
+            <span className="text-xs">
+              {replies.length} {replies.length === 1 ? "reply" : "replies"}
+            </span>
           </Button>
         ) : null}
-        
+
         {showReplies && (
           <div className="ml-4 space-y-4 mt-2">
             {isLoadingReplies ? (
               <div className="text-center py-2 text-sm">Loading replies...</div>
             ) : (
               replies.map((reply: Comment & { user: User }) => (
-                <SingleComment 
-                  key={reply.id} 
-                  comment={reply} 
-                  currentUser={currentUser} 
+                <SingleComment
+                  key={reply.id}
+                  comment={reply}
+                  currentUser={currentUser}
                   onReply={onReply}
                   depth={depth + 1}
                   replyingTo={replyingTo}
+                  postOwnerId={postOwnerId}
                 />
               ))
             )}
@@ -668,84 +922,105 @@ const SingleComment = ({
 };
 
 const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
-  const [commentText, setCommentText] = useState('');
+  const [commentText, setCommentText] = useState("");
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch the comments for this post
   const { data: comments = [], isLoading } = useQuery({
-    queryKey: ['/api/posts', post.id, 'comments'],
+    queryKey: ["/api/posts", post.id, "comments"],
     queryFn: async () => {
       const res = await fetch(`/api/posts/${post.id}/comments`);
-      if (!res.ok) throw new Error('Failed to fetch comments');
+      if (!res.ok) throw new Error("Failed to fetch comments");
       return res.json();
-    }
+    },
   });
 
   // Mutation for creating a new comment
   const createCommentMutation = useMutation({
-    mutationFn: async (newComment: { postId: number; content: string; parentId?: number }) => {
-      const res = await apiRequest('POST', '/api/comments', newComment);
+    mutationFn: async (newComment: {
+      postId: number;
+      content: string;
+      parentId?: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/comments", newComment);
       return res.json();
     },
     onSuccess: (data) => {
       // Clear the input field
-      setCommentText('');
+      setCommentText("");
       setReplyingTo(null);
-      
+
       // Invalidate the comments query to refetch
       if (data.parentId) {
         // If this is a reply, invalidate the parent's replies
-        queryClient.invalidateQueries({ queryKey: ['/api/comments', data.parentId, 'replies'] });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/comments", data.parentId, "replies"],
+        });
       } else {
         // Otherwise, invalidate the post's comments
-        queryClient.invalidateQueries({ queryKey: ['/api/posts', post.id, 'comments'] });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/posts", post.id, "comments"],
+        });
       }
-      
+
+      if (data.visibility === "held") {
+        toast({
+          title: "Comment submitted",
+          description: "This comment is held for the post owner's review.",
+        });
+        return;
+      }
+
       // Update the post's comment count directly in the cache without refetching all posts
       // This prevents the posts from jumping around when comments are added/deleted
-      queryClient.setQueryData(['/api/posts'], (oldData: PostType[] | undefined) => {
-        if (!oldData) return oldData;
-        return oldData.map(p => {
-          if (p.id === post.id) {
-            return { ...p, comments: p.comments + 1 };
-          }
-          return p;
-        });
-      });
-      
+      queryClient.setQueryData(
+        ["/api/posts"],
+        (oldData: PostType[] | undefined) => {
+          if (!oldData) return oldData;
+          return oldData.map((p) => {
+            if (p.id === post.id) {
+              return { ...p, comments: p.comments + 1 };
+            }
+            return p;
+          });
+        },
+      );
+
       // Also update the post comment count cache
-      queryClient.setQueryData(['/api/posts', post.id, 'comment-count'], (oldData: any) => {
-        const currentCount = oldData?.count || 0;
-        return { count: currentCount + 1 };
-      });
+      queryClient.setQueryData(
+        ["/api/posts", post.id, "comment-count"],
+        (oldData: any) => {
+          const currentCount = oldData?.count || 0;
+          return { count: currentCount + 1 };
+        },
+      );
     },
     onError: () => {
       toast({
-        title: 'Error',
-        description: 'Failed to post your comment. Please try again.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to post your comment. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
 
   const handleSubmitComment = () => {
     if (!commentText.trim() || !currentUser) return;
-    
+
     const comment = {
       postId: post.id,
       content: commentText,
-      ...(replyingTo !== null ? { parentId: replyingTo } : {})
+      ...(replyingTo !== null ? { parentId: replyingTo } : {}),
     };
-    console.log('Submitting comment:', comment);
     createCommentMutation.mutate(comment);
   };
-  
+
   const handleReply = (parentId: number) => {
     setReplyingTo(parentId);
     // Focus the comment input
-    document.querySelector('textarea')?.focus();
+    document.querySelector("textarea")?.focus();
   };
 
   // Use the total comment count passed in from the post prop
@@ -753,15 +1028,15 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-medium mb-4">
-        Comments {post.comments > 0 ? `(${post.comments})` : ''}
+        Comments {post.comments > 0 ? `(${post.comments})` : ""}
       </h3>
-      
+
       {replyingTo && (
         <div className="mb-4 bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium">Replying to a comment</span>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               className="h-6 px-2"
               onClick={() => setReplyingTo(null)}
@@ -771,22 +1046,25 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
           </div>
         </div>
       )}
-      
+
       {isLoading ? (
         <div className="text-center py-4">Loading comments...</div>
       ) : (
         <div className="space-y-4 mb-4 max-h-80 overflow-y-auto">
           {comments.length === 0 ? (
-            <p className="text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
+            <p className="text-gray-500 text-center py-2">
+              No comments yet. Be the first to comment!
+            </p>
           ) : (
             comments.map((comment: Comment & { user: User }) => (
-              <SingleComment 
-                key={comment.id} 
-                comment={comment} 
-                currentUser={currentUser} 
+              <SingleComment
+                key={comment.id}
+                comment={comment}
+                currentUser={currentUser}
                 onReply={handleReply}
                 forceShowReplies={replyingTo === comment.id}
                 replyingTo={replyingTo}
+                postOwnerId={post.userId}
               />
             ))
           )}
@@ -796,7 +1074,10 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
       {currentUser && (
         <div className="flex gap-2 items-center mt-2">
           <Avatar className="w-8 h-8">
-            <AvatarImage src={currentUser.profileImageUrl ?? undefined} alt={currentUser.displayName} />
+            <AvatarImage
+              src={currentUser.profileImageUrl ?? undefined}
+              alt={currentUser.displayName}
+            />
             <AvatarFallback>{currentUser.displayName.charAt(0)}</AvatarFallback>
           </Avatar>
           <div className="flex-1 relative">
@@ -806,7 +1087,7 @@ const CommentSection = ({ post, currentUser }: CommentSectionProps) => {
               placeholder="Write a comment..."
               className="min-h-[60px] resize-none pr-12 border border-gray-200 dark:border-gray-700 focus:border-primary shadow-sm"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSubmitComment();
                 }

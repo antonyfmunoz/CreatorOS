@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Bot, CalendarPlus, FileText, Image, LayoutDashboard, Megaphone, Mic, PackagePlus, Repeat2, Send, Video } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, CalendarPlus, FileText, Film, FolderOpen, Image, LayoutDashboard, Megaphone, Mic, PackagePlus, Radio, Repeat2, Send, Sparkles, Video } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -96,9 +96,25 @@ export default function CreatePage() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Send className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open distribution studio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Compose once, schedule content, and manage your publishing queue.</span></span>
         </button>
+        <button onClick={() => setLocation("/library")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><FolderOpen className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open Media Cloud</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Upload once, organize collections, inspect processing, and reuse media across every instrument.</span></span>
+        </button>
+        <button onClick={() => setLocation("/cut-studio")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1d9bf0] text-black"><Film className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open CutStudio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Edit video by timeline or transcript, generate clips, add captions, and prepare distribution-ready renders.</span></span>
+        </button>
+        <button onClick={() => setLocation("/broadcast")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white"><Radio className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open Broadcast Studio</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Direct scenes, cameras, screens, audio, recordings, replay, and live stream outputs from one production desk.</span></span>
+        </button>
         <button onClick={() => setLocation("/campaigns")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Megaphone className="h-5 w-5" /></span>
           <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Run a campaign</span><span className="mt-1 block text-xs leading-5 text-zinc-500">Plan a launch, creator seeding, organic sprint, or paid-media brief.</span></span>
+        </button>
+        <button onClick={() => setLocation("/ugc")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-[#1d9bf0]/50 bg-[#1d9bf0]/10 p-4 text-left transition-colors hover:bg-[#1d9bf0]/15">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1d9bf0] text-black"><Sparkles className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Open UGC Studio</span><span className="mt-1 block text-xs leading-5 text-zinc-400">Find brand briefs, recruit creators, review private versions, and track performance-based earnings.</span></span>
         </button>
         <button onClick={() => setLocation("/ai")} className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-800"><Bot className="h-5 w-5" /></span>

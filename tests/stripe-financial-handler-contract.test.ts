@@ -23,7 +23,9 @@ describe("Stripe financial handler contract", () => {
   });
 
   it("supports idempotent historical Checkout Session refunds", () => {
-    expect(source).toContain('checkout.sessions.list({ payment_intent: paymentReference, limit: 2 })');
+    expect(source).toMatch(
+      /checkout\.sessions\.list\(\{\s*payment_intent:\s*paymentReference,\s*limit:\s*2,?\s*\}\)/,
+    );
     expect(source).toContain('req.header("idempotency-key")');
   });
 

@@ -1,13 +1,25 @@
 import {
   BarChart3,
+  CalendarDays,
   ChevronRight,
   CircleDollarSign,
   ContactRound,
   Megaphone,
   PackagePlus,
+  Palette,
+  Globe2,
   Send,
+  Radio,
   ShieldCheck,
   Users,
+  Handshake,
+  Link2,
+  CalendarClock,
+  Store,
+  Scale,
+  Braces,
+  Activity,
+  DatabaseBackup,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -93,6 +105,103 @@ export default function BusinessDashboard() {
       ? `${scheduledJobs} queued · ${waitingForConnection} awaiting connection`
       : `${scheduledJobs} queued`;
   const actions = [
+    {
+      title: "Data Portability",
+      description:
+        "Export canonical operating data or run validated, atomic, idempotent migrations from other platforms.",
+      icon: DatabaseBackup,
+      href: "/business/portability",
+    },
+    {
+      title: "Operations Control Plane",
+      description:
+        "Track published SLOs, error budgets, usage evidence, and per-tenant cost boundaries without hiding unmeasured services.",
+      icon: Activity,
+      href: "/business/operations",
+    },
+    {
+      title: "Developer Platform",
+      description:
+        "Connect approved systems through scoped API keys, signed webhooks, retries, and auditable delivery evidence.",
+      icon: Braces,
+      href: "/business/developer",
+    },
+    {
+      title: "Competitive Benchmarks",
+      description:
+        "Lock equal-input tests, capture operator evidence, and prove parity or connected advantage without inflating claims.",
+      icon: Scale,
+      href: "/business/benchmarks",
+    },
+    {
+      title: "Marketplace Operations",
+      description:
+        "Run your storefront, bundles, promotions, buyer support, and provider-confirmed refund handoffs.",
+      icon: Store,
+      href: "/business/marketplace",
+    },
+    {
+      title: "Booking & Event Operations",
+      description:
+        "Sell appointments and tickets with availability, waitlists, rooms, attendance, reminders, and replay access.",
+      icon: CalendarClock,
+      href: "/business/booking",
+    },
+    {
+      title: "Sponsorship Studio",
+      description:
+        "Close brand partnerships from proof and pricing through delivery, invoicing, and renewal.",
+      icon: Handshake,
+      href: "/business/sponsorship",
+    },
+    {
+      title: "Affiliate & Referral Studio",
+      description:
+        "Run partner and customer-led growth with governed attribution, commissions, and rewards.",
+      icon: Link2,
+      href: "/business/affiliates",
+    },
+    {
+      title: "Audience Studio",
+      description:
+        "Capture subscribers, publish newsletters, and nurture owned relationships.",
+      icon: Users,
+      href: "/business/audience",
+    },
+    {
+      title: "Podcast Studio",
+      description:
+        "Host audio and video shows, publish RSS, and grow member listening.",
+      icon: Radio,
+      href: "/business/podcasts",
+    },
+    {
+      title: "DesignStudio",
+      description:
+        "Create brand-consistent graphics and hand them directly to distribution.",
+      icon: Palette,
+      href: "/business/design",
+    },
+    {
+      title: "Creator Site & Link Hub",
+      description:
+        "Own the destination, subscriber capture, offers, and conversion path.",
+      icon: Globe2,
+      href: "/business/site",
+    },
+    {
+      title: "Production planner",
+      description:
+        "Coordinate ideas, production, review, schedules, and retrospectives.",
+      icon: CalendarDays,
+      href: "/business/planner",
+    },
+    {
+      title: "Creator intelligence",
+      description: "Trace content through attention, conversion, and revenue.",
+      icon: BarChart3,
+      href: "/business/analytics",
+    },
     {
       title: "Publish content",
       description: "Create, schedule, and manage distribution.",

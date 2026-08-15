@@ -449,6 +449,279 @@
       "when": 1786543200000,
       "tag": "0063_production_backup_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1786555897533,
+      "tag": "0064_cut_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786561200000,
+      "tag": "0065_broadcast_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1786568400000,
+      "tag": "0066_broadcast_multidestination",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786575600000,
+      "tag": "0067_cut_studio_multitrack",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786582800000,
+      "tag": "0068_broadcast_production_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786590000000,
+      "tag": "0069_cut_studio_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1786597200000,
+      "tag": "0070_cut_studio_job_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786604400000,
+      "tag": "0071_cut_studio_workspace_collaboration",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786608000000,
+      "tag": "0072_broadcast_brand_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786611600000,
+      "tag": "0073_broadcast_isolated_tracks",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786615200000,
+      "tag": "0074_broadcast_studio_collaboration",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786618800000,
+      "tag": "0075_broadcast_audience_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786622400000,
+      "tag": "0076_broadcast_template_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786626000000,
+      "tag": "0077_cut_studio_audio_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1786629600000,
+      "tag": "0078_broadcast_studio_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786633200000,
+      "tag": "0079_conversation_read_states",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786716000000,
+      "tag": "0080_broadcast_capture_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1786719600000,
+      "tag": "0081_cut_studio_editing_proxies",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1786723200000,
+      "tag": "0082_broadcast_destination_layouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1786726800000,
+      "tag": "0083_ugc_marketplace",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1786730400000,
+      "tag": "0084_media_cloud",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1786734000000,
+      "tag": "0085_audience_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1786737600000,
+      "tag": "0086_podcast_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1786741200000,
+      "tag": "0087_design_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1786744800000,
+      "tag": "0088_creator_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1786748400000,
+      "tag": "0089_sponsorship_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1786752000000,
+      "tag": "0090_affiliate_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1786755600000,
+      "tag": "0091_booking_ticketing",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1786759200000,
+      "tag": "0092_marketplace_maturity",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1786762800000,
+      "tag": "0093_native_social_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1786766400000,
+      "tag": "0094_competitive_benchmarks",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1786770000000,
+      "tag": "0095_ugc_sample_logistics",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1786773600000,
+      "tag": "0096_community_engagement",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1786777200000,
+      "tag": "0097_developer_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1786780800000,
+      "tag": "0098_operational_control_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1786784400000,
+      "tag": "0099_developer_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1786788000000,
+      "tag": "0100_developer_marketplace_sandbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1786791600000,
+      "tag": "0101_data_portability",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1786795200000,
+      "tag": "0102_offline_resilience",
+      "breakpoints": true
     }
   ]
 }

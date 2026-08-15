@@ -7,7 +7,7 @@ describe("application chrome routing", () => {
     (path) => expect(routeChrome(path)).toEqual({ isAuth: true, showBottomNavigation: false }),
   );
 
-  it.each(["/trust", "/legal/data-deletion", "/communities/8/rooms/room-1", "/search"])(
+  it.each(["/trust", "/legal/data-deletion", "/communities/8/rooms/room-1", "/search", "/broadcast", "/broadcast/control/00000000-0000-4000-8000-000000000001", "/broadcast/field", "/cut-studio", "/cut-studio/project-1", "/ugc/creator/42"])(
     "keeps focused public and conference surfaces free of global navigation on %s",
     (path) => expect(routeChrome(path).showBottomNavigation).toBe(false),
   );

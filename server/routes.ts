@@ -52,6 +52,7 @@ import {
   businesses,
   contentDrafts,
   assets,
+  mediaPlaybackSessions,
   assetProductAccess,
   campaigns,
   campaignDeliverables,
@@ -79,6 +80,8 @@ import {
   directMessages,
   notifications,
   followers,
+  userBlocks,
+  userSafetyControls,
 } from "../shared/schema";
 import { db } from "./db";
 import {
@@ -101,10 +104,60 @@ import {
 } from "drizzle-orm";
 import { normalizeCartProductIds } from "../shared/cart";
 import { normalizeProductCommercialTerms } from "../shared/product-catalog";
-import { setupAuth, attachUser } from "./auth";
+import {
+  setupAuth,
+  attachUser,
+  attachUserIfPresent,
+  redirectAnonymousHome,
+} from "./auth";
 import { registerAutomationRoutes } from "./automation-routes";
+import { kickAutomationProcessing } from "./automation-engine";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
+import { registerCutStudioRoutes } from "./cut-studio";
+import { registerBroadcastStudioRoutes } from "./broadcast-studio";
+import { registerUgcRoutes } from "./ugc";
+import {
+  assetRightsAllowUse,
+  queueMediaIngestJobs,
+  recordAssetUsage,
+  registerMediaCloudRoutes,
+} from "./media-cloud";
+import {
+  emitAnalyticsEvent,
+  latestAttributionTouch,
+  registerAnalyticsRoutes,
+} from "./analytics";
+import { registerPlanningRoutes } from "./planning";
+import { registerAudienceRoutes } from "./audience";
+import { registerAudienceStudioRoutes } from "./audience-studio";
+import { registerPodcastRoutes } from "./podcast-studio";
+import { registerDesignStudioRoutes } from "./design-studio";
+import { registerCreatorSiteRoutes } from "./creator-sites";
+import { registerSponsorshipRoutes } from "./sponsorship-studio";
+import {
+  affiliateAttributionForCheckout,
+  registerAffiliateRoutes,
+} from "./affiliate-platform";
+import { registerBookingTicketingRoutes } from "./booking-ticketing";
+import {
+  registerMarketplaceMaturityRoutes,
+  reserveMarketplacePromotion,
+} from "./marketplace-maturity";
+import { registerDiscoveryRoutes } from "./discovery";
+import { registerCompetitiveBenchmarkRoutes } from "./competitive-benchmarks";
+import {
+  awardCommunityPoints,
+  registerCommunityEngagementRoutes,
+  seedCommunityBadges,
+} from "./community-engagement";
+import {
+  emitDeveloperWebhookEvent,
+  registerDeveloperPlatformRoutes,
+} from "./developer-platform";
+import { registerOperationsRoutes } from "./operations";
+import { registerDataPortabilityRoutes } from "./data-portability";
+import { registerTrustRoutes } from "./trust";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
@@ -117,6 +170,7 @@ import { syncLegacyNativeConversation } from "./relationship-native-sync";
 import upload from "./upload";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { emitProjectionEvent, registerUmhRoutes } from "./umh";
 import { processDueDistributionJobs } from "./distribution";
@@ -126,19 +180,24 @@ import {
 } from "./distribution-dispatch";
 import { normalizePostLocation } from "./post-location";
 import { normalizePostPoll, type NormalizedPostPoll } from "./post-polls";
+import { commentModerationActionSchema } from "@shared/native-social-safety";
 import { buildTextStory, wantsStory } from "./text-story";
 import { shouldCountStoryView } from "./story-views";
 import { registerStripeRoutes, registerStripeWebhook } from "./stripe";
+import { settleOrder } from "./commerce";
 import {
   assetStorageReadiness,
   createDirectUpload,
   createPrivateAssetReadUrl,
   discardUploadedFiles,
   inspectDirectUpload,
+  materializePrivateAsset,
+  persistPrivateFile,
   persistUpload,
   removeStoredAsset,
 } from "./asset-storage";
 import { getReleaseReadiness } from "./release-readiness";
+import { getReleaseIdentity } from "./release-identity";
 import { rankPostTopics } from "./search-discovery";
 import {
   monthlyAssetQuotaFor,
@@ -146,6 +205,7 @@ import {
   validateAssetUpload,
 } from "./asset-policy";
 import { assetUploadRateLimiter } from "./security";
+import { rateLimit } from "express-rate-limit";
 import {
   aiChatMessageInputSchema,
   aiChatMessagesSchema,
@@ -260,6 +320,17 @@ const publicUserFields = {
   createdAt: users.createdAt,
 };
 
+function normalizeClientMutationId(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+    normalized,
+  )
+    ? normalized
+    : undefined;
+}
+
 function parseRoomUrl(value: unknown) {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || value.length > 2_000) return undefined;
@@ -335,21 +406,32 @@ async function requireContactOwner(contactId: number, userId: number) {
 }
 
 function parseContactFields(body: unknown) {
-  const input = body && typeof body === "object" ? body as Record<string, unknown> : {};
-  const contactName = typeof input.contactName === "string" ? input.contactName.trim() : "";
-  const purchaseInfo = input.purchaseInfo === null || input.purchaseInfo === undefined || input.purchaseInfo === ""
-    ? null
-    : typeof input.purchaseInfo === "string"
-      ? input.purchaseInfo.trim()
-      : undefined;
-  if (!contactName || contactName.length > 160 || purchaseInfo === undefined || (purchaseInfo?.length ?? 0) > 5_000) {
+  const input =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const contactName =
+    typeof input.contactName === "string" ? input.contactName.trim() : "";
+  const purchaseInfo =
+    input.purchaseInfo === null ||
+    input.purchaseInfo === undefined ||
+    input.purchaseInfo === ""
+      ? null
+      : typeof input.purchaseInfo === "string"
+        ? input.purchaseInfo.trim()
+        : undefined;
+  if (
+    !contactName ||
+    contactName.length > 160 ||
+    purchaseInfo === undefined ||
+    (purchaseInfo?.length ?? 0) > 5_000
+  ) {
     return null;
   }
   return { contactName, purchaseInfo };
 }
 
 function parseDocumentFields(body: unknown) {
-  const input = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const input =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const title = typeof input.title === "string" ? input.title.trim() : "";
   const content = typeof input.content === "string" ? input.content : "";
   if (!title || title.length > 200 || content.length > 200_000) return null;
@@ -416,25 +498,55 @@ async function createActivityNotification({
 }
 
 async function createPostPoll(postId: number, poll: NormalizedPostPoll) {
-  const [created] = await db.insert(postPolls).values({ postId, question: poll.question }).returning();
-  await db.insert(postPollOptions).values(poll.options.map((body, position) => ({ pollId: created.id, body, position })));
+  const [created] = await db
+    .insert(postPolls)
+    .values({ postId, question: poll.question })
+    .returning();
+  await db.insert(postPollOptions).values(
+    poll.options.map((body, position) => ({
+      pollId: created.id,
+      body,
+      position,
+    })),
+  );
 }
 
 async function getPostPoll(postId: number, viewerUserId: number) {
-  const [poll] = await db.select().from(postPolls).where(eq(postPolls.postId, postId)).limit(1);
+  const [poll] = await db
+    .select()
+    .from(postPolls)
+    .where(eq(postPolls.postId, postId))
+    .limit(1);
   if (!poll) return null;
   const [options, votes] = await Promise.all([
-    db.select().from(postPollOptions).where(eq(postPollOptions.pollId, poll.id)).orderBy(asc(postPollOptions.position)),
-    db.select({ optionId: postPollVotes.optionId, userId: postPollVotes.userId }).from(postPollVotes).where(eq(postPollVotes.pollId, poll.id)),
+    db
+      .select()
+      .from(postPollOptions)
+      .where(eq(postPollOptions.pollId, poll.id))
+      .orderBy(asc(postPollOptions.position)),
+    db
+      .select({
+        optionId: postPollVotes.optionId,
+        userId: postPollVotes.userId,
+      })
+      .from(postPollVotes)
+      .where(eq(postPollVotes.pollId, poll.id)),
   ]);
   const voteCounts = new Map<number, number>();
-  for (const vote of votes) voteCounts.set(vote.optionId, (voteCounts.get(vote.optionId) ?? 0) + 1);
+  for (const vote of votes)
+    voteCounts.set(vote.optionId, (voteCounts.get(vote.optionId) ?? 0) + 1);
   return {
     id: poll.id,
     question: poll.question,
     totalVotes: votes.length,
-    viewerOptionId: votes.find((vote) => vote.userId === viewerUserId)?.optionId ?? null,
-    options: options.map((option) => ({ id: option.id, body: option.body, position: option.position, votes: voteCounts.get(option.id) ?? 0 })),
+    viewerOptionId:
+      votes.find((vote) => vote.userId === viewerUserId)?.optionId ?? null,
+    options: options.map((option) => ({
+      id: option.id,
+      body: option.body,
+      position: option.position,
+      votes: voteCounts.get(option.id) ?? 0,
+    })),
   };
 }
 
@@ -526,13 +638,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/internal/operations/backup", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    if (!isDistributionDispatchConfigured()) return res.status(503).json({ message: "Backup dispatch is not configured" });
-    if (!isAuthorizedDistributionDispatch(req.get("authorization"))) return res.status(401).json({ message: "Unauthorized backup dispatch" });
+    if (!isDistributionDispatchConfigured())
+      return res
+        .status(503)
+        .json({ message: "Backup dispatch is not configured" });
+    if (!isAuthorizedDistributionDispatch(req.get("authorization")))
+      return res.status(401).json({ message: "Unauthorized backup dispatch" });
     try {
       const result = await createProductionBackup();
       return res.json(result);
     } catch (error) {
-      console.error("Production backup failed", { errorType: error instanceof Error ? error.name : typeof error });
+      console.error("Production backup failed", {
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
       return res.status(500).json({ message: "Production backup failed" });
     }
   });
@@ -540,6 +658,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", app: "creativesos" });
+  });
+
+  // A healthy process is not proof that the intended source or migration
+  // ledger is serving. This endpoint provides a non-secret, independently
+  // checkable deployment identity for release automation and operators.
+  app.get("/api/release", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const releaseIdentity = await getReleaseIdentity();
+      return res.status(releaseIdentity.status === "verified" ? 200 : 503).json(releaseIdentity);
+    } catch (error) {
+      console.error("Release identity check failed", {
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
+      return res.status(503).json({
+        status: "unverified",
+        app: "creativesos",
+        reason: "release_identity_unavailable",
+      });
+    }
   });
 
   // Readiness confirms the data contracts this release depends on. Keep this
@@ -567,6 +705,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "relationship_delivery_jobs",
       "relationship_audit_events",
       "production_backups",
+      "cut_studio_projects",
+      "cut_studio_audio_templates",
+      "cut_studio_jobs",
+      "cut_studio_versions",
+      "cut_studio_review_links",
+      "cut_studio_review_comments",
+      "cut_studio_review_decisions",
+      "broadcast_studios",
+      "broadcast_studio_versions",
+      "broadcast_destinations",
+      "broadcast_sessions",
+      "broadcast_audience_messages",
+      "broadcast_template_catalog",
+      "ugc_creator_profiles",
+      "ugc_portfolio_items",
+      "ugc_opportunities",
+      "ugc_applications",
+      "ugc_collaborations",
+      "ugc_submissions",
+      "ugc_performance_snapshots",
+      "ugc_earnings_ledger",
+      "media_processing_jobs",
+      "media_renditions",
+      "media_text_tracks",
+      "asset_lineage_edges",
+      "asset_collections",
+      "asset_collection_items",
+      "media_playback_sessions",
+      "media_playback_events",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -604,17 +771,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (column) => !presentColumns.has(column),
       );
       const assetStorage = assetStorageReadiness();
+      const releaseIdentity = await getReleaseIdentity();
 
       if (
         missing.length > 0 ||
         missingFederationColumns.length > 0 ||
-        !assetStorage.configured
+        !assetStorage.configured ||
+        releaseIdentity.status !== "verified"
       ) {
         return res.status(503).json({
           status: "not_ready",
           missing,
           missingFederationColumns,
           assetStorage,
+          deployment: releaseIdentity,
         });
       }
 
@@ -624,6 +794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         database: "ready",
         assetStorage,
         federationEvidence: { correlationStorage: "ready" },
+        deployment: releaseIdentity,
         release: getReleaseReadiness(),
       });
     } catch (error) {
@@ -634,9 +805,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Set up authentication routes and middleware
   setupAuth(app);
+  app.get("/", redirectAnonymousHome);
   registerAutomationRoutes(app);
   registerRelationshipHubRoutes(app);
   registerAccountPrivacyRoutes(app);
+  registerCutStudioRoutes(app);
+  registerBroadcastStudioRoutes(app);
+  registerUgcRoutes(app);
+  registerMediaCloudRoutes(app);
+  registerAnalyticsRoutes(app);
+  registerPlanningRoutes(app);
+  registerAudienceRoutes(app);
+  registerAudienceStudioRoutes(app);
+  registerPodcastRoutes(app);
+  registerDesignStudioRoutes(app);
+  registerCreatorSiteRoutes(app);
+  registerSponsorshipRoutes(app);
+  registerAffiliateRoutes(app);
+  registerBookingTicketingRoutes(app);
+  registerMarketplaceMaturityRoutes(app);
+  registerDiscoveryRoutes(app);
+  registerCompetitiveBenchmarkRoutes(app);
+  registerCommunityEngagementRoutes(app);
+  registerDeveloperPlatformRoutes(app);
+  registerOperationsRoutes(app);
+  registerDataPortabilityRoutes(app);
+  registerTrustRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 
@@ -712,15 +906,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/user/settings", attachUser, async (req, res) => {
-    const result = z.object({
-      pushNotificationsEnabled: z.boolean().optional(),
-      colorMode: z.enum(["dark", "high_contrast"]).optional(),
-    }).strict().refine(
-      (value) => value.pushNotificationsEnabled !== undefined || value.colorMode !== undefined,
-      "Provide at least one setting",
-    ).safeParse(req.body);
+    const result = z
+      .object({
+        pushNotificationsEnabled: z.boolean().optional(),
+        colorMode: z.enum(["dark", "high_contrast"]).optional(),
+      })
+      .strict()
+      .refine(
+        (value) =>
+          value.pushNotificationsEnabled !== undefined ||
+          value.colorMode !== undefined,
+        "Provide at least one setting",
+      )
+      .safeParse(req.body);
     if (!result.success) {
-      return res.status(400).json({ message: "Provide valid settings", issues: result.error.issues });
+      return res.status(400).json({
+        message: "Provide valid settings",
+        issues: result.error.issues,
+      });
     }
     try {
       const updated = await storage.updateUser(req.dbUser!.id, result.data);
@@ -746,10 +949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(products)
         .innerJoin(users, eq(products.userId, users.id))
         .where(
-          and(
-            eq(products.userId, userId),
-            eq(products.status, "published"),
-          ),
+          and(eq(products.userId, userId), eq(products.status, "published")),
         )
         .orderBy(desc(products.createdAt))
         .limit(24);
@@ -774,23 +974,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "You can only update your own profile" });
       }
 
-      const profilePatch = z.object({
-        username: z.string().trim().min(3).max(20).regex(/^[a-z0-9_.]+$/).optional(),
-        displayName: z.string().trim().min(2).max(30).optional(),
-        bio: z.string().max(150).nullable().optional(),
-        profileImageUrl: z.string().max(2_000).nullable().optional(),
-        profileLinks: z.array(z.object({
-          label: z.string().trim().min(1).max(40),
-          url: z.string().url().max(2_000).refine((value) => {
-            const protocol = new URL(value).protocol;
-            return protocol === "https:" || protocol === "http:";
-          }, "Profile links must use http or https"),
-        })).max(5).optional(),
-      }).strict().safeParse(req.body);
+      const profilePatch = z
+        .object({
+          username: z
+            .string()
+            .trim()
+            .min(3)
+            .max(20)
+            .regex(/^[a-z0-9_.]+$/)
+            .optional(),
+          displayName: z.string().trim().min(2).max(30).optional(),
+          bio: z.string().max(150).nullable().optional(),
+          profileImageUrl: z.string().max(2_000).nullable().optional(),
+          profileLinks: z
+            .array(
+              z.object({
+                label: z.string().trim().min(1).max(40),
+                url: z
+                  .string()
+                  .url()
+                  .max(2_000)
+                  .refine((value) => {
+                    const protocol = new URL(value).protocol;
+                    return protocol === "https:" || protocol === "http:";
+                  }, "Profile links must use http or https"),
+              }),
+            )
+            .max(5)
+            .optional(),
+        })
+        .strict()
+        .safeParse(req.body);
       if (!profilePatch.success) {
-        return res.status(400).json({ message: "Provide valid profile fields", issues: profilePatch.error.issues });
+        return res.status(400).json({
+          message: "Provide valid profile fields",
+          issues: profilePatch.error.issues,
+        });
       }
-      const { username, displayName, bio, profileImageUrl, profileLinks } = profilePatch.data;
+      const { username, displayName, bio, profileImageUrl, profileLinks } =
+        profilePatch.data;
 
       // Only allow updating specific fields
       const userData: Partial<any> = {};
@@ -806,7 +1028,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating user:", error);
       if ((error as { code?: string }).code === "23505") {
-        return res.status(409).json({ message: "That username is already in use" });
+        return res
+          .status(409)
+          .json({ message: "That username is already in use" });
       }
       res.status(500).json({ message: "Failed to update user profile" });
     }
@@ -1003,10 +1227,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const visibility = normalizeAssetVisibility(
           req.body?.visibility ?? "public",
         );
+        const clientMutationId = normalizeClientMutationId(
+          req.body?.clientMutationId,
+        );
 
-        if (!filename || !visibility)
+        if (!filename || !visibility || clientMutationId === undefined)
           return res.status(400).json({
-            message: "A filename and public or private visibility are required",
+            message:
+              clientMutationId === undefined
+                ? "A valid client mutation ID is required"
+                : "A filename and public or private visibility are required",
           });
         const validationError = validateAssetUpload({
           kind,
@@ -1016,6 +1246,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         if (validationError)
           return res.status(400).json({ message: validationError });
+
+        if (clientMutationId) {
+          const [existing] = await db
+            .select()
+            .from(assets)
+            .where(
+              and(
+                eq(assets.ownerUserId, req.dbUser!.id),
+                eq(assets.clientMutationId, clientMutationId),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            if (existing.status === "ready") {
+              return res.status(200).json({
+                asset: existing,
+                upload: null,
+                alreadyComplete: true,
+              });
+            }
+            if (existing.status !== "pending") {
+              return res.status(409).json({
+                message: "This upload requires review before it can continue",
+              });
+            }
+            if (
+              existing.kind !== kind ||
+              existing.mimeType !== mimeType ||
+              existing.sizeBytes !== sizeBytes ||
+              existing.visibility !== visibility
+            ) {
+              return res.status(409).json({
+                message: "The queued upload no longer matches its original file",
+              });
+            }
+            const refreshed = await createDirectUpload(
+              req.dbUser!.id,
+              kind,
+              filename,
+              mimeType,
+              visibility,
+              existing.storageKey,
+            );
+            return res.status(200).json({
+              asset: existing,
+              upload: refreshed,
+              alreadyComplete: false,
+            });
+          }
+        }
 
         const since = new Date(Date.now() - 31 * 24 * 60 * 60 * 1_000);
         const [usage] = await db
@@ -1027,6 +1307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(
             and(
               eq(assets.ownerUserId, req.dbUser!.id),
+              eq(assets.kind, kind),
               gt(assets.createdAt, since),
               not(eq(assets.status, "deleted")),
             ),
@@ -1053,6 +1334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .insert(assets)
           .values({
             ownerUserId: req.dbUser!.id,
+            businessId: (await ensureDefaultBusiness(req.dbUser!)).id,
             kind,
             storageProvider: direct.storageProvider,
             storageKey: direct.storageKey,
@@ -1061,6 +1343,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             visibility,
             status: "pending",
             originalFilename: filename,
+            clientMutationId,
             metadata: {
               uploadProtocol: "direct-r2",
               intendedSizeBytes: sizeBytes,
@@ -1097,6 +1380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           )
           .limit(1);
         if (!asset) return res.status(404).json({ message: "Asset not found" });
+        if (asset.status === "ready") return res.json({ asset });
         if (asset.status !== "pending")
           return res
             .status(409)
@@ -1129,9 +1413,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: validationError });
         }
 
+        const business = asset.businessId
+          ? { id: asset.businessId }
+          : await ensureDefaultBusiness(req.dbUser!);
         const [completed] = await db
           .update(assets)
           .set({
+            businessId: business.id,
             publicUrl: stored.publicUrl,
             mimeType: stored.mimeType,
             sizeBytes: stored.sizeBytes,
@@ -1143,6 +1431,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .where(eq(assets.id, asset.id))
           .returning();
+        await queueMediaIngestJobs(completed);
+        void emitDeveloperWebhookEvent({
+          businessId: business.id,
+          eventType: "asset.ready",
+          aggregateType: "asset",
+          aggregateId: completed.id,
+          idempotencyKey: `asset.ready:${completed.id}`,
+          payload: {
+            assetId: completed.id,
+            kind: completed.kind,
+            mimeType: completed.mimeType,
+            visibility: completed.visibility,
+          },
+        }).catch((eventError) =>
+          console.error("Failed to emit asset-ready webhook:", eventError),
+        );
         return res.json({ asset: completed });
       } catch (error) {
         console.error("Unable to complete asset upload:", error);
@@ -1155,7 +1459,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Direct browser uploads remain the preferred path. This bounded fallback
   // keeps the library usable while a storage bucket's browser CORS policy is
-  // being configured, without accepting arbitrary file types or private data.
+  // being configured. It accepts only the same bounded media policy as direct
+  // upload and can preserve private visibility for studio source material.
   app.post(
     "/api/assets/upload-proxy",
     attachUser,
@@ -1165,12 +1470,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const files = Array.isArray(req.files) ? req.files : [];
       try {
         const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
+        const visibility = normalizeAssetVisibility(
+          req.body?.visibility ?? "public",
+        );
+        const clientMutationId = normalizeClientMutationId(
+          req.body?.clientMutationId,
+        );
         const [file] = files;
         if (files.length !== 1 || !file)
           return res
             .status(400)
             .json({ message: "Upload exactly one media file" });
-        if (!["photo", "video", "audio"].includes(kind)) {
+        if (clientMutationId === undefined) {
+          await discardUploadedFiles(files);
+          return res
+            .status(400)
+            .json({ message: "A valid client mutation ID is required" });
+        }
+        if (
+          !["photo", "video", "audio", "cut-lut"].includes(kind) ||
+          !visibility
+        ) {
           await discardUploadedFiles(files);
           return res
             .status(400)
@@ -1180,11 +1500,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kind,
           mimeType: file.mimetype,
           sizeBytes: file.size,
-          visibility: "public",
+          visibility,
         });
         if (validationError) {
           await discardUploadedFiles(files);
           return res.status(400).json({ message: validationError });
+        }
+        const [existingAsset] = clientMutationId
+          ? await db
+              .select()
+              .from(assets)
+              .where(
+                and(
+                  eq(assets.ownerUserId, req.dbUser!.id),
+                  eq(assets.clientMutationId, clientMutationId),
+                ),
+              )
+              .limit(1)
+          : [];
+        if (existingAsset?.status === "ready") {
+          await discardUploadedFiles(files);
+          return res.status(200).json({
+            asset: existingAsset,
+            alreadyComplete: true,
+          });
+        }
+        if (
+          existingAsset &&
+          (existingAsset.status !== "pending" ||
+            existingAsset.kind !== kind ||
+            existingAsset.mimeType !== file.mimetype ||
+            existingAsset.sizeBytes !== file.size ||
+            existingAsset.visibility !== visibility)
+        ) {
+          await discardUploadedFiles(files);
+          return res.status(409).json({
+            message: "The queued upload no longer matches its original file",
+          });
         }
         const since = new Date(Date.now() - 31 * 24 * 60 * 60 * 1_000);
         const [usage] = await db
@@ -1196,14 +1548,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(
             and(
               eq(assets.ownerUserId, req.dbUser!.id),
+              eq(assets.kind, kind),
               gt(assets.createdAt, since),
               not(eq(assets.status, "deleted")),
             ),
           );
         const quota = monthlyAssetQuotaFor(kind);
         if (
-          Number(usage?.totalBytes ?? 0) + file.size > quota.maxBytes ||
-          Number(usage?.totalAssets ?? 0) >= quota.maxAssets
+          Number(usage?.totalBytes ?? 0) +
+              (existingAsset ? 0 : file.size) >
+            quota.maxBytes ||
+          Number(usage?.totalAssets ?? 0) >=
+            quota.maxAssets + (existingAsset ? 1 : 0)
         ) {
           await discardUploadedFiles(files);
           return res.status(429).json({
@@ -1211,23 +1567,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
               "Monthly asset quota reached. Upgrade or remove old assets before uploading more.",
           });
         }
-        const stored = await persistUpload(file, req.dbUser!.id, kind);
-        const [asset] = await db
-          .insert(assets)
-          .values({
+        const stored =
+          visibility === "private"
+            ? await persistPrivateFile({
+                sourcePath: file.path,
+                ownerUserId: req.dbUser!.id,
+                kind,
+                filename: file.originalname,
+                mimeType: file.mimetype,
+              })
+            : await persistUpload(file, req.dbUser!.id, kind);
+        if (visibility === "private") await discardUploadedFiles([file]);
+        const business = await ensureDefaultBusiness(req.dbUser!);
+        const assetValues = {
             ownerUserId: req.dbUser!.id,
+            businessId: business.id,
             kind,
             storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local",
             storageKey: stored.storageKey,
-            publicUrl: stored.publicUrl,
+            publicUrl: "publicUrl" in stored ? stored.publicUrl : null,
             mimeType: file.mimetype,
             sizeBytes: file.size,
-            visibility: "public",
+            visibility,
             originalFilename: file.originalname.slice(0, 255),
-            metadata: { uploadProtocol: "server-proxy-cors-fallback" },
+            clientMutationId,
+            metadata: {
+              uploadProtocol: "server-proxy-cors-fallback",
+              visibility,
+            },
             status: "ready",
-          })
-          .returning();
+          };
+        const [asset] = existingAsset
+          ? await db
+              .update(assets)
+              .set(assetValues)
+              .where(eq(assets.id, existingAsset.id))
+              .returning()
+          : await db.insert(assets).values(assetValues).returning();
+        await queueMediaIngestJobs(asset);
+        void emitDeveloperWebhookEvent({
+          businessId: business.id,
+          eventType: "asset.ready",
+          aggregateType: "asset",
+          aggregateId: asset.id,
+          idempotencyKey: `asset.ready:${asset.id}`,
+          payload: {
+            assetId: asset.id,
+            kind: asset.kind,
+            mimeType: asset.mimeType,
+            visibility: asset.visibility,
+          },
+        }).catch((eventError) =>
+          console.error("Failed to emit asset-ready webhook:", eventError),
+        );
         return res.status(201).json({ asset });
       } catch (error) {
         await discardUploadedFiles(files);
@@ -1299,6 +1691,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({
             message: "Only private assets can be attached to paid delivery",
           });
+        if (!(await assetRightsAllowUse(asset.id, "commercial_delivery")))
+          return res.status(409).json({
+            message: "Asset rights do not permit commercial delivery",
+          });
 
         const [access] = await db
           .insert(assetProductAccess)
@@ -1309,6 +1705,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .onConflictDoNothing()
           .returning();
+        await recordAssetUsage({
+          assetId: asset.id,
+          actorUserId: req.dbUser!.id,
+          surfaceType: "product",
+          surfaceId: String(product.id),
+          useType: "commercial_delivery",
+        });
         return res.status(access ? 201 : 200).json({
           access: access ?? {
             assetId: asset.id,
@@ -1450,10 +1853,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .status(403)
             .json({ message: "You do not have access to this private asset" });
       }
+      if (
+        asset.storageProvider === "local" &&
+        process.env.NODE_ENV !== "production"
+      )
+        return res.json({
+          url: `/api/assets/${asset.id}/stream`,
+          expiresAt: null,
+        });
       return res.json(await createPrivateAssetReadUrl(asset.storageKey));
     } catch (error) {
       console.error("Unable to issue asset access URL:", error);
       return res.status(500).json({ message: "Unable to access asset" });
+    }
+  });
+
+  app.get("/api/assets/:id/stream", attachUser, rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false }), async (req, res) => {
+    let temp: string | null = null;
+    try {
+      res.set("Cache-Control", "no-store");
+      const [asset] = await db
+        .select()
+        .from(assets)
+        .where(eq(assets.id, req.params.id))
+        .limit(1);
+      if (!asset || asset.status !== "ready" || asset.visibility !== "private")
+        return res.status(404).json({ message: "Asset not found" });
+      if (asset.ownerUserId !== req.dbUser!.id) {
+        const [entitledAccess] = await db
+          .select({ id: assetProductAccess.id })
+          .from(assetProductAccess)
+          .innerJoin(
+            entitlements,
+            and(
+              eq(entitlements.productId, assetProductAccess.productId),
+              eq(entitlements.userId, req.dbUser!.id),
+              eq(entitlements.status, "active"),
+            ),
+          )
+          .where(eq(assetProductAccess.assetId, asset.id))
+          .limit(1);
+        if (!entitledAccess)
+          return res
+            .status(403)
+            .json({ message: "You do not have access to this private asset" });
+      }
+      temp = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "creativesos-private-asset-"),
+      );
+      const outputPath = path.join(
+        temp,
+        asset.originalFilename?.replace(/[^A-Za-z0-9._-]/g, "-") || "asset.bin",
+      );
+      await materializePrivateAsset(asset.storageKey, outputPath);
+      res.type(asset.mimeType ?? "application/octet-stream");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${path.basename(outputPath)}"`,
+      );
+      res.sendFile(outputPath, { acceptRanges: true }, (error) => {
+        if (temp) void fs.promises.rm(temp, { recursive: true, force: true });
+        if (error && !res.headersSent) res.status(500).end();
+      });
+    } catch (error) {
+      if (temp)
+        await fs.promises
+          .rm(temp, { recursive: true, force: true })
+          .catch(() => undefined);
+      console.error("Unable to stream private asset:", error);
+      if (!res.headersSent)
+        return res.status(500).json({ message: "Unable to stream asset" });
     }
   });
 
@@ -1540,13 +2009,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const name =
         typeof req.body?.name === "string" ? req.body.name.trim() : "";
-      const rawHandle = (typeof req.body?.handle === "string" ? req.body.handle : name).slice(0, 128).toLowerCase();
+      const rawHandle = (
+        typeof req.body?.handle === "string" ? req.body.handle : name
+      )
+        .slice(0, 128)
+        .toLowerCase();
       let handle = "";
       for (const character of rawHandle) {
         const isAsciiLetter = character >= "a" && character <= "z";
         const isDigit = character >= "0" && character <= "9";
         const normalized = isAsciiLetter || isDigit ? character : "_";
-        if (normalized !== "_" || (handle && !handle.endsWith("_"))) handle += normalized;
+        if (normalized !== "_" || (handle && !handle.endsWith("_")))
+          handle += normalized;
       }
       handle = handle.replace(/^_/, "").replace(/_$/, "");
       const description =
@@ -2256,7 +2730,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/posts/:postId/poll", attachUser, async (req, res) => {
     const postId = Number(req.params.postId);
-    if (!Number.isInteger(postId)) return res.status(400).json({ message: "Invalid post" });
+    if (!Number.isInteger(postId))
+      return res.status(400).json({ message: "Invalid post" });
     const post = await storage.getPostById(postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(await getPostPoll(postId, req.dbUser!.id));
@@ -2265,16 +2740,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/posts/:postId/poll/vote", attachUser, async (req, res) => {
     const postId = Number(req.params.postId);
     const optionId = Number(req.body?.optionId);
-    if (!Number.isInteger(postId) || !Number.isInteger(optionId)) return res.status(400).json({ message: "A valid poll option is required" });
-    const [selection] = await db.select({ pollId: postPolls.id, optionId: postPollOptions.id })
+    if (!Number.isInteger(postId) || !Number.isInteger(optionId))
+      return res
+        .status(400)
+        .json({ message: "A valid poll option is required" });
+    const [selection] = await db
+      .select({ pollId: postPolls.id, optionId: postPollOptions.id })
       .from(postPolls)
       .innerJoin(postPollOptions, eq(postPollOptions.pollId, postPolls.id))
-      .where(and(eq(postPolls.postId, postId), eq(postPollOptions.id, optionId)))
+      .where(
+        and(eq(postPolls.postId, postId), eq(postPollOptions.id, optionId)),
+      )
       .limit(1);
-    if (!selection) return res.status(404).json({ message: "Poll option not found" });
+    if (!selection)
+      return res.status(404).json({ message: "Poll option not found" });
     await db.transaction(async (tx) => {
-      await tx.delete(postPollVotes).where(and(eq(postPollVotes.pollId, selection.pollId), eq(postPollVotes.userId, req.dbUser!.id)));
-      await tx.insert(postPollVotes).values({ pollId: selection.pollId, optionId, userId: req.dbUser!.id });
+      await tx
+        .delete(postPollVotes)
+        .where(
+          and(
+            eq(postPollVotes.pollId, selection.pollId),
+            eq(postPollVotes.userId, req.dbUser!.id),
+          ),
+        );
+      await tx
+        .insert(postPollVotes)
+        .values({ pollId: selection.pollId, optionId, userId: req.dbUser!.id });
     });
     res.json(await getPostPoll(postId, req.dbUser!.id));
   });
@@ -2282,8 +2773,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Provider-neutral location discovery. Suggestions are derived only from
   // locations creators actually used; clients can also enter a new label.
   app.get("/api/locations", async (req, res) => {
-    const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
-    const rows = await db.select({ location: posts.location })
+    const query =
+      typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+    const rows = await db
+      .select({ location: posts.location })
       .from(posts)
       .where(isNotNull(posts.location))
       .orderBy(desc(posts.createdAt))
@@ -2294,44 +2787,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!name || (query && !name.toLowerCase().includes(query))) continue;
       const key = name.toLowerCase();
       const existing = counts.get(key);
-      counts.set(key, { name: existing?.name ?? name, postCount: (existing?.postCount ?? 0) + 1 });
+      counts.set(key, {
+        name: existing?.name ?? name,
+        postCount: (existing?.postCount ?? 0) + 1,
+      });
     }
-    res.json(Array.from(counts.values()).sort((a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name)).slice(0, 30));
+    res.json(
+      Array.from(counts.values())
+        .sort(
+          (a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name),
+        )
+        .slice(0, 30),
+    );
   });
 
   app.post("/api/posts", attachUser, async (req, res) => {
     try {
+      const clientMutationId = normalizeClientMutationId(
+        req.body?.clientMutationId,
+      );
+      if (clientMutationId === undefined) {
+        return res
+          .status(400)
+          .json({ message: "A valid client mutation ID is required" });
+      }
+      if (clientMutationId) {
+        const [existing] = await db
+          .select()
+          .from(posts)
+          .where(
+            and(
+              eq(posts.userId, req.dbUser!.id),
+              eq(posts.clientMutationId, clientMutationId),
+            ),
+          )
+          .limit(1);
+        if (existing) return res.status(200).json(existing);
+      }
       let poll: NormalizedPostPoll | null;
       try {
         poll = normalizePostPoll(req.body?.pollData);
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid poll" });
+        return res.status(400).json({
+          message: error instanceof Error ? error.message : "Invalid poll",
+        });
       }
       // Add authenticated user's ID to the post data
-      const { pollData: _pollData, addToStory, ...postBody } = req.body ?? {};
+      const {
+        pollData: _pollData,
+        addToStory,
+        clientMutationId: _clientMutationId,
+        ...postBody
+      } = req.body ?? {};
       const postData = {
         ...postBody,
         userId: req.dbUser!.id,
+        clientMutationId,
       };
 
       if (postData.repostOfId !== undefined && postData.repostOfId !== null) {
         const sourceId = Number(postData.repostOfId);
         if (!Number.isInteger(sourceId) || sourceId <= 0) {
-          return res.status(400).json({ message: "A valid original post is required" });
+          return res
+            .status(400)
+            .json({ message: "A valid original post is required" });
         }
         const source = await storage.getPostById(sourceId);
-        if (!source) return res.status(404).json({ message: "Original post not found" });
+        if (!source)
+          return res.status(404).json({ message: "Original post not found" });
         if (source.repostOfId !== null && source.repostOfId !== undefined) {
-          return res.status(409).json({ message: "A repost cannot be reposted again" });
+          return res
+            .status(409)
+            .json({ message: "A repost cannot be reposted again" });
         }
-        const existingRepost = (await storage.getPostsByUserId(req.dbUser!.id))
-          .some((candidate) => candidate.repostOfId === sourceId);
+        const existingRepost = (
+          await storage.getPostsByUserId(req.dbUser!.id)
+        ).some((candidate) => candidate.repostOfId === sourceId);
         if (existingRepost) {
-          return res.status(409).json({ message: "You already reposted this post" });
+          return res
+            .status(409)
+            .json({ message: "You already reposted this post" });
         }
       }
 
-      const post = await storage.createPost(postData);
+      let post;
+      if (clientMutationId && process.env.CREATOROS_DEMO_MODE !== "true") {
+        const [created] = await db
+          .insert(posts)
+          .values(postData)
+          .onConflictDoNothing()
+          .returning();
+        if (!created) {
+          const [existing] = await db
+            .select()
+            .from(posts)
+            .where(
+              and(
+                eq(posts.userId, req.dbUser!.id),
+                eq(posts.clientMutationId, clientMutationId),
+              ),
+            )
+            .limit(1);
+          if (existing) return res.status(200).json(existing);
+          throw new Error("Post mutation could not be committed");
+        }
+        post = created;
+      } else {
+        post = await storage.createPost(postData);
+      }
       if (poll && process.env.CREATOROS_DEMO_MODE !== "true") {
         try {
           await createPostPoll(post.id, poll);
@@ -2358,6 +2921,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         idempotencyKey: `post.published:${post.id}`,
       }).catch((error) =>
         console.error("Failed to enqueue post projection:", error),
+      );
+      const business = await ensureDefaultBusiness(req.dbUser!);
+      void emitDeveloperWebhookEvent({
+        businessId: business.id,
+        eventType: "content.published",
+        aggregateType: "post",
+        aggregateId: String(post.id),
+        idempotencyKey: `content.published:post:${post.id}`,
+        payload: {
+          contentId: post.id,
+          contentType: "post",
+          mediaType: post.mediaType ?? "text",
+        },
+      }).catch((eventError) =>
+        console.error("Failed to emit content-published webhook:", eventError),
       );
       res.status(201).json(post);
     } catch (error) {
@@ -2433,10 +3011,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/posts/media", attachUser, upload.any(), async (req, res) => {
     try {
-      const content = typeof req.body?.content === "string" ? req.body.content : "";
-      const mediaType = typeof req.body?.mediaType === "string" ? req.body.mediaType : "";
-      const isCarousel = typeof req.body?.isCarousel === "string" ? req.body.isCarousel : "false";
-      const addToStory = typeof req.body?.addToStory === "string" ? req.body.addToStory : "false";
+      const content =
+        typeof req.body?.content === "string" ? req.body.content : "";
+      const mediaType =
+        typeof req.body?.mediaType === "string" ? req.body.mediaType : "";
+      const isCarousel =
+        typeof req.body?.isCarousel === "string"
+          ? req.body.isCarousel
+          : "false";
+      const addToStory =
+        typeof req.body?.addToStory === "string"
+          ? req.body.addToStory
+          : "false";
       const userId = req.dbUser!.id;
       const files = Array.isArray(req.files) ? req.files : [];
 
@@ -2459,7 +3045,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         poll = normalizePostPoll(req.body.pollData);
       } catch (error) {
         await discardUploadedFiles(files);
-        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid poll" });
+        return res.status(400).json({
+          message: error instanceof Error ? error.message : "Invalid poll",
+        });
       }
 
       const uploadedFiles = await Promise.all(
@@ -2557,6 +3145,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               return asset;
             }),
           );
+          const primaryAsset = publishedAssets[0] as
+            { id?: string } | undefined;
+          if (primaryAsset?.id) {
+            await db
+              .update(posts)
+              .set({ mediaAssetId: primaryAsset.id })
+              .where(eq(posts.id, post.id));
+            post.mediaAssetId = primaryAsset.id;
+            await recordAssetUsage({
+              assetId: primaryAsset.id,
+              actorUserId: userId,
+              surfaceType: "post",
+              surfaceId: String(post.id),
+              useType: "native_publish",
+            });
+          }
         } catch (assetError) {
           console.error(
             "Post published but asset registration failed:",
@@ -2567,10 +3171,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if we should add this to the user's story
       if (addToStory === "true") {
-        console.log("Adding to story:", {
-          userId,
-          mediaPath: primaryMediaPath,
-        });
         try {
           // Create a story with the same media
           await storage.createStory({
@@ -2579,7 +3179,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             mediaType: postData.mediaType,
             caption: content || null,
           });
-          console.log("Successfully added to story");
         } catch (storyError) {
           console.error("Error adding to story:", storyError);
           // Continue even if story creation fails, the post is already created
@@ -2589,16 +3188,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Process tagged users if present
       if (req.body.taggedUsers) {
         try {
-          console.log("Tagged users data from request:", req.body.taggedUsers);
-
           const taggedUsersData = JSON.parse(req.body.taggedUsers);
-          console.log("Parsed tagged users data:", taggedUsersData);
 
           if (Array.isArray(taggedUsersData) && taggedUsersData.length > 0) {
             // Insert each tagged user into the database
             for (const taggedUser of taggedUsersData) {
-              console.log("Processing tagged user:", taggedUser);
-
               try {
                 await db.insert(taggedUsers).values({
                   postId: post.id,
@@ -2606,29 +3200,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   positionX: taggedUser.positionX,
                   positionY: taggedUser.positionY,
                 });
-                console.log(
-                  `Successfully added tagged user ${taggedUser.id} to post ${post.id}`,
-                );
               } catch (insertError) {
                 console.error("Error inserting tagged user", {
                   taggedUserId: Number(taggedUser.id),
                   postId: post.id,
-                  errorType: insertError instanceof Error ? insertError.name : typeof insertError,
+                  errorType:
+                    insertError instanceof Error
+                      ? insertError.name
+                      : typeof insertError,
                 });
               }
             }
-            console.log(
-              `Attempted to add ${taggedUsersData.length} tagged users to post ${post.id}`,
-            );
-          } else {
-            console.log("No valid tagged users data found in the array");
           }
         } catch (tagError) {
           console.error("Error processing tagged users:", tagError);
           // Continue even if tagging fails, the post is already created
         }
-      } else {
-        console.log("No tagged users found in request body");
       }
 
       res.status(201).json({ ...post, assets: publishedAssets });
@@ -2804,24 +3391,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Comment routes
-  app.get("/api/posts/:postId/comments", async (req, res) => {
-    try {
-      const comments = await storage.getCommentsByPostId(
-        parseInt(req.params.postId),
-      );
-      res.json(comments);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch comments" });
-    }
-  });
+  app.get(
+    "/api/posts/:postId/comments",
+    attachUserIfPresent,
+    async (req, res) => {
+      try {
+        const postId = parseInt(req.params.postId);
+        const viewerId = req.dbUser?.id;
+        const rows = await db
+          .select({ comment: comments, user: users, postOwnerId: posts.userId })
+          .from(comments)
+          .innerJoin(users, eq(comments.userId, users.id))
+          .innerJoin(posts, eq(comments.postId, posts.id))
+          .where(
+            and(
+              eq(comments.postId, postId),
+              isNull(comments.parentId),
+              viewerId
+                ? or(
+                    eq(comments.visibility, "public"),
+                    eq(comments.userId, viewerId),
+                    eq(posts.userId, viewerId),
+                  )
+                : eq(comments.visibility, "public"),
+            ),
+          )
+          .orderBy(desc(comments.createdAt));
+        res.json(rows.map(({ comment, user }) => ({ ...comment, user })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch comments" });
+      }
+    },
+  );
 
   // Get total comment count for a post (including all replies)
   app.get("/api/posts/:postId/comment-count", async (req, res) => {
     try {
-      const count = await storage.getTotalCommentCountForPost(
-        parseInt(req.params.postId),
-      );
-      res.json({ count });
+      const [result] = await db
+        .select({ count: count() })
+        .from(comments)
+        .where(
+          and(
+            eq(comments.postId, parseInt(req.params.postId)),
+            eq(comments.visibility, "public"),
+          ),
+        );
+      res.json({ count: result?.count ?? 0 });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch comment count" });
     }
@@ -2900,41 +3515,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         userId: req.dbUser!.id,
       });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid comment", issues: parsed.error.issues });
+      if (!parsed.success)
+        return res
+          .status(400)
+          .json({ message: "Invalid comment", issues: parsed.error.issues });
       const result = await db.transaction(async (tx) => {
-        const [post] = await tx.select().from(posts).where(eq(posts.id, parsed.data.postId)).limit(1);
+        const [post] = await tx
+          .select()
+          .from(posts)
+          .where(eq(posts.id, parsed.data.postId))
+          .limit(1);
         if (!post) return null;
+        const [block] = await tx
+          .select({ id: userBlocks.id })
+          .from(userBlocks)
+          .where(
+            or(
+              and(
+                eq(userBlocks.blockerUserId, post.userId),
+                eq(userBlocks.blockedUserId, req.dbUser!.id),
+              ),
+              and(
+                eq(userBlocks.blockerUserId, req.dbUser!.id),
+                eq(userBlocks.blockedUserId, post.userId),
+              ),
+            ),
+          )
+          .limit(1);
+        if (block) return "blocked" as const;
         if (parsed.data.parentId != null) {
-          const [parent] = await tx.select({ postId: comments.postId }).from(comments).where(eq(comments.id, parsed.data.parentId)).limit(1);
-          if (!parent || parent.postId !== post.id) throw new Error("Comment reply does not belong to this post");
+          const [parent] = await tx
+            .select({ postId: comments.postId })
+            .from(comments)
+            .where(eq(comments.id, parsed.data.parentId))
+            .limit(1);
+          if (!parent || parent.postId !== post.id)
+            throw new Error("Comment reply does not belong to this post");
         }
-        const [comment] = await tx.insert(comments).values(parsed.data).returning();
-        await tx
-          .update(posts)
-          .set({ comments: sql`${posts.comments} + 1` })
-          .where(eq(posts.id, post.id));
-        if (post.userId !== req.dbUser!.id) {
-          await tx.insert(automationTriggerEvents).values({
-            ownerUserId: post.userId,
-            eventType: NATIVE_COMMENT_CREATED_EVENT,
-            idempotencyKey: `native:comment:${comment.id}:owner:${post.userId}`,
-            payload: {
-              channel: "native",
-              automated: false,
-              actorUserId: req.dbUser!.id,
-              actorDisplayName: req.dbUser!.displayName,
-              commentId: comment.id,
-              postId: comment.postId,
-              parentId: comment.parentId,
-              content: comment.content,
-            },
-          }).onConflictDoNothing();
+        const [restriction] = await tx
+          .select({ restricted: userSafetyControls.restricted })
+          .from(userSafetyControls)
+          .where(
+            and(
+              eq(userSafetyControls.actorUserId, post.userId),
+              eq(userSafetyControls.targetUserId, req.dbUser!.id),
+              eq(userSafetyControls.restricted, true),
+            ),
+          )
+          .limit(1);
+        const visibility = restriction?.restricted ? "held" : "public";
+        const [comment] = await tx
+          .insert(comments)
+          .values({ ...parsed.data, visibility })
+          .returning();
+        if (visibility === "public") {
+          await tx
+            .update(posts)
+            .set({ comments: sql`${posts.comments} + 1` })
+            .where(eq(posts.id, post.id));
+        }
+        if (visibility === "public" && post.userId !== req.dbUser!.id) {
+          await tx
+            .insert(automationTriggerEvents)
+            .values({
+              ownerUserId: post.userId,
+              eventType: NATIVE_COMMENT_CREATED_EVENT,
+              idempotencyKey: `native:comment:${comment.id}:owner:${post.userId}`,
+              payload: {
+                channel: "native",
+                automated: false,
+                actorUserId: req.dbUser!.id,
+                actorDisplayName: req.dbUser!.displayName,
+                commentId: comment.id,
+                postId: comment.postId,
+                parentId: comment.parentId,
+                content: comment.content,
+              },
+            })
+            .onConflictDoNothing();
         }
         return { comment, post };
       });
       if (!result) return res.status(404).json({ message: "Post not found" });
+      if (result === "blocked") {
+        return res
+          .status(403)
+          .json({ message: "This interaction is unavailable" });
+      }
       const { comment, post } = result;
-      if (post) {
+      if (post && comment.visibility === "public") {
         await createActivityNotification({
           recipientId: post.userId,
           actorId: req.dbUser!.id,
@@ -2943,6 +3612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           linkTo: `/profile/${post.userId}`,
         });
       }
+      void kickAutomationProcessing();
       res.status(201).json(comment);
     } catch (error) {
       console.error("Error creating comment:", error);
@@ -2950,29 +3620,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/comments/:commentId/replies", async (req, res) => {
+  app.get(
+    "/api/comments/:commentId/replies",
+    attachUserIfPresent,
+    async (req, res) => {
+      try {
+        const viewerId = req.dbUser?.id;
+        const rows = await db
+          .select({ comment: comments, user: users })
+          .from(comments)
+          .innerJoin(users, eq(comments.userId, users.id))
+          .innerJoin(posts, eq(comments.postId, posts.id))
+          .where(
+            and(
+              eq(comments.parentId, parseInt(req.params.commentId)),
+              viewerId
+                ? or(
+                    eq(comments.visibility, "public"),
+                    eq(comments.userId, viewerId),
+                    eq(posts.userId, viewerId),
+                  )
+                : eq(comments.visibility, "public"),
+            ),
+          )
+          .orderBy(desc(comments.createdAt));
+        res.json(rows.map(({ comment, user }) => ({ ...comment, user })));
+      } catch (error: any) {
+        console.error("Error fetching comment replies:", error);
+        res.status(500).json({
+          message: "Failed to fetch comment replies",
+          error: error.message,
+        });
+      }
+    },
+  );
+
+  app.patch("/api/comments/:id/moderation", attachUser, async (req, res) => {
     try {
-      const replies = await storage.getCommentReplies(
-        parseInt(req.params.commentId),
-      );
-      res.json(replies);
-    } catch (error: any) {
-      console.error("Error fetching comment replies:", error);
-      res.status(500).json({
-        message: "Failed to fetch comment replies",
-        error: error.message,
+      const parsedAction = commentModerationActionSchema.safeParse(req.body);
+      if (!parsedAction.success)
+        return res.status(400).json({ message: "Choose approve or remove" });
+      const { action } = parsedAction.data;
+      const result = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({ comment: comments, postOwnerId: posts.userId })
+          .from(comments)
+          .innerJoin(posts, eq(comments.postId, posts.id))
+          .where(eq(comments.id, parseInt(req.params.id)))
+          .limit(1);
+        if (!row) return null;
+        if (row.postOwnerId !== req.dbUser!.id) return "forbidden" as const;
+        const nextVisibility = action === "approve" ? "public" : "removed";
+        const wasPublic = row.comment.visibility === "public";
+        const willBePublic = nextVisibility === "public";
+        const [updated] = await tx
+          .update(comments)
+          .set({ visibility: nextVisibility })
+          .where(eq(comments.id, row.comment.id))
+          .returning();
+        if (wasPublic !== willBePublic) {
+          await tx
+            .update(posts)
+            .set({
+              comments: willBePublic
+                ? sql`${posts.comments} + 1`
+                : sql`greatest(${posts.comments} - 1, 0)`,
+            })
+            .where(eq(posts.id, row.comment.postId));
+        }
+        return updated;
       });
+      if (!result)
+        return res.status(404).json({ message: "Comment not found" });
+      if (result === "forbidden")
+        return res
+          .status(403)
+          .json({ message: "Only the post owner can moderate this comment" });
+      return res.json(result);
+    } catch (error) {
+      console.error("Error moderating comment:", error);
+      return res.status(500).json({ message: "Failed to moderate comment" });
     }
   });
 
   // Get a single comment by ID
-  app.get("/api/comments/:id", async (req, res) => {
+  app.get("/api/comments/:id", attachUserIfPresent, async (req, res) => {
     try {
-      const comment = await storage.getCommentById(parseInt(req.params.id));
-      if (!comment) {
+      const [row] = await db
+        .select({ comment: comments, user: users, postOwnerId: posts.userId })
+        .from(comments)
+        .innerJoin(users, eq(comments.userId, users.id))
+        .innerJoin(posts, eq(comments.postId, posts.id))
+        .where(eq(comments.id, parseInt(req.params.id)))
+        .limit(1);
+      if (!row) {
         return res.status(404).json({ message: "Comment not found" });
       }
-      res.json(comment);
+      if (
+        row.comment.visibility !== "public" &&
+        req.dbUser?.id !== row.comment.userId &&
+        req.dbUser?.id !== row.postOwnerId
+      ) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      res.json({ ...row.comment, user: row.user });
     } catch (error: any) {
       console.error("Error fetching comment:", error);
       res.status(500).json({ message: "Failed to fetch comment" });
@@ -3088,37 +3839,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/search/discovery", async (_req, res) => {
     try {
-      const [suggestedCreators, recentProductRows, trendingProductRows, topicRows] =
-        await Promise.all([
-          db
-            .select(publicUserFields)
-            .from(users)
-            .orderBy(desc(users.createdAt))
-            .limit(2),
-          db
-            .select({ product: products, user: publicUserFields })
-            .from(products)
-            .innerJoin(users, eq(products.userId, users.id))
-            .where(eq(products.status, "published"))
-            .orderBy(desc(products.createdAt))
-            .limit(3),
-          db
-            .select({ product: products, user: publicUserFields })
-            .from(products)
-            .innerJoin(users, eq(products.userId, users.id))
-            .where(eq(products.status, "published"))
-            .orderBy(
-              desc(products.rating),
-              desc(products.reviewCount),
-              desc(products.createdAt),
-            )
-            .limit(4),
-          db
-            .select({ content: posts.content })
-            .from(posts)
-            .orderBy(desc(posts.createdAt))
-            .limit(500),
-        ]);
+      const [
+        suggestedCreators,
+        recentProductRows,
+        trendingProductRows,
+        topicRows,
+      ] = await Promise.all([
+        db
+          .select(publicUserFields)
+          .from(users)
+          .orderBy(desc(users.createdAt))
+          .limit(2),
+        db
+          .select({ product: products, user: publicUserFields })
+          .from(products)
+          .innerJoin(users, eq(products.userId, users.id))
+          .where(eq(products.status, "published"))
+          .orderBy(desc(products.createdAt))
+          .limit(3),
+        db
+          .select({ product: products, user: publicUserFields })
+          .from(products)
+          .innerJoin(users, eq(products.userId, users.id))
+          .where(eq(products.status, "published"))
+          .orderBy(
+            desc(products.rating),
+            desc(products.reviewCount),
+            desc(products.createdAt),
+          )
+          .limit(4),
+        db
+          .select({ content: posts.content })
+          .from(posts)
+          .orderBy(desc(posts.createdAt))
+          .limit(500),
+      ]);
       res.json({
         suggestedCreators,
         recentProducts: recentProductRows.map(({ product, user }) => ({
@@ -3310,6 +4065,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .insert(productSaves)
           .values({ userId: req.dbUser!.id, productId })
           .onConflictDoNothing();
+        void emitAnalyticsEvent({
+          userId: req.dbUser!.id,
+          eventName: "content.engaged",
+          sessionId: `product-save-${req.dbUser!.id}`,
+          deduplicationKey: `product-save:${productId}:${req.dbUser!.id}`,
+          objectType: "product",
+          objectId: String(productId),
+          properties: { action: "save" },
+        }).catch(() => undefined);
         res.status(204).end();
       } catch {
         res.status(500).json({ message: "Failed to save offer" });
@@ -3359,7 +4123,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (query.category === "courses")
         clauses.push(eq(products.productType, "course"));
       if (query.category === "communities")
-        clauses.push(inArray(products.productType, ["community", "membership"]));
+        clauses.push(
+          inArray(products.productType, ["community", "membership"]),
+        );
       if (query.category === "digital_assets")
         clauses.push(eq(products.productType, "digital_download"));
       const whereClause = clauses.length ? and(...clauses) : undefined;
@@ -3447,10 +4213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(products)
         .innerJoin(users, eq(products.userId, users.id))
         .where(
-          and(
-            eq(products.id, productId),
-            eq(products.status, "published"),
-          ),
+          and(eq(products.id, productId), eq(products.status, "published")),
         )
         .limit(1);
       if (!row) {
@@ -3588,6 +4351,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .insert(postViews)
           .values({ postId, userId: req.dbUser!.id })
           .onConflictDoNothing();
+        void emitAnalyticsEvent({
+          userId: req.dbUser!.id,
+          eventName: "content.exposed",
+          sessionId: `post-view-${req.dbUser!.id}`,
+          deduplicationKey: `post-view:${postId}:${req.dbUser!.id}`,
+          objectType: "post",
+          objectId: String(postId),
+          properties: { surface: "feed" },
+        }).catch(() => undefined);
       }
       res.status(204).end();
     } catch {
@@ -3639,10 +4411,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         saves: saves[0].value,
         reposts: reposts[0].value,
       };
+      const playback = post.mediaAssetId
+        ? await db
+            .select({
+              sessions: count(),
+              uniqueViewers: sql<number>`count(distinct ${mediaPlaybackSessions.viewerUserId})::int`,
+              watchMs: sql<number>`coalesce(sum(${mediaPlaybackSessions.watchMs}),0)::bigint`,
+              averageWatchMs: sql<number>`coalesce(avg(${mediaPlaybackSessions.watchMs}),0)::bigint`,
+            })
+            .from(mediaPlaybackSessions)
+            .where(eq(mediaPlaybackSessions.assetId, post.mediaAssetId))
+        : [];
+      const playbackMetrics = playback[0] ?? {
+        sessions: 0,
+        uniqueViewers: 0,
+        watchMs: 0,
+        averageWatchMs: 0,
+      };
       res.json({
         ...metrics,
         interactions:
           metrics.likes + metrics.comments + metrics.saves + metrics.reposts,
+        engagementRate:
+          Number(metrics.views) > 0
+            ? (metrics.likes +
+                metrics.comments +
+                metrics.saves +
+                metrics.reposts) /
+              Number(metrics.views)
+            : 0,
+        playbackSessions: Number(playbackMetrics.sessions),
+        uniqueViewers: Number(playbackMetrics.uniqueViewers),
+        watchMs: Number(playbackMetrics.watchMs),
+        averageWatchMs: Number(playbackMetrics.averageWatchMs),
       });
     } catch {
       res.status(500).json({ message: "Failed to fetch post analytics" });
@@ -4332,22 +5133,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const ids = rows.map((event) => event.id);
       const [attendanceRows, countRows] = await Promise.all([
         db
-          .select({ eventId: eventAttendees.eventId, status: eventAttendees.status })
+          .select({
+            eventId: eventAttendees.eventId,
+            status: eventAttendees.status,
+          })
           .from(eventAttendees)
-          .where(and(inArray(eventAttendees.eventId, ids), eq(eventAttendees.userId, req.dbUser!.id))),
+          .where(
+            and(
+              inArray(eventAttendees.eventId, ids),
+              eq(eventAttendees.userId, req.dbUser!.id),
+            ),
+          ),
         db
           .select({ eventId: eventAttendees.eventId, value: count() })
           .from(eventAttendees)
-          .where(and(inArray(eventAttendees.eventId, ids), eq(eventAttendees.status, "going")))
+          .where(
+            and(
+              inArray(eventAttendees.eventId, ids),
+              eq(eventAttendees.status, "going"),
+            ),
+          )
           .groupBy(eventAttendees.eventId),
       ]);
-      const attendanceByEvent = new Map(attendanceRows.map((row) => [row.eventId, row.status]));
-      const goingByEvent = new Map(countRows.map((row) => [row.eventId, Number(row.value)]));
-      res.json(rows.map((event) => ({
-        ...event,
-        attendanceStatus: attendanceByEvent.get(event.id) ?? null,
-        goingCount: goingByEvent.get(event.id) ?? 0,
-      })));
+      const attendanceByEvent = new Map(
+        attendanceRows.map((row) => [row.eventId, row.status]),
+      );
+      const goingByEvent = new Map(
+        countRows.map((row) => [row.eventId, Number(row.value)]),
+      );
+      res.json(
+        rows.map((event) => ({
+          ...event,
+          attendanceStatus: attendanceByEvent.get(event.id) ?? null,
+          goingCount: goingByEvent.get(event.id) ?? 0,
+        })),
+      );
     } catch {
       res.status(500).json({ message: "Failed to fetch community events" });
     }
@@ -4364,15 +5184,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       coverUrl,
     } = req.body;
     const eventName = typeof name === "string" ? name.trim() : "";
-    const parsedDateTime = typeof dateTime === "string" ? new Date(dateTime) : new Date(Number.NaN);
-    const eventDescription = typeof description === "string" ? description.trim() : "";
-    const eventLocation = typeof location === "string" && location.trim() ? location.trim() : null;
-    const parsedCoverUrl = typeof coverUrl === "string" && coverUrl.trim() ? parseRoomUrl(coverUrl.trim()) : null;
-    if (!eventName || eventName.length > 160 || Number.isNaN(parsedDateTime.valueOf()) || !communityId || !channelId)
-      return res
-        .status(400)
-        .json({ message: "A valid name, time, community, and channel are required" });
-    if (eventDescription.length > 10_000 || (eventLocation?.length ?? 0) > 500 || parsedCoverUrl === undefined)
+    const parsedDateTime =
+      typeof dateTime === "string" ? new Date(dateTime) : new Date(Number.NaN);
+    const eventDescription =
+      typeof description === "string" ? description.trim() : "";
+    const eventLocation =
+      typeof location === "string" && location.trim() ? location.trim() : null;
+    const parsedCoverUrl =
+      typeof coverUrl === "string" && coverUrl.trim()
+        ? parseRoomUrl(coverUrl.trim())
+        : null;
+    if (
+      !eventName ||
+      eventName.length > 160 ||
+      Number.isNaN(parsedDateTime.valueOf()) ||
+      !communityId ||
+      !channelId
+    )
+      return res.status(400).json({
+        message: "A valid name, time, community, and channel are required",
+      });
+    if (
+      eventDescription.length > 10_000 ||
+      (eventLocation?.length ?? 0) > 500 ||
+      parsedCoverUrl === undefined
+    )
       return res.status(400).json({ message: "Event details are invalid" });
     const parsedCommunityId = Number(communityId);
     if (
@@ -4396,10 +5232,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const [channel] = await db
       .select()
       .from(channels)
-      .where(and(eq(channels.id, parsedChannelId), eq(channels.communityId, parsedCommunityId)))
+      .where(
+        and(
+          eq(channels.id, parsedChannelId),
+          eq(channels.communityId, parsedCommunityId),
+        ),
+      )
       .limit(1);
     if (!channel)
-      return res.status(400).json({ message: "The selected channel is not in this community" });
+      return res
+        .status(400)
+        .json({ message: "The selected channel is not in this community" });
     const event = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(events)
@@ -4414,7 +5257,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           coverUrl: parsedCoverUrl,
         })
         .returning();
-      const schedule = parsedDateTime.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+      const schedule = parsedDateTime.toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "UTC",
+      });
       await tx.insert(channelMessages).values({
         channelId: parsedChannelId,
         userId: req.dbUser!.id,
@@ -4545,7 +5392,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         Number.isNaN(parsedDateTime.valueOf()) ||
         !Number.isInteger(parsedChannelId)
       )
-        return res.status(400).json({ message: "Valid event details are required" });
+        return res
+          .status(400)
+          .json({ message: "Valid event details are required" });
       if (
         eventDescription.length > 10_000 ||
         (eventLocation?.length ?? 0) > 500 ||
@@ -4660,6 +5509,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).catch((error) =>
         console.error("Failed to enqueue RSVP projection:", error),
       );
+      if (status === "going") {
+        await awardCommunityPoints({
+          communityId: event.communityId,
+          userId: req.dbUser!.id,
+          sourceType: "event_rsvp",
+          sourceId: event.id,
+          points: 5,
+          reason: "Committed to a community event",
+        });
+      }
       res.json(attendance);
     } catch {
       res.status(500).json({ message: "Failed to save RSVP" });
@@ -5060,6 +5919,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: "Distribution media must be your ready public assets",
           });
         }
+        const rightsAllowed = await Promise.all(
+          assetIds.map((assetId) =>
+            assetRightsAllowUse(assetId, "external_distribution"),
+          ),
+        );
+        if (rightsAllowed.some((allowed) => !allowed)) {
+          return res.status(409).json({
+            message:
+              "One or more assets are blocked by their rights or license state",
+          });
+        }
         if (
           platforms.includes("YouTube") &&
           !selectedAssets.some(
@@ -5089,6 +5959,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: "scheduled",
         })
         .returning();
+      await Promise.all(
+        assetIds.map((assetId) =>
+          recordAssetUsage({
+            assetId,
+            actorUserId: req.dbUser!.id,
+            surfaceType: "distribution",
+            surfaceId: job.id,
+            useType: "external_distribution",
+            metadata: { platforms },
+          }),
+        ),
+      );
       const campaignDeliverableId =
         typeof req.body?.campaignDeliverableId === "string"
           ? req.body.campaignDeliverableId
@@ -5163,37 +6045,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/distribution-jobs/:id/cancel", attachUser, async (req, res) => {
-    const [job] = await db.select().from(distributionJobs).where(and(
-      eq(distributionJobs.id, req.params.id),
-      eq(distributionJobs.userId, req.dbUser!.id),
-    )).limit(1);
-    if (!job) return res.status(404).json({ message: "Distribution job not found" });
-    if (!new Set(["scheduled", "needs_connection", "needs_provider", "failed"]).has(job.status))
-      return res.status(409).json({ message: "This distribution job can no longer be canceled" });
-    const [canceled] = await db.update(distributionJobs)
-      .set({ status: "canceled", updatedAt: new Date() })
-      .where(and(eq(distributionJobs.id, job.id), eq(distributionJobs.status, job.status)))
-      .returning();
-    if (!canceled) return res.status(409).json({ message: "Distribution job changed before it could be canceled" });
-    res.json(canceled);
-  });
+  app.post(
+    "/api/distribution-jobs/:id/cancel",
+    attachUser,
+    async (req, res) => {
+      const [job] = await db
+        .select()
+        .from(distributionJobs)
+        .where(
+          and(
+            eq(distributionJobs.id, req.params.id),
+            eq(distributionJobs.userId, req.dbUser!.id),
+          ),
+        )
+        .limit(1);
+      if (!job)
+        return res.status(404).json({ message: "Distribution job not found" });
+      if (
+        !new Set([
+          "scheduled",
+          "needs_connection",
+          "needs_provider",
+          "failed",
+        ]).has(job.status)
+      )
+        return res
+          .status(409)
+          .json({ message: "This distribution job can no longer be canceled" });
+      const [canceled] = await db
+        .update(distributionJobs)
+        .set({ status: "canceled", updatedAt: new Date() })
+        .where(
+          and(
+            eq(distributionJobs.id, job.id),
+            eq(distributionJobs.status, job.status),
+          ),
+        )
+        .returning();
+      if (!canceled)
+        return res.status(409).json({
+          message: "Distribution job changed before it could be canceled",
+        });
+      res.json(canceled);
+    },
+  );
 
   app.post("/api/distribution-jobs/:id/retry", attachUser, async (req, res) => {
-    const [job] = await db.select().from(distributionJobs).where(and(
-      eq(distributionJobs.id, req.params.id),
-      eq(distributionJobs.userId, req.dbUser!.id),
-    )).limit(1);
-    if (!job) return res.status(404).json({ message: "Distribution job not found" });
-    if (!new Set(["needs_connection", "needs_provider", "failed", "canceled"]).has(job.status))
-      return res.status(409).json({ message: "This distribution job is not retryable" });
-    const [queued] = await db.update(distributionJobs)
-      .set({ status: "scheduled", scheduledFor: new Date(), updatedAt: new Date() })
-      .where(and(eq(distributionJobs.id, job.id), eq(distributionJobs.status, job.status)))
+    const [job] = await db
+      .select()
+      .from(distributionJobs)
+      .where(
+        and(
+          eq(distributionJobs.id, req.params.id),
+          eq(distributionJobs.userId, req.dbUser!.id),
+        ),
+      )
+      .limit(1);
+    if (!job)
+      return res.status(404).json({ message: "Distribution job not found" });
+    if (
+      !new Set([
+        "needs_connection",
+        "needs_provider",
+        "failed",
+        "canceled",
+      ]).has(job.status)
+    )
+      return res
+        .status(409)
+        .json({ message: "This distribution job is not retryable" });
+    const [queued] = await db
+      .update(distributionJobs)
+      .set({
+        status: "scheduled",
+        scheduledFor: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(distributionJobs.id, job.id),
+          eq(distributionJobs.status, job.status),
+        ),
+      )
       .returning();
-    if (!queued) return res.status(409).json({ message: "Distribution job changed before it could be retried" });
+    if (!queued)
+      return res.status(409).json({
+        message: "Distribution job changed before it could be retried",
+      });
     await processDueDistributionJobs();
-    const [processed] = await db.select().from(distributionJobs).where(eq(distributionJobs.id, job.id)).limit(1);
+    const [processed] = await db
+      .select()
+      .from(distributionJobs)
+      .where(eq(distributionJobs.id, job.id))
+      .limit(1);
     res.json(processed ?? queued);
   });
 
@@ -5215,7 +6159,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       if (!allowedIds.length) {
         return res.status(409).json({
-          message: "This offer is unavailable, already owned, or belongs to you",
+          message:
+            "This offer is unavailable, already owned, or belongs to you",
         });
       }
       const inserted = await db
@@ -5300,7 +6245,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(await storage.getPurchasesByBuyerId(req.dbUser!.id));
       }
       const rows = await db
-        .select({ entitlement: entitlements, product: products, seller: publicUserFields })
+        .select({
+          entitlement: entitlements,
+          product: products,
+          seller: publicUserFields,
+        })
         .from(entitlements)
         .innerJoin(products, eq(entitlements.productId, products.id))
         .innerJoin(users, eq(products.userId, users.id))
@@ -5373,10 +6322,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(users, eq(users.id, orders.buyerId))
         .where(eq(products.userId, req.dbUser!.id))
         .orderBy(desc(orders.createdAt));
-      const grouped = new Map<string, typeof rows[number]["order"] & {
-        buyer: { id: number; username: string; displayName: string };
-        items: typeof rows[number]["item"][];
-      }>();
+      const grouped = new Map<
+        string,
+        (typeof rows)[number]["order"] & {
+          buyer: { id: number; username: string; displayName: string };
+          items: (typeof rows)[number]["item"][];
+        }
+      >();
       for (const row of rows) {
         const existing = grouped.get(row.order.id);
         if (existing) {
@@ -5385,7 +6337,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         grouped.set(row.order.id, {
           ...row.order,
-          buyer: { id: row.buyerId, username: row.buyerUsername, displayName: row.buyerDisplayName },
+          buyer: {
+            id: row.buyerId,
+            username: row.buyerUsername,
+            displayName: row.buyerDisplayName,
+          },
           items: [row.item],
         });
       }
@@ -5414,6 +6370,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           rawProductIds.filter((value: unknown) => Number.isInteger(value)),
         ),
       ) as number[];
+      const promotionCode =
+        typeof req.body?.promotionCode === "string"
+          ? req.body.promotionCode.trim().toUpperCase()
+          : "";
       if (!idempotencyKey || idempotencyKey.length > 120) {
         return res
           .status(400)
@@ -5518,17 +6478,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       const total = offers.reduce((sum, product) => sum + product.price, 0);
+      const businessIds = Array.from(
+        new Set(
+          offers.flatMap((product) =>
+            product.businessId ? [product.businessId] : [],
+          ),
+        ),
+      );
+      if (promotionCode && businessIds.length !== 1)
+        return res.status(409).json({
+          message: "Promotion checkout must contain one seller business",
+        });
+      const checkoutBusinessId =
+        businessIds.length === 1 ? businessIds[0] : null;
+      const attributionTouch = await latestAttributionTouch(req.dbUser!.id);
+      const affiliateAttribution = await affiliateAttributionForCheckout(
+        req,
+        req.dbUser!.id,
+        productIds,
+      );
 
       const order = await db.transaction(async (tx) => {
         const [created] = await tx
           .insert(orders)
           .values({
             buyerId: req.dbUser!.id,
+            businessId: checkoutBusinessId,
             status: "payment_required",
             currency: "usd",
             subtotalAmount: total,
             totalAmount: total,
             idempotencyKey,
+            attributionContext: {
+              ...(attributionTouch
+                ? { touchId: attributionTouch.id, model: "last_touch_30d" }
+                : {}),
+              ...(affiliateAttribution ?? {}),
+              capturedAt: new Date().toISOString(),
+            },
           })
           .returning();
         const items = await tx
@@ -5546,17 +6533,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
             })),
           )
           .returning();
-        return { ...created, items };
+        const promotion = await reserveMarketplacePromotion(tx, {
+          code: promotionCode,
+          businessId: checkoutBusinessId,
+          buyerUserId: req.dbUser!.id,
+          orderId: created.id,
+          productIds,
+          subtotalCents: Math.round(total * 100),
+        });
+        if (!promotion) return { ...created, items };
+        const discountAmount = promotion.discountAmountCents / 100;
+        const [discounted] = await tx
+          .update(orders)
+          .set({
+            discountAmount,
+            promotionCode: promotion.promotion.code,
+            trialDays: promotion.trialDays,
+            totalAmount: Math.max(0, total - discountAmount),
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, created.id))
+          .returning();
+        return { ...discounted, items };
       });
+      void emitAnalyticsEvent({
+        userId: req.dbUser!.id,
+        businessId: attributionTouch?.businessId ?? null,
+        eventName: "checkout.started",
+        sessionId: `checkout-${req.dbUser!.id}`,
+        deduplicationKey: `checkout-started:${order.id}`,
+        objectType: "order",
+        objectId: order.id,
+        properties: { productIds, totalAmount: total },
+      }).catch(() => undefined);
       res.status(201).json(order);
     } catch (error: any) {
       if (error?.code === "23505")
         return res
           .status(409)
           .json({ message: "This checkout was already prepared" });
+      if (
+        error instanceof Error &&
+        /promotion|checkout minimum|buyer limit|redemption limit/i.test(
+          error.message,
+        )
+      )
+        return res.status(409).json({ message: error.message });
       res.status(500).json({ message: "Failed to prepare order" });
     }
   });
+
+  app.post(
+    "/api/qualification/orders/:id/settle",
+    attachUser,
+    async (req, res) => {
+      if (
+        process.env.CREATOROS_QUALIFICATION_MODE !== "true" ||
+        process.env.QUALIFICATION_ISOLATED_DATABASE !== "true"
+      ) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(
+          and(eq(orders.id, req.params.id), eq(orders.buyerId, req.dbUser!.id)),
+        )
+        .limit(1);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const providerReference =
+        typeof req.body?.providerReference === "string"
+          ? req.body.providerReference.trim().slice(0, 255)
+          : "";
+      if (!providerReference)
+        return res
+          .status(400)
+          .json({ message: "Provider reference is required" });
+      const result = await settleOrder({
+        orderId: order.id,
+        paymentProvider: "qualification",
+        providerReference,
+      });
+      return res.json(result);
+    },
+  );
 
   // This is intentionally limited to demo mode. Production entitlement creation
   // must be triggered by a verified Stripe webhook, never by a client request.
@@ -5645,7 +6705,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           category,
         });
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid offer billing" });
+        return res.status(400).json({
+          message:
+            error instanceof Error ? error.message : "Invalid offer billing",
+        });
       }
       const product = await storage.createProduct({
         title: title.trim(),
@@ -5667,6 +6730,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         idempotencyKey: `product.created:${product.id}`,
       }).catch((error) =>
         console.error("Failed to enqueue product projection:", error),
+      );
+      void emitDeveloperWebhookEvent({
+        businessId,
+        eventType: "product.updated",
+        aggregateType: "product",
+        aggregateId: String(product.id),
+        idempotencyKey: `product.created:${product.id}`,
+        payload: {
+          productId: product.id,
+          status: product.status,
+          productType: product.productType,
+        },
+      }).catch((error) =>
+        console.error("Failed to enqueue product developer webhook:", error),
       );
       res.status(201).json(product);
     } catch (error) {
@@ -5773,13 +6850,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         commercialTerms = normalizeProductCommercialTerms({
           productType: req.body?.productType ?? existing.productType,
           billingModel: req.body?.billingModel ?? existing.billingModel,
-          billingInterval: Object.prototype.hasOwnProperty.call(req.body ?? {}, "billingInterval")
+          billingInterval: Object.prototype.hasOwnProperty.call(
+            req.body ?? {},
+            "billingInterval",
+          )
             ? req.body.billingInterval
             : existing.billingInterval,
           category,
         });
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid offer billing" });
+        return res.status(400).json({
+          message:
+            error instanceof Error ? error.message : "Invalid offer billing",
+        });
       }
       let product = await storage.updateProduct(productId, {
         title: title.trim(),
@@ -5793,44 +6876,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...commercialTerms,
       });
       if (
-        status === "published"
-        && !product.communityId
-        && ["community", "membership"].includes(product.productType)
+        status === "published" &&
+        !product.communityId &&
+        ["community", "membership"].includes(product.productType)
       ) {
         const provisioned = await db.transaction(async (tx) => {
-          const [community] = await tx.insert(communities).values({
-            name: product.title,
-            description: product.description,
-            iconColor: "#1d9bf0",
-          }).returning();
-          const [claimed] = await tx.update(products).set({ communityId: community.id }).where(and(
-            eq(products.id, product.id),
-            isNull(products.communityId),
-          )).returning();
+          const [community] = await tx
+            .insert(communities)
+            .values({
+              name: product.title,
+              description: product.description,
+              iconColor: "#1d9bf0",
+            })
+            .returning();
+          const [claimed] = await tx
+            .update(products)
+            .set({ communityId: community.id })
+            .where(
+              and(eq(products.id, product.id), isNull(products.communityId)),
+            )
+            .returning();
           if (!claimed) {
-            await tx.delete(communities).where(eq(communities.id, community.id));
+            await tx
+              .delete(communities)
+              .where(eq(communities.id, community.id));
             return null;
           }
-          await tx.insert(communityMemberships).values({
-            userId: req.dbUser!.id,
-            communityId: community.id,
-            role: "owner",
-          }).onConflictDoNothing();
-          await tx.insert(channels).values({ communityId: community.id, name: "general" });
+          await tx
+            .insert(communityMemberships)
+            .values({
+              userId: req.dbUser!.id,
+              communityId: community.id,
+              role: "owner",
+            })
+            .onConflictDoNothing();
+          await tx
+            .insert(channels)
+            .values({ communityId: community.id, name: "general" });
           return claimed;
         });
         if (provisioned) product = { ...product, ...provisioned };
       }
+      const productEventRevision = Date.now();
       void emitProjectionEvent({
         aggregateType: "product",
         aggregateId: product.id,
         eventType: "product.updated",
         actorUserId: req.dbUser!.id,
         payload: { businessId: product.businessId, category: product.category },
-        idempotencyKey: `product.updated:${product.id}:${Date.now()}`,
+        idempotencyKey: `product.updated:${product.id}:${productEventRevision}`,
       }).catch((error) =>
         console.error("Failed to enqueue product update projection:", error),
       );
+      if (product.businessId)
+        void emitDeveloperWebhookEvent({
+          businessId: product.businessId,
+          eventType: "product.updated",
+          aggregateType: "product",
+          aggregateId: String(product.id),
+          idempotencyKey: `product.updated:${product.id}:${productEventRevision}`,
+          payload: {
+            productId: product.id,
+            status: product.status,
+            productType: product.productType,
+          },
+        }).catch((error) =>
+          console.error("Failed to enqueue product developer webhook:", error),
+        );
       res.json(product);
     } catch (error) {
       res.status(500).json({ message: "Failed to update offer" });
@@ -5853,7 +6965,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "A valid user ID is required" });
       }
       if (req.dbUser!.id !== userId) {
-        return res.status(403).json({ message: "You can only access your own AI agents" });
+        return res
+          .status(403)
+          .json({ message: "You can only access your own AI agents" });
       }
       res.json(await storage.getUserAIAgents(userId));
     } catch (error) {
@@ -5865,12 +6979,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const agentId = Number(req.params.id);
       if (!Number.isInteger(agentId) || agentId <= 0) {
-        return res.status(400).json({ message: "A valid AI agent ID is required" });
+        return res
+          .status(400)
+          .json({ message: "A valid AI agent ID is required" });
       }
       const agent = await storage.getAIAgentById(agentId);
-      if (!agent) return res.status(404).json({ message: "AI agent not found" });
+      if (!agent)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canUseAiAgent(req.dbUser!.id, agent)) {
-        return res.status(403).json({ message: "You cannot access this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot access this AI agent" });
       }
       res.json(agent);
     } catch (error) {
@@ -5882,7 +7001,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const parsed = createAiAgentInputSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "The AI agent details are invalid" });
+        return res
+          .status(400)
+          .json({ message: "The AI agent details are invalid" });
       }
       const agent = await storage.createAIAgent({
         ...parsed.data,
@@ -5899,16 +7020,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const agentId = Number(req.params.id);
       if (!Number.isInteger(agentId) || agentId <= 0) {
-        return res.status(400).json({ message: "A valid AI agent ID is required" });
+        return res
+          .status(400)
+          .json({ message: "A valid AI agent ID is required" });
       }
       const existing = await storage.getAIAgentById(agentId);
-      if (!existing) return res.status(404).json({ message: "AI agent not found" });
+      if (!existing)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canManageAiAgent(req.dbUser!.id, existing)) {
-        return res.status(403).json({ message: "You cannot change this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot change this AI agent" });
       }
       const parsed = updateAiAgentInputSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "The AI agent details are invalid" });
+        return res
+          .status(400)
+          .json({ message: "The AI agent details are invalid" });
       }
       res.json(await storage.updateAIAgent(agentId, parsed.data));
     } catch (error) {
@@ -5920,12 +7048,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const agentId = Number(req.params.id);
       if (!Number.isInteger(agentId) || agentId <= 0) {
-        return res.status(400).json({ message: "A valid AI agent ID is required" });
+        return res
+          .status(400)
+          .json({ message: "A valid AI agent ID is required" });
       }
       const existing = await storage.getAIAgentById(agentId);
-      if (!existing) return res.status(404).json({ message: "AI agent not found" });
+      if (!existing)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canManageAiAgent(req.dbUser!.id, existing)) {
-        return res.status(403).json({ message: "You cannot delete this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot delete this AI agent" });
       }
       await storage.deleteAIAgent(agentId);
       res.status(204).send();
@@ -5939,16 +7072,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const agentId = Number(req.params.agentId);
       const userId = Number(req.params.userId);
-      if (!Number.isInteger(agentId) || agentId <= 0 || !Number.isInteger(userId) || userId <= 0) {
-        return res.status(400).json({ message: "Valid AI agent and user IDs are required" });
+      if (
+        !Number.isInteger(agentId) ||
+        agentId <= 0 ||
+        !Number.isInteger(userId) ||
+        userId <= 0
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Valid AI agent and user IDs are required" });
       }
       if (req.dbUser!.id !== userId) {
-        return res.status(403).json({ message: "You can only access your own AI chats" });
+        return res
+          .status(403)
+          .json({ message: "You can only access your own AI chats" });
       }
       const agent = await storage.getAIAgentById(agentId);
-      if (!agent) return res.status(404).json({ message: "AI agent not found" });
+      if (!agent)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canUseAiAgent(req.dbUser!.id, agent)) {
-        return res.status(403).json({ message: "You cannot access this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot access this AI agent" });
       }
       res.json(await storage.getAIChatsByAgentId(agentId, userId));
     } catch (error) {
@@ -5960,14 +7105,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const parsed = createAiChatInputSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "The AI chat details are invalid" });
+        return res
+          .status(400)
+          .json({ message: "The AI chat details are invalid" });
       }
       const agent = await storage.getAIAgentById(parsed.data.agentId);
-      if (!agent) return res.status(404).json({ message: "AI agent not found" });
+      if (!agent)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canUseAiAgent(req.dbUser!.id, agent)) {
-        return res.status(403).json({ message: "You cannot use this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot use this AI agent" });
       }
-      const chat = await storage.createAIChat({ ...parsed.data, userId: req.dbUser!.id });
+      const chat = await storage.createAIChat({
+        ...parsed.data,
+        userId: req.dbUser!.id,
+      });
       res.status(201).json(chat);
     } catch (error) {
       res.status(500).json({ message: "Failed to create AI chat" });
@@ -5978,20 +7131,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const chatId = Number(req.params.id);
       if (!Number.isInteger(chatId) || chatId <= 0) {
-        return res.status(400).json({ message: "A valid AI chat ID is required" });
+        return res
+          .status(400)
+          .json({ message: "A valid AI chat ID is required" });
       }
-      const [existing] = await db.select().from(aiChats).where(eq(aiChats.id, chatId)).limit(1);
-      if (!existing) return res.status(404).json({ message: "AI chat not found" });
+      const [existing] = await db
+        .select()
+        .from(aiChats)
+        .where(eq(aiChats.id, chatId))
+        .limit(1);
+      if (!existing)
+        return res.status(404).json({ message: "AI chat not found" });
       if (existing.userId !== req.dbUser!.id) {
-        return res.status(403).json({ message: "You can only update your own AI chats" });
+        return res
+          .status(403)
+          .json({ message: "You can only update your own AI chats" });
       }
       const parsed = aiChatMessagesSchema.safeParse(req.body.messages);
       if (!parsed.success) {
-        return res.status(400).json({ message: "The AI chat messages are invalid" });
+        return res
+          .status(400)
+          .json({ message: "The AI chat messages are invalid" });
       }
       const agent = await storage.getAIAgentById(existing.agentId);
       if (!agent || !canUseAiAgent(req.dbUser!.id, agent)) {
-        return res.status(403).json({ message: "You cannot use this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot use this AI agent" });
       }
       res.json(await storage.updateAIChat(chatId, parsed.data));
     } catch (error) {
@@ -6004,13 +7170,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const parsed = aiChatMessageInputSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "A valid AI agent and message are required" });
+        return res
+          .status(400)
+          .json({ message: "A valid AI agent and message are required" });
       }
       const { agentId, message } = parsed.data;
       const agent = await storage.getAIAgentById(agentId);
-      if (!agent) return res.status(404).json({ message: "AI agent not found" });
+      if (!agent)
+        return res.status(404).json({ message: "AI agent not found" });
       if (!canUseAiAgent(req.dbUser!.id, agent)) {
-        return res.status(403).json({ message: "You cannot use this AI agent" });
+        return res
+          .status(403)
+          .json({ message: "You cannot use this AI agent" });
       }
 
       if (process.env.CREATOROS_DEMO_MODE === "true") {
@@ -6057,21 +7228,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/communities", async (req, res) => {
     try {
       const communityRows = await storage.getCommunities();
-      if (process.env.CREATOROS_DEMO_MODE === "true" || communityRows.length === 0) {
-        return res.json(communityRows.map((community) => ({ ...community, accessProductId: null })));
+      if (
+        process.env.CREATOROS_DEMO_MODE === "true" ||
+        communityRows.length === 0
+      ) {
+        return res.json(
+          communityRows.map((community) => ({
+            ...community,
+            accessProductId: null,
+          })),
+        );
       }
-      const accessOffers = await db.select({ id: products.id, communityId: products.communityId })
+      const accessOffers = await db
+        .select({ id: products.id, communityId: products.communityId })
         .from(products)
-        .where(and(
-          eq(products.status, "published"),
-          inArray(products.communityId, communityRows.map((community) => community.id)),
-          inArray(products.productType, ["community", "membership"]),
-        ));
-      const offerByCommunity = new Map(accessOffers.map((offer) => [offer.communityId, offer.id]));
-      res.json(communityRows.map((community) => ({
-        ...community,
-        accessProductId: offerByCommunity.get(community.id) ?? null,
-      })));
+        .where(
+          and(
+            eq(products.status, "published"),
+            inArray(
+              products.communityId,
+              communityRows.map((community) => community.id),
+            ),
+            inArray(products.productType, ["community", "membership"]),
+          ),
+        );
+      const offerByCommunity = new Map(
+        accessOffers.map((offer) => [offer.communityId, offer.id]),
+      );
+      res.json(
+        communityRows.map((community) => ({
+          ...community,
+          accessProductId: offerByCommunity.get(community.id) ?? null,
+        })),
+      );
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch communities" });
     }
@@ -6115,13 +7304,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (process.env.CREATOROS_DEMO_MODE === "true") {
         return res.json({ ...community, accessProductId: null });
       }
-      const [accessOffer] = await db.select({ id: products.id })
+      const [accessOffer] = await db
+        .select({ id: products.id })
         .from(products)
-        .where(and(
-          eq(products.communityId, community.id),
-          eq(products.status, "published"),
-          inArray(products.productType, ["community", "membership"]),
-        ))
+        .where(
+          and(
+            eq(products.communityId, community.id),
+            eq(products.status, "published"),
+            inArray(products.productType, ["community", "membership"]),
+          ),
+        )
         .limit(1);
       res.json({ ...community, accessProductId: accessOffer?.id ?? null });
     } catch (error) {
@@ -6149,6 +7341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 userId: req.dbUser!.id,
                 communityId: created.id,
                 role: "owner",
+                onboardingCompletedAt: new Date(),
               });
               await tx.insert(channels).values({
                 communityId: created.id,
@@ -6156,6 +7349,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
               return created;
             });
+      if (process.env.CREATOROS_DEMO_MODE !== "true") {
+        await seedCommunityBadges(community.id);
+      }
       if (process.env.CREATOROS_DEMO_MODE === "true") {
         await storage.joinCommunity({
           userId: req.dbUser!.id,
@@ -6319,9 +7515,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             targetUserId,
             actorUserId: req.dbUser!.id,
             action:
-              update.data.status === "active"
-                ? "restored"
-                : update.data.status,
+              update.data.status === "active" ? "restored" : update.data.status,
             reason: update.data.status === "active" ? null : reason || null,
           });
           return res.json(membership);
@@ -6389,22 +7583,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "You cannot join this community" });
       if (existing) return res.json(existing);
       if (process.env.CREATOROS_DEMO_MODE !== "true") {
-        const [accessOffer] = await db.select({ id: products.id })
+        const [accessOffer] = await db
+          .select({ id: products.id })
           .from(products)
-          .where(and(
-            eq(products.communityId, communityId),
-            eq(products.status, "published"),
-            inArray(products.productType, ["community", "membership"]),
-          ))
+          .where(
+            and(
+              eq(products.communityId, communityId),
+              eq(products.status, "published"),
+              inArray(products.productType, ["community", "membership"]),
+            ),
+          )
           .limit(1);
         if (accessOffer) {
-          const [access] = await db.select({ id: entitlements.id })
+          const [access] = await db
+            .select({ id: entitlements.id })
             .from(entitlements)
-            .where(and(
-              eq(entitlements.userId, req.dbUser!.id),
-              eq(entitlements.productId, accessOffer.id),
-              eq(entitlements.status, "active"),
-            ))
+            .where(
+              and(
+                eq(entitlements.userId, req.dbUser!.id),
+                eq(entitlements.productId, accessOffer.id),
+                eq(entitlements.status, "active"),
+              ),
+            )
             .limit(1);
           if (!access) {
             return res.status(402).json({
@@ -6419,6 +7619,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         communityId,
         role: "member",
       });
+      if (process.env.CREATOROS_DEMO_MODE !== "true") {
+        await seedCommunityBadges(communityId);
+        await awardCommunityPoints({
+          communityId,
+          userId: req.dbUser!.id,
+          sourceType: "membership",
+          sourceId: String(membership.id),
+          points: 10,
+          reason: "Joined the community",
+        });
+      }
       res.status(201).json(membership);
     } catch (error) {
       res.status(500).json({ message: "Failed to join community" });
@@ -6659,7 +7870,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!recording && !agentSessions.length) return;
     const configuration = getLiveKitConfiguration();
     if (!configuration)
-      throw new Error("Native room provider is unavailable while media is active");
+      throw new Error(
+        "Native room provider is unavailable while media is active",
+      );
     if (recording?.providerRecordingId) {
       const stopped = await stopLiveKitRoomRecording(
         configuration,
@@ -6690,8 +7903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     capability: "recording" | "transcription" | "ai_analysis",
   ) => {
     const configuration = getLiveKitConfiguration();
-    if (!configuration)
-      throw new Error("Native room provider is unavailable");
+    if (!configuration) throw new Error("Native room provider is unavailable");
     if (capability === "recording") {
       const [recording] = await db
         .select()
@@ -6724,7 +7936,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(communityRooms.id, room.id));
       return;
     }
-    const kind = capability === "transcription" ? "transcription" : "realtime_ai";
+    const kind =
+      capability === "transcription" ? "transcription" : "realtime_ai";
     const sessions = await db
       .select()
       .from(communityRoomAgentSessions)
@@ -7001,7 +8214,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             )
             .orderBy(communityRoomAiProfiles.createdAt),
         ]);
-      if (recordings[0]) recordings[0] = await reconcileRoomRecording(recordings[0]);
+      if (recordings[0])
+        recordings[0] = await reconcileRoomRecording(recordings[0]);
       const provider = liveKitProviderStatus();
       res.json({
         canManage: access.canManage,
@@ -7047,7 +8261,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(access.status).json({ message: access.message });
         if (!access.canManage)
           return res.status(403).json({
-            message: "Only the host or a community manager can record this room",
+            message:
+              "Only the host or a community manager can record this room",
           });
         if (access.room.provider !== "livekit" || access.room.status !== "live")
           return res.status(409).json({
@@ -7056,7 +8271,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const policy = await effectiveRoomIntelligencePolicy(access.room.id);
         if (!policy.recordingAllowed)
           return res.status(409).json({
-            message: "Enable recording in the room policy before the room starts",
+            message:
+              "Enable recording in the room policy before the room starts",
           });
         const configuration = getLiveKitRecordingConfiguration();
         if (!configuration)
@@ -7072,7 +8288,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             code: "code" in coverage ? coverage.code : undefined,
             message: coverage.message,
             missingUserIds:
-              "missingUserIds" in coverage ? coverage.missingUserIds : undefined,
+              "missingUserIds" in coverage
+                ? coverage.missingUserIds
+                : undefined,
           });
         if (!coverage.hasPublishedMedia)
           return res.status(409).json({
@@ -7094,13 +8312,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             storageKey,
           })
           .returning();
-        const providerRecording = await startLiveKitRoomRecording(configuration, {
-          roomName: liveKitRoomName(
-            access.room.communityId,
-            access.room.id,
-          ),
-          storageKey,
-        });
+        const providerRecording = await startLiveKitRoomRecording(
+          configuration,
+          {
+            roomName: liveKitRoomName(access.room.communityId, access.room.id),
+            storageKey,
+          },
+        );
         const result = liveKitRecordingResult(providerRecording);
         const [activeRecording] = await db
           .update(communityRoomRecordings)
@@ -7130,7 +8348,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .set({
               status: "failed",
               errorMessage:
-                error instanceof Error ? error.message.slice(0, 2_000) : "Provider failure",
+                error instanceof Error
+                  ? error.message.slice(0, 2_000)
+                  : "Provider failure",
               updatedAt: new Date(),
             })
             .where(eq(communityRoomRecordings.id, recordingId))
@@ -7269,14 +8489,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         if (access.room.provider !== "livekit" || access.room.status !== "live")
           return res.status(409).json({
-            message: "Realtime room services can start only in a live native room",
+            message:
+              "Realtime room services can start only in a live native room",
           });
         const kind =
           req.body?.kind === "transcription" || req.body?.kind === "realtime_ai"
             ? req.body.kind
             : null;
         if (!kind)
-          return res.status(400).json({ message: "Choose a valid room service" });
+          return res
+            .status(400)
+            .json({ message: "Choose a valid room service" });
         const configuration = getLiveKitConfiguration();
         const agentName = getLiveKitAgentName(kind);
         if (!configuration || !agentName)
@@ -7294,10 +8517,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           (kind === "realtime_ai" && !policy.aiAnalysisAllowed)
         )
           return res.status(409).json({
-            message: "Enable this capability in the room policy before the room starts",
+            message:
+              "Enable this capability in the room policy before the room starts",
           });
         let profile: typeof communityRoomAiProfiles.$inferSelect | null = null;
-        let boundRelationshipContext: Awaited<ReturnType<typeof relationshipRoomContext>> = null;
+        let boundRelationshipContext: Awaited<
+          ReturnType<typeof relationshipRoomContext>
+        > = null;
         if (kind === "realtime_ai") {
           const profileId =
             typeof req.body?.profileId === "string" ? req.body.profileId : "";
@@ -7322,8 +8548,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(409).json({
               message: "That AI mode is not enabled by the room policy",
             });
-          boundRelationshipContext = await relationshipRoomContext(access.room.id);
-          relationshipUsageBusinessId = boundRelationshipContext?.businessId ?? null;
+          boundRelationshipContext = await relationshipRoomContext(
+            access.room.id,
+          );
+          relationshipUsageBusinessId =
+            boundRelationshipContext?.businessId ?? null;
         }
         const coverage = await participantConsentCoverage(
           access.room,
@@ -7334,7 +8563,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             code: "code" in coverage ? coverage.code : undefined,
             message: coverage.message,
             missingUserIds:
-              "missingUserIds" in coverage ? coverage.missingUserIds : undefined,
+              "missingUserIds" in coverage
+                ? coverage.missingUserIds
+                : undefined,
           });
         const [existing] = await db
           .select()
@@ -7354,12 +8585,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           )
           .limit(1);
         if (existing)
-          return res.status(409).json({ message: "That room service is already active" });
+          return res
+            .status(409)
+            .json({ message: "That room service is already active" });
         sessionId = crypto.randomUUID();
         if (relationshipUsageBusinessId) {
-          const operations = await relationshipOperationsSnapshot(relationshipUsageBusinessId);
+          const operations = await relationshipOperationsSnapshot(
+            relationshipUsageBusinessId,
+          );
           const realtime = operations.capacity["realtime.minute"];
-          const remaining = realtime.limit < 0 ? 60 : realtime.limit - realtime.used - realtime.reserved;
+          const remaining =
+            realtime.limit < 0
+              ? 60
+              : realtime.limit - realtime.used - realtime.reserved;
           relationshipReservedMinutes = Math.max(1, Math.min(60, remaining));
           await reserveRelationshipUsage({
             businessId: relationshipUsageBusinessId,
@@ -7382,10 +8620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .returning();
         const dispatch = await dispatchLiveKitRoomAgent(configuration, {
-          roomName: liveKitRoomName(
-            access.room.communityId,
-            access.room.id,
-          ),
+          roomName: liveKitRoomName(access.room.communityId, access.room.id),
           agentName,
           metadata: {
             protocol: "creativesos.room-agent.v1",
@@ -7406,11 +8641,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               : null,
             relationshipContext: boundRelationshipContext,
-            relationshipUsage: relationshipUsageBusinessId ? {
-              reservationKey: `realtime.minute:${sessionId}`,
-              maxMinutes: relationshipReservedMinutes,
-              enforcement: "stop_before_limit",
-            } : null,
+            relationshipUsage: relationshipUsageBusinessId
+              ? {
+                  reservationKey: `realtime.minute:${sessionId}`,
+                  maxMinutes: relationshipReservedMinutes,
+                  enforcement: "stop_before_limit",
+                }
+              : null,
           },
         });
         const [activeSession] = await db
@@ -7450,21 +8687,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Could not start room agent:", error);
         if (sessionId && relationshipUsageBusinessId)
-          await releaseRelationshipUsage({ businessId: relationshipUsageBusinessId, idempotencyKey: `realtime.minute:${sessionId}` }).catch(() => undefined);
+          await releaseRelationshipUsage({
+            businessId: relationshipUsageBusinessId,
+            idempotencyKey: `realtime.minute:${sessionId}`,
+          }).catch(() => undefined);
         if (sessionId)
           await db
             .update(communityRoomAgentSessions)
             .set({
               status: "failed",
               errorMessage:
-                error instanceof Error ? error.message.slice(0, 2_000) : "Provider failure",
+                error instanceof Error
+                  ? error.message.slice(0, 2_000)
+                  : "Provider failure",
               updatedAt: new Date(),
             })
             .where(eq(communityRoomAgentSessions.id, sessionId))
             .catch(() => undefined);
         if (error instanceof RelationshipQuotaError)
-          return res.status(409).json({ code: error.code, message: error.message });
-        res.status(502).json({ message: "The room agent runtime could not start" });
+          return res
+            .status(409)
+            .json({ code: error.code, message: error.message });
+        res
+          .status(502)
+          .json({ message: "The room agent runtime could not start" });
       }
     },
   );
@@ -7488,22 +8734,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             and(
               eq(communityRoomAgentSessions.id, req.params.sessionId),
               eq(communityRoomAgentSessions.roomId, access.room.id),
-              inArray(communityRoomAgentSessions.status, ["starting", "active"]),
+              inArray(communityRoomAgentSessions.status, [
+                "starting",
+                "active",
+              ]),
             ),
           )
           .limit(1);
         if (!session?.providerSessionId)
-          return res.status(404).json({ message: "Active room service not found" });
+          return res
+            .status(404)
+            .json({ message: "Active room service not found" });
         const configuration = getLiveKitConfiguration();
         if (!configuration)
           return res.status(503).json({
             message: "Native community rooms are not configured yet",
           });
         await stopLiveKitRoomAgent(configuration, {
-          roomName: liveKitRoomName(
-            access.room.communityId,
-            access.room.id,
-          ),
+          roomName: liveKitRoomName(access.room.communityId, access.room.id),
           providerSessionId: session.providerSessionId,
         });
         const now = new Date();
@@ -7514,14 +8762,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .returning();
         if (session.kind === "realtime_ai" && session.startedAt) {
           const context = await relationshipRoomContext(access.room.id);
-          if (context) await finalizeRelationshipUsage({
-            businessId: context.businessId,
-            quantity: Math.max(1, Math.ceil((now.getTime() - session.startedAt.getTime()) / 60_000)),
-            provider: "livekit_agents",
-            idempotencyKey: `realtime.minute:${session.id}`,
-            occurredAt: now,
-            metadata: { roomId: access.room.id, relationshipId: context.relationship.id, profileId: session.agentProfileId },
-          }).catch((error) => console.error("Could not finalize relationship realtime usage", { errorType: error instanceof Error ? error.name : typeof error }));
+          if (context)
+            await finalizeRelationshipUsage({
+              businessId: context.businessId,
+              quantity: Math.max(
+                1,
+                Math.ceil(
+                  (now.getTime() - session.startedAt.getTime()) / 60_000,
+                ),
+              ),
+              provider: "livekit_agents",
+              idempotencyKey: `realtime.minute:${session.id}`,
+              occurredAt: now,
+              metadata: {
+                roomId: access.room.id,
+                relationshipId: context.relationship.id,
+                profileId: session.agentProfileId,
+              },
+            }).catch((error) =>
+              console.error("Could not finalize relationship realtime usage", {
+                errorType: error instanceof Error ? error.name : typeof error,
+              }),
+            );
         }
         const [otherActive] = await db
           .select({ count: count(communityRoomAgentSessions.id) })
@@ -7531,7 +8793,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               eq(communityRoomAgentSessions.roomId, access.room.id),
               eq(communityRoomAgentSessions.kind, session.kind),
               ne(communityRoomAgentSessions.id, session.id),
-              inArray(communityRoomAgentSessions.status, ["starting", "active"]),
+              inArray(communityRoomAgentSessions.status, [
+                "starting",
+                "active",
+              ]),
             ),
           );
         if (Number(otherActive?.count ?? 0) === 0)
@@ -7580,7 +8845,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           rawBody,
         })
       )
-        return res.status(401).json({ message: "Invalid room media signature" });
+        return res
+          .status(401)
+          .json({ message: "Invalid room media signature" });
       const parsed = roomTranscriptSegmentInputSchema.safeParse(req.body);
       if (!parsed.success)
         return res.status(400).json({ message: "Invalid transcript segment" });
@@ -7703,10 +8970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     eq(communityRoomInsights.roomId, access.room.id),
                     inArray(communityRoomInsights.agentProfileId, profileIds),
                     or(
-                      eq(
-                        communityRoomInsights.targetUserId,
-                        req.dbUser!.id,
-                      ),
+                      eq(communityRoomInsights.targetUserId, req.dbUser!.id),
                       isNull(communityRoomInsights.targetUserId),
                     ),
                     eq(communityRoomInsights.status, "draft"),
@@ -7737,7 +9001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           agentRuntime: {
             configured: Boolean(
               process.env.ROOM_AI_AGENT_DISPATCH_URL &&
-                process.env.ROOM_AI_AGENT_SIGNING_SECRET,
+              process.env.ROOM_AI_AGENT_SIGNING_SECRET,
             ),
             status:
               process.env.ROOM_AI_AGENT_DISPATCH_URL &&
@@ -7763,7 +9027,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(access.status).json({ message: access.message });
         if (!access.canManage)
           return res.status(403).json({
-            message: "Only the host or a community manager can configure room intelligence",
+            message:
+              "Only the host or a community manager can configure room intelligence",
           });
         if (!canContributeToCommunity(access.membership.status))
           return res.status(403).json({
@@ -7771,7 +9036,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         if (access.room.status !== "scheduled")
           return res.status(409).json({
-            message: "Room intelligence policy must be configured before the room starts",
+            message:
+              "Room intelligence policy must be configured before the room starts",
           });
         const parsed = roomIntelligencePolicyInputSchema.safeParse(req.body);
         if (!parsed.success)
@@ -7808,12 +9074,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
           idempotencyKey: `community.room.intelligence_policy.updated:${access.room.id}:${policy.updatedAt.toISOString()}`,
         }).catch((error) =>
-          console.error("Failed to enqueue room intelligence policy event:", error),
+          console.error(
+            "Failed to enqueue room intelligence policy event:",
+            error,
+          ),
         );
         res.json(policy);
       } catch (error) {
         console.error("Could not save room intelligence policy:", error);
-        res.status(500).json({ message: "Could not save room intelligence policy" });
+        res
+          .status(500)
+          .json({ message: "Could not save room intelligence policy" });
       }
     },
   );
@@ -7828,7 +9099,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(access.status).json({ message: access.message });
         const parsed = roomConsentInputSchema.safeParse(req.body);
         if (!parsed.success)
-          return res.status(400).json({ message: "Choose a valid consent decision" });
+          return res
+            .status(400)
+            .json({ message: "Choose a valid consent decision" });
         const policy = await effectiveRoomIntelligencePolicy(access.room.id);
         if (!policyAllowsConsentCapability(policy, parsed.data.capability))
           return res.status(409).json({
@@ -7850,8 +9123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             capability: parsed.data.capability,
             decision: parsed.data.decision,
             respondedAt: now,
-            withdrawnAt:
-              parsed.data.decision === "withdrawn" ? now : null,
+            withdrawnAt: parsed.data.decision === "withdrawn" ? now : null,
             updatedAt: now,
           })
           .onConflictDoUpdate({
@@ -7863,8 +9135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             set: {
               decision: parsed.data.decision,
               respondedAt: now,
-              withdrawnAt:
-                parsed.data.decision === "withdrawn" ? now : null,
+              withdrawnAt: parsed.data.decision === "withdrawn" ? now : null,
               updatedAt: now,
             },
           })
@@ -7878,7 +9149,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             await stopRoomCapability(access.room, parsed.data.capability);
           } catch (error) {
-            console.error("Could not stop processing after consent withdrawal:", error);
+            console.error(
+              "Could not stop processing after consent withdrawal:",
+              error,
+            );
             const configuration = getLiveKitConfiguration();
             if (configuration)
               await removeLiveKitRoomParticipant(configuration, {
@@ -7914,13 +9188,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(access.status).json({ message: access.message });
         if (!access.canManage)
           return res.status(403).json({
-            message: "Only the host or a community manager can configure room AI",
+            message:
+              "Only the host or a community manager can configure room AI",
           });
         if (!["scheduled", "live"].includes(access.room.status))
-          return res.status(409).json({ message: "This room is already closed" });
+          return res
+            .status(409)
+            .json({ message: "This room is already closed" });
         const parsed = roomAiProfileInputSchema.safeParse(req.body);
         if (!parsed.success)
-          return res.status(400).json({ message: "Provide a valid AI role and audience" });
+          return res
+            .status(400)
+            .json({ message: "Provide a valid AI role and audience" });
         const policy = await effectiveRoomIntelligencePolicy(access.room.id);
         if (
           (parsed.data.mode === "private_copilot" &&
@@ -7961,7 +9240,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         const parsed = roomAiProfileStatusInputSchema.safeParse(req.body);
         if (!parsed.success)
-          return res.status(400).json({ message: "Choose a valid AI profile status" });
+          return res
+            .status(400)
+            .json({ message: "Choose a valid AI profile status" });
         const [profile] = await db
           .update(communityRoomAiProfiles)
           .set({ status: parsed.data.status, updatedAt: new Date() })
@@ -8019,10 +9300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             communityMemberships,
             and(
               eq(communityMemberships.userId, communityRoomAttendees.userId),
-              eq(
-                communityMemberships.communityId,
-                access.room.communityId,
-              ),
+              eq(communityMemberships.communityId, access.room.communityId),
             ),
           )
           .where(eq(communityRoomAttendees.roomId, access.room.id))
@@ -8085,7 +9363,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(access.status).json({ message: access.message });
         if (!access.canManage)
           return res.status(403).json({
-            message: "Only the host or a community manager can review room suggestions",
+            message:
+              "Only the host or a community manager can review room suggestions",
           });
         if (!canContributeToCommunity(access.membership.status))
           return res.status(403).json({
@@ -8094,7 +9373,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const parsed = roomInsightReviewInputSchema.safeParse(req.body);
         if (!parsed.success)
           return res.status(400).json({
-            message: "Choose whether to save this suggestion as a note, action item, or dismiss it",
+            message:
+              "Choose whether to save this suggestion as a note, action item, or dismiss it",
           });
 
         const result = await db.transaction(async (tx) => {
@@ -8203,7 +9483,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         if (result.kind === "action_too_long")
           return res.status(400).json({
-            message: "This suggestion title is too long to use as an action item",
+            message:
+              "This suggestion title is too long to use as an action item",
           });
 
         void emitProjectionEvent({
@@ -8252,8 +9533,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: "Native community rooms are not configured yet",
           });
 
-        const requiredConsentCapabilities =
-          activeRoomConsentCapabilities(access.room);
+        const requiredConsentCapabilities = activeRoomConsentCapabilities(
+          access.room,
+        );
         if (requiredConsentCapabilities.length > 0) {
           const grantedConsents = await db
             .select({ capability: communityRoomConsents.capability })
@@ -8300,13 +9582,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             set: { status: "going", checkedInAt: now, updatedAt: now },
           });
 
+        await awardCommunityPoints({
+          communityId: access.room.communityId,
+          userId: req.dbUser!.id,
+          sourceType: "room_check_in",
+          sourceId: access.room.id,
+          points: 15,
+          reason: "Attended a live community room",
+        });
+
         res.json(
           await createLiveKitParticipantToken(configuration, {
             roomId: access.room.id,
             communityId: access.room.communityId,
             userId: req.dbUser!.id,
             displayName:
-              req.dbUser!.displayName || req.dbUser!.username || "Creative member",
+              req.dbUser!.displayName ||
+              req.dbUser!.username ||
+              "Creative member",
             role: access.membership.role,
             canPublish: canContributeToCommunity(access.membership.status),
           }),
@@ -8397,6 +9690,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             set: { status: "going", checkedInAt: now, updatedAt: now },
           })
           .returning();
+        await awardCommunityPoints({
+          communityId: access.room.communityId,
+          userId: req.dbUser!.id,
+          sourceType: "room_check_in",
+          sourceId: access.room.id,
+          points: 15,
+          reason: "Attended a live community room",
+        });
         res.json(attendance);
       } catch {
         res.status(500).json({ message: "Could not check in to this room" });
@@ -8641,7 +9942,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedAt: communityRoomActionItems.updatedAt,
           })
           .from(communityRoomActionItems)
-          .leftJoin(users, eq(users.id, communityRoomActionItems.assigneeUserId))
+          .leftJoin(
+            users,
+            eq(users.id, communityRoomActionItems.assigneeUserId),
+          )
           .where(eq(communityRoomActionItems.roomId, access.room.id))
           .orderBy(communityRoomActionItems.createdAt),
       );
@@ -8804,9 +10108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "A valid community and channel name are required",
         });
       const { communityId, name } = parsed.data;
-      if (
-        !(await storage.getCommunityById(communityId))
-      )
+      if (!(await storage.getCommunityById(communityId)))
         return res.status(404).json({ message: "Community not found" });
       const membership = Number.isInteger(communityId)
         ? await storage.getCommunityMembership(req.dbUser!.id, communityId)
@@ -8933,6 +10235,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: req.body.content.trim(),
         isPinned: false,
       });
+      if (
+        process.env.CREATOROS_DEMO_MODE !== "true" &&
+        message.content.trim().length >= 20
+      ) {
+        await awardCommunityPoints({
+          communityId: channel.communityId,
+          userId: req.dbUser!.id,
+          sourceType: "message",
+          sourceId: String(message.id),
+          points: 2,
+          reason: "Contributed a substantive community message",
+        });
+      }
       res.status(201).json(message);
     } catch (error) {
       res.status(500).json({ message: "Failed to create message" });
@@ -9301,13 +10616,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const contactId = parseInt(req.params.id);
       const ownership = await requireContactOwner(contactId, req.dbUser!.id);
       if (!("contact" in ownership)) {
-        return res.status(ownership.status).json({ message: ownership.message });
+        return res
+          .status(ownership.status)
+          .json({ message: ownership.message });
       }
       const fields = parseContactFields(req.body);
       if (!fields) {
         return res.status(400).json({ message: "Contact details are invalid" });
       }
-      const contact = await storage.updateContact(contactId, fields.contactName, fields.purchaseInfo);
+      const contact = await storage.updateContact(
+        contactId,
+        fields.contactName,
+        fields.purchaseInfo,
+      );
       res.json(contact);
     } catch (error) {
       res.status(500).json({ message: "Failed to update contact" });
@@ -9319,7 +10640,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const contactId = parseInt(req.params.id);
       const ownership = await requireContactOwner(contactId, req.dbUser!.id);
       if (!("contact" in ownership)) {
-        return res.status(ownership.status).json({ message: ownership.message });
+        return res
+          .status(ownership.status)
+          .json({ message: ownership.message });
       }
       await storage.deleteContact(contactId);
       res.status(204).end();
@@ -9365,7 +10688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const fields = parseDocumentFields(req.body);
       if (!fields) {
-        return res.status(400).json({ message: "Document details are invalid" });
+        return res
+          .status(400)
+          .json({ message: "Document details are invalid" });
       }
       const document = await storage.createDocument({
         ...fields,
@@ -9390,7 +10715,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const fields = parseDocumentFields(req.body);
       if (!fields) {
-        return res.status(400).json({ message: "Document details are invalid" });
+        return res
+          .status(400)
+          .json({ message: "Document details are invalid" });
       }
       const document = await storage.updateDocument(
         parseInt(req.params.id),
@@ -9408,7 +10735,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const documentId = parseInt(req.params.id);
       const ownership = await requireDocumentOwner(documentId, req.dbUser!.id);
       if (!("document" in ownership)) {
-        return res.status(ownership.status).json({ message: ownership.message });
+        return res
+          .status(ownership.status)
+          .json({ message: ownership.message });
       }
       await storage.deleteDocument(documentId);
       res.status(204).end();
@@ -9440,14 +10769,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/conversations", attachUser, async (req, res) => {
     try {
       const { userIds, name, isGroup } = req.body;
-      console.log("Received conversation creation request:", {
-        userIds,
-        name,
-        isGroup,
-      });
 
       if (!userIds || !Array.isArray(userIds) || userIds.length < 2) {
-        console.error("Invalid userIds:", userIds);
         return res
           .status(400)
           .json({ message: "At least two users are required" });
@@ -9473,51 +10796,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // pass the read-before-write check and create duplicate inbox threads.
       if (userIds.length === 2 && !name && !isGroup) {
         const pair = Array.from(new Set<number>(userIds)).sort((a, b) => a - b);
-        if (pair.length !== 2) return res.status(400).json({ message: "A direct message requires two different users" });
+        if (pair.length !== 2)
+          return res
+            .status(400)
+            .json({ message: "A direct message requires two different users" });
         const result = await db.transaction(async (tx) => {
-          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`native-dm:${pair[0]}:${pair[1]}`}, 0))`);
-          const userConversations = await storage.getConversationsByUserId(pair[0]);
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`native-dm:${pair[0]}:${pair[1]}`}, 0))`,
+          );
+          const userConversations = await storage.getConversationsByUserId(
+            pair[0],
+          );
           for (const conversation of userConversations) {
             if (conversation.isGroup) continue;
-            const participants = await storage.getParticipantsByConversationId(conversation.id);
-            const participantIds = participants.map((participant) => participant.userId).sort((a, b) => a - b);
-            if (participantIds.length === 2 && participantIds[0] === pair[0] && participantIds[1] === pair[1]) {
+            const participants = await storage.getParticipantsByConversationId(
+              conversation.id,
+            );
+            const participantIds = participants
+              .map((participant) => participant.userId)
+              .sort((a, b) => a - b);
+            if (
+              participantIds.length === 2 &&
+              participantIds[0] === pair[0] &&
+              participantIds[1] === pair[1]
+            ) {
               return { conversation, created: false };
             }
           }
-          const conversation = await storage.createConversation(pair, undefined, false);
-          for (const userId of pair) await storage.addParticipantToConversation(conversation.id, userId);
+          const conversation = await storage.createConversation(
+            pair,
+            undefined,
+            false,
+          );
+          for (const userId of pair)
+            await storage.addParticipantToConversation(conversation.id, userId);
           return { conversation, created: true };
         });
         const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-        await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: result.conversation.id, currentUserId: req.dbUser!.id });
+        await syncLegacyNativeConversation({
+          businessId: currentBusiness.id,
+          nativeConversationId: result.conversation.id,
+          currentUserId: req.dbUser!.id,
+        });
         return res.status(result.created ? 201 : 200).json(result.conversation);
       }
 
       // If no existing conversation or this is a group chat, create a new one
-      console.log(
-        "Creating conversation with userIds:",
-        userIds,
-        "name:",
-        name,
-        "isGroup:",
-        isGroup,
-      );
       const conversation = await storage.createConversation(
         userIds,
         name,
         isGroup,
       );
-      console.log("Created conversation:", conversation);
-
       // Add participants to the conversation
-      console.log("Adding participants to conversation:", conversation.id);
       for (const userId of userIds) {
         await storage.addParticipantToConversation(conversation.id, userId);
       }
 
       const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-      await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: conversation.id, currentUserId: req.dbUser!.id });
+      await syncLegacyNativeConversation({
+        businessId: currentBusiness.id,
+        nativeConversationId: conversation.id,
+        currentUserId: req.dbUser!.id,
+      });
 
       res.status(201).json(conversation);
     } catch (error) {
@@ -9560,12 +10900,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/messages", attachUser, async (req, res) => {
     try {
       const conversationId = Number(req.body.conversationId);
-      const content = typeof req.body.content === "string" ? req.body.content.trim() : "";
-      if (!Number.isInteger(conversationId) || conversationId <= 0 || !content || content.length > 10_000) {
-        return res.status(400).json({ message: "A valid conversation and message are required" });
+      const content =
+        typeof req.body.content === "string" ? req.body.content.trim() : "";
+      const clientMutationId = normalizeClientMutationId(
+        req.body?.clientMutationId,
+      );
+      if (
+        !Number.isInteger(conversationId) ||
+        conversationId <= 0 ||
+        !content ||
+        content.length > 10_000 ||
+        clientMutationId === undefined
+      ) {
+        return res
+          .status(400)
+          .json({
+            message:
+              clientMutationId === undefined
+                ? "A valid client mutation ID is required"
+                : "A valid conversation and message are required",
+          });
       }
-      const replyToMessageId = req.body.replyToMessageId == null ? null : Number(req.body.replyToMessageId);
-      if (replyToMessageId != null && (!Number.isInteger(replyToMessageId) || replyToMessageId <= 0)) {
+      const replyToMessageId =
+        req.body.replyToMessageId == null
+          ? null
+          : Number(req.body.replyToMessageId);
+      if (
+        replyToMessageId != null &&
+        (!Number.isInteger(replyToMessageId) || replyToMessageId <= 0)
+      ) {
         return res.status(400).json({ message: "Invalid reply target" });
       }
       const conversation = await storage.getConversationById(conversationId);
@@ -9579,67 +10942,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "You are not a participant in this conversation" });
       }
       if (replyToMessageId != null) {
-        const [replyTarget] = await db.select({ conversationId: directMessages.conversationId }).from(directMessages).where(eq(directMessages.id, replyToMessageId)).limit(1);
-        if (!replyTarget || replyTarget.conversationId !== conversationId) return res.status(400).json({ message: "Reply target is outside this conversation" });
+        const [replyTarget] = await db
+          .select({ conversationId: directMessages.conversationId })
+          .from(directMessages)
+          .where(eq(directMessages.id, replyToMessageId))
+          .limit(1);
+        if (!replyTarget || replyTarget.conversationId !== conversationId)
+          return res
+            .status(400)
+            .json({ message: "Reply target is outside this conversation" });
       }
-      const recipients = conversation.participants.filter((participant) => participant.userId !== req.dbUser!.id);
+      const recipients = conversation.participants.filter(
+        (participant) => participant.userId !== req.dbUser!.id,
+      );
       const message = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(directMessages).values({
-          conversationId,
-          senderId: req.dbUser!.id,
-          content,
-          replyToMessageId,
-        }).returning();
+        const [created] = await tx
+          .insert(directMessages)
+          .values({
+            conversationId,
+            senderId: req.dbUser!.id,
+            content,
+            replyToMessageId,
+            clientMutationId,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!created) {
+          if (!clientMutationId)
+            throw new Error("Message mutation could not be committed");
+          const [existing] = await tx
+            .select()
+            .from(directMessages)
+            .where(
+              and(
+                eq(directMessages.senderId, req.dbUser!.id),
+                eq(directMessages.clientMutationId, clientMutationId),
+              ),
+            )
+            .limit(1);
+          if (!existing)
+            throw new Error("Message mutation could not be committed");
+          return { value: existing, replayed: true };
+        }
         const now = new Date();
-        await tx.update(conversations).set({ updatedAt: now }).where(eq(conversations.id, conversationId));
+        await tx
+          .update(conversations)
+          .set({ updatedAt: now })
+          .where(eq(conversations.id, conversationId));
         const consentCommand = messagingConsentCommand(content);
         for (const recipient of recipients) {
-          const [existingState] = await tx.select().from(automationContactStates).where(and(
-            eq(automationContactStates.ownerUserId, recipient.userId),
-            eq(automationContactStates.contactUserId, req.dbUser!.id),
-            eq(automationContactStates.channel, "native"),
-          )).limit(1);
-          await tx.insert(automationContactStates).values({
-            ownerUserId: recipient.userId,
-            contactUserId: req.dbUser!.id,
-            channel: "native",
-            conversationId,
-            optedOut: consentCommand === "opt_out",
-            optedOutAt: consentCommand === "opt_out" ? now : null,
-            lastInboundAt: now,
-            updatedAt: now,
-          }).onConflictDoUpdate({
-            target: [automationContactStates.ownerUserId, automationContactStates.contactUserId, automationContactStates.channel],
-            set: {
+          const [existingState] = await tx
+            .select()
+            .from(automationContactStates)
+            .where(
+              and(
+                eq(automationContactStates.ownerUserId, recipient.userId),
+                eq(automationContactStates.contactUserId, req.dbUser!.id),
+                eq(automationContactStates.channel, "native"),
+              ),
+            )
+            .limit(1);
+          await tx
+            .insert(automationContactStates)
+            .values({
+              ownerUserId: recipient.userId,
+              contactUserId: req.dbUser!.id,
+              channel: "native",
               conversationId,
+              optedOut: consentCommand === "opt_out",
+              optedOutAt: consentCommand === "opt_out" ? now : null,
               lastInboundAt: now,
               updatedAt: now,
-              ...(consentCommand === "opt_out" ? { optedOut: true, optedOutAt: now } : {}),
-              ...(consentCommand === "opt_in" ? { optedOut: false, optedOutAt: null, cooldownUntil: null } : {}),
-            },
-          });
-          if (!consentCommand && !existingState?.optedOut) {
-            await tx.insert(automationTriggerEvents).values({
-              ownerUserId: recipient.userId,
-              eventType: NATIVE_DM_RECEIVED_EVENT,
-              idempotencyKey: `native:dm:${created.id}:owner:${recipient.userId}`,
-              payload: {
-                channel: "native",
-                automated: false,
-                actorUserId: req.dbUser!.id,
-                actorDisplayName: req.dbUser!.displayName,
-                messageId: created.id,
+            })
+            .onConflictDoUpdate({
+              target: [
+                automationContactStates.ownerUserId,
+                automationContactStates.contactUserId,
+                automationContactStates.channel,
+              ],
+              set: {
                 conversationId,
-                content: created.content,
+                lastInboundAt: now,
+                updatedAt: now,
+                ...(consentCommand === "opt_out"
+                  ? { optedOut: true, optedOutAt: now }
+                  : {}),
+                ...(consentCommand === "opt_in"
+                  ? { optedOut: false, optedOutAt: null, cooldownUntil: null }
+                  : {}),
               },
-            }).onConflictDoNothing();
+            });
+          if (!consentCommand && !existingState?.optedOut) {
+            await tx
+              .insert(automationTriggerEvents)
+              .values({
+                ownerUserId: recipient.userId,
+                eventType: NATIVE_DM_RECEIVED_EVENT,
+                idempotencyKey: `native:dm:${created.id}:owner:${recipient.userId}`,
+                payload: {
+                  channel: "native",
+                  automated: false,
+                  actorUserId: req.dbUser!.id,
+                  actorDisplayName: req.dbUser!.displayName,
+                  messageId: created.id,
+                  conversationId,
+                  content: created.content,
+                },
+              })
+              .onConflictDoNothing();
           }
         }
-        return created;
+        return { value: created, replayed: false };
       });
       const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-      await syncLegacyNativeConversation({ businessId: currentBusiness.id, nativeConversationId: conversationId, currentUserId: req.dbUser!.id });
-      res.status(201).json(message);
+      await syncLegacyNativeConversation({
+        businessId: currentBusiness.id,
+        nativeConversationId: conversationId,
+        currentUserId: req.dbUser!.id,
+      });
+      if (!message.replayed) void kickAutomationProcessing();
+      res.status(message.replayed ? 200 : 201).json(message.value);
     } catch (error) {
       console.error("Error creating message:", error);
       res.status(500).json({ message: "Failed to send message" });
@@ -9649,8 +11071,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Edit a message
   app.patch("/api/messages/:id", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
-      const { content, isEdited } = req.body;
+      const messageId = Number(req.params.id);
+      const content =
+        typeof req.body.content === "string" ? req.body.content.trim() : "";
+      if (
+        !Number.isInteger(messageId) ||
+        messageId <= 0 ||
+        !content ||
+        content.length > 10_000
+      ) {
+        return res
+          .status(400)
+          .json({ message: "A valid message and content are required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)
@@ -9678,7 +11111,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete a message
   app.delete("/api/messages/:id", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
+      const messageId = Number(req.params.id);
+      if (!Number.isInteger(messageId) || messageId <= 0) {
+        return res.status(400).json({ message: "A valid message is required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)
@@ -9701,8 +11137,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Add/update reaction to a message
   app.post("/api/messages/:id/reaction", attachUser, async (req, res) => {
     try {
-      const messageId = parseInt(req.params.id);
-      const { reaction } = req.body;
+      const messageId = Number(req.params.id);
+      const reaction =
+        typeof req.body.reaction === "string" ? req.body.reaction.trim() : "";
+      if (
+        !Number.isInteger(messageId) ||
+        messageId <= 0 ||
+        !reaction ||
+        reaction.length > 64
+      ) {
+        return res
+          .status(400)
+          .json({ message: "A valid message and reaction are required" });
+      }
       const [existing] = await db
         .select()
         .from(directMessages)
@@ -9778,12 +11225,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({
             message: "You are not a participant in this conversation",
           });
-        console.log(`Attempting to delete conversation ${conversationId}`);
-
         // This will cascade delete all participants and messages due to DB constraints
         await storage.deleteConversation(conversationId);
 
-        console.log(`Successfully deleted conversation ${conversationId}`);
         res.status(200).json({ success: true });
       } catch (error) {
         console.error("Error deleting conversation:", error);
@@ -10009,8 +11453,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           caption,
         };
 
-        console.log("Story data to be created:", storyData);
-
         // Validate and create story
         const validatedData = insertStorySchema.parse(storyData);
         const story = await storage.createStory(validatedData);
@@ -10031,30 +11473,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: "ready",
             });
           } catch (assetError) {
-            console.error(
-              "Story published but asset registration failed:",
-              assetError,
-            );
+            await Promise.allSettled([
+              storage.deleteStory(story.id),
+              removeStoredAsset(stored.storageKey, "public"),
+            ]);
+            throw new Error("Story asset registration failed", { cause: assetError });
           }
         }
-
-        console.log("Story created successfully:", story);
 
         res.status(201).json(story);
       } catch (error) {
         await discardUploadedFiles([req.file]);
         console.error("Error creating story:", error);
-
-        if (error instanceof Error) {
-          console.error("Error details:", error.message);
-          if (error.stack) {
-            console.error("Error stack:", error.stack);
-          }
-        }
-
-        res.status(400).json({
-          message: "Failed to create story",
-          error: error instanceof Error ? error.message : "Unknown error",
+        const invalid = error instanceof z.ZodError;
+        res.status(invalid ? 400 : 500).json({
+          message: invalid ? "Story data is invalid" : "Failed to create story",
         });
       }
     },
@@ -10070,7 +11503,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res
           .status(403)
           .json({ message: "You can only delete your own stories" });
-      console.log(`Manually deleting story ID: ${storyId}`);
       await storage.deleteStory(storyId);
       res.status(204).send();
     } catch (error) {
@@ -10083,20 +11515,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/stories/:id/view", attachUser, async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
-      if (!Number.isInteger(storyId)) return res.status(400).json({ message: "Invalid story ID" });
+      if (!Number.isInteger(storyId))
+        return res.status(400).json({ message: "Invalid story ID" });
       const story = await storage.getStoryById(storyId);
       if (!story) return res.status(404).json({ message: "Story not found" });
 
       // Owners inspecting their own story are not audience views.
-      if (!shouldCountStoryView(story.userId, req.dbUser!.id)) return res.json(story);
+      if (!shouldCountStoryView(story.userId, req.dbUser!.id))
+        return res.json(story);
       if (process.env.CREATOROS_DEMO_MODE === "true") {
         return res.json(await storage.incrementStoryViewCount(storyId));
       }
 
       const updatedStory = await db.transaction(async (tx) => {
-        const [recorded] = await tx.insert(storyViews).values({ storyId, userId: req.dbUser!.id }).onConflictDoNothing().returning({ id: storyViews.id });
+        const [recorded] = await tx
+          .insert(storyViews)
+          .values({ storyId, userId: req.dbUser!.id })
+          .onConflictDoNothing()
+          .returning({ id: storyViews.id });
         if (!recorded) return story;
-        const [updated] = await tx.update(stories).set({ viewCount: sql`${stories.viewCount} + 1` }).where(eq(stories.id, storyId)).returning();
+        const [updated] = await tx
+          .update(stories)
+          .set({ viewCount: sql`${stories.viewCount} + 1` })
+          .where(eq(stories.id, storyId))
+          .returning();
         return updated ?? story;
       });
       res.json(updatedStory);

@@ -1,0 +1,14 @@
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "description" text NOT NULL DEFAULT '';
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "homepage_url" text;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "privacy_url" text;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "terms_url" text;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "visibility" text NOT NULL DEFAULT 'private';
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "review_status" text NOT NULL DEFAULT 'draft';
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "review_note" text;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "reviewed_by_user_id" integer REFERENCES "users"("id") ON DELETE set null;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "reviewed_at" timestamp;
+ALTER TABLE "developer_oauth_apps" ADD COLUMN "published_at" timestamp;
+ALTER TABLE "developer_oauth_apps" ADD CONSTRAINT "developer_oauth_apps_visibility_check" CHECK("visibility" IN ('private','public'));
+ALTER TABLE "developer_oauth_apps" ADD CONSTRAINT "developer_oauth_apps_review_status_check" CHECK("review_status" IN ('draft','pending','approved','rejected'));
+CREATE TABLE "developer_sandboxes" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,"app_id" uuid NOT NULL REFERENCES "developer_oauth_apps"("id") ON DELETE cascade,"owner_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE cascade,"business_id" uuid NOT NULL UNIQUE REFERENCES "businesses"("id") ON DELETE cascade,"status" text NOT NULL DEFAULT 'active',"expires_at" timestamp NOT NULL,"last_reset_at" timestamp,"created_at" timestamp NOT NULL DEFAULT now(),"updated_at" timestamp NOT NULL DEFAULT now(),CONSTRAINT "developer_sandboxes_status_check" CHECK("status" IN ('active','expired','revoked')));
+CREATE INDEX "developer_sandboxes_app_owner_status_idx" ON "developer_sandboxes"("app_id","owner_user_id","status");

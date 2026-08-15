@@ -8,7 +8,11 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  workers: 2,
+  // Qualification projects share seeded actors and intentionally exercise
+  // cross-route persistence. Run serially so a parallel file cannot create a
+  // notification, membership, or session while another file is asserting its
+  // lifecycle boundary.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
@@ -19,8 +23,20 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"], extraHTTPHeaders: { "x-creativesos-demo-user": "1" } } },
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], extraHTTPHeaders: { "x-creativesos-demo-user": "2" } } },
+    {
+      name: "mobile-chromium",
+      use: {
+        ...devices["Pixel 7"],
+        extraHTTPHeaders: { "x-creativesos-demo-user": "1" },
+      },
+    },
+    {
+      name: "desktop-chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        extraHTTPHeaders: { "x-creativesos-demo-user": "2" },
+      },
+    },
   ],
   webServer: {
     command: "npm run dev",
@@ -36,6 +52,10 @@ export default defineConfig({
       UMH_COMMAND_SIGNING_SECRET: "qualification-only-umh-command-secret",
       UMH_INSTALLATION_ID: "creativesos-browser-qualification",
       PUBLIC_APP_URL: baseURL,
+      SOCIAL_TOKEN_ENCRYPTION_KEY:
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      DEVELOPER_API_KEY_PEPPER:
+        "qualification-only-developer-api-key-pepper",
     },
   },
 });

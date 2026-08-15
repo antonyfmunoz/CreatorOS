@@ -6,6 +6,7 @@ const root = process.cwd();
 const appSource = fs.readFileSync(path.join(root, "client/src/App.tsx"), "utf8");
 const routeSource = fs.readFileSync(path.join(root, "server/routes.ts"), "utf8");
 const automationRouteSource = fs.readFileSync(path.join(root, "server/automation-routes.ts"), "utf8");
+const ugcRouteSource = fs.readFileSync(path.join(root, "server/ugc.ts"), "utf8");
 
 const criticalClientRoutes = [
   "/auth/login",
@@ -19,6 +20,8 @@ const criticalClientRoutes = [
   "/distribution/connections",
   "/business",
   "/campaigns",
+  "/ugc",
+  "/ugc/creator/:id",
   "/earnings",
   "/moderation",
   "/automations",
@@ -34,6 +37,7 @@ const criticalApiContracts = [
   "/api/communities",
   "/api/distribution",
   "/api/campaigns",
+  "/api/ugc",
   "/api/automations",
   "/api/user/settings",
 ];
@@ -44,7 +48,7 @@ describe("critical journey route contracts", () => {
   });
 
   it("keeps the native API surfaces present", () => {
-    const sources = `${routeSource}\n${automationRouteSource}`;
+    const sources = `${routeSource}\n${automationRouteSource}\n${ugcRouteSource}`;
     for (const route of criticalApiContracts) expect(sources, route).toContain(route);
   });
 });

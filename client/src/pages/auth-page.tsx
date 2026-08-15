@@ -31,37 +31,39 @@ const AuthPage = () => {
             </p>
           </div>
 
-          {!isRegistration ? (
-            <>
-              <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/auth/register" />
-              <div className="text-center">
-                <p className="text-sm text-zinc-400">
-                  Don't have an account?{" "}
-                  <button
-                    onClick={() => setLocation("/auth/register")}
-                    className="text-primary hover:underline"
-                  >
-                    Register now
-                  </button>
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth/login" />
-              <div className="text-center">
-                <p className="text-sm text-zinc-400">
-                  Already have an account?{" "}
-                  <button
-                    onClick={() => setLocation("/auth/login")}
-                    className="text-primary hover:underline"
-                  >
-                    Login
-                  </button>
-                </p>
-              </div>
-            </>
-          )}
+          <div className={isRegistration ? "min-h-[560px]" : "min-h-[490px]"}>
+            {!isRegistration ? (
+              <>
+                <SignIn routing="hash" appearance={clerkAppearance} signUpUrl="/auth/register" />
+                <div className="text-center">
+                  <p className="text-sm text-zinc-400">
+                    Don't have an account?{" "}
+                    <button
+                      onClick={() => setLocation("/auth/register")}
+                      className="text-primary hover:underline"
+                    >
+                      Register now
+                    </button>
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <SignUp routing="hash" appearance={clerkAppearance} signInUrl="/auth/login" />
+                <div className="text-center">
+                  <p className="text-sm text-zinc-400">
+                    Already have an account?{" "}
+                    <button
+                      onClick={() => setLocation("/auth/login")}
+                      className="text-primary hover:underline"
+                    >
+                      Login
+                    </button>
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
           <nav aria-label="Trust and safety" className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-zinc-500">
             <button onClick={() => setLocation("/trust")} className="hover:text-white hover:underline">Trust center</button>
             <button onClick={() => setLocation("/legal/community-guidelines")} className="hover:text-white hover:underline">Community rules</button>

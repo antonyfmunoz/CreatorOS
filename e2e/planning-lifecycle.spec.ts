@@ -1,0 +1,27 @@
+import { expect, test } from "@playwright/test";
+test("production planning syncs sources and enforces dependencies before scheduling", async ({ page }) => {
+  await page.goto("/business/planner"); await expect(page.getByRole("heading", { name: "Production planner" })).toBeVisible();
+  const stamp = Date.now();
+  const prerequisite = await (await page.request.post("/api/planning/items", { data: { title: `Prerequisite ${stamp}`, kind: "content", status: "idea" } })).json() as { id: string };
+  const target = await (await page.request.post("/api/planning/items", { data: { title: `Target ${stamp}`, kind: "distribution", status: "review" } })).json() as { id: string };
+  const third = await (await page.request.post("/api/planning/items", { data: { title: `Third ${stamp}`, kind: "content", status: "idea" } })).json() as { id: string };
+  expect((await page.request.post(`/api/planning/items/${target.id}/dependencies`, { data: { dependsOnWorkItemId: prerequisite.id } })).status()).toBe(201);
+  expect((await page.request.post(`/api/planning/items/${prerequisite.id}/dependencies`, { data: { dependsOnWorkItemId: third.id } })).status()).toBe(201);
+  expect((await page.request.post(`/api/planning/items/${third.id}/dependencies`, { data: { dependsOnWorkItemId: target.id } })).status()).toBe(409);
+  expect((await page.request.post(`/api/planning/items/${target.id}/status`, { data: { status: "scheduled" } })).status()).toBe(409);
+  for (const status of ["brief", "script", "production", "edit", "review", "published"]) expect((await page.request.post(`/api/planning/items/${third.id}/status`, { data: { status } })).status()).toBe(200);
+  for (const status of ["brief", "script", "production", "edit", "review", "published"]) expect((await page.request.post(`/api/planning/items/${prerequisite.id}/status`, { data: { status } })).status()).toBe(200);
+  const approvalResponse = await page.request.post(`/api/planning/items/${target.id}/approvals`, { data: { note: "Editorial sign-off" } });
+  expect(approvalResponse.status()).toBe(201); const approval = await approvalResponse.json() as { id: string };
+  expect((await page.request.post(`/api/planning/items/${target.id}/status`, { data: { status: "scheduled" } })).status()).toBe(409);
+  expect((await page.request.post(`/api/planning/approvals/${approval.id}/decide`, { data: { status: "approved", note: "Ready" } })).status()).toBe(200);
+  expect((await page.request.post(`/api/planning/items/${target.id}/status`, { data: { status: "scheduled" } })).status()).toBe(200);
+  const variants = await (await page.request.post(`/api/planning/items/${target.id}/variants`, { data: { variants: [{ channel: "YouTube" }, { channel: "Newsletter" }] } })).json() as { created: number };
+  expect(variants.created).toBe(2);
+  const recurring = await (await page.request.post("/api/planning/items", { data: { title: `Weekly series ${stamp}`, kind: "content", status: "idea", dueAt: new Date(Date.now() + 86_400_000).toISOString(), recurrence: { frequency: "weekly", interval: 1, occurrences: 4 } } })).json() as { generatedOccurrences: number };
+  expect(recurring.generatedOccurrences).toBe(3);
+  const missed = await (await page.request.post("/api/planning/items", { data: { title: `Missed ${stamp}`, kind: "content", status: "review", dueAt: new Date(Date.now() - 86_400_000).toISOString() } })).json() as { id: string };
+  expect((await page.request.post(`/api/planning/items/${missed.id}/recover`, { data: { action: "reschedule", dueAt: new Date(Date.now() + 172_800_000).toISOString(), note: "Recovered in field test" } })).status()).toBe(200);
+  await page.reload(); await expect(page.getByText(`Target ${stamp}`).first()).toBeVisible();
+  await expect(page.getByText(`Weekly series ${stamp}`).first()).toBeVisible();
+});

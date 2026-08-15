@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { directUploadStorageKey, assetStorageReadiness, persistUpload } from "../server/asset-storage";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { directUploadStorageKey, assetStorageReadiness, materializePrivateAsset, persistPrivateBuffer, persistPrivateFile, persistUpload, promotePrivateAsset } from "../server/asset-storage";
 import { monthlyAssetQuotaFor, normalizeAssetVisibility, validateAssetUpload } from "../server/asset-policy";
 import { apiRateLimiter, assetUploadRateLimiter, securityHeaders } from "../server/security";
 
@@ -63,13 +66,72 @@ describe("production safety boundaries", () => {
       .resolves.toEqual({ storageKey: "uploads/image-123.png", publicUrl: "/uploads/image-123.png" });
   });
 
+  it("keeps development private assets inside the configured managed directory", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-assets-"));
+    process.env.NODE_ENV = "development";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = root;
+    try {
+      const stored = await persistPrivateBuffer({
+        body: Buffer.from("private broadcast qualification"),
+        ownerUserId: 42,
+        kind: "broadcast",
+        filename: "qualification.mp4",
+        mimeType: "video/mp4",
+      });
+      const expected = path.resolve(root, stored.storageKey);
+      expect(expected.startsWith(`${path.resolve(root)}${path.sep}`)).toBe(true);
+      await expect(fs.readFile(expected, "utf8")).resolves.toBe("private broadcast qualification");
+
+      const materialized = path.join(root, "materialized.mp4");
+      await materializePrivateAsset(stored.storageKey, materialized);
+      await expect(fs.readFile(materialized, "utf8")).resolves.toBe("private broadcast qualification");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects processing sources outside managed upload and temporary roots", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = path.join(os.tmpdir(), "creativesos-managed-source-boundary");
+    await expect(persistPrivateFile({
+      sourcePath: path.resolve(process.cwd(), "package.json"),
+      ownerUserId: 42,
+      kind: "video",
+      filename: "outside.mp4",
+      mimeType: "video/mp4",
+    })).rejects.toThrow(/escaped the managed upload and processing directories/i);
+  });
+
+  it("promotes private local media for field tests while keeping production fail-closed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-promote-"));
+    process.env.NODE_ENV = "test";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = root;
+    try {
+      const privateAsset = await persistPrivateBuffer({ body: Buffer.from("render"), ownerUserId: 8, kind: "cut-render", filename: "render.mp4", mimeType: "video/mp4" });
+      const publicAsset = await promotePrivateAsset({ storageKey: privateAsset.storageKey, ownerUserId: 8, kind: "video", filename: "render.mp4", mimeType: "video/mp4" });
+      expect(publicAsset.sizeBytes).toBe(6);
+      expect(publicAsset.publicUrl).toMatch(/^\/uploads\/creativesos\/test\/public\/users\/8\/video\//);
+      await expect(fs.readFile(path.resolve(root, publicAsset.storageKey), "utf8")).resolves.toBe("render");
+      process.env.NODE_ENV = "production";
+      await expect(promotePrivateAsset({ storageKey: privateAsset.storageKey, ownerUserId: 8, kind: "video", filename: "render.mp4", mimeType: "video/mp4" })).rejects.toThrow("requires R2");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("enforces visibility, type, size, and conservative monthly asset quotas", () => {
     expect(normalizeAssetVisibility("private")).toBe("private");
     expect(normalizeAssetVisibility("published")).toBeNull();
     expect(validateAssetUpload({ kind: "profile", mimeType: "image/png", sizeBytes: 1_024, visibility: "public" })).toBeNull();
     expect(validateAssetUpload({ kind: "profile", mimeType: "application/pdf", sizeBytes: 1_024, visibility: "public" })).toMatch(/not allowed/i);
     expect(validateAssetUpload({ kind: "video", mimeType: "video/mp4", sizeBytes: 251 * 1024 * 1024, visibility: "private" })).toMatch(/exceeds/i);
+    expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/plain", sizeBytes: 2_048, visibility: "private" })).toBeNull();
+    expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/html", sizeBytes: 2_048, visibility: "private" })).toMatch(/not allowed/i);
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
+    expect(monthlyAssetQuotaFor("video")).toEqual({ maxBytes: 25 * 1024 * 1024 * 1024, maxAssets: 200 });
   });
 
   it("uses unguessable, environment-scoped keys for direct uploads", () => {
