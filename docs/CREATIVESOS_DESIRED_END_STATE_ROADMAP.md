@@ -99,6 +99,24 @@ automation, Distribution and the connected loop have functional evidence but
 do not yet have the locked side-by-side operator evidence required for a
 `parity_met` or `connected_advantage_proven` claim.
 
+### Current production release evidence
+
+- Fly release `v312` serves source commit
+  `6ee7d88ac1e81d127745fe46750d7ad334de5f8d` from the protected `main`
+  deployment workflow.
+- The workflow repeated 110 files / 413 tests, TypeScript, production build,
+  bundle and Worker gates, all 103 migrations, backup/restore, security and
+  capacity checks, and all 178 Pixel 7/desktop Chromium executions before
+  deployment.
+- `https://creativesos.net/api/health`, `/api/ready`, and `/api/release` return
+  healthy, release-ready and exact-source evidence. The production database is
+  at all 103 migrations and both IAD machines serve the same release image.
+- Anonymous field checks prove auth routing, separate login/registration,
+  protected-route redirection, protected-API `401` boundaries, public discovery
+  contracts, production branding and security headers. A fresh authenticated
+  route repeat still requires an authorized signed-in browser session; older
+  authenticated production evidence remains recorded in the parity ledger.
+
 ### External or decision gates already known
 
 - Successful creator payout after the connected Stripe sandbox bank is fixed.
@@ -155,7 +173,7 @@ do not yet have the locked side-by-side operator evidence required for a
 | Creator site | Page composition, link hub, storefront, SEO/capture/attribution and custom-domain contracts are locally qualified | Production DNS/domain automation and operator conversion benchmark | Owned branded destination for content, community and commerce |
 | Rights and safety | Rights, releases, licenses, provenance, takedown/counter-notice/appeal and safety workflows are locally qualified | Counsel decisions and production operational exercises | Enforceable provenance, usage authority and public-platform trust operations |
 | Mobile | Responsive web, installable privacy-safe PWA and Broadcast field client are qualified | Native shells, background upload/push, physical-device and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
-| Operations and scale | Published SLOs, evidence-backed error budgets, durable metering, tenant cost limits, recovery, capacity and exact release-identity gates are locally qualified | Deploy the identified candidate, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
+| Operations and scale | Native control plane and exact release identity are production-qualified at v312 with all 103 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
 | UMH integration | Projection side qualified | Pair from UMH and prove signed bidirectional round trip | Cockpit coordination without surrendering standalone authority |
 | Developer ecosystem | Scoped API/OpenAPI, delegated OAuth, typed SDKs, sandbox tenants, reviewed marketplace listings, signed webhooks and full revocation are locally qualified | Publish packages and repeat with independently controlled third-party apps | Safe third-party extension and integration marketplace |
 | Data portability | Audience CSV, podcast RSS, Media Library ingest and versioned cross-domain migration packages are locally qualified | Run representative imports from selected competitor exports and verify reconciliation at volume | Reversible movement into and out of canonical assets, audiences, offers, courses, contacts and automations |
@@ -613,8 +631,11 @@ closure is now bounded by product, publication or external evidence:
 6. **Complete locally:** run the complete unit/build/migration/security,
    recovery, capacity and 178-execution browser suite and reconcile its
    evidence without overwriting older production truth;
-7. deploy the qualified worktree, apply migrations, verify health/readiness,
-   production identity and safe signed-in routes;
+7. **Complete for deployment and anonymous boundaries:** deploy the qualified
+   worktree, apply all 103 migrations, and verify health/readiness, exact
+   production identity, auth routing, public routes and protected API/route
+   boundaries. A fresh safe signed-in route repeat remains an authorized-session
+   evidence gate rather than missing native code;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.
