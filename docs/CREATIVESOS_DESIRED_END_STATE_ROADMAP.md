@@ -99,9 +99,10 @@ automation, Distribution and the connected loop have functional evidence but
 do not yet have the locked side-by-side operator evidence required for a
 `parity_met` or `connected_advantage_proven` claim.
 
-### Current production release evidence
+### Production closure evidence
 
-- Fly release `v312` serves source commit
+- Fly release `v312` established the desired-state native production baseline
+  from source commit
   `6ee7d88ac1e81d127745fe46750d7ad334de5f8d` from the protected `main`
   deployment workflow.
 - The workflow repeated 110 files / 413 tests, TypeScript, production build,
@@ -116,6 +117,11 @@ do not yet have the locked side-by-side operator evidence required for a
   contracts, production branding and security headers. A fresh authenticated
   route repeat still requires an authorized signed-in browser session; older
   authenticated production evidence remains recorded in the parity ledger.
+- After this evidence was merged, the same protected workflow produced the
+  documentation-only Fly release `v313` from merge commit
+  `1b0c340bd3fa74ae41545363df18c07bf2304614`. The live `/api/release` endpoint,
+  rather than a hard-coded roadmap version, is the canonical current runtime
+  identity.
 
 ### External or decision gates already known
 
@@ -173,7 +179,7 @@ do not yet have the locked side-by-side operator evidence required for a
 | Creator site | Page composition, link hub, storefront, SEO/capture/attribution and custom-domain contracts are locally qualified | Production DNS/domain automation and operator conversion benchmark | Owned branded destination for content, community and commerce |
 | Rights and safety | Rights, releases, licenses, provenance, takedown/counter-notice/appeal and safety workflows are locally qualified | Counsel decisions and production operational exercises | Enforceable provenance, usage authority and public-platform trust operations |
 | Mobile | Responsive web, installable privacy-safe PWA and Broadcast field client are qualified | Native shells, background upload/push, physical-device and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
-| Operations and scale | Native control plane and exact release identity are production-qualified at v312 with all 103 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
+| Operations and scale | Native control plane and exact release identity are production-qualified since v312; v313 repeated the protected workflow with all 103 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
 | UMH integration | Projection side qualified | Pair from UMH and prove signed bidirectional round trip | Cockpit coordination without surrendering standalone authority |
 | Developer ecosystem | Scoped API/OpenAPI, delegated OAuth, typed SDKs, sandbox tenants, reviewed marketplace listings, signed webhooks and full revocation are locally qualified | Publish packages and repeat with independently controlled third-party apps | Safe third-party extension and integration marketplace |
 | Data portability | Audience CSV, podcast RSS, Media Library ingest and versioned cross-domain migration packages are locally qualified | Run representative imports from selected competitor exports and verify reconciliation at volume | Reversible movement into and out of canonical assets, audiences, offers, courses, contacts and automations |
