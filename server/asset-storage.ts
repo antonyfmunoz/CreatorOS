@@ -60,21 +60,26 @@ function safeLocalUploadPath(candidate: string) {
 
 async function safeManagedSourcePath(candidate: string) {
   if (!candidate || candidate.includes("\0")) throw new Error("Invalid managed source path");
-  const resolved = await fs.realpath(candidate);
+  const lexicalPath = path.resolve(candidate);
   const roots = [managedUploadRoot(), path.resolve(os.tmpdir())];
   const managedRoot = roots.find((root) => {
-    const relative = path.relative(root, resolved);
+    const relative = path.relative(root, lexicalPath);
     return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
   });
   if (!managedRoot) throw new Error("Source path escaped the managed upload and processing directories");
-  const relative = path.relative(managedRoot, resolved);
+  const relative = path.relative(managedRoot, lexicalPath);
   const segments = relative.split(path.sep).filter(Boolean);
   if (segments.some((segment) => segment !== path.basename(segment) || !/^[A-Za-z0-9._-]{1,255}$/.test(segment))) {
     throw new Error("Managed source path contains an invalid segment");
   }
   const confined = path.join(managedRoot, ...segments.map((segment) => path.basename(segment)));
-  if (confined !== resolved) throw new Error("Managed source path could not be confined");
-  return confined;
+  if (confined !== lexicalPath) throw new Error("Managed source path could not be confined");
+  const canonicalPath = await fs.realpath(confined);
+  const canonicalRelative = path.relative(managedRoot, canonicalPath);
+  if (canonicalRelative === ".." || canonicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(canonicalRelative)) {
+    throw new Error("Managed source path resolved outside its managed root");
+  }
+  return canonicalPath;
 }
 
 function localStoragePath(storageKey: string) {
