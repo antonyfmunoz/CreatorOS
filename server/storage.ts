@@ -1,31 +1,88 @@
-import { 
-  users, type User, type InsertUser,
-  posts, type Post, type InsertPost,
-  comments, type Comment, type InsertComment,
-  products, type Product, type InsertProduct,
-  purchases, type Purchase, type InsertPurchase,
-  aiAgents, type AIAgent, type InsertAIAgent,
-  aiChats, type AIChat, type InsertAIChat,
-  communities, type Community, type InsertCommunity,
-  communityMemberships, type CommunityMembership, type InsertCommunityMembership,
-  channels, type Channel, type InsertChannel,
-  channelMessages, type ChannelMessage, type InsertChannelMessage,
-  revenue, type Revenue, type InsertRevenue,
-  contacts, type Contact, type InsertContact,
-  documents, type Document, type InsertDocument,
-  notifications, type Notification, type InsertNotification,
-  conversations, type Conversation, type InsertConversation,
-  conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
-  directMessages, type DirectMessage, type InsertDirectMessage,
+import {
+  users,
+  type User,
+  type InsertUser,
+  posts,
+  type Post,
+  type InsertPost,
+  comments,
+  type Comment,
+  type InsertComment,
+  products,
+  type Product,
+  type InsertProduct,
+  purchases,
+  type Purchase,
+  type InsertPurchase,
+  aiAgents,
+  type AIAgent,
+  type InsertAIAgent,
+  aiChats,
+  type AIChat,
+  type InsertAIChat,
+  communities,
+  type Community,
+  type InsertCommunity,
+  communityMemberships,
+  type CommunityMembership,
+  type InsertCommunityMembership,
+  channels,
+  type Channel,
+  type InsertChannel,
+  channelMessages,
+  type ChannelMessage,
+  type InsertChannelMessage,
+  revenue,
+  type Revenue,
+  type InsertRevenue,
+  contacts,
+  type Contact,
+  type InsertContact,
+  documents,
+  type Document,
+  type InsertDocument,
+  notifications,
+  type Notification,
+  type InsertNotification,
+  conversations,
+  type Conversation,
+  type InsertConversation,
+  conversationParticipants,
+  type ConversationParticipant,
+  type InsertConversationParticipant,
+  directMessages,
+  type DirectMessage,
+  type InsertDirectMessage,
   conversationReadStates,
-  stories, type Story, type InsertStory,
-  savedPosts, type SavedPost, type InsertSavedPost,
+  stories,
+  type Story,
+  type InsertStory,
+  savedPosts,
+  type SavedPost,
+  type InsertSavedPost,
   postLikes,
-  followers, type Follower, type InsertFollower,
-  taggedUsers, type TaggedUser, type InsertTaggedUser
+  followers,
+  type Follower,
+  type InsertFollower,
+  taggedUsers,
+  type TaggedUser,
+  type InsertTaggedUser,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull, inArray, count, or, not, exists, sql, gt, ne } from "drizzle-orm";
+import {
+  eq,
+  desc,
+  and,
+  isNull,
+  inArray,
+  count,
+  or,
+  not,
+  exists,
+  sql,
+  gt,
+  ne,
+} from "drizzle-orm";
 import crypto from "crypto";
 import { deleteAgentWithChats } from "./memory-cleanup";
 
@@ -43,11 +100,24 @@ type ProductInput = InsertProduct & {
   communityId?: number | null;
   payoutMode?: "platform" | "creator";
   status?: "draft" | "published" | "archived";
-  productType?: "digital_download" | "course" | "community" | "membership";
+  productType?:
+    "digital_download" | "course" | "community" | "membership" | "bundle";
   billingModel?: "one_time" | "recurring";
   billingInterval?: "month" | "year" | null;
 };
-type ProductUpdate = Pick<ProductInput, "title" | "description" | "price" | "category" | "imageUrl" | "payoutMode" | "status" | "productType" | "billingModel" | "billingInterval"> & { businessId?: string | null; communityId?: number | null };
+type ProductUpdate = Pick<
+  ProductInput,
+  | "title"
+  | "description"
+  | "price"
+  | "category"
+  | "imageUrl"
+  | "payoutMode"
+  | "status"
+  | "productType"
+  | "billingModel"
+  | "billingInterval"
+> & { businessId?: string | null; communityId?: number | null };
 type ConversationSummary = Conversation & {
   participants: (ConversationParticipant & { user: User })[];
   lastMessage: (DirectMessage & { sender: User }) | null;
@@ -63,10 +133,14 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   searchUsersByUsername(query: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
-  rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User>;
+  rebindClerkIdentity(
+    id: number,
+    clerkId: string,
+    authEmail: string,
+  ): Promise<User>;
   updateUser(id: number, userData: Partial<User>): Promise<User>;
   getAllUsers(): Promise<User[]>;
-  
+
   // Follower operations
   followUser(followerId: number, followedId: number): Promise<void>;
   unfollowUser(followerId: number, followedId: number): Promise<void>;
@@ -78,7 +152,11 @@ export interface IStorage {
 
   // Post operations
   getPosts(): Promise<(Post & { user: User })[]>;
-  getPostById(id: number): Promise<(Post & { user: User; taggedUsers?: TaggedUserProfile[] }) | undefined>;
+  getPostById(
+    id: number,
+  ): Promise<
+    (Post & { user: User; taggedUsers?: TaggedUserProfile[] }) | undefined
+  >;
   getPostsByUserId(userId: number): Promise<(Post & { user: User })[]>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: number, content: string, imageUrl?: string): Promise<Post>;
@@ -108,11 +186,18 @@ export interface IStorage {
   // Product operations
   getProducts(): Promise<(Product & { user: User })[]>;
   getProductById(id: number): Promise<(Product & { user: User }) | undefined>;
-  getProductsByCategory(category: string): Promise<(Product & { user: User })[]>;
+  getProductsByCategory(
+    category: string,
+  ): Promise<(Product & { user: User })[]>;
   createProduct(product: ProductInput): Promise<Product>;
   updateProduct(id: number, product: ProductUpdate): Promise<Product>;
-  getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]>;
-  getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined>;
+  getPurchasesByBuyerId(
+    buyerId: number,
+  ): Promise<(Purchase & { product: Product & { user: User } })[]>;
+  getPurchaseByBuyerAndProduct(
+    buyerId: number,
+    productId: number,
+  ): Promise<Purchase | undefined>;
   createPurchase(purchase: InsertPurchase): Promise<Purchase>;
 
   // AI Agent operations
@@ -120,7 +205,10 @@ export interface IStorage {
   getAIAgentById(id: number): Promise<AIAgent | undefined>;
   getUserAIAgents(userId: number): Promise<AIAgent[]>;
   createAIAgent(agent: InsertAIAgent): Promise<AIAgent>;
-  updateAIAgent(id: number, agent: Partial<InsertAIAgent>): Promise<AIAgent | undefined>;
+  updateAIAgent(
+    id: number,
+    agent: Partial<InsertAIAgent>,
+  ): Promise<AIAgent | undefined>;
   deleteAIAgent(id: number): Promise<boolean>;
 
   // AI Chat operations
@@ -133,8 +221,13 @@ export interface IStorage {
   getCommunityById(id: number): Promise<Community | undefined>;
   createCommunity(community: InsertCommunity): Promise<Community>;
   archiveCommunity(id: number): Promise<Community | undefined>;
-  getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined>;
-  joinCommunity(membership: InsertCommunityMembership): Promise<CommunityMembership>;
+  getCommunityMembership(
+    userId: number,
+    communityId: number,
+  ): Promise<CommunityMembership | undefined>;
+  joinCommunity(
+    membership: InsertCommunityMembership,
+  ): Promise<CommunityMembership>;
 
   // Channel operations
   getChannelsByCommunityId(communityId: number): Promise<Channel[]>;
@@ -142,7 +235,9 @@ export interface IStorage {
   createChannel(channel: InsertChannel): Promise<Channel>;
 
   // Channel Message operations
-  getMessagesByChannelId(channelId: number): Promise<(ChannelMessage & { user: User })[]>;
+  getMessagesByChannelId(
+    channelId: number,
+  ): Promise<(ChannelMessage & { user: User })[]>;
   createChannelMessage(message: InsertChannelMessage): Promise<ChannelMessage>;
   pinChannelMessage(id: number): Promise<ChannelMessage>;
   likeChannelMessage(id: number): Promise<ChannelMessage>;
@@ -155,7 +250,11 @@ export interface IStorage {
   getContactsByUserId(userId: number): Promise<Contact[]>;
   getContactById(id: number): Promise<Contact | undefined>;
   createContact(contact: InsertContact): Promise<Contact>;
-  updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact>;
+  updateContact(
+    id: number,
+    contactName: string,
+    purchaseInfo: string | null,
+  ): Promise<Contact>;
   deleteContact(id: number): Promise<void>;
 
   // Document operations
@@ -172,26 +271,53 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: number): Promise<void>;
   deleteNotification(id: string): Promise<void>;
   deleteAllNotifications(userId: number): Promise<void>;
-  
+
   // Conversation operations
   getConversationsByUserId(userId: number): Promise<ConversationSummary[]>;
-  getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined>;
-  getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]>;
-  createConversation(userIds: number[], name?: string, isGroup?: boolean): Promise<Conversation>;
-  addParticipantToConversation(conversationId: number, userId: number, isAdmin?: boolean): Promise<ConversationParticipant>;
-  removeParticipantFromConversation(conversationId: number, userId: number): Promise<void>;
+  getConversationById(id: number): Promise<
+    | (Conversation & {
+        participants: (ConversationParticipant & { user: User })[];
+      })
+    | undefined
+  >;
+  getParticipantsByConversationId(
+    conversationId: number,
+  ): Promise<(ConversationParticipant & { user: User })[]>;
+  createConversation(
+    userIds: number[],
+    name?: string,
+    isGroup?: boolean,
+  ): Promise<Conversation>;
+  addParticipantToConversation(
+    conversationId: number,
+    userId: number,
+    isAdmin?: boolean,
+  ): Promise<ConversationParticipant>;
+  removeParticipantFromConversation(
+    conversationId: number,
+    userId: number,
+  ): Promise<void>;
   deleteConversation(conversationId: number): Promise<void>;
-  
+
   // Direct Message operations
-  getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]>;
+  getMessagesByConversationId(
+    conversationId: number,
+  ): Promise<(DirectMessage & { sender: User })[]>;
   createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
-  updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage>;
+  updateDirectMessage(
+    id: number,
+    updates: Partial<DirectMessage>,
+  ): Promise<DirectMessage>;
   deleteDirectMessage(id: number): Promise<void>;
-  addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage>;
+  addReactionToMessage(
+    messageId: number,
+    userId: number,
+    reaction: string,
+  ): Promise<DirectMessage>;
   markMessageAsRead(id: number): Promise<DirectMessage>;
   markConversationAsRead(conversationId: number, userId: number): Promise<void>;
   getUnreadMessageCountForUser(userId: number): Promise<number>;
-  
+
   // Story operations
   getStories(): Promise<(Story & { user: User })[]>;
   getUserStories(userId: number): Promise<(Story & { user: User })[]>;
@@ -223,7 +349,7 @@ export class MemStorage implements IStorage {
   private conversationReadCursors: Map<string, number>;
   private stories: Map<number, Story>;
   private followers: Map<number, Follower>;
-  
+
   private userIdCounter = 1;
   private postIdCounter = 1;
   private commentIdCounter = 1;
@@ -266,7 +392,7 @@ export class MemStorage implements IStorage {
     this.conversationReadCursors = new Map();
     this.stories = new Map();
     this.followers = new Map();
-    
+
     // Initialize with sample data
     this.initializeData();
   }
@@ -274,325 +400,348 @@ export class MemStorage implements IStorage {
   private initializeData() {
     // Create sample users
     const user1 = this.createUser({
-      username: 'johndoe',
-      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
-      displayName: 'John Doe',
-      bio: 'Digital Creator & Entrepreneur',
-      profileImageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-      role: 'creator',
+      username: "johndoe",
+      clerkId: "clerk_seed_" + Math.random().toString(36).slice(2),
+      displayName: "John Doe",
+      bio: "Digital Creator & Entrepreneur",
+      profileImageUrl:
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e",
+      role: "creator",
     });
 
     const user2 = this.createUser({
-      username: 'sarahmitchell',
-      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
-      displayName: 'Sarah Mitchell',
-      bio: 'Marketing Expert',
-      profileImageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-      role: 'creator',
+      username: "sarahmitchell",
+      clerkId: "clerk_seed_" + Math.random().toString(36).slice(2),
+      displayName: "Sarah Mitchell",
+      bio: "Marketing Expert",
+      profileImageUrl:
+        "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+      role: "creator",
     });
 
     const user3 = this.createUser({
-      username: 'davidkim',
-      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
-      displayName: 'David Kim',
-      bio: 'Web Developer',
-      profileImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-      role: 'creator',
+      username: "davidkim",
+      clerkId: "clerk_seed_" + Math.random().toString(36).slice(2),
+      displayName: "David Kim",
+      bio: "Web Developer",
+      profileImageUrl:
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      role: "creator",
     });
 
     const user4 = this.createUser({
-      username: 'emmathompson',
-      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
-      displayName: 'Emma Thompson',
-      bio: 'UX Designer',
-      profileImageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2',
-      role: 'creator',
+      username: "emmathompson",
+      clerkId: "clerk_seed_" + Math.random().toString(36).slice(2),
+      displayName: "Emma Thompson",
+      bio: "UX Designer",
+      profileImageUrl:
+        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2",
+      role: "creator",
     });
 
     const user5 = this.createUser({
-      username: 'michaeljones',
-      clerkId: 'clerk_seed_' + Math.random().toString(36).slice(2),
-      displayName: 'Michael Jones',
-      bio: 'Social Media Marketing',
-      profileImageUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',
-      role: 'creator',
+      username: "michaeljones",
+      clerkId: "clerk_seed_" + Math.random().toString(36).slice(2),
+      displayName: "Michael Jones",
+      bio: "Social Media Marketing",
+      profileImageUrl:
+        "https://images.unsplash.com/photo-1603415526960-f7e0328c63b1",
+      role: "creator",
     });
 
     // Create sample posts
     this.createPost({
       userId: 2,
-      content: 'Just launched my new course on content marketing strategy! Check it out in the marketplace 🚀',
-      imageUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978',
+      content:
+        "Just launched my new course on content marketing strategy! Check it out in the marketplace 🚀",
+      imageUrl: "https://images.unsplash.com/photo-1552664730-d307ca884978",
     });
 
     this.createPost({
       userId: 3,
-      content: 'Hosting a free webinar tomorrow on "Building Scalable React Applications" - Join our community to participate!',
-      imageUrl: '',
+      content:
+        'Hosting a free webinar tomorrow on "Building Scalable React Applications" - Join our community to participate!',
+      imageUrl: "",
     });
 
     this.createPost({
       userId: 4,
-      content: 'I just wrapped up my latest UI design system. Excited to share what I\'ve learned!',
-      imageUrl: 'https://images.unsplash.com/photo-1561070791-2526d30994b5',
+      content:
+        "I just wrapped up my latest UI design system. Excited to share what I've learned!",
+      imageUrl: "https://images.unsplash.com/photo-1561070791-2526d30994b5",
     });
 
     // Create sample products
     this.createProduct({
       userId: 2,
-      title: 'Content Marketing Mastery',
-      description: 'A comprehensive guide to content marketing strategy',
+      title: "Content Marketing Mastery",
+      description: "A comprehensive guide to content marketing strategy",
       price: 49.99,
-      category: 'Course',
-      imageUrl: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40',
+      category: "Course",
+      imageUrl: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40",
     });
 
     this.createProduct({
       userId: 5,
-      title: 'Productivity Planner',
-      description: 'Boost your productivity with this custom planner',
+      title: "Productivity Planner",
+      description: "Boost your productivity with this custom planner",
       price: 19.99,
-      category: 'Template',
-      imageUrl: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643',
+      category: "Template",
+      imageUrl: "https://images.unsplash.com/photo-1499750310107-5fef28a66643",
     });
 
     this.createProduct({
       userId: 3,
-      title: 'Web Development Bootcamp',
-      description: 'Learn modern web development from scratch',
+      title: "Web Development Bootcamp",
+      description: "Learn modern web development from scratch",
       price: 89.99,
-      category: 'Course',
-      imageUrl: 'https://images.unsplash.com/photo-1488590528505-98d2b5aba04b',
+      category: "Course",
+      imageUrl: "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b",
     });
 
     this.createProduct({
       userId: 4,
-      title: 'UX Design Principles',
-      description: 'Master the fundamentals of user experience design',
+      title: "UX Design Principles",
+      description: "Master the fundamentals of user experience design",
       price: 69.99,
-      category: 'Course',
-      imageUrl: 'https://images.unsplash.com/photo-1587614382346-4ec70e388b28',
+      category: "Course",
+      imageUrl: "https://images.unsplash.com/photo-1587614382346-4ec70e388b28",
     });
 
     this.createProduct({
       userId: 5,
-      title: 'Social Media Marketing',
-      description: 'Strategies for effective social media marketing',
+      title: "Social Media Marketing",
+      description: "Strategies for effective social media marketing",
       price: 59.99,
-      category: 'Course',
-      imageUrl: 'https://images.unsplash.com/photo-1611926653458-09294b3142bf',
+      category: "Course",
+      imageUrl: "https://images.unsplash.com/photo-1611926653458-09294b3142bf",
     });
 
     this.createProduct({
       userId: 5,
-      title: 'AI for Creators',
-      description: 'Learn how to leverage AI in your creative work',
+      title: "AI for Creators",
+      description: "Learn how to leverage AI in your creative work",
       price: 39.99,
-      category: 'eBook',
-      imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3',
+      category: "eBook",
+      imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3",
     });
 
     this.createProduct({
       userId: 2,
-      title: 'Business Plan Template',
-      description: 'Professional business plan template for entrepreneurs',
+      title: "Business Plan Template",
+      description: "Professional business plan template for entrepreneurs",
       price: 24.99,
-      category: 'Template',
-      imageUrl: 'https://images.unsplash.com/photo-1544377193-33dcf4d68fb5',
+      category: "Template",
+      imageUrl: "https://images.unsplash.com/photo-1544377193-33dcf4d68fb5",
     });
 
     // Create AI agents
     this.createAIAgent({
       userId: 1,
-      name: 'Content Assistant',
-      description: 'Writes blog posts, social media captions, and email copy',
-      icon: 'Pencil',
-      iconColor: 'text-primary',
-      backgroundColor: 'bg-blue-100',
-      systemPrompt: 'You are a content assistant specializing in writing engaging copy for various formats.',
+      name: "Content Assistant",
+      description: "Writes blog posts, social media captions, and email copy",
+      icon: "Pencil",
+      iconColor: "text-primary",
+      backgroundColor: "bg-blue-100",
+      systemPrompt:
+        "You are a content assistant specializing in writing engaging copy for various formats.",
       isCustom: false,
     });
 
     this.createAIAgent({
       userId: 1,
-      name: 'Code Helper',
-      description: 'Assists with programming tasks and debugging',
-      icon: 'Code',
-      iconColor: 'text-secondary',
-      backgroundColor: 'bg-purple-100',
-      systemPrompt: 'You are a programming assistant that helps with code, debugging, and technical questions.',
+      name: "Code Helper",
+      description: "Assists with programming tasks and debugging",
+      icon: "Code",
+      iconColor: "text-secondary",
+      backgroundColor: "bg-purple-100",
+      systemPrompt:
+        "You are a programming assistant that helps with code, debugging, and technical questions.",
       isCustom: false,
     });
 
     this.createAIAgent({
       userId: 1,
-      name: 'Market Analyst',
-      description: 'Provides insights on market trends and opportunities',
-      icon: 'BarChart',
-      iconColor: 'text-green-600',
-      backgroundColor: 'bg-green-100',
-      systemPrompt: 'You are a market research assistant that provides analysis and insights on industry trends.',
+      name: "Market Analyst",
+      description: "Provides insights on market trends and opportunities",
+      icon: "BarChart",
+      iconColor: "text-green-600",
+      backgroundColor: "bg-green-100",
+      systemPrompt:
+        "You are a market research assistant that provides analysis and insights on industry trends.",
       isCustom: false,
     });
 
     this.createAIAgent({
       userId: 1,
-      name: 'Design Consultant',
-      description: 'Helps with UI/UX design and visual branding',
-      icon: 'Image',
-      iconColor: 'text-pink-600',
-      backgroundColor: 'bg-pink-100',
-      systemPrompt: 'You are a design consultant that helps with UI/UX decisions and visual branding strategies.',
+      name: "Design Consultant",
+      description: "Helps with UI/UX design and visual branding",
+      icon: "Image",
+      iconColor: "text-pink-600",
+      backgroundColor: "bg-pink-100",
+      systemPrompt:
+        "You are a design consultant that helps with UI/UX decisions and visual branding strategies.",
       isCustom: false,
     });
 
     this.createAIAgent({
       userId: 1,
-      name: 'Course Creator Helper',
-      description: 'Assists with creating course outlines and content structure',
-      icon: 'GraduationCap',
-      iconColor: 'text-amber-600',
-      backgroundColor: 'bg-amber-100',
-      systemPrompt: 'You are a course creation assistant that helps structure learning content and create effective educational materials.',
+      name: "Course Creator Helper",
+      description:
+        "Assists with creating course outlines and content structure",
+      icon: "GraduationCap",
+      iconColor: "text-amber-600",
+      backgroundColor: "bg-amber-100",
+      systemPrompt:
+        "You are a course creation assistant that helps structure learning content and create effective educational materials.",
       isCustom: true,
     });
 
     // Create communities
     const community1 = this.createCommunity({
-      name: 'Web Developers',
-      description: 'A community for web developers to share knowledge and resources',
-      iconColor: 'bg-green-500',
+      name: "Web Developers",
+      description:
+        "A community for web developers to share knowledge and resources",
+      iconColor: "bg-green-500",
     });
 
     const community2 = this.createCommunity({
-      name: 'Content Creators',
-      description: 'For content creators across all platforms',
-      iconColor: 'bg-yellow-500',
+      name: "Content Creators",
+      description: "For content creators across all platforms",
+      iconColor: "bg-yellow-500",
     });
 
     const community3 = this.createCommunity({
-      name: 'UX/UI Design',
-      description: 'Designers sharing work and feedback',
-      iconColor: 'bg-purple-500',
+      name: "UX/UI Design",
+      description: "Designers sharing work and feedback",
+      iconColor: "bg-purple-500",
     });
 
     // Create channels
     const channel1 = this.createChannel({
       communityId: 1,
-      name: 'general',
+      name: "general",
     });
 
     this.createChannel({
       communityId: 1,
-      name: 'frontend',
+      name: "frontend",
     });
 
     this.createChannel({
       communityId: 1,
-      name: 'backend',
+      name: "backend",
     });
 
     this.createChannel({
       communityId: 1,
-      name: 'job-board',
+      name: "job-board",
     });
 
     this.createChannel({
       communityId: 1,
-      name: 'resources',
+      name: "resources",
     });
 
     // Each discoverable community receives an actual channel structure. The
     // member gate in the route layer keeps this content private until joined.
-    this.createChannel({ communityId: 2, name: 'general' });
-    this.createChannel({ communityId: 2, name: 'content-strategy' });
-    this.createChannel({ communityId: 3, name: 'general' });
-    this.createChannel({ communityId: 3, name: 'design-feedback' });
+    this.createChannel({ communityId: 2, name: "general" });
+    this.createChannel({ communityId: 2, name: "content-strategy" });
+    this.createChannel({ communityId: 3, name: "general" });
+    this.createChannel({ communityId: 3, name: "design-feedback" });
 
     // Create channel messages
     this.createChannelMessage({
       channelId: 1,
       userId: 3,
-      content: 'Hey everyone! I just published a new tutorial on building React components with TypeScript. Check it out!',
+      content:
+        "Hey everyone! I just published a new tutorial on building React components with TypeScript. Check it out!",
       isPinned: false,
     });
 
     this.createChannelMessage({
       channelId: 1,
       userId: 4,
-      content: 'Thanks for sharing, David! I\'ve been looking for good TypeScript resources.',
+      content:
+        "Thanks for sharing, David! I've been looking for good TypeScript resources.",
       isPinned: false,
     });
 
     this.createChannelMessage({
       channelId: 1,
       userId: 2,
-      content: 'Hey everyone! I\'m organizing a virtual hackathon next month. Would anyone be interested in participating?',
+      content:
+        "Hey everyone! I'm organizing a virtual hackathon next month. Would anyone be interested in participating?",
       isPinned: false,
     });
 
     this.createChannelMessage({
       channelId: 1,
       userId: 5,
-      content: 'Welcome to the Web Developers community! Please read our guidelines and introduce yourself in the #introductions channel.',
+      content:
+        "Welcome to the Web Developers community! Please read our guidelines and introduce yourself in the #introductions channel.",
       isPinned: true,
     });
 
     this.createChannelMessage({
       channelId: 6,
       userId: 2,
-      content: 'Welcome creators! Share your latest idea, experiment, or launch.',
+      content:
+        "Welcome creators! Share your latest idea, experiment, or launch.",
       isPinned: true,
     });
 
     this.createChannelMessage({
       channelId: 8,
       userId: 4,
-      content: 'Drop work-in-progress designs here for thoughtful feedback.',
+      content: "Drop work-in-progress designs here for thoughtful feedback.",
       isPinned: true,
     });
 
     // Create revenue data
     const today = new Date();
-    
+
     for (let i = 0; i < 7; i++) {
       const date = new Date();
       date.setDate(today.getDate() - i);
-      
+
       this.createRevenue({
         userId: 1,
         amount: Math.random() * 500 + 100,
         date,
-        source: 'Course Sales',
+        source: "Course Sales",
       });
     }
 
     // Create contacts
     this.createContact({
       userId: 1,
-      contactName: 'Sarah Mitchell',
-      contactImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-      purchaseInfo: 'Purchased: Content Marketing Course',
+      contactName: "Sarah Mitchell",
+      contactImage:
+        "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+      purchaseInfo: "Purchased: Content Marketing Course",
     });
 
     this.createContact({
       userId: 1,
-      contactName: 'David Kim',
-      contactImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-      purchaseInfo: 'Purchased: Web Development Bootcamp',
+      contactName: "David Kim",
+      contactImage:
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      purchaseInfo: "Purchased: Web Development Bootcamp",
     });
 
     this.createContact({
       userId: 1,
-      contactName: 'Emma Thompson',
-      contactImage: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2',
-      purchaseInfo: 'Subscribed: Pro Membership',
+      contactName: "Emma Thompson",
+      contactImage:
+        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2",
+      purchaseInfo: "Subscribed: Pro Membership",
     });
 
     // Create document
     this.createDocument({
       userId: 1,
-      title: 'Content Strategy 2023',
+      title: "Content Strategy 2023",
       content: `<h1 class="text-xl font-bold mb-2">Content Strategy 2023</h1>
       <p class="mb-4">This document outlines our content strategy for the upcoming quarter.</p>
       <h2 class="text-lg font-semibold mb-2">Key Goals:</h2>
@@ -603,34 +752,34 @@ export class MemStorage implements IStorage {
       </ul>
       <p>Click to edit this document and add your own content...</p>`,
     });
-    
+
     // Create sample stories
     this.createStory({
       userId: 2,
-      mediaUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978',
-      mediaType: 'image',
-      caption: 'Working on new marketing strategies!',
+      mediaUrl: "https://images.unsplash.com/photo-1552664730-d307ca884978",
+      mediaType: "image",
+      caption: "Working on new marketing strategies!",
     });
-    
+
     this.createStory({
       userId: 3,
-      mediaUrl: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085',
-      mediaType: 'image',
-      caption: 'Coding session in progress',
+      mediaUrl: "https://images.unsplash.com/photo-1498050108023-c5249f4df085",
+      mediaType: "image",
+      caption: "Coding session in progress",
     });
-    
+
     this.createStory({
       userId: 4,
-      mediaUrl: 'https://images.unsplash.com/photo-1561070791-2526d30994b5',
-      mediaType: 'image',
-      caption: 'New design concept',
+      mediaUrl: "https://images.unsplash.com/photo-1561070791-2526d30994b5",
+      mediaType: "image",
+      caption: "New design concept",
     });
-    
+
     this.createStory({
       userId: 5,
-      mediaUrl: 'https://images.unsplash.com/photo-1603415526960-f7e0328c63b1',
-      mediaType: 'image',
-      caption: 'Behind the scenes of our latest social campaign',
+      mediaUrl: "https://images.unsplash.com/photo-1603415526960-f7e0328c63b1",
+      mediaType: "image",
+      caption: "Behind the scenes of our latest social campaign",
     });
   }
 
@@ -661,23 +810,31 @@ export class MemStorage implements IStorage {
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
     const user = this.users.get(id);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
-    
+
     // Only update allowed fields
     if (userData.username !== undefined) user.username = userData.username;
-    if (userData.displayName !== undefined) user.displayName = userData.displayName;
+    if (userData.displayName !== undefined)
+      user.displayName = userData.displayName;
     if (userData.bio !== undefined) user.bio = userData.bio;
-    if (userData.profileLinks !== undefined) user.profileLinks = userData.profileLinks;
-    if (userData.pushNotificationsEnabled !== undefined) user.pushNotificationsEnabled = userData.pushNotificationsEnabled;
+    if (userData.profileLinks !== undefined)
+      user.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined)
+      user.pushNotificationsEnabled = userData.pushNotificationsEnabled;
     if (userData.colorMode !== undefined) user.colorMode = userData.colorMode;
-    if (userData.profileImageUrl !== undefined) user.profileImageUrl = userData.profileImageUrl;
-    
+    if (userData.profileImageUrl !== undefined)
+      user.profileImageUrl = userData.profileImageUrl;
+
     this.users.set(id, user);
     return user;
   }
 
-  async rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User> {
+  async rebindClerkIdentity(
+    id: number,
+    clerkId: string,
+    authEmail: string,
+  ): Promise<User> {
     const user = this.users.get(id);
     if (!user) throw new Error("User not found");
     user.clerkId = clerkId;
@@ -685,27 +842,27 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return user;
   }
-  
+
   async searchUsersByUsername(query: string): Promise<User[]> {
     // Convert to lowercase and remove @ prefix if exists
-    const normalizedQuery = query.toLowerCase().replace(/^@/, '');
-    
+    const normalizedQuery = query.toLowerCase().replace(/^@/, "");
+
     if (!normalizedQuery.trim()) {
       return [];
     }
-    
+
     // Filter users with usernames that start with the query
-    return Array.from(this.users.values()).filter(
-      (user) => user.username.toLowerCase().includes(normalizedQuery)
+    return Array.from(this.users.values()).filter((user) =>
+      user.username.toLowerCase().includes(normalizedQuery),
     );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userIdCounter++;
     const now = new Date();
-    const user: User = { 
-      ...insertUser, 
-      id, 
+    const user: User = {
+      ...insertUser,
+      id,
       createdAt: now,
       xpPoints: 0,
       level: 1,
@@ -714,10 +871,10 @@ export class MemStorage implements IStorage {
       bio: insertUser.bio ?? null,
       profileLinks: [],
       pushNotificationsEnabled: true,
-      colorMode: 'dark',
+      colorMode: "dark",
       profileImageUrl: insertUser.profileImageUrl ?? null,
-      role: insertUser.role ?? 'user',
-      status: 'active',
+      role: insertUser.role ?? "user",
+      status: "active",
       deletedAt: null,
     };
     this.users.set(id, user);
@@ -733,10 +890,11 @@ export class MemStorage implements IStorage {
     // Check that both users exist
     const follower = this.users.get(followerId);
     const followed = this.users.get(followedId);
-    
-    if (!follower) throw new Error('Follower user not found');
-    if (!followed) throw new Error('Followed user not found');
-    if (followerId === followedId) throw new Error('Users cannot follow themselves');
+
+    if (!follower) throw new Error("Follower user not found");
+    if (!followed) throw new Error("Followed user not found");
+    if (followerId === followedId)
+      throw new Error("Users cannot follow themselves");
 
     // Check if already following
     const isAlreadyFollowing = await this.isFollowing(followerId, followedId);
@@ -749,68 +907,69 @@ export class MemStorage implements IStorage {
       id,
       followerId,
       followedId,
-      createdAt: now
+      createdAt: now,
     };
-    
+
     this.followers.set(id, followerRecord);
   }
 
   async unfollowUser(followerId: number, followedId: number): Promise<void> {
     // Find the follow relationship
     const relationship = Array.from(this.followers.values()).find(
-      f => f.followerId === followerId && f.followedId === followedId
+      (f) => f.followerId === followerId && f.followedId === followedId,
     );
-    
+
     if (!relationship) return; // Not following, nothing to do
-    
+
     // Remove the relationship
     this.followers.delete(relationship.id);
   }
 
   async getFollowers(userId: number): Promise<User[]> {
     // Check if user exists
-    if (!this.users.has(userId)) throw new Error('User not found');
-    
+    if (!this.users.has(userId)) throw new Error("User not found");
+
     // Find all followers of this user
     const followerIds = Array.from(this.followers.values())
-      .filter(f => f.followedId === userId)
-      .map(f => f.followerId);
-    
+      .filter((f) => f.followedId === userId)
+      .map((f) => f.followerId);
+
     // Get the user objects for each follower
-    return followerIds.map(id => this.users.get(id)!);
+    return followerIds.map((id) => this.users.get(id)!);
   }
-  
+
   async getFollowing(userId: number): Promise<User[]> {
     // Check if user exists
-    if (!this.users.has(userId)) throw new Error('User not found');
-    
+    if (!this.users.has(userId)) throw new Error("User not found");
+
     // Find all users this user is following
     const followingIds = Array.from(this.followers.values())
-      .filter(f => f.followerId === userId)
-      .map(f => f.followedId);
-    
+      .filter((f) => f.followerId === userId)
+      .map((f) => f.followedId);
+
     // Get the user objects for each followed user
-    return followingIds.map(id => this.users.get(id)!);
+    return followingIds.map((id) => this.users.get(id)!);
   }
-  
+
   async getFollowerCount(userId: number): Promise<number> {
     // Count how many users follow this user
-    return Array.from(this.followers.values())
-      .filter(f => f.followedId === userId)
-      .length;
+    return Array.from(this.followers.values()).filter(
+      (f) => f.followedId === userId,
+    ).length;
   }
-  
+
   async getFollowingCount(userId: number): Promise<number> {
     // Count how many users this user follows
-    return Array.from(this.followers.values())
-      .filter(f => f.followerId === userId)
-      .length;
+    return Array.from(this.followers.values()).filter(
+      (f) => f.followerId === userId,
+    ).length;
   }
-  
+
   async isFollowing(followerId: number, followedId: number): Promise<boolean> {
     // Check if follower is following followed
-    return Array.from(this.followers.values())
-      .some(f => f.followerId === followerId && f.followedId === followedId);
+    return Array.from(this.followers.values()).some(
+      (f) => f.followerId === followerId && f.followedId === followedId,
+    );
   }
 
   // Post operations
@@ -818,26 +977,26 @@ export class MemStorage implements IStorage {
     // Sort by ID in descending order for consistent sorting with DatabaseStorage
     return Array.from(this.posts.values())
       .sort((a, b) => b.id - a.id)
-      .map(post => {
+      .map((post) => {
         const user = this.users.get(post.userId)!;
         return { ...post, user };
-    });
+      });
   }
 
   async getPostById(id: number): Promise<(Post & { user: User }) | undefined> {
     const post = this.posts.get(id);
     if (!post) return undefined;
-    
+
     const user = this.users.get(post.userId)!;
     return { ...post, user };
   }
-  
+
   async getPostsByUserId(userId: number): Promise<(Post & { user: User })[]> {
     // Filter posts by userId and sort by ID in descending order (newest first)
     return Array.from(this.posts.values())
-      .filter(post => post.userId === userId)
+      .filter((post) => post.userId === userId)
       .sort((a, b) => b.id - a.id)
-      .map(post => {
+      .map((post) => {
         const user = this.users.get(post.userId)!;
         return { ...post, user };
       });
@@ -846,19 +1005,21 @@ export class MemStorage implements IStorage {
   async createPost(insertPost: InsertPost): Promise<Post> {
     const id = this.postIdCounter++;
     const now = new Date();
-    const post: Post = { 
-      ...insertPost, 
-      id, 
-      likes: 0, 
-      comments: 0, 
+    const post: Post = {
+      ...insertPost,
+      id,
+      likes: 0,
+      comments: 0,
       createdAt: now,
       // Ensure required fields have default values
       imageUrl: insertPost.imageUrl ?? null,
       audioUrl: insertPost.audioUrl ?? null,
       videoUrl: insertPost.videoUrl ?? null,
+      mediaAssetId: insertPost.mediaAssetId ?? null,
       location: insertPost.location ?? null,
       mediaType: insertPost.mediaType ?? "text",
       repostOfId: insertPost.repostOfId ?? null,
+      clientMutationId: insertPost.clientMutationId ?? null,
     };
     this.posts.set(id, post);
     return post;
@@ -866,8 +1027,8 @@ export class MemStorage implements IStorage {
 
   async likePost(id: number): Promise<Post> {
     const post = this.posts.get(id);
-    if (!post) throw new Error('Post not found');
-    
+    if (!post) throw new Error("Post not found");
+
     post.likes++;
     this.posts.set(id, post);
     return post;
@@ -875,37 +1036,42 @@ export class MemStorage implements IStorage {
 
   async unlikePost(id: number): Promise<Post> {
     const post = this.posts.get(id);
-    if (!post) throw new Error('Post not found');
-    
+    if (!post) throw new Error("Post not found");
+
     // Prevent negative likes
     post.likes = Math.max(0, post.likes - 1);
     this.posts.set(id, post);
     return post;
   }
 
-  async updatePost(id: number, content: string, imageUrl?: string): Promise<Post> {
+  async updatePost(
+    id: number,
+    content: string,
+    imageUrl?: string,
+  ): Promise<Post> {
     const post = this.posts.get(id);
-    if (!post) throw new Error('Post not found');
-    
+    if (!post) throw new Error("Post not found");
+
     post.content = content;
     if (imageUrl !== undefined) {
       post.imageUrl = imageUrl;
     }
-    
+
     this.posts.set(id, post);
     return post;
   }
 
   async deletePost(id: number): Promise<void> {
-    if (!this.posts.has(id)) throw new Error('Post not found');
-    
+    if (!this.posts.has(id)) throw new Error("Post not found");
+
     // Delete the post
     this.posts.delete(id);
-    
+
     // Also delete all comments associated with this post
-    const commentsToDelete = Array.from(this.comments.values())
-      .filter(comment => comment.postId === id);
-      
+    const commentsToDelete = Array.from(this.comments.values()).filter(
+      (comment) => comment.postId === id,
+    );
+
     for (const comment of commentsToDelete) {
       this.comments.delete(comment.id);
     }
@@ -918,17 +1084,17 @@ export class MemStorage implements IStorage {
   async savePost(userId: number, postId: number): Promise<void> {
     // Check if post exists
     const post = this.posts.get(postId);
-    if (!post) throw new Error('Post not found');
-    
+    if (!post) throw new Error("Post not found");
+
     // Check if user exists
     const user = this.users.get(userId);
-    if (!user) throw new Error('User not found');
-    
+    if (!user) throw new Error("User not found");
+
     // Initialize user's saved posts set if it doesn't exist
     if (!this.savedPosts.has(userId)) {
       this.savedPosts.set(userId, new Set());
     }
-    
+
     // Add post to user's saved posts
     const userSavedPosts = this.savedPosts.get(userId)!;
     userSavedPosts.add(postId);
@@ -938,7 +1104,7 @@ export class MemStorage implements IStorage {
     // Check if user has any saved posts
     const userSavedPosts = this.savedPosts.get(userId);
     if (!userSavedPosts) return;
-    
+
     // Remove post from user's saved posts
     userSavedPosts.delete(postId);
   }
@@ -946,12 +1112,12 @@ export class MemStorage implements IStorage {
   async getSavedPosts(userId: number): Promise<(Post & { user: User })[]> {
     const userSavedPosts = this.savedPosts.get(userId);
     if (!userSavedPosts || userSavedPosts.size === 0) return [];
-    
+
     // Get all saved posts with user information
     return Array.from(userSavedPosts)
-      .map(postId => this.posts.get(postId))
+      .map((postId) => this.posts.get(postId))
       .filter((post): post is Post => post !== undefined)
-      .map(post => {
+      .map((post) => {
         const user = this.users.get(post.userId)!;
         return { ...post, user };
       });
@@ -962,7 +1128,7 @@ export class MemStorage implements IStorage {
   }
 
   async addPostLike(userId: number, postId: number): Promise<boolean> {
-    if (!this.posts.has(postId)) throw new Error('Post not found');
+    if (!this.posts.has(postId)) throw new Error("Post not found");
     const liked = this.postLikes.get(userId) ?? new Set<number>();
     if (liked.has(postId)) return false;
     liked.add(postId);
@@ -980,40 +1146,48 @@ export class MemStorage implements IStorage {
       .filter((post): post is Post => Boolean(post))
       .map((post) => ({ ...post, user: this.users.get(post.userId)! }));
   }
-  
+
   async getPostCountByUser(userId: number): Promise<number> {
     // Check if user exists
-    if (!this.users.has(userId)) throw new Error('User not found');
-    
+    if (!this.users.has(userId)) throw new Error("User not found");
+
     // Count posts belonging to the user
-    return Array.from(this.posts.values())
-      .filter(post => post.userId === userId)
-      .length;
+    return Array.from(this.posts.values()).filter(
+      (post) => post.userId === userId,
+    ).length;
   }
 
   // Comment operations
-  async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
+  async getCommentsByPostId(
+    postId: number,
+  ): Promise<(Comment & { user: User })[]> {
     return Array.from(this.comments.values())
-      .filter(comment => comment.postId === postId && comment.parentId === null)
-      .map(comment => {
+      .filter(
+        (comment) => comment.postId === postId && comment.parentId === null,
+      )
+      .map((comment) => {
         const user = this.users.get(comment.userId)!;
         return { ...comment, user };
       })
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async getCommentById(id: number): Promise<(Comment & { user: User }) | undefined> {
+  async getCommentById(
+    id: number,
+  ): Promise<(Comment & { user: User }) | undefined> {
     const comment = this.comments.get(id);
     if (!comment) return undefined;
-    
+
     const user = this.users.get(comment.userId)!;
     return { ...comment, user };
   }
 
-  async getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]> {
+  async getCommentReplies(
+    commentId: number,
+  ): Promise<(Comment & { user: User })[]> {
     return Array.from(this.comments.values())
-      .filter(comment => comment.parentId === commentId)
-      .map(comment => {
+      .filter((comment) => comment.parentId === commentId)
+      .map((comment) => {
         const user = this.users.get(comment.userId)!;
         return { ...comment, user };
       })
@@ -1023,30 +1197,31 @@ export class MemStorage implements IStorage {
   async createComment(insertComment: InsertComment): Promise<Comment> {
     const id = this.commentIdCounter++;
     const now = new Date();
-    const comment: Comment = { 
-      ...insertComment, 
-      id, 
-      createdAt: now, 
+    const comment: Comment = {
+      ...insertComment,
+      id,
+      createdAt: now,
       likes: 0,
+      visibility: "public",
       // Ensure required fields have default values
-      parentId: insertComment.parentId ?? null
+      parentId: insertComment.parentId ?? null,
     };
     this.comments.set(id, comment);
-    
+
     // Update comment count on the post
     const post = this.posts.get(insertComment.postId);
     if (post) {
       post.comments++;
       this.posts.set(post.id, post);
     }
-    
+
     return comment;
   }
-  
+
   async updateComment(id: number, content: string): Promise<Comment> {
     const comment = this.comments.get(id);
-    if (!comment) throw new Error('Comment not found');
-    
+    if (!comment) throw new Error("Comment not found");
+
     comment.content = content;
     this.comments.set(id, comment);
     return comment;
@@ -1054,11 +1229,11 @@ export class MemStorage implements IStorage {
 
   async deleteComment(id: number): Promise<void> {
     const comment = this.comments.get(id);
-    if (!comment) throw new Error('Comment not found');
-    
+    if (!comment) throw new Error("Comment not found");
+
     // Find all replies to this comment (recursive)
     const allReplies = this.findAllCommentRepliesRecursive(id);
-    
+
     // Get the post to update its comment count
     const post = this.posts.get(comment.postId);
     if (post) {
@@ -1067,79 +1242,90 @@ export class MemStorage implements IStorage {
       post.comments = Math.max(0, post.comments - totalToRemove);
       this.posts.set(post.id, post);
     }
-    
+
     // Remove the comment itself
     this.comments.delete(id);
-    
+
     // Remove all replies
-    allReplies.forEach(reply => {
+    allReplies.forEach((reply) => {
       this.comments.delete(reply.id);
     });
   }
-  
+
   // Helper method to find all replies recursively
   private findAllCommentRepliesRecursive(commentId: number): Comment[] {
-    const directReplies = Array.from(this.comments.values())
-      .filter(c => c.parentId === commentId);
-      
+    const directReplies = Array.from(this.comments.values()).filter(
+      (c) => c.parentId === commentId,
+    );
+
     let allReplies = [...directReplies];
-    
-    directReplies.forEach(reply => {
+
+    directReplies.forEach((reply) => {
       const nestedReplies = this.findAllCommentRepliesRecursive(reply.id);
       allReplies = [...allReplies, ...nestedReplies];
     });
-    
+
     return allReplies;
   }
-  
+
   async likeComment(id: number): Promise<Comment> {
     const comment = this.comments.get(id);
-    if (!comment) throw new Error('Comment not found');
-    
+    if (!comment) throw new Error("Comment not found");
+
     comment.likes++;
     this.comments.set(id, comment);
     return comment;
   }
-  
+
   async unlikeComment(id: number): Promise<Comment> {
     const comment = this.comments.get(id);
-    if (!comment) throw new Error('Comment not found');
-    
+    if (!comment) throw new Error("Comment not found");
+
     // Prevent negative likes
     comment.likes = Math.max(0, comment.likes - 1);
     this.comments.set(id, comment);
     return comment;
   }
-  
+
   // Get total comment count for a post, including all replies
   async getTotalCommentCountForPost(postId: number): Promise<number> {
     // Get all comments for the post (both top-level and replies)
-    const allComments = Array.from(this.comments.values())
-      .filter(comment => comment.postId === postId);
-    
+    const allComments = Array.from(this.comments.values()).filter(
+      (comment) => comment.postId === postId,
+    );
+
     return allComments.length;
   }
 
   // Product operations
   async getProducts(): Promise<(Product & { user: User })[]> {
-    return Array.from(this.products.values()).filter(product => product.status === "published").map(product => {
-      const user = this.users.get(product.userId)!;
-      return { ...product, user };
-    });
+    return Array.from(this.products.values())
+      .filter((product) => product.status === "published")
+      .map((product) => {
+        const user = this.users.get(product.userId)!;
+        return { ...product, user };
+      });
   }
 
-  async getProductById(id: number): Promise<(Product & { user: User }) | undefined> {
+  async getProductById(
+    id: number,
+  ): Promise<(Product & { user: User }) | undefined> {
     const product = this.products.get(id);
     if (!product) return undefined;
-    
+
     const user = this.users.get(product.userId)!;
     return { ...product, user };
   }
 
-  async getProductsByCategory(category: string): Promise<(Product & { user: User })[]> {
+  async getProductsByCategory(
+    category: string,
+  ): Promise<(Product & { user: User })[]> {
     return Array.from(this.products.values())
-      .filter(product => product.category === category && product.status === "published")
-      .map(product => {
+      .filter(
+        (product) =>
+          product.category === category && product.status === "published",
+      )
+      .map((product) => {
         const user = this.users.get(product.userId)!;
         return { ...product, user };
       });
@@ -1148,10 +1334,10 @@ export class MemStorage implements IStorage {
   async createProduct(insertProduct: ProductInput): Promise<Product> {
     const id = this.productIdCounter++;
     const now = new Date();
-    const product: Product = { 
-      ...insertProduct, 
-      id, 
-      rating: 0, 
+    const product: Product = {
+      ...insertProduct,
+      id,
+      rating: 0,
       reviewCount: 0,
       createdAt: now,
       imageUrl: insertProduct.imageUrl ?? null,
@@ -1161,13 +1347,19 @@ export class MemStorage implements IStorage {
       status: insertProduct.status ?? "draft",
       productType: insertProduct.productType ?? "digital_download",
       billingModel: insertProduct.billingModel ?? "one_time",
-      billingInterval: insertProduct.billingModel === "recurring" ? insertProduct.billingInterval ?? "month" : null,
+      billingInterval:
+        insertProduct.billingModel === "recurring"
+          ? (insertProduct.billingInterval ?? "month")
+          : null,
     };
     this.products.set(id, product);
     return product;
   }
 
-  async updateProduct(id: number, productUpdate: ProductUpdate): Promise<Product> {
+  async updateProduct(
+    id: number,
+    productUpdate: ProductUpdate,
+  ): Promise<Product> {
     const existing = this.products.get(id);
     if (!existing) throw new Error("Product not found");
     const product = { ...existing, ...productUpdate };
@@ -1175,7 +1367,9 @@ export class MemStorage implements IStorage {
     return product;
   }
 
-  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
+  async getPurchasesByBuyerId(
+    buyerId: number,
+  ): Promise<(Purchase & { product: Product & { user: User } })[]> {
     return Array.from(this.purchases.values())
       .filter((purchase) => purchase.buyerId === buyerId)
       .map((purchase) => {
@@ -1186,14 +1380,21 @@ export class MemStorage implements IStorage {
       .sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
   }
 
-  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
+  async getPurchaseByBuyerAndProduct(
+    buyerId: number,
+    productId: number,
+  ): Promise<Purchase | undefined> {
     return Array.from(this.purchases.values()).find(
-      (purchase) => purchase.buyerId === buyerId && purchase.productId === productId,
+      (purchase) =>
+        purchase.buyerId === buyerId && purchase.productId === productId,
     );
   }
 
   async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
-    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    const existing = await this.getPurchaseByBuyerAndProduct(
+      insertPurchase.buyerId,
+      insertPurchase.productId,
+    );
     if (existing) return existing;
 
     const purchase: Purchase = {
@@ -1210,8 +1411,9 @@ export class MemStorage implements IStorage {
 
   // AI Agent operations
   async getAIAgents(): Promise<AIAgent[]> {
-    return Array.from(this.aiAgents.values())
-      .filter(agent => !agent.isCustom);
+    return Array.from(this.aiAgents.values()).filter(
+      (agent) => !agent.isCustom,
+    );
   }
 
   async getAIAgentById(id: number): Promise<AIAgent | undefined> {
@@ -1219,29 +1421,39 @@ export class MemStorage implements IStorage {
   }
 
   async getUserAIAgents(userId: number): Promise<AIAgent[]> {
-    return Array.from(this.aiAgents.values())
-      .filter(agent => agent.isCustom && agent.userId === userId);
+    return Array.from(this.aiAgents.values()).filter(
+      (agent) => agent.isCustom && agent.userId === userId,
+    );
   }
 
   async createAIAgent(insertAgent: InsertAIAgent): Promise<AIAgent> {
     const id = this.aiAgentIdCounter++;
     const now = new Date();
-    const agent: AIAgent = { 
-      ...insertAgent, 
-      id, 
-      createdAt: now, 
+    const agent: AIAgent = {
+      ...insertAgent,
+      id,
+      createdAt: now,
       chatCount: 0,
-      status: 'active',
+      status: "active",
       isCustom: insertAgent.isCustom ?? false,
     };
     this.aiAgents.set(id, agent);
     return agent;
   }
 
-  async updateAIAgent(id: number, update: Partial<InsertAIAgent>): Promise<AIAgent | undefined> {
+  async updateAIAgent(
+    id: number,
+    update: Partial<InsertAIAgent>,
+  ): Promise<AIAgent | undefined> {
     const agent = this.aiAgents.get(id);
     if (!agent) return undefined;
-    const updated = { ...agent, ...update, id: agent.id, userId: agent.userId, isCustom: agent.isCustom };
+    const updated = {
+      ...agent,
+      ...update,
+      id: agent.id,
+      userId: agent.userId,
+      isCustom: agent.isCustom,
+    };
     this.aiAgents.set(id, updated);
     return updated;
   }
@@ -1251,37 +1463,40 @@ export class MemStorage implements IStorage {
   }
 
   // AI Chat operations
-  async getAIChatsByAgentId(agentId: number, userId: number): Promise<AIChat[]> {
+  async getAIChatsByAgentId(
+    agentId: number,
+    userId: number,
+  ): Promise<AIChat[]> {
     return Array.from(this.aiChats.values())
-      .filter(chat => chat.agentId === agentId && chat.userId === userId)
+      .filter((chat) => chat.agentId === agentId && chat.userId === userId)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
   async createAIChat(insertChat: InsertAIChat): Promise<AIChat> {
     const id = this.aiChatIdCounter++;
     const now = new Date();
-    const chat: AIChat = { 
-      ...insertChat, 
-      id, 
+    const chat: AIChat = {
+      ...insertChat,
+      id,
       createdAt: now,
-      updatedAt: now, 
+      updatedAt: now,
     };
     this.aiChats.set(id, chat);
-    
+
     // Update chat count on the agent
     const agent = this.aiAgents.get(insertChat.agentId);
     if (agent) {
       agent.chatCount++;
       this.aiAgents.set(agent.id, agent);
     }
-    
+
     return chat;
   }
 
   async updateAIChat(id: number, messages: any): Promise<AIChat> {
     const chat = this.aiChats.get(id);
-    if (!chat) throw new Error('Chat not found');
-    
+    if (!chat) throw new Error("Chat not found");
+
     chat.messages = messages;
     chat.updatedAt = new Date();
     this.aiChats.set(id, chat);
@@ -1290,7 +1505,9 @@ export class MemStorage implements IStorage {
 
   // Community operations
   async getCommunities(): Promise<Community[]> {
-    return Array.from(this.communities.values()).filter((community) => !community.archivedAt);
+    return Array.from(this.communities.values()).filter(
+      (community) => !community.archivedAt,
+    );
   }
 
   async getCommunityById(id: number): Promise<Community | undefined> {
@@ -1301,7 +1518,12 @@ export class MemStorage implements IStorage {
   async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
     const id = this.communityIdCounter++;
     const now = new Date();
-    const community: Community = { ...insertCommunity, id, archivedAt: null, createdAt: now };
+    const community: Community = {
+      ...insertCommunity,
+      id,
+      archivedAt: null,
+      createdAt: now,
+    };
     this.communities.set(id, community);
     return community;
   }
@@ -1314,14 +1536,25 @@ export class MemStorage implements IStorage {
     return archived;
   }
 
-  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
+  async getCommunityMembership(
+    userId: number,
+    communityId: number,
+  ): Promise<CommunityMembership | undefined> {
     return Array.from(this.communityMemberships.values()).find(
-      (membership) => membership.userId === userId && membership.communityId === communityId && membership.status !== "banned",
+      (membership) =>
+        membership.userId === userId &&
+        membership.communityId === communityId &&
+        membership.status !== "banned",
     );
   }
 
-  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
-    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+  async joinCommunity(
+    insertMembership: InsertCommunityMembership,
+  ): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(
+      insertMembership.userId,
+      insertMembership.communityId,
+    );
     if (existing) return existing;
     const membership: CommunityMembership = {
       id: this.communityMembershipIdCounter++,
@@ -1331,6 +1564,7 @@ export class MemStorage implements IStorage {
       status: "active",
       moderationReason: null,
       moderatedAt: null,
+      onboardingCompletedAt: null,
       joinedAt: new Date(),
     };
     this.communityMemberships.set(membership.id, membership);
@@ -1339,8 +1573,9 @@ export class MemStorage implements IStorage {
 
   // Channel operations
   async getChannelsByCommunityId(communityId: number): Promise<Channel[]> {
-    return Array.from(this.channels.values())
-      .filter(channel => channel.communityId === communityId);
+    return Array.from(this.channels.values()).filter(
+      (channel) => channel.communityId === communityId,
+    );
   }
 
   async getChannelById(id: number): Promise<Channel | undefined> {
@@ -1356,22 +1591,26 @@ export class MemStorage implements IStorage {
   }
 
   // Channel Message operations
-  async getMessagesByChannelId(channelId: number): Promise<(ChannelMessage & { user: User })[]> {
+  async getMessagesByChannelId(
+    channelId: number,
+  ): Promise<(ChannelMessage & { user: User })[]> {
     return Array.from(this.channelMessages.values())
-      .filter(message => message.channelId === channelId)
-      .map(message => {
+      .filter((message) => message.channelId === channelId)
+      .map((message) => {
         const user = this.users.get(message.userId)!;
         return { ...message, user };
       })
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async createChannelMessage(insertMessage: InsertChannelMessage): Promise<ChannelMessage> {
+  async createChannelMessage(
+    insertMessage: InsertChannelMessage,
+  ): Promise<ChannelMessage> {
     const id = this.channelMessageIdCounter++;
     const now = new Date();
-    const message: ChannelMessage = { 
-      ...insertMessage, 
-      id, 
+    const message: ChannelMessage = {
+      ...insertMessage,
+      id,
       likes: 0,
       createdAt: now,
       isPinned: insertMessage.isPinned ?? false,
@@ -1383,8 +1622,8 @@ export class MemStorage implements IStorage {
 
   async pinChannelMessage(id: number): Promise<ChannelMessage> {
     const message = this.channelMessages.get(id);
-    if (!message) throw new Error('Message not found');
-    
+    if (!message) throw new Error("Message not found");
+
     message.isPinned = !message.isPinned;
     this.channelMessages.set(id, message);
     return message;
@@ -1392,8 +1631,8 @@ export class MemStorage implements IStorage {
 
   async likeChannelMessage(id: number): Promise<ChannelMessage> {
     const message = this.channelMessages.get(id);
-    if (!message) throw new Error('Message not found');
-    
+    if (!message) throw new Error("Message not found");
+
     message.likes++;
     this.channelMessages.set(id, message);
     return message;
@@ -1402,7 +1641,7 @@ export class MemStorage implements IStorage {
   // Revenue operations
   async getRevenueByUserId(userId: number): Promise<Revenue[]> {
     return Array.from(this.revenues.values())
-      .filter(revenue => revenue.userId === userId)
+      .filter((revenue) => revenue.userId === userId)
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }
 
@@ -1415,8 +1654,9 @@ export class MemStorage implements IStorage {
 
   // Contact operations
   async getContactsByUserId(userId: number): Promise<Contact[]> {
-    return Array.from(this.contacts.values())
-      .filter(contact => contact.userId === userId);
+    return Array.from(this.contacts.values()).filter(
+      (contact) => contact.userId === userId,
+    );
   }
 
   async getContactById(id: number): Promise<Contact | undefined> {
@@ -1437,9 +1677,13 @@ export class MemStorage implements IStorage {
     return contact;
   }
 
-  async updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact> {
+  async updateContact(
+    id: number,
+    contactName: string,
+    purchaseInfo: string | null,
+  ): Promise<Contact> {
     const contact = this.contacts.get(id);
-    if (!contact) throw new Error('Contact not found');
+    if (!contact) throw new Error("Contact not found");
     const updated = { ...contact, contactName, purchaseInfo };
     this.contacts.set(id, updated);
     return updated;
@@ -1451,8 +1695,9 @@ export class MemStorage implements IStorage {
 
   // Document operations
   async getDocumentsByUserId(userId: number): Promise<Document[]> {
-    return Array.from(this.documents.values())
-      .filter(document => document.userId === userId);
+    return Array.from(this.documents.values()).filter(
+      (document) => document.userId === userId,
+    );
   }
 
   async getDocumentById(id: number): Promise<Document | undefined> {
@@ -1462,9 +1707,9 @@ export class MemStorage implements IStorage {
   async createDocument(insertDocument: InsertDocument): Promise<Document> {
     const id = this.documentIdCounter++;
     const now = new Date();
-    const document: Document = { 
-      ...insertDocument, 
-      id, 
+    const document: Document = {
+      ...insertDocument,
+      id,
       createdAt: now,
       updatedAt: now,
     };
@@ -1472,10 +1717,14 @@ export class MemStorage implements IStorage {
     return document;
   }
 
-  async updateDocument(id: number, title: string, content: string): Promise<Document> {
+  async updateDocument(
+    id: number,
+    title: string,
+    content: string,
+  ): Promise<Document> {
     const document = this.documents.get(id);
-    if (!document) throw new Error('Document not found');
-    
+    if (!document) throw new Error("Document not found");
+
     document.title = title;
     document.content = content;
     document.updatedAt = new Date();
@@ -1490,14 +1739,19 @@ export class MemStorage implements IStorage {
   // Notification operations
   async getNotificationsByUserId(userId: number): Promise<Notification[]> {
     return Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .filter((notification) => notification.userId === userId)
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
   }
 
-  async createNotification(notification: InsertNotification): Promise<Notification> {
+  async createNotification(
+    notification: InsertNotification,
+  ): Promise<Notification> {
     const id = crypto.randomUUID();
     const now = new Date();
-    
+
     const newNotification: Notification = {
       ...notification,
       id,
@@ -1509,129 +1763,158 @@ export class MemStorage implements IStorage {
       sourceType: null,
       sourceId: null,
     };
-    
+
     this.notifications.set(id, newNotification);
     return newNotification;
   }
 
   async markNotificationAsRead(id: string): Promise<Notification> {
     const notification = this.notifications.get(id);
-    if (!notification) throw new Error('Notification not found');
-    
+    if (!notification) throw new Error("Notification not found");
+
     notification.read = true;
     this.notifications.set(id, notification);
     return notification;
   }
 
   async markAllNotificationsAsRead(userId: number): Promise<void> {
-    const userNotifications = Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId);
-    
-    userNotifications.forEach(notification => {
+    const userNotifications = Array.from(this.notifications.values()).filter(
+      (notification) => notification.userId === userId,
+    );
+
+    userNotifications.forEach((notification) => {
       notification.read = true;
       this.notifications.set(notification.id, notification);
     });
   }
 
   async deleteNotification(id: string): Promise<void> {
-    if (!this.notifications.has(id)) throw new Error('Notification not found');
+    if (!this.notifications.has(id)) throw new Error("Notification not found");
     this.notifications.delete(id);
   }
 
   async deleteAllNotifications(userId: number): Promise<void> {
-    const userNotifications = Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId);
-    
-    userNotifications.forEach(notification => {
+    const userNotifications = Array.from(this.notifications.values()).filter(
+      (notification) => notification.userId === userId,
+    );
+
+    userNotifications.forEach((notification) => {
       this.notifications.delete(notification.id);
     });
   }
 
   // Conversation operations
-  async getConversationsByUserId(userId: number): Promise<ConversationSummary[]> {
+  async getConversationsByUserId(
+    userId: number,
+  ): Promise<ConversationSummary[]> {
     // Get all conversation participants for the user
-    const userParticipations = Array.from(this.conversationParticipants.values())
-      .filter(participant => participant.userId === userId);
-    
+    const userParticipations = Array.from(
+      this.conversationParticipants.values(),
+    ).filter((participant) => participant.userId === userId);
+
     // Get the conversations for those participations
-    return userParticipations.map(participation => {
-      const conversation = this.conversations.get(participation.conversationId)!;
-      
-      // Get all participants for this conversation
-      const participants = Array.from(this.conversationParticipants.values())
-        .filter(p => p.conversationId === conversation.id)
-        .map(p => {
-          const user = this.users.get(p.userId)!;
-          return { ...p, user };
-        });
-      
-      const messages = Array.from(this.directMessages.values())
-        .filter((message) => message.conversationId === conversation.id)
-        .sort((left, right) => left.id - right.id);
-      const last = messages.at(-1);
-      const cursor = this.conversationReadCursors.get(`${conversation.id}:${userId}`) ?? 0;
-      return {
-        ...conversation,
-        participants,
-        lastMessage: last ? { ...last, sender: this.users.get(last.senderId)! } : null,
-        unreadCount: messages.filter((message) => message.senderId !== userId && message.id > cursor).length,
-      };
-    }).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return userParticipations
+      .map((participation) => {
+        const conversation = this.conversations.get(
+          participation.conversationId,
+        )!;
+
+        // Get all participants for this conversation
+        const participants = Array.from(this.conversationParticipants.values())
+          .filter((p) => p.conversationId === conversation.id)
+          .map((p) => {
+            const user = this.users.get(p.userId)!;
+            return { ...p, user };
+          });
+
+        const messages = Array.from(this.directMessages.values())
+          .filter((message) => message.conversationId === conversation.id)
+          .sort((left, right) => left.id - right.id);
+        const last = messages.at(-1);
+        const cursor =
+          this.conversationReadCursors.get(`${conversation.id}:${userId}`) ?? 0;
+        return {
+          ...conversation,
+          participants,
+          lastMessage: last
+            ? { ...last, sender: this.users.get(last.senderId)! }
+            : null,
+          unreadCount: messages.filter(
+            (message) => message.senderId !== userId && message.id > cursor,
+          ).length,
+        };
+      })
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
-  async getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined> {
+  async getConversationById(id: number): Promise<
+    | (Conversation & {
+        participants: (ConversationParticipant & { user: User })[];
+      })
+    | undefined
+  > {
     const conversation = this.conversations.get(id);
     if (!conversation) return undefined;
-    
+
     // Get all participants for this conversation
     const participants = Array.from(this.conversationParticipants.values())
-      .filter(p => p.conversationId === conversation.id)
-      .map(p => {
+      .filter((p) => p.conversationId === conversation.id)
+      .map((p) => {
         const user = this.users.get(p.userId)!;
         return { ...p, user };
       });
-    
+
     return { ...conversation, participants };
   }
-  
-  async getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]> {
+
+  async getParticipantsByConversationId(
+    conversationId: number,
+  ): Promise<(ConversationParticipant & { user: User })[]> {
     // Get all participants for this conversation
     return Array.from(this.conversationParticipants.values())
-      .filter(p => p.conversationId === conversationId)
-      .map(p => {
+      .filter((p) => p.conversationId === conversationId)
+      .map((p) => {
         const user = this.users.get(p.userId)!;
         return { ...p, user };
       });
   }
 
-  async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
+  async createConversation(
+    userIds: number[] = [],
+    name?: string,
+    isGroup: boolean = false,
+  ): Promise<Conversation> {
     const id = this.conversationIdCounter++;
     const now = new Date();
-    
+
     const conversation: Conversation = {
       id,
       createdAt: now,
       updatedAt: now,
       isGroup: isGroup || userIds.length > 2,
       name: name || null,
-      icon: null
+      icon: null,
     };
-    
+
     this.conversations.set(id, conversation);
-    
+
     // Add participants (function call without actually adding participants here,
     // as participants should be added separately by the route handler)
-    
+
     return conversation;
   }
 
-  async addParticipantToConversation(conversationId: number, userId: number, isAdmin: boolean = false): Promise<ConversationParticipant> {
+  async addParticipantToConversation(
+    conversationId: number,
+    userId: number,
+    isAdmin: boolean = false,
+  ): Promise<ConversationParticipant> {
     const conversation = this.conversations.get(conversationId);
-    if (!conversation) throw new Error('Conversation not found');
-    
+    if (!conversation) throw new Error("Conversation not found");
+
     const id = this.conversationParticipantIdCounter++;
     const now = new Date();
-    
+
     const participant: ConversationParticipant = {
       id,
       conversationId,
@@ -1639,7 +1922,7 @@ export class MemStorage implements IStorage {
       joinedAt: now,
       isAdmin,
     };
-    
+
     this.conversationParticipants.set(id, participant);
     const lastMessageId = Math.max(
       0,
@@ -1647,73 +1930,88 @@ export class MemStorage implements IStorage {
         .filter((message) => message.conversationId === conversationId)
         .map((message) => message.id),
     );
-    this.conversationReadCursors.set(`${conversationId}:${userId}`, lastMessageId);
-    
+    this.conversationReadCursors.set(
+      `${conversationId}:${userId}`,
+      lastMessageId,
+    );
+
     // Update the conversation's update timestamp
     conversation.updatedAt = now;
     this.conversations.set(conversationId, conversation);
-    
+
     return participant;
   }
 
-  async removeParticipantFromConversation(conversationId: number, userId: number): Promise<void> {
-    const participant = Array.from(this.conversationParticipants.values())
-      .find(p => p.conversationId === conversationId && p.userId === userId);
-    
-    if (!participant) throw new Error('Participant not found');
-    
+  async removeParticipantFromConversation(
+    conversationId: number,
+    userId: number,
+  ): Promise<void> {
+    const participant = Array.from(this.conversationParticipants.values()).find(
+      (p) => p.conversationId === conversationId && p.userId === userId,
+    );
+
+    if (!participant) throw new Error("Participant not found");
+
     this.conversationParticipants.delete(participant.id);
     this.conversationReadCursors.delete(`${conversationId}:${userId}`);
-    
+
     // Update the conversation's update timestamp
     const conversation = this.conversations.get(conversationId)!;
     conversation.updatedAt = new Date();
     this.conversations.set(conversationId, conversation);
   }
-  
+
   async deleteConversation(conversationId: number): Promise<void> {
     // Check if conversation exists
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation with ID ${conversationId} not found`);
     }
-    
+
     // Delete all participants of this conversation
-    const participantsToDelete = Array.from(this.conversationParticipants.values())
-      .filter(p => p.conversationId === conversationId);
-      
+    const participantsToDelete = Array.from(
+      this.conversationParticipants.values(),
+    ).filter((p) => p.conversationId === conversationId);
+
     for (const participant of participantsToDelete) {
       this.conversationParticipants.delete(participant.id);
-      this.conversationReadCursors.delete(`${conversationId}:${participant.userId}`);
+      this.conversationReadCursors.delete(
+        `${conversationId}:${participant.userId}`,
+      );
     }
-    
+
     // Delete all messages in this conversation
-    const messagesToDelete = Array.from(this.directMessages.values())
-      .filter(m => m.conversationId === conversationId);
-      
+    const messagesToDelete = Array.from(this.directMessages.values()).filter(
+      (m) => m.conversationId === conversationId,
+    );
+
     for (const message of messagesToDelete) {
       this.directMessages.delete(message.id);
     }
-    
+
     // Finally delete the conversation itself
     this.conversations.delete(conversationId);
   }
 
   // Direct Message operations
-  async getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]> {
+  async getMessagesByConversationId(
+    conversationId: number,
+  ): Promise<(DirectMessage & { sender: User })[]> {
     return Array.from(this.directMessages.values())
-      .filter(message => message.conversationId === conversationId)
-      .map(message => {
+      .filter((message) => message.conversationId === conversationId)
+      .map((message) => {
         const sender = this.users.get(message.senderId)!;
         return { ...message, sender };
       })
       .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
   }
 
-  async createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage> {
+  async createDirectMessage(
+    message: InsertDirectMessage,
+  ): Promise<DirectMessage> {
     const id = this.directMessageIdCounter++;
     const now = new Date();
-    
+
     const directMessage: DirectMessage = {
       ...message,
       id,
@@ -1721,46 +2019,54 @@ export class MemStorage implements IStorage {
       read: false,
       isEdited: message.isEdited ?? false,
       replyToMessageId: message.replyToMessageId ?? null,
+      clientMutationId: message.clientMutationId ?? null,
       reactions: message.reactions ?? {},
     };
-    
+
     this.directMessages.set(id, directMessage);
-    
+
     // Update the conversation's update timestamp
     const conversation = this.conversations.get(message.conversationId)!;
     conversation.updatedAt = now;
     this.conversations.set(message.conversationId, conversation);
-    
+
     return directMessage;
   }
 
-  async updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage> {
+  async updateDirectMessage(
+    id: number,
+    updates: Partial<DirectMessage>,
+  ): Promise<DirectMessage> {
     const message = this.directMessages.get(id);
-    if (!message) throw new Error('Message not found');
-    
+    if (!message) throw new Error("Message not found");
+
     const updatedMessage = { ...message, ...updates };
     this.directMessages.set(id, updatedMessage);
     return updatedMessage;
   }
-  
+
   async deleteDirectMessage(id: number): Promise<void> {
     if (!this.directMessages.has(id)) {
-      throw new Error('Message not found');
+      throw new Error("Message not found");
     }
-    
+
     this.directMessages.delete(id);
   }
-  
-  async addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage> {
+
+  async addReactionToMessage(
+    messageId: number,
+    userId: number,
+    reaction: string,
+  ): Promise<DirectMessage> {
     const message = this.directMessages.get(messageId);
-    if (!message) throw new Error('Message not found');
-    
+    if (!message) throw new Error("Message not found");
+
     // Initialize reactions object if it doesn't exist
     const reactions = (message.reactions ?? {}) as Record<string, string>;
-    
+
     // Convert number to string for consistent object keys
     const userIdStr = userId.toString();
-    
+
     // Update or add the reaction
     if (reactions[userIdStr] === reaction) {
       // If same reaction exists, remove it (toggle behavior)
@@ -1769,53 +2075,67 @@ export class MemStorage implements IStorage {
       // Otherwise set the new reaction
       reactions[userIdStr] = reaction;
     }
-    
+
     message.reactions = reactions;
     this.directMessages.set(messageId, message);
     return message;
   }
-  
+
   async markMessageAsRead(id: number): Promise<DirectMessage> {
     const message = this.directMessages.get(id);
-    if (!message) throw new Error('Message not found');
-    
+    if (!message) throw new Error("Message not found");
+
     message.read = true;
     this.directMessages.set(id, message);
-    
+
     return message;
   }
-  
-  async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
+
+  async markConversationAsRead(
+    conversationId: number,
+    userId: number,
+  ): Promise<void> {
     const lastMessageId = Math.max(
       0,
       ...Array.from(this.directMessages.values())
         .filter((message) => message.conversationId === conversationId)
         .map((message) => message.id),
     );
-    this.conversationReadCursors.set(`${conversationId}:${userId}`, lastMessageId);
+    this.conversationReadCursors.set(
+      `${conversationId}:${userId}`,
+      lastMessageId,
+    );
   }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {
     // Get all conversations this user is part of
-    const userParticipations = Array.from(this.conversationParticipants.values())
-      .filter(participant => participant.userId === userId);
-    
+    const userParticipations = Array.from(
+      this.conversationParticipants.values(),
+    ).filter((participant) => participant.userId === userId);
+
     return userParticipations.reduce((total, participation) => {
-      const cursor = this.conversationReadCursors.get(`${participation.conversationId}:${userId}`) ?? 0;
-      return total + Array.from(this.directMessages.values()).filter((message) =>
-        message.conversationId === participation.conversationId
-        && message.senderId !== userId
-        && message.id > cursor
-      ).length;
+      const cursor =
+        this.conversationReadCursors.get(
+          `${participation.conversationId}:${userId}`,
+        ) ?? 0;
+      return (
+        total +
+        Array.from(this.directMessages.values()).filter(
+          (message) =>
+            message.conversationId === participation.conversationId &&
+            message.senderId !== userId &&
+            message.id > cursor,
+        ).length
+      );
     }, 0);
   }
-  
+
   // Story operations
   async getStories(): Promise<(Story & { user: User })[]> {
     // Sort by creation date in descending order (newest first)
     return Array.from(this.stories.values())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(story => {
+      .map((story) => {
         const user = this.users.get(story.userId)!;
         return { ...story, user };
       });
@@ -1824,18 +2144,20 @@ export class MemStorage implements IStorage {
   async getUserStories(userId: number): Promise<(Story & { user: User })[]> {
     // Get stories for a specific user
     return Array.from(this.stories.values())
-      .filter(story => story.userId === userId)
+      .filter((story) => story.userId === userId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(story => {
+      .map((story) => {
         const user = this.users.get(story.userId)!;
         return { ...story, user };
       });
   }
 
-  async getStoryById(id: number): Promise<(Story & { user: User }) | undefined> {
+  async getStoryById(
+    id: number,
+  ): Promise<(Story & { user: User }) | undefined> {
     const story = this.stories.get(id);
     if (!story) return undefined;
-    
+
     const user = this.users.get(story.userId)!;
     return { ...story, user };
   }
@@ -1843,11 +2165,11 @@ export class MemStorage implements IStorage {
   async createStory(insertStory: InsertStory): Promise<Story> {
     const id = this.storyIdCounter++;
     const now = new Date();
-    
+
     // Calculate expiration time (24 hours from now)
     const expiresAt = new Date(now);
     expiresAt.setHours(expiresAt.getHours() + 24);
-    
+
     const story: Story = {
       ...insertStory,
       id,
@@ -1856,25 +2178,25 @@ export class MemStorage implements IStorage {
       viewCount: 0,
       // Ensure required fields have default values
       caption: insertStory.caption ?? null,
-      mediaType: insertStory.mediaType ?? 'image',
+      mediaType: insertStory.mediaType ?? "image",
     };
-    
+
     this.stories.set(id, story);
     return story;
   }
 
   async deleteStory(id: number): Promise<void> {
     if (!this.stories.has(id)) {
-      throw new Error('Story not found');
+      throw new Error("Story not found");
     }
-    
+
     this.stories.delete(id);
   }
 
   async incrementStoryViewCount(id: number): Promise<Story> {
     const story = this.stories.get(id);
-    if (!story) throw new Error('Story not found');
-    
+    if (!story) throw new Error("Story not found");
+
     story.viewCount++;
     this.stories.set(id, story);
     return story;
@@ -1892,44 +2214,61 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByClerkId(clerkId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.clerkId, clerkId));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, clerkId));
     return user || undefined;
   }
 
   async getUserByAuthEmail(authEmail: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.authEmail, authEmail.trim().toLowerCase()));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.authEmail, authEmail.trim().toLowerCase()));
     return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username));
     return user || undefined;
   }
 
   async searchUsersByUsername(query: string): Promise<User[]> {
     // Convert to lowercase and remove @ prefix if exists
-    const normalizedQuery = query.toLowerCase().replace(/^@/, '');
-    
+    const normalizedQuery = query.toLowerCase().replace(/^@/, "");
+
     if (!normalizedQuery.trim()) {
       return [];
     }
-    
+
     // Use SQL LIKE to find usernames containing the query
-    return await db.select()
+    return await db
+      .select()
       .from(users)
-      .where(sql`LOWER(${users.username}) LIKE ${'%' + normalizedQuery + '%'}`);
+      .where(sql`LOWER(${users.username}) LIKE ${"%" + normalizedQuery + "%"}`);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values({
-      ...insertUser,
-      xpPoints: 0,
-      level: 1,
-    }).returning();
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...insertUser,
+        xpPoints: 0,
+        level: 1,
+      })
+      .returning();
     return user;
   }
 
-  async rebindClerkIdentity(id: number, clerkId: string, authEmail: string): Promise<User> {
+  async rebindClerkIdentity(
+    id: number,
+    clerkId: string,
+    authEmail: string,
+  ): Promise<User> {
     const [updatedUser] = await db
       .update(users)
       .set({ clerkId, authEmail })
@@ -1942,31 +2281,38 @@ export class DatabaseStorage implements IStorage {
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
   }
-  
+
   async updateUser(id: number, userData: Partial<User>): Promise<User> {
     // Keep identity and authorization fields immutable while allowing the
     // public username and profile presentation to be edited by their owner.
     const allowedFields: Partial<User> = {};
-    
-    if (userData.username !== undefined) allowedFields.username = userData.username;
-    if (userData.displayName !== undefined) allowedFields.displayName = userData.displayName;
+
+    if (userData.username !== undefined)
+      allowedFields.username = userData.username;
+    if (userData.displayName !== undefined)
+      allowedFields.displayName = userData.displayName;
     if (userData.bio !== undefined) allowedFields.bio = userData.bio;
-    if (userData.profileLinks !== undefined) allowedFields.profileLinks = userData.profileLinks;
-    if (userData.pushNotificationsEnabled !== undefined) allowedFields.pushNotificationsEnabled = userData.pushNotificationsEnabled;
-    if (userData.colorMode !== undefined) allowedFields.colorMode = userData.colorMode;
-    if (userData.profileImageUrl !== undefined) allowedFields.profileImageUrl = userData.profileImageUrl;
-    
+    if (userData.profileLinks !== undefined)
+      allowedFields.profileLinks = userData.profileLinks;
+    if (userData.pushNotificationsEnabled !== undefined)
+      allowedFields.pushNotificationsEnabled =
+        userData.pushNotificationsEnabled;
+    if (userData.colorMode !== undefined)
+      allowedFields.colorMode = userData.colorMode;
+    if (userData.profileImageUrl !== undefined)
+      allowedFields.profileImageUrl = userData.profileImageUrl;
+
     // Update the user record
     const [updatedUser] = await db
       .update(users)
       .set(allowedFields)
       .where(eq(users.id, id))
       .returning();
-      
+
     if (!updatedUser) {
-      throw new Error('User not found or could not be updated');
+      throw new Error("User not found or could not be updated");
     }
-    
+
     return updatedUser;
   }
 
@@ -1975,10 +2321,11 @@ export class DatabaseStorage implements IStorage {
     // Check that both users exist
     const follower = await this.getUser(followerId);
     const followed = await this.getUser(followedId);
-    
-    if (!follower) throw new Error('Follower user not found');
-    if (!followed) throw new Error('Followed user not found');
-    if (followerId === followedId) throw new Error('Users cannot follow themselves');
+
+    if (!follower) throw new Error("Follower user not found");
+    if (!followed) throw new Error("Followed user not found");
+    if (followerId === followedId)
+      throw new Error("Users cannot follow themselves");
 
     // Check if already following
     const isAlreadyFollowing = await this.isFollowing(followerId, followedId);
@@ -1988,228 +2335,268 @@ export class DatabaseStorage implements IStorage {
     await db.insert(followers).values({
       followerId,
       followedId,
-      createdAt: new Date()
+      createdAt: new Date(),
     });
   }
 
   async unfollowUser(followerId: number, followedId: number): Promise<void> {
     // Delete the follow relationship
-    await db.delete(followers)
-      .where(and(
-        eq(followers.followerId, followerId),
-        eq(followers.followedId, followedId)
-      ));
+    await db
+      .delete(followers)
+      .where(
+        and(
+          eq(followers.followerId, followerId),
+          eq(followers.followedId, followedId),
+        ),
+      );
   }
 
   async getFollowers(userId: number): Promise<User[]> {
     // Check if user exists
     const user = await this.getUser(userId);
-    if (!user) throw new Error('User not found');
-    
+    if (!user) throw new Error("User not found");
+
     // Find all followers of this user
     const result = await db
       .select({
-        follower: users
+        follower: users,
       })
       .from(followers)
       .innerJoin(users, eq(followers.followerId, users.id))
       .where(eq(followers.followedId, userId));
-    
-    return result.map(row => row.follower);
+
+    return result.map((row) => row.follower);
   }
-  
+
   async getFollowing(userId: number): Promise<User[]> {
     // Check if user exists
     const user = await this.getUser(userId);
-    if (!user) throw new Error('User not found');
-    
+    if (!user) throw new Error("User not found");
+
     // Find all users this user is following
     const result = await db
       .select({
-        followed: users
+        followed: users,
       })
       .from(followers)
       .innerJoin(users, eq(followers.followedId, users.id))
       .where(eq(followers.followerId, userId));
-    
-    return result.map(row => row.followed);
+
+    return result.map((row) => row.followed);
   }
-  
+
   async getFollowerCount(userId: number): Promise<number> {
     // Count how many users follow this user
     const [result] = await db
       .select({
-        count: count()
+        count: count(),
       })
       .from(followers)
       .where(eq(followers.followedId, userId));
-    
+
     return result?.count || 0;
   }
-  
+
   async getFollowingCount(userId: number): Promise<number> {
     // Count how many users this user follows
     const [result] = await db
       .select({
-        count: count()
+        count: count(),
       })
       .from(followers)
       .where(eq(followers.followerId, userId));
-    
+
     return result?.count || 0;
   }
-  
+
   async isFollowing(followerId: number, followedId: number): Promise<boolean> {
     // Check if follower is following followed
     const [result] = await db
       .select()
       .from(followers)
-      .where(and(
-        eq(followers.followerId, followerId),
-        eq(followers.followedId, followedId)
-      ));
-    
+      .where(
+        and(
+          eq(followers.followerId, followerId),
+          eq(followers.followedId, followedId),
+        ),
+      );
+
     return !!result;
   }
 
   // Post operations
-  async getPosts(): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
-    const result = await db.select({
-      post: posts,
-      user: users,
-    }).from(posts)
+  async getPosts(): Promise<
+    (Post & { user: User; taggedUsers?: TaggedUserProfile[] })[]
+  > {
+    const result = await db
+      .select({
+        post: posts,
+        user: users,
+      })
+      .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .orderBy(desc(posts.id)); // Use ID for stable sorting instead of createdAt
-    
+
     // Fetch all tagged users for all posts in a batch
-    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
-    
+    const postsWithUsers: Array<
+      Post & { user: User; taggedUsers: TaggedUserProfile[] }
+    > = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
+
     // Get all post IDs
-    const postIds = postsWithUsers.map(post => post.id);
-    
+    const postIds = postsWithUsers.map((post) => post.id);
+
     if (postIds.length > 0) {
       // Fetch tagged users for all posts
-      const taggedUsersResult = await db.select({
-        taggedUser: taggedUsers,
-        user: users,
-        postId: taggedUsers.postId,
-      }).from(taggedUsers)
+      const taggedUsersResult = await db
+        .select({
+          taggedUser: taggedUsers,
+          user: users,
+          postId: taggedUsers.postId,
+        })
+        .from(taggedUsers)
         .innerJoin(users, eq(taggedUsers.userId, users.id))
         .where(inArray(taggedUsers.postId, postIds));
-      
+
       // Group tagged users by post ID
-      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
-        if (!acc[postId]) {
-          acc[postId] = [];
-        }
-        
-        acc[postId].push({
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          profileImageUrl: user.profileImageUrl,
-          positionX: taggedUser.positionX,
-          positionY: taggedUser.positionY,
-        });
-        
-        return acc;
-      }, {} as Record<number, TaggedUserProfile[]>);
-      
+      const taggedUsersByPostId = taggedUsersResult.reduce(
+        (acc, { taggedUser, user, postId }) => {
+          if (!acc[postId]) {
+            acc[postId] = [];
+          }
+
+          acc[postId].push({
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            profileImageUrl: user.profileImageUrl,
+            positionX: taggedUser.positionX,
+            positionY: taggedUser.positionY,
+          });
+
+          return acc;
+        },
+        {} as Record<number, TaggedUserProfile[]>,
+      );
+
       // Add tagged users to their respective posts
-      postsWithUsers.forEach(post => {
+      postsWithUsers.forEach((post) => {
         post.taggedUsers = taggedUsersByPostId[post.id] || [];
       });
     }
-    
+
     return postsWithUsers;
   }
 
-  async getPostById(id: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] }) | undefined> {
-    const [result] = await db.select({
-      post: posts,
-      user: users,
-    }).from(posts)
+  async getPostById(
+    id: number,
+  ): Promise<
+    (Post & { user: User; taggedUsers?: TaggedUserProfile[] }) | undefined
+  > {
+    const [result] = await db
+      .select({
+        post: posts,
+        user: users,
+      })
+      .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .where(eq(posts.id, id));
-    
+
     if (!result) return undefined;
-    
-    const postWithUser: Post & { user: User; taggedUsers: TaggedUserProfile[] } = { ...result.post, user: result.user, taggedUsers: [] };
-    
+
+    const postWithUser: Post & {
+      user: User;
+      taggedUsers: TaggedUserProfile[];
+    } = { ...result.post, user: result.user, taggedUsers: [] };
+
     // Fetch tagged users for this post
-    const taggedUsersResult = await db.select({
-      taggedUser: taggedUsers,
-      user: users,
-    }).from(taggedUsers)
-      .innerJoin(users, eq(taggedUsers.userId, users.id))
-      .where(eq(taggedUsers.postId, id));
-    
-    // Add tagged users to the post
-    if (taggedUsersResult.length > 0) {
-      postWithUser.taggedUsers = taggedUsersResult.map(({ taggedUser, user }) => ({
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        profileImageUrl: user.profileImageUrl,
-        positionX: taggedUser.positionX,
-        positionY: taggedUser.positionY,
-      }));
-    } else {
-      postWithUser.taggedUsers = [];
-    }
-    
-    return postWithUser;
-  }
-  
-  async getPostsByUserId(userId: number): Promise<(Post & { user: User, taggedUsers?: TaggedUserProfile[] })[]> {
-    const result = await db.select({
-      post: posts,
-      user: users,
-    }).from(posts)
-      .innerJoin(users, eq(posts.userId, users.id))
-      .where(eq(posts.userId, userId))
-      .orderBy(desc(posts.id)); // Sort newest first
-    
-    // Fetch all tagged users for all posts in a batch
-    const postsWithUsers: Array<Post & { user: User; taggedUsers: TaggedUserProfile[] }> = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
-    
-    // Get all post IDs
-    const postIds = postsWithUsers.map(post => post.id);
-    
-    if (postIds.length > 0) {
-      // Fetch tagged users for all posts
-      const taggedUsersResult = await db.select({
+    const taggedUsersResult = await db
+      .select({
         taggedUser: taggedUsers,
         user: users,
-        postId: taggedUsers.postId,
-      }).from(taggedUsers)
-        .innerJoin(users, eq(taggedUsers.userId, users.id))
-        .where(inArray(taggedUsers.postId, postIds));
-      
-      // Group tagged users by post ID
-      const taggedUsersByPostId = taggedUsersResult.reduce((acc, { taggedUser, user, postId }) => {
-        if (!acc[postId]) {
-          acc[postId] = [];
-        }
-        
-        acc[postId].push({
+      })
+      .from(taggedUsers)
+      .innerJoin(users, eq(taggedUsers.userId, users.id))
+      .where(eq(taggedUsers.postId, id));
+
+    // Add tagged users to the post
+    if (taggedUsersResult.length > 0) {
+      postWithUser.taggedUsers = taggedUsersResult.map(
+        ({ taggedUser, user }) => ({
           id: user.id,
           username: user.username,
           displayName: user.displayName,
           profileImageUrl: user.profileImageUrl,
           positionX: taggedUser.positionX,
           positionY: taggedUser.positionY,
-        });
-        
-        return acc;
-      }, {} as Record<number, TaggedUserProfile[]>);
-      
+        }),
+      );
+    } else {
+      postWithUser.taggedUsers = [];
+    }
+
+    return postWithUser;
+  }
+
+  async getPostsByUserId(
+    userId: number,
+  ): Promise<(Post & { user: User; taggedUsers?: TaggedUserProfile[] })[]> {
+    const result = await db
+      .select({
+        post: posts,
+        user: users,
+      })
+      .from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(eq(posts.userId, userId))
+      .orderBy(desc(posts.id)); // Sort newest first
+
+    // Fetch all tagged users for all posts in a batch
+    const postsWithUsers: Array<
+      Post & { user: User; taggedUsers: TaggedUserProfile[] }
+    > = result.map(({ post, user }) => ({ ...post, user, taggedUsers: [] }));
+
+    // Get all post IDs
+    const postIds = postsWithUsers.map((post) => post.id);
+
+    if (postIds.length > 0) {
+      // Fetch tagged users for all posts
+      const taggedUsersResult = await db
+        .select({
+          taggedUser: taggedUsers,
+          user: users,
+          postId: taggedUsers.postId,
+        })
+        .from(taggedUsers)
+        .innerJoin(users, eq(taggedUsers.userId, users.id))
+        .where(inArray(taggedUsers.postId, postIds));
+
+      // Group tagged users by post ID
+      const taggedUsersByPostId = taggedUsersResult.reduce(
+        (acc, { taggedUser, user, postId }) => {
+          if (!acc[postId]) {
+            acc[postId] = [];
+          }
+
+          acc[postId].push({
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            profileImageUrl: user.profileImageUrl,
+            positionX: taggedUser.positionX,
+            positionY: taggedUser.positionY,
+          });
+
+          return acc;
+        },
+        {} as Record<number, TaggedUserProfile[]>,
+      );
+
       // Add tagged users to their respective posts
-      postsWithUsers.forEach(post => {
+      postsWithUsers.forEach((post) => {
         post.taggedUsers = taggedUsersByPostId[post.id] || [];
       });
     }
-    
+
     return postsWithUsers;
   }
 
@@ -2221,160 +2608,165 @@ export class DatabaseStorage implements IStorage {
   async likePost(id: number): Promise<Post> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new Error(`Post with id ${id} not found`);
-    
+
     const [updatedPost] = await db
       .update(posts)
       .set({ likes: post.likes + 1 })
       .where(eq(posts.id, id))
       .returning();
-    
+
     return updatedPost;
   }
 
   async unlikePost(id: number): Promise<Post> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new Error(`Post with id ${id} not found`);
-    
+
     // Prevent negative likes
     const newLikes = Math.max(0, post.likes - 1);
-    
+
     const [updatedPost] = await db
       .update(posts)
       .set({ likes: newLikes })
       .where(eq(posts.id, id))
       .returning();
-    
+
     return updatedPost;
   }
-  
-  async updatePost(id: number, content: string, imageUrl?: string): Promise<Post> {
+
+  async updatePost(
+    id: number,
+    content: string,
+    imageUrl?: string,
+  ): Promise<Post> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new Error(`Post with id ${id} not found`);
-    
+
     const updateData: Partial<Post> = { content };
     if (imageUrl !== undefined) {
       updateData.imageUrl = imageUrl;
     }
-    
+
     const [updatedPost] = await db
       .update(posts)
       .set(updateData)
       .where(eq(posts.id, id))
       .returning();
-    
+
     return updatedPost;
   }
-  
+
   async deletePost(id: number): Promise<void> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new Error(`Post with id ${id} not found`);
-    
+
     // Find any stories that were created from this post
     try {
       // Get the post's userId as we need to check both userId and mediaUrl
       const userId = post.userId;
-      
+
       // Determine which media URL to look for based on post type
-      const mediaUrl = post.mediaType === 'photo' ? post.imageUrl : 
-                      post.mediaType === 'video' ? post.videoUrl :
-                      post.mediaType === 'audio' ? post.audioUrl : null;
-      
-      // Debug information
-      console.log(`Post being deleted: ID=${id}, userId=${userId}, mediaType=${post.mediaType}, mediaUrl=${mediaUrl}`);
-      
-      // New approach: If we're deleting a post, delete ALL stories by this user that were created 
+      const mediaUrl =
+        post.mediaType === "photo"
+          ? post.imageUrl
+          : post.mediaType === "video"
+            ? post.videoUrl
+            : post.mediaType === "audio"
+              ? post.audioUrl
+              : null;
+
+      // New approach: If we're deleting a post, delete ALL stories by this user that were created
       // within a short time window of this post's creation time (5 minutes)
       if (userId && post.createdAt) {
         // Skip the time window approach for now as it's causing errors
         // Instead, get all stories for this user first
-        console.log(`Looking for stories with mediaUrl=${mediaUrl} by user ${userId}`);
-        
         // Get all stories by this user
         const userStories = await db
           .select()
           .from(stories)
           .where(eq(stories.userId, userId));
-        
-        console.log(`Found ${userStories.length} stories by this user`);
-        
+
         // Process all stories by this user
         for (const story of userStories) {
-          console.log(`Checking story ID=${story.id} by user ${story.userId}`);
-          
           // Check if the media URLs match directly when a post is deleted
           if (mediaUrl && story.mediaUrl === mediaUrl) {
-            console.log(`Exact match found! Deleting story with ID ${story.id}`);
             await db.delete(stories).where(eq(stories.id, story.id));
           }
-          
+
           // Additional check: Compare filenames regardless of path
           if (mediaUrl && story.mediaUrl) {
-            const mediaFilename = mediaUrl.split('/').pop();
-            const storyFilename = story.mediaUrl.split('/').pop();
-            
-            if (mediaFilename && storyFilename && mediaFilename === storyFilename) {
-              console.log(`Filename match found! Deleting story with ID ${story.id}`);
+            const mediaFilename = mediaUrl.split("/").pop();
+            const storyFilename = story.mediaUrl.split("/").pop();
+
+            if (
+              mediaFilename &&
+              storyFilename &&
+              mediaFilename === storyFilename
+            ) {
               await db.delete(stories).where(eq(stories.id, story.id));
             }
           }
         }
-        
+
         // Additional checks for the media URL
         if (mediaUrl) {
-          console.log(`Looking for stories with userId=${userId} AND mediaUrl matching ${mediaUrl}`);
-          
           // Filter all stories for this user again with advanced matching
           for (const story of userStories) {
-            console.log(`Advanced check: story ID=${story.id}, userId=${story.userId}, mediaUrl=${story.mediaUrl}`);
-            
             // Check if the media URLs match or if one contains the other (to handle relative/absolute paths)
-            const isMatch = story.mediaUrl === mediaUrl || 
-                          (story.mediaUrl?.includes(mediaUrl) || false) || 
-                          (mediaUrl?.includes(story.mediaUrl) || false);
-            
+            const isMatch =
+              story.mediaUrl === mediaUrl ||
+              story.mediaUrl?.includes(mediaUrl) ||
+              false ||
+              mediaUrl?.includes(story.mediaUrl) ||
+              false;
+
             // Additional check: Extract the base filename for comparison
-            const mediaUrlFilename = mediaUrl.split('/').pop()?.split('-').pop();
-            const storyUrlFilename = story.mediaUrl?.split('/').pop()?.split('-').pop();
-            const filenameMatch = mediaUrlFilename && storyUrlFilename && 
-                                 mediaUrlFilename === storyUrlFilename;
-            
+            const mediaUrlFilename = mediaUrl
+              .split("/")
+              .pop()
+              ?.split("-")
+              .pop();
+            const storyUrlFilename = story.mediaUrl
+              ?.split("/")
+              .pop()
+              ?.split("-")
+              .pop();
+            const filenameMatch =
+              mediaUrlFilename &&
+              storyUrlFilename &&
+              mediaUrlFilename === storyUrlFilename;
+
             if (isMatch || filenameMatch) {
-              console.log(`MATCH FOUND! Deleting story with ID ${story.id}`);
               await db.delete(stories).where(eq(stories.id, story.id));
             }
           }
         }
       }
-      
+
       // Finally, check if there are any orphaned stories (stories with no matching posts)
       // This is a cleanup operation to ensure no dangling stories remain
       await this.cleanupOrphanedStories();
-      
     } catch (error) {
       console.error("Error finding/deleting related stories:", error);
       // Continue with post deletion even if story deletion fails
     }
-    
+
     // Delete the post (cascade will handle comments deletion due to foreign key constraint)
     await db.delete(posts).where(eq(posts.id, id));
   }
-  
+
   // Helper method to clean up stories that no longer have associated posts
   private async cleanupOrphanedStories(): Promise<void> {
     try {
-      console.log("Running orphaned stories cleanup");
-      
       // Get all stories
       const allStories = await db.select().from(stories);
-      console.log(`Found ${allStories.length} total stories to check`);
-      
       let cleanupCount = 0;
-      
+
       // For each story, check if its associated post still exists
       for (const story of allStories) {
         // Skip stories without mediaUrl
         if (!story.mediaUrl) continue;
-        
+
         // Try to find any post with this media URL
         const postsWithMedia = await db
           .select()
@@ -2383,189 +2775,220 @@ export class DatabaseStorage implements IStorage {
             or(
               eq(posts.imageUrl, story.mediaUrl),
               eq(posts.videoUrl, story.mediaUrl),
-              eq(posts.audioUrl, story.mediaUrl)
-            )
+              eq(posts.audioUrl, story.mediaUrl),
+            ),
           );
-        
+
         // If no posts found with this media URL, delete the story
         if (postsWithMedia.length === 0) {
-          console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
           await db.delete(stories).where(eq(stories.id, story.id));
           cleanupCount++;
         }
       }
-      
-      console.log(`Cleanup complete. Deleted ${cleanupCount} orphaned stories.`);
+
     } catch (error) {
       console.error("Error cleaning up orphaned stories:", error);
     }
   }
-  
+
   async savePost(userId: number, postId: number): Promise<void> {
     // Check if post exists
     const [post] = await db.select().from(posts).where(eq(posts.id, postId));
     if (!post) throw new Error(`Post with id ${postId} not found`);
-    
+
     // Check if user exists
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw new Error(`User with id ${userId} not found`);
-    
+
     // Check if this post is already saved by this user
     const [existingSave] = await db
       .select()
       .from(savedPosts)
-      .where(and(
-        eq(savedPosts.userId, userId),
-        eq(savedPosts.postId, postId)
-      ));
-    
+      .where(and(eq(savedPosts.userId, userId), eq(savedPosts.postId, postId)));
+
     // If the post is already saved, do nothing
     if (existingSave) return;
-    
+
     // Insert into savedPosts table
     await db.insert(savedPosts).values({
       userId,
-      postId
+      postId,
     });
   }
-  
+
   async unsavePost(userId: number, postId: number): Promise<void> {
     // Delete from savedPosts where userId and postId match
-    await db.delete(savedPosts)
-      .where(and(
-        eq(savedPosts.userId, userId),
-        eq(savedPosts.postId, postId)
-      ));
+    await db
+      .delete(savedPosts)
+      .where(and(eq(savedPosts.userId, userId), eq(savedPosts.postId, postId)));
   }
-  
+
   async getSavedPosts(userId: number): Promise<(Post & { user: User })[]> {
-    const result = await db.select({
-      post: posts,
-      user: users,
-    }).from(savedPosts)
+    const result = await db
+      .select({
+        post: posts,
+        user: users,
+      })
+      .from(savedPosts)
       .innerJoin(posts, eq(savedPosts.postId, posts.id))
       .innerJoin(users, eq(posts.userId, users.id))
       .where(eq(savedPosts.userId, userId))
       .orderBy(desc(savedPosts.id));
-    
+
     return result.map(({ post, user }) => ({ ...post, user }));
   }
 
   async isPostLiked(userId: number, postId: number): Promise<boolean> {
-    const [record] = await db.select({ id: postLikes.id }).from(postLikes).where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId)));
+    const [record] = await db
+      .select({ id: postLikes.id })
+      .from(postLikes)
+      .where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId)));
     return Boolean(record);
   }
 
   async addPostLike(userId: number, postId: number): Promise<boolean> {
-    const [record] = await db.insert(postLikes).values({ userId, postId }).onConflictDoNothing().returning({ id: postLikes.id });
+    const [record] = await db
+      .insert(postLikes)
+      .values({ userId, postId })
+      .onConflictDoNothing()
+      .returning({ id: postLikes.id });
     return Boolean(record);
   }
 
   async removePostLike(userId: number, postId: number): Promise<boolean> {
-    const removed = await db.delete(postLikes).where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId))).returning({ id: postLikes.id });
+    const removed = await db
+      .delete(postLikes)
+      .where(and(eq(postLikes.userId, userId), eq(postLikes.postId, postId)))
+      .returning({ id: postLikes.id });
     return removed.length > 0;
   }
 
   async getLikedPosts(userId: number): Promise<(Post & { user: User })[]> {
-    const result = await db.select({ post: posts, user: users }).from(postLikes)
+    const result = await db
+      .select({ post: posts, user: users })
+      .from(postLikes)
       .innerJoin(posts, eq(postLikes.postId, posts.id))
       .innerJoin(users, eq(posts.userId, users.id))
       .where(eq(postLikes.userId, userId))
       .orderBy(desc(postLikes.id));
     return result.map(({ post, user }) => ({ ...post, user }));
   }
-  
+
   async getPostCountByUser(userId: number): Promise<number> {
-    const result = await db.select({ count: count() })
+    const result = await db
+      .select({ count: count() })
       .from(posts)
       .where(eq(posts.userId, userId));
-    
+
     return result[0].count;
   }
 
   // Comment operations
-  async getCommentsByPostId(postId: number): Promise<(Comment & { user: User })[]> {
-    const result = await db.select({
-      comment: comments,
-      user: users,
-    }).from(comments)
+  async getCommentsByPostId(
+    postId: number,
+  ): Promise<(Comment & { user: User })[]> {
+    const result = await db
+      .select({
+        comment: comments,
+        user: users,
+      })
+      .from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
-      .where(
-        and(
-          eq(comments.postId, postId),
-          isNull(comments.parentId)
-        )
-      )
+      .where(and(eq(comments.postId, postId), isNull(comments.parentId)))
       .orderBy(desc(comments.createdAt));
-    
+
     return result.map(({ comment, user }) => ({ ...comment, user }));
   }
 
-  async getCommentReplies(commentId: number): Promise<(Comment & { user: User })[]> {
-    const result = await db.select({
-      comment: comments,
-      user: users,
-    }).from(comments)
+  async getCommentReplies(
+    commentId: number,
+  ): Promise<(Comment & { user: User })[]> {
+    const result = await db
+      .select({
+        comment: comments,
+        user: users,
+      })
+      .from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
       .where(eq(comments.parentId, commentId))
       .orderBy(desc(comments.createdAt));
-    
+
     return result.map(({ comment, user }) => ({ ...comment, user }));
   }
 
   async createComment(insertComment: InsertComment): Promise<Comment> {
     // First fetch the current post to get the comment count
-    const [post] = await db.select().from(posts).where(eq(posts.id, insertComment.postId));
-    if (!post) throw new Error(`Post with id ${insertComment.postId} not found`);
-    
+    const [post] = await db
+      .select()
+      .from(posts)
+      .where(eq(posts.id, insertComment.postId));
+    if (!post)
+      throw new Error(`Post with id ${insertComment.postId} not found`);
+
     // Update post comment count
     await db
       .update(posts)
       .set({ comments: post.comments + 1 })
       .where(eq(posts.id, insertComment.postId));
-    
-    const [comment] = await db.insert(comments).values(insertComment).returning();
+
+    const [comment] = await db
+      .insert(comments)
+      .values(insertComment)
+      .returning();
     return comment;
   }
-  
-  async getCommentById(id: number): Promise<(Comment & { user: User }) | undefined> {
-    const [result] = await db.select({
-      comment: comments,
-      user: users,
-    }).from(comments)
+
+  async getCommentById(
+    id: number,
+  ): Promise<(Comment & { user: User }) | undefined> {
+    const [result] = await db
+      .select({
+        comment: comments,
+        user: users,
+      })
+      .from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
       .where(eq(comments.id, id));
-    
+
     if (!result) return undefined;
     return { ...result.comment, user: result.user };
   }
 
   async updateComment(id: number, content: string): Promise<Comment> {
-    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    const [comment] = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
-    
+
     const [updatedComment] = await db
       .update(comments)
       .set({ content })
       .where(eq(comments.id, id))
       .returning();
-    
+
     return updatedComment;
   }
 
   async deleteComment(id: number): Promise<void> {
     // First check if the comment exists
-    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    const [comment] = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
-    
+
     // Find all replies (and potential nested replies) recursively
     const allReplies = await this.findAllCommentRepliesRecursive(id);
-    
+
     // Total number of comments to delete (main comment + all nested replies)
     const totalCommentsToDelete = 1 + allReplies.length;
-    
+
     // Always update the post's comment count regardless of parent/child relationship
-    const [post] = await db.select().from(posts).where(eq(posts.id, comment.postId));
+    const [post] = await db
+      .select()
+      .from(posts)
+      .where(eq(posts.id, comment.postId));
     if (post) {
       // Update the post's comment count by subtracting all deleted comments
       await db
@@ -2573,147 +2996,202 @@ export class DatabaseStorage implements IStorage {
         .set({ comments: Math.max(0, post.comments - totalCommentsToDelete) })
         .where(eq(posts.id, comment.postId));
     }
-    
+
     // Delete all replies and sub-replies
     if (allReplies.length > 0) {
-      const replyIds = allReplies.map(reply => reply.id);
+      const replyIds = allReplies.map((reply) => reply.id);
       await db.delete(comments).where(inArray(comments.id, replyIds));
     }
-    
+
     // Delete the comment itself
     await db.delete(comments).where(eq(comments.id, id));
   }
-  
+
   // Helper method to find all replies recursively (including replies to replies)
-  private async findAllCommentRepliesRecursive(commentId: number): Promise<Comment[]> {
-    const directReplies = await db.select().from(comments).where(eq(comments.parentId, commentId));
-    
+  private async findAllCommentRepliesRecursive(
+    commentId: number,
+  ): Promise<Comment[]> {
+    const directReplies = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.parentId, commentId));
+
     let allReplies = [...directReplies];
-    
+
     // For each direct reply, find its nested replies
     for (const reply of directReplies) {
       const nestedReplies = await this.findAllCommentRepliesRecursive(reply.id);
       allReplies = [...allReplies, ...nestedReplies];
     }
-    
+
     return allReplies;
   }
-  
+
   async likeComment(id: number): Promise<Comment> {
     // Get the comment with user info to return a more complete response
-    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    const [comment] = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
-    
+
     // Update the like count
     const [updatedComment] = await db
       .update(comments)
       .set({ likes: comment.likes + 1 })
       .where(eq(comments.id, id))
       .returning();
-    
+
     return updatedComment;
   }
-  
+
   async unlikeComment(id: number): Promise<Comment> {
     // Get the comment
-    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+    const [comment] = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id));
     if (!comment) throw new Error(`Comment with id ${id} not found`);
-    
+
     // Prevent negative likes
     const newLikes = Math.max(0, comment.likes - 1);
-    
+
     // Update the like count
     const [updatedComment] = await db
       .update(comments)
       .set({ likes: newLikes })
       .where(eq(comments.id, id))
       .returning();
-    
+
     return updatedComment;
   }
-  
+
   // Get total comment count for a post, including all replies
   async getTotalCommentCountForPost(postId: number): Promise<number> {
     // Count all comments for this post (both top-level and all nested replies)
-    const result = await db.select({ count: count() }).from(comments)
+    const result = await db
+      .select({ count: count() })
+      .from(comments)
       .where(eq(comments.postId, postId));
-    
+
     // Extract the count from the result
     return result[0].count;
   }
 
   // Product operations
   async getProducts(): Promise<(Product & { user: User })[]> {
-    const result = await db.select({
-      product: products,
-      user: users,
-    }).from(products)
+    const result = await db
+      .select({
+        product: products,
+        user: users,
+      })
+      .from(products)
       .innerJoin(users, eq(products.userId, users.id))
       .where(eq(products.status, "published"))
       .orderBy(desc(products.createdAt));
-    
+
     return result.map(({ product, user }) => ({ ...product, user }));
   }
 
-  async getProductById(id: number): Promise<(Product & { user: User }) | undefined> {
-    const [result] = await db.select({
-      product: products,
-      user: users,
-    }).from(products)
+  async getProductById(
+    id: number,
+  ): Promise<(Product & { user: User }) | undefined> {
+    const [result] = await db
+      .select({
+        product: products,
+        user: users,
+      })
+      .from(products)
       .innerJoin(users, eq(products.userId, users.id))
       .where(eq(products.id, id));
-    
+
     if (!result) return undefined;
     return { ...result.product, user: result.user };
   }
 
-  async getProductsByCategory(category: string): Promise<(Product & { user: User })[]> {
-    const result = await db.select({
-      product: products,
-      user: users,
-    }).from(products)
+  async getProductsByCategory(
+    category: string,
+  ): Promise<(Product & { user: User })[]> {
+    const result = await db
+      .select({
+        product: products,
+        user: users,
+      })
+      .from(products)
       .innerJoin(users, eq(products.userId, users.id))
-      .where(and(eq(products.category, category), eq(products.status, "published")))
+      .where(
+        and(eq(products.category, category), eq(products.status, "published")),
+      )
       .orderBy(desc(products.createdAt));
-    
+
     return result.map(({ product, user }) => ({ ...product, user }));
   }
 
   async createProduct(insertProduct: ProductInput): Promise<Product> {
-    const [product] = await db.insert(products).values(insertProduct).returning();
+    const [product] = await db
+      .insert(products)
+      .values(insertProduct)
+      .returning();
     return product;
   }
 
-  async updateProduct(id: number, productUpdate: ProductUpdate): Promise<Product> {
-    const [product] = await db.update(products).set(productUpdate).where(eq(products.id, id)).returning();
+  async updateProduct(
+    id: number,
+    productUpdate: ProductUpdate,
+  ): Promise<Product> {
+    const [product] = await db
+      .update(products)
+      .set(productUpdate)
+      .where(eq(products.id, id))
+      .returning();
     if (!product) throw new Error("Product not found");
     return product;
   }
 
-  async getPurchasesByBuyerId(buyerId: number): Promise<(Purchase & { product: Product & { user: User } })[]> {
-    const result = await db.select({
-      purchase: purchases,
-      product: products,
-      user: users,
-    }).from(purchases)
+  async getPurchasesByBuyerId(
+    buyerId: number,
+  ): Promise<(Purchase & { product: Product & { user: User } })[]> {
+    const result = await db
+      .select({
+        purchase: purchases,
+        product: products,
+        user: users,
+      })
+      .from(purchases)
       .innerJoin(products, eq(purchases.productId, products.id))
       .innerJoin(users, eq(products.userId, users.id))
       .where(eq(purchases.buyerId, buyerId))
       .orderBy(desc(purchases.purchasedAt));
 
-    return result.map(({ purchase, product, user }) => ({ ...purchase, product: { ...product, user } }));
+    return result.map(({ purchase, product, user }) => ({
+      ...purchase,
+      product: { ...product, user },
+    }));
   }
 
-  async getPurchaseByBuyerAndProduct(buyerId: number, productId: number): Promise<Purchase | undefined> {
-    const [purchase] = await db.select().from(purchases)
-      .where(and(eq(purchases.buyerId, buyerId), eq(purchases.productId, productId)));
+  async getPurchaseByBuyerAndProduct(
+    buyerId: number,
+    productId: number,
+  ): Promise<Purchase | undefined> {
+    const [purchase] = await db
+      .select()
+      .from(purchases)
+      .where(
+        and(eq(purchases.buyerId, buyerId), eq(purchases.productId, productId)),
+      );
     return purchase || undefined;
   }
 
   async createPurchase(insertPurchase: InsertPurchase): Promise<Purchase> {
-    const existing = await this.getPurchaseByBuyerAndProduct(insertPurchase.buyerId, insertPurchase.productId);
+    const existing = await this.getPurchaseByBuyerAndProduct(
+      insertPurchase.buyerId,
+      insertPurchase.productId,
+    );
     if (existing) return existing;
-    const [purchase] = await db.insert(purchases).values(insertPurchase).returning();
+    const [purchase] = await db
+      .insert(purchases)
+      .values(insertPurchase)
+      .returning();
     return purchase;
   }
 
@@ -2739,7 +3217,10 @@ export class DatabaseStorage implements IStorage {
     return agent;
   }
 
-  async updateAIAgent(id: number, update: Partial<InsertAIAgent>): Promise<AIAgent | undefined> {
+  async updateAIAgent(
+    id: number,
+    update: Partial<InsertAIAgent>,
+  ): Promise<AIAgent | undefined> {
     const { userId: _userId, isCustom: _isCustom, ...safeUpdate } = update;
     const [agent] = await db
       .update(aiAgents)
@@ -2750,33 +3231,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteAIAgent(id: number): Promise<boolean> {
-    const deleted = await db.delete(aiAgents).where(eq(aiAgents.id, id)).returning({ id: aiAgents.id });
+    const deleted = await db
+      .delete(aiAgents)
+      .where(eq(aiAgents.id, id))
+      .returning({ id: aiAgents.id });
     return deleted.length > 0;
   }
 
   // AI Chat operations
-  async getAIChatsByAgentId(agentId: number, userId: number): Promise<AIChat[]> {
+  async getAIChatsByAgentId(
+    agentId: number,
+    userId: number,
+  ): Promise<AIChat[]> {
     return await db
       .select()
       .from(aiChats)
-      .where(and(
-        eq(aiChats.agentId, agentId),
-        eq(aiChats.userId, userId)
-      ))
+      .where(and(eq(aiChats.agentId, agentId), eq(aiChats.userId, userId)))
       .orderBy(desc(aiChats.updatedAt));
   }
 
   async createAIChat(insertChat: InsertAIChat): Promise<AIChat> {
     // First fetch the agent to get current chat count
-    const [agent] = await db.select().from(aiAgents).where(eq(aiAgents.id, insertChat.agentId));
-    if (!agent) throw new Error(`Agent with id ${insertChat.agentId} not found`);
-    
+    const [agent] = await db
+      .select()
+      .from(aiAgents)
+      .where(eq(aiAgents.id, insertChat.agentId));
+    if (!agent)
+      throw new Error(`Agent with id ${insertChat.agentId} not found`);
+
     // Increment chat count for the agent
     await db
       .update(aiAgents)
       .set({ chatCount: agent.chatCount + 1 })
       .where(eq(aiAgents.id, insertChat.agentId));
-    
+
     const [chat] = await db.insert(aiChats).values(insertChat).returning();
     return chat;
   }
@@ -2788,43 +3276,72 @@ export class DatabaseStorage implements IStorage {
       .set({ messages, updatedAt: now })
       .where(eq(aiChats.id, id))
       .returning();
-    
+
     return chat;
   }
 
   // Community operations
   async getCommunities(): Promise<Community[]> {
-    return await db.select().from(communities).where(isNull(communities.archivedAt));
+    return await db
+      .select()
+      .from(communities)
+      .where(isNull(communities.archivedAt));
   }
 
   async getCommunityById(id: number): Promise<Community | undefined> {
-    const [community] = await db.select().from(communities).where(and(eq(communities.id, id), isNull(communities.archivedAt)));
+    const [community] = await db
+      .select()
+      .from(communities)
+      .where(and(eq(communities.id, id), isNull(communities.archivedAt)));
     return community || undefined;
   }
 
   async createCommunity(insertCommunity: InsertCommunity): Promise<Community> {
-    const [community] = await db.insert(communities).values(insertCommunity).returning();
+    const [community] = await db
+      .insert(communities)
+      .values(insertCommunity)
+      .returning();
     return community;
   }
 
   async archiveCommunity(id: number): Promise<Community | undefined> {
-    const [community] = await db.update(communities)
+    const [community] = await db
+      .update(communities)
       .set({ archivedAt: new Date() })
       .where(and(eq(communities.id, id), isNull(communities.archivedAt)))
       .returning();
     return community || undefined;
   }
 
-  async getCommunityMembership(userId: number, communityId: number): Promise<CommunityMembership | undefined> {
-    const [membership] = await db.select().from(communityMemberships)
-      .where(and(eq(communityMemberships.userId, userId), eq(communityMemberships.communityId, communityId), ne(communityMemberships.status, "banned")));
+  async getCommunityMembership(
+    userId: number,
+    communityId: number,
+  ): Promise<CommunityMembership | undefined> {
+    const [membership] = await db
+      .select()
+      .from(communityMemberships)
+      .where(
+        and(
+          eq(communityMemberships.userId, userId),
+          eq(communityMemberships.communityId, communityId),
+          ne(communityMemberships.status, "banned"),
+        ),
+      );
     return membership || undefined;
   }
 
-  async joinCommunity(insertMembership: InsertCommunityMembership): Promise<CommunityMembership> {
-    const existing = await this.getCommunityMembership(insertMembership.userId, insertMembership.communityId);
+  async joinCommunity(
+    insertMembership: InsertCommunityMembership,
+  ): Promise<CommunityMembership> {
+    const existing = await this.getCommunityMembership(
+      insertMembership.userId,
+      insertMembership.communityId,
+    );
     if (existing) return existing;
-    const [membership] = await db.insert(communityMemberships).values(insertMembership).returning();
+    const [membership] = await db
+      .insert(communityMemberships)
+      .values(insertMembership)
+      .returning();
     return membership;
   }
 
@@ -2837,56 +3354,77 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChannelById(id: number): Promise<Channel | undefined> {
-    const [channel] = await db.select().from(channels).where(eq(channels.id, id));
+    const [channel] = await db
+      .select()
+      .from(channels)
+      .where(eq(channels.id, id));
     return channel || undefined;
   }
 
   async createChannel(insertChannel: InsertChannel): Promise<Channel> {
-    const [channel] = await db.insert(channels).values(insertChannel).returning();
+    const [channel] = await db
+      .insert(channels)
+      .values(insertChannel)
+      .returning();
     return channel;
   }
 
   // Channel Message operations
-  async getMessagesByChannelId(channelId: number): Promise<(ChannelMessage & { user: User })[]> {
-    const result = await db.select({
-      message: channelMessages,
-      user: users,
-    }).from(channelMessages)
+  async getMessagesByChannelId(
+    channelId: number,
+  ): Promise<(ChannelMessage & { user: User })[]> {
+    const result = await db
+      .select({
+        message: channelMessages,
+        user: users,
+      })
+      .from(channelMessages)
       .innerJoin(users, eq(channelMessages.userId, users.id))
       .where(eq(channelMessages.channelId, channelId))
       .orderBy(desc(channelMessages.createdAt));
-    
+
     return result.map(({ message, user }) => ({ ...message, user }));
   }
 
-  async createChannelMessage(insertMessage: InsertChannelMessage): Promise<ChannelMessage> {
-    const [message] = await db.insert(channelMessages).values(insertMessage).returning();
+  async createChannelMessage(
+    insertMessage: InsertChannelMessage,
+  ): Promise<ChannelMessage> {
+    const [message] = await db
+      .insert(channelMessages)
+      .values(insertMessage)
+      .returning();
     return message;
   }
 
   async pinChannelMessage(id: number): Promise<ChannelMessage> {
-    const [message] = await db.select().from(channelMessages).where(eq(channelMessages.id, id));
+    const [message] = await db
+      .select()
+      .from(channelMessages)
+      .where(eq(channelMessages.id, id));
     if (!message) throw new Error(`Message with id ${id} not found`);
-    
+
     const [updatedMessage] = await db
       .update(channelMessages)
       .set({ isPinned: !message.isPinned })
       .where(eq(channelMessages.id, id))
       .returning();
-    
+
     return updatedMessage;
   }
 
   async likeChannelMessage(id: number): Promise<ChannelMessage> {
-    const [message] = await db.select().from(channelMessages).where(eq(channelMessages.id, id));
+    const [message] = await db
+      .select()
+      .from(channelMessages)
+      .where(eq(channelMessages.id, id));
     if (!message) throw new Error(`Message with id ${id} not found`);
-    
+
     const [updatedMessage] = await db
       .update(channelMessages)
       .set({ likes: message.likes + 1 })
       .where(eq(channelMessages.id, id))
       .returning();
-    
+
     return updatedMessage;
   }
 
@@ -2900,7 +3438,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createRevenue(insertRevenue: InsertRevenue): Promise<Revenue> {
-    const [revenueItem] = await db.insert(revenue).values(insertRevenue).returning();
+    const [revenueItem] = await db
+      .insert(revenue)
+      .values(insertRevenue)
+      .returning();
     return revenueItem;
   }
 
@@ -2914,16 +3455,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContactById(id: number): Promise<Contact | undefined> {
-    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    const [contact] = await db
+      .select()
+      .from(contacts)
+      .where(eq(contacts.id, id));
     return contact || undefined;
   }
 
   async createContact(insertContact: InsertContact): Promise<Contact> {
-    const [contact] = await db.insert(contacts).values(insertContact).returning();
+    const [contact] = await db
+      .insert(contacts)
+      .values(insertContact)
+      .returning();
     return contact;
   }
 
-  async updateContact(id: number, contactName: string, purchaseInfo: string | null): Promise<Contact> {
+  async updateContact(
+    id: number,
+    contactName: string,
+    purchaseInfo: string | null,
+  ): Promise<Contact> {
     const [contact] = await db
       .update(contacts)
       .set({ contactName, purchaseInfo })
@@ -2946,23 +3497,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDocumentById(id: number): Promise<Document | undefined> {
-    const [document] = await db.select().from(documents).where(eq(documents.id, id));
+    const [document] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, id));
     return document || undefined;
   }
 
   async createDocument(insertDocument: InsertDocument): Promise<Document> {
-    const [document] = await db.insert(documents).values(insertDocument).returning();
+    const [document] = await db
+      .insert(documents)
+      .values(insertDocument)
+      .returning();
     return document;
   }
 
-  async updateDocument(id: number, title: string, content: string): Promise<Document> {
+  async updateDocument(
+    id: number,
+    title: string,
+    content: string,
+  ): Promise<Document> {
     const now = new Date();
     const [document] = await db
       .update(documents)
       .set({ title, content, updatedAt: now })
       .where(eq(documents.id, id))
       .returning();
-    
+
     return document;
   }
 
@@ -2979,12 +3540,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(notifications.createdAt));
   }
 
-  async createNotification(notification: InsertNotification): Promise<Notification> {
+  async createNotification(
+    notification: InsertNotification,
+  ): Promise<Notification> {
     const [newNotification] = await db
       .insert(notifications)
       .values(notification)
       .returning();
-    
+
     return newNotification;
   }
 
@@ -2994,7 +3557,7 @@ export class DatabaseStorage implements IStorage {
       .set({ read: true })
       .where(eq(notifications.id, id))
       .returning();
-    
+
     return notification;
   }
 
@@ -3006,19 +3569,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteNotification(id: string): Promise<void> {
-    await db
-      .delete(notifications)
-      .where(eq(notifications.id, id));
+    await db.delete(notifications).where(eq(notifications.id, id));
   }
 
   async deleteAllNotifications(userId: number): Promise<void> {
-    await db
-      .delete(notifications)
-      .where(eq(notifications.userId, userId));
+    await db.delete(notifications).where(eq(notifications.userId, userId));
   }
 
   // Conversation operations
-  async getConversationsByUserId(userId: number): Promise<ConversationSummary[]> {
+  async getConversationsByUserId(
+    userId: number,
+  ): Promise<ConversationSummary[]> {
     // Find conversations where the user is a participant
     const userParticipations = await db
       .select({
@@ -3026,7 +3587,10 @@ export class DatabaseStorage implements IStorage {
         participant: conversationParticipants,
       })
       .from(conversationParticipants)
-      .innerJoin(conversations, eq(conversationParticipants.conversationId, conversations.id))
+      .innerJoin(
+        conversations,
+        eq(conversationParticipants.conversationId, conversations.id),
+      )
       .where(eq(conversationParticipants.userId, userId))
       .orderBy(desc(conversations.updatedAt));
 
@@ -3036,13 +3600,17 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get all conversation IDs
-    const conversationIds = userParticipations.map(row => row.conversation.id);
+    const conversationIds = userParticipations.map(
+      (row) => row.conversation.id,
+    );
 
     // For each conversation, get all participants with their user info
     const result: ConversationSummary[] = [];
     for (const conversationId of conversationIds) {
-      const conversation = userParticipations.find(row => row.conversation.id === conversationId)?.conversation;
-      
+      const conversation = userParticipations.find(
+        (row) => row.conversation.id === conversationId,
+      )?.conversation;
+
       if (conversation) {
         // Get all participants for this conversation
         const participantsWithUsers = await db
@@ -3054,18 +3622,22 @@ export class DatabaseStorage implements IStorage {
           .innerJoin(users, eq(conversationParticipants.userId, users.id))
           .where(eq(conversationParticipants.conversationId, conversationId));
 
-        const participants = participantsWithUsers.map(row => ({
+        const participants = participantsWithUsers.map((row) => ({
           ...row.participant,
           user: row.user,
         }));
 
         const [readState] = await db
-          .select({ lastReadMessageId: conversationReadStates.lastReadMessageId })
+          .select({
+            lastReadMessageId: conversationReadStates.lastReadMessageId,
+          })
           .from(conversationReadStates)
-          .where(and(
-            eq(conversationReadStates.conversationId, conversationId),
-            eq(conversationReadStates.userId, userId),
-          ))
+          .where(
+            and(
+              eq(conversationReadStates.conversationId, conversationId),
+              eq(conversationReadStates.userId, userId),
+            ),
+          )
           .limit(1);
         const cursor = readState?.lastReadMessageId ?? 0;
         const [lastMessageRow] = await db
@@ -3078,11 +3650,13 @@ export class DatabaseStorage implements IStorage {
         const [unread] = await db
           .select({ count: count() })
           .from(directMessages)
-          .where(and(
-            eq(directMessages.conversationId, conversationId),
-            ne(directMessages.senderId, userId),
-            gt(directMessages.id, cursor),
-          ));
+          .where(
+            and(
+              eq(directMessages.conversationId, conversationId),
+              ne(directMessages.senderId, userId),
+              gt(directMessages.id, cursor),
+            ),
+          );
 
         result.push({
           ...conversation,
@@ -3098,7 +3672,12 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getConversationById(id: number): Promise<(Conversation & { participants: (ConversationParticipant & { user: User })[] }) | undefined> {
+  async getConversationById(id: number): Promise<
+    | (Conversation & {
+        participants: (ConversationParticipant & { user: User })[];
+      })
+    | undefined
+  > {
     // Get the conversation
     const [conversation] = await db
       .select()
@@ -3119,7 +3698,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(conversationParticipants.userId, users.id))
       .where(eq(conversationParticipants.conversationId, id));
 
-    const participants = participantsWithUsers.map(row => ({
+    const participants = participantsWithUsers.map((row) => ({
       ...row.participant,
       user: row.user,
     }));
@@ -3129,8 +3708,10 @@ export class DatabaseStorage implements IStorage {
       participants,
     };
   }
-  
-  async getParticipantsByConversationId(conversationId: number): Promise<(ConversationParticipant & { user: User })[]> {
+
+  async getParticipantsByConversationId(
+    conversationId: number,
+  ): Promise<(ConversationParticipant & { user: User })[]> {
     // Get all participants with their user info
     const participantsWithUsers = await db
       .select({
@@ -3141,13 +3722,17 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(conversationParticipants.userId, users.id))
       .where(eq(conversationParticipants.conversationId, conversationId));
 
-    return participantsWithUsers.map(row => ({
+    return participantsWithUsers.map((row) => ({
       ...row.participant,
       user: row.user,
     }));
   }
 
-  async createConversation(userIds: number[] = [], name?: string, isGroup: boolean = false): Promise<Conversation> {
+  async createConversation(
+    userIds: number[] = [],
+    name?: string,
+    isGroup: boolean = false,
+  ): Promise<Conversation> {
     const now = new Date();
     const [conversation] = await db
       .insert(conversations)
@@ -3163,7 +3748,11 @@ export class DatabaseStorage implements IStorage {
     return conversation;
   }
 
-  async addParticipantToConversation(conversationId: number, userId: number, isAdmin: boolean = false): Promise<ConversationParticipant> {
+  async addParticipantToConversation(
+    conversationId: number,
+    userId: number,
+    isAdmin: boolean = false,
+  ): Promise<ConversationParticipant> {
     // Update the conversation's updatedAt timestamp
     await db
       .update(conversations)
@@ -3187,23 +3776,32 @@ export class DatabaseStorage implements IStorage {
       .select({ id: sql<number>`coalesce(max(${directMessages.id}), 0)` })
       .from(directMessages)
       .where(eq(directMessages.conversationId, conversationId));
-    await db.insert(conversationReadStates).values({
-      conversationId,
-      userId,
-      lastReadMessageId: Number(latest?.id ?? 0),
-      updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: [conversationReadStates.conversationId, conversationReadStates.userId],
-      set: {
+    await db
+      .insert(conversationReadStates)
+      .values({
+        conversationId,
+        userId,
         lastReadMessageId: Number(latest?.id ?? 0),
         updatedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [
+          conversationReadStates.conversationId,
+          conversationReadStates.userId,
+        ],
+        set: {
+          lastReadMessageId: Number(latest?.id ?? 0),
+          updatedAt: new Date(),
+        },
+      });
 
     return participant;
   }
 
-  async removeParticipantFromConversation(conversationId: number, userId: number): Promise<void> {
+  async removeParticipantFromConversation(
+    conversationId: number,
+    userId: number,
+  ): Promise<void> {
     // Update the conversation's updatedAt timestamp
     await db
       .update(conversations)
@@ -3218,41 +3816,42 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(conversationParticipants.conversationId, conversationId),
-          eq(conversationParticipants.userId, userId)
-        )
+          eq(conversationParticipants.userId, userId),
+        ),
       );
-    await db.delete(conversationReadStates).where(and(
-      eq(conversationReadStates.conversationId, conversationId),
-      eq(conversationReadStates.userId, userId),
-    ));
+    await db
+      .delete(conversationReadStates)
+      .where(
+        and(
+          eq(conversationReadStates.conversationId, conversationId),
+          eq(conversationReadStates.userId, userId),
+        ),
+      );
   }
-  
+
   async deleteConversation(conversationId: number): Promise<void> {
     // Check if the conversation exists
     const [conversation] = await db
       .select()
       .from(conversations)
       .where(eq(conversations.id, conversationId));
-      
+
     if (!conversation) {
       throw new Error(`Conversation with ID ${conversationId} not found`);
     }
-    
-    console.log(`Deleting conversation ${conversationId}`);
-    
-    // Direct messages, participants, and other related data will be deleted 
+
+    // Direct messages, participants, and other related data will be deleted
     // automatically due to cascade delete constraints in the database schema
 
     // Delete the conversation
-    await db
-      .delete(conversations)
-      .where(eq(conversations.id, conversationId));
-      
-    console.log(`Successfully deleted conversation ${conversationId} and all related data`);
+    await db.delete(conversations).where(eq(conversations.id, conversationId));
+
   }
 
   // Direct Message operations
-  async getMessagesByConversationId(conversationId: number): Promise<(DirectMessage & { sender: User })[]> {
+  async getMessagesByConversationId(
+    conversationId: number,
+  ): Promise<(DirectMessage & { sender: User })[]> {
     const messagesWithSenders = await db
       .select({
         message: directMessages,
@@ -3263,13 +3862,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(directMessages.conversationId, conversationId))
       .orderBy(directMessages.sentAt);
 
-    return messagesWithSenders.map(row => ({
+    return messagesWithSenders.map((row) => ({
       ...row.message,
       sender: row.sender,
     }));
   }
 
-  async createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage> {
+  async createDirectMessage(
+    message: InsertDirectMessage,
+  ): Promise<DirectMessage> {
     // Update the conversation's updatedAt timestamp
     await db
       .update(conversations)
@@ -3291,39 +3892,44 @@ export class DatabaseStorage implements IStorage {
     return directMessage;
   }
 
-  async updateDirectMessage(id: number, updates: Partial<DirectMessage>): Promise<DirectMessage> {
+  async updateDirectMessage(
+    id: number,
+    updates: Partial<DirectMessage>,
+  ): Promise<DirectMessage> {
     const [updatedMessage] = await db
       .update(directMessages)
       .set(updates)
       .where(eq(directMessages.id, id))
       .returning();
-    
+
     return updatedMessage;
   }
-  
+
   async deleteDirectMessage(id: number): Promise<void> {
-    await db
-      .delete(directMessages)
-      .where(eq(directMessages.id, id));
+    await db.delete(directMessages).where(eq(directMessages.id, id));
   }
-  
-  async addReactionToMessage(messageId: number, userId: number, reaction: string): Promise<DirectMessage> {
+
+  async addReactionToMessage(
+    messageId: number,
+    userId: number,
+    reaction: string,
+  ): Promise<DirectMessage> {
     // First get the current message to access its reactions
     const [message] = await db
       .select()
       .from(directMessages)
       .where(eq(directMessages.id, messageId));
-    
+
     if (!message) {
-      throw new Error('Message not found');
+      throw new Error("Message not found");
     }
-    
+
     // Initialize reactions object if it doesn't exist
-    const reactions = message.reactions as Record<string, string> || {};
-    
+    const reactions = (message.reactions as Record<string, string>) || {};
+
     // Convert number to string for consistent object keys
     const userIdStr = userId.toString();
-    
+
     // Update or add the reaction
     if (reactions[userIdStr] === reaction) {
       // If same reaction exists, remove it (toggle behavior)
@@ -3332,17 +3938,17 @@ export class DatabaseStorage implements IStorage {
       // Otherwise set the new reaction
       reactions[userIdStr] = reaction;
     }
-    
+
     // Update the message with new reactions
     const [updatedMessage] = await db
       .update(directMessages)
       .set({ reactions })
       .where(eq(directMessages.id, messageId))
       .returning();
-    
+
     return updatedMessage;
   }
-  
+
   async markMessageAsRead(id: number): Promise<DirectMessage> {
     const [updatedMessage] = await db
       .update(directMessages)
@@ -3354,25 +3960,34 @@ export class DatabaseStorage implements IStorage {
 
     return updatedMessage;
   }
-  
-  async markConversationAsRead(conversationId: number, userId: number): Promise<void> {
+
+  async markConversationAsRead(
+    conversationId: number,
+    userId: number,
+  ): Promise<void> {
     const [latest] = await db
       .select({ id: sql<number>`coalesce(max(${directMessages.id}), 0)` })
       .from(directMessages)
       .where(eq(directMessages.conversationId, conversationId));
     const now = new Date();
-    await db.insert(conversationReadStates).values({
-      conversationId,
-      userId,
-      lastReadMessageId: Number(latest?.id ?? 0),
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [conversationReadStates.conversationId, conversationReadStates.userId],
-      set: {
+    await db
+      .insert(conversationReadStates)
+      .values({
+        conversationId,
+        userId,
         lastReadMessageId: Number(latest?.id ?? 0),
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [
+          conversationReadStates.conversationId,
+          conversationReadStates.userId,
+        ],
+        set: {
+          lastReadMessageId: Number(latest?.id ?? 0),
+          updatedAt: now,
+        },
+      });
   }
 
   async getUnreadMessageCountForUser(userId: number): Promise<number> {
@@ -3393,42 +4008,47 @@ export class DatabaseStorage implements IStorage {
       const [state] = await db
         .select({ lastReadMessageId: conversationReadStates.lastReadMessageId })
         .from(conversationReadStates)
-        .where(and(
-          eq(conversationReadStates.conversationId, participation.conversationId),
-          eq(conversationReadStates.userId, userId),
-        ))
+        .where(
+          and(
+            eq(
+              conversationReadStates.conversationId,
+              participation.conversationId,
+            ),
+            eq(conversationReadStates.userId, userId),
+          ),
+        )
         .limit(1);
       const [unread] = await db
         .select({ count: count() })
         .from(directMessages)
-        .where(and(
-          eq(directMessages.conversationId, participation.conversationId),
-          ne(directMessages.senderId, userId),
-          gt(directMessages.id, state?.lastReadMessageId ?? 0),
-        ));
+        .where(
+          and(
+            eq(directMessages.conversationId, participation.conversationId),
+            ne(directMessages.senderId, userId),
+            gt(directMessages.id, state?.lastReadMessageId ?? 0),
+          ),
+        );
       total += unread?.count ?? 0;
     }
     return total;
   }
-  
+
   // Story operations
   async getStories(): Promise<(Story & { user: User })[]> {
     // Get all stories ordered by creation date (newest first)
     // Filter out expired stories (older than 24 hours)
     const now = new Date();
-    
-    const result = await db.select({
-      story: stories,
-      user: users,
-    })
+
+    const result = await db
+      .select({
+        story: stories,
+        user: users,
+      })
       .from(stories)
       .innerJoin(users, eq(stories.userId, users.id))
-      .where(or(
-        isNull(stories.expiresAt),
-        gt(stories.expiresAt, now)
-      ))
+      .where(or(isNull(stories.expiresAt), gt(stories.expiresAt, now)))
       .orderBy(desc(stories.createdAt));
-    
+
     return result.map(({ story, user }) => ({ ...story, user }));
   }
 
@@ -3436,34 +4056,37 @@ export class DatabaseStorage implements IStorage {
     // Get stories for a specific user
     // Filter out expired stories (older than 24 hours)
     const now = new Date();
-    
-    const result = await db.select({
-      story: stories,
-      user: users,
-    })
+
+    const result = await db
+      .select({
+        story: stories,
+        user: users,
+      })
       .from(stories)
       .innerJoin(users, eq(stories.userId, users.id))
-      .where(and(
-        eq(stories.userId, userId),
-        or(
-          isNull(stories.expiresAt),
-          gt(stories.expiresAt, now)
-        )
-      ))
+      .where(
+        and(
+          eq(stories.userId, userId),
+          or(isNull(stories.expiresAt), gt(stories.expiresAt, now)),
+        ),
+      )
       .orderBy(desc(stories.createdAt));
-    
+
     return result.map(({ story, user }) => ({ ...story, user }));
   }
 
-  async getStoryById(id: number): Promise<(Story & { user: User }) | undefined> {
-    const [result] = await db.select({
-      story: stories,
-      user: users,
-    })
+  async getStoryById(
+    id: number,
+  ): Promise<(Story & { user: User }) | undefined> {
+    const [result] = await db
+      .select({
+        story: stories,
+        user: users,
+      })
       .from(stories)
       .innerJoin(users, eq(stories.userId, users.id))
       .where(eq(stories.id, id));
-    
+
     if (!result) return undefined;
     return { ...result.story, user: result.user };
   }
@@ -3473,35 +4096,36 @@ export class DatabaseStorage implements IStorage {
     const now = new Date();
     const expiresAt = new Date(now);
     expiresAt.setHours(expiresAt.getHours() + 24);
-    
-    const [story] = await db.insert(stories)
+
+    const [story] = await db
+      .insert(stories)
       .values({
         ...insertStory,
         viewCount: 0,
         expiresAt,
       })
       .returning();
-    
+
     return story;
   }
 
   async deleteStory(id: number): Promise<void> {
     const [story] = await db.select().from(stories).where(eq(stories.id, id));
     if (!story) throw new Error(`Story with id ${id} not found`);
-    
+
     await db.delete(stories).where(eq(stories.id, id));
   }
 
   async incrementStoryViewCount(id: number): Promise<Story> {
     const [story] = await db.select().from(stories).where(eq(stories.id, id));
     if (!story) throw new Error(`Story with id ${id} not found`);
-    
+
     const [updatedStory] = await db
       .update(stories)
       .set({ viewCount: story.viewCount + 1 })
       .where(eq(stories.id, id))
       .returning();
-    
+
     return updatedStory;
   }
 }
@@ -3510,6 +4134,7 @@ export class DatabaseStorage implements IStorage {
 // Demo mode intentionally keeps data local to the process. It lets contributors
 // exercise the creator flow without production credentials; all deployed modes
 // continue to use the authoritative Postgres store.
-export const storage: IStorage = process.env.CREATOROS_DEMO_MODE === "true"
-  ? new MemStorage()
-  : new DatabaseStorage();
+export const storage: IStorage =
+  process.env.CREATOROS_DEMO_MODE === "true"
+    ? new MemStorage()
+    : new DatabaseStorage();

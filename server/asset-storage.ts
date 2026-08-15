@@ -68,11 +68,13 @@ export function directUploadStorageKey(ownerUserId: number, kind: string, filena
   return `creativesos/${process.env.NODE_ENV ?? "development"}/${visibility}/users/${ownerUserId}/${safeKind}/${randomUUID()}${safeExtension(filename)}`;
 }
 
-export async function createDirectUpload(ownerUserId: number, kind: string, filename: string, mimeType: string, visibility: AssetVisibility): Promise<DirectUpload> {
+export async function createDirectUpload(ownerUserId: number, kind: string, filename: string, mimeType: string, visibility: AssetVisibility, existingStorageKey?: string): Promise<DirectUpload> {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider !== "r2") throw new Error("Direct uploads require R2 asset storage");
   const { client, bucket } = r2BucketFor(visibility);
-  const storageKey = directUploadStorageKey(ownerUserId, kind, filename, visibility);
+  const storageKey = existingStorageKey ?? directUploadStorageKey(ownerUserId, kind, filename, visibility);
+  const expectedPrefix = `creativesos/${process.env.NODE_ENV ?? "development"}/${visibility}/users/${ownerUserId}/`;
+  if (!storageKey.startsWith(expectedPrefix)) throw new Error("Upload key does not belong to this user");
   const expiresInSeconds = 5 * 60;
   const uploadUrl = await getSignedUrl(client, new PutObjectCommand({
     Bucket: bucket,
@@ -178,19 +180,101 @@ export async function persistPrivateFile(input: {
   return { storageKey: key, sizeBytes: file.size };
 }
 
-export async function materializePrivateAsset(storageKey: string, destination: string) {
+export async function persistManagedFile(input: {
+  sourcePath: string;
+  ownerUserId: number;
+  kind: string;
+  filename: string;
+  mimeType: string;
+  visibility: AssetVisibility;
+}) {
+  if (input.visibility === "private") {
+    const stored = await persistPrivateFile(input);
+    return { ...stored, publicUrl: null };
+  }
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  const key = directUploadStorageKey(input.ownerUserId, input.kind, input.filename, "public");
+  const file = await fs.stat(input.sourcePath);
+  if (provider === "local") {
+    if (process.env.NODE_ENV === "production") throw new Error("Public production asset storage is not configured");
+    const destination = localStoragePath(key);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(input.sourcePath, destination);
+    return { storageKey: key, publicUrl: `/uploads/${key.replace(/\\/g, "/")}`, sizeBytes: file.size };
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket, publicBaseUrl } = r2BucketFor("public");
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: createReadStream(input.sourcePath),
+    ContentLength: file.size,
+    ContentType: input.mimeType,
+    CacheControl: "public, max-age=31536000, immutable",
+    Metadata: { owner: String(input.ownerUserId), kind: input.kind, visibility: "public" },
+  }));
+  return { storageKey: key, publicUrl: `${publicBaseUrl}/${key}`, sizeBytes: file.size };
+}
+
+export async function persistManagedFileAtKey(input: {
+  sourcePath: string;
+  storageKey: string;
+  mimeType: string;
+  visibility: AssetVisibility;
+  metadata?: Record<string, string>;
+}) {
+  if (!/^creativesos\/(production|development)\/(public|private)\/[a-zA-Z0-9/_.-]+$/.test(input.storageKey)) {
+    throw new Error("Invalid managed asset storage key");
+  }
+  const expectedVisibility = input.storageKey.split("/")[2];
+  if (expectedVisibility !== input.visibility) throw new Error("Managed asset key visibility does not match");
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  const file = await fs.stat(input.sourcePath);
+  if (provider === "local") {
+    if (process.env.NODE_ENV === "production") throw new Error("Production asset storage is not configured");
+    const destination = localStoragePath(input.storageKey);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(input.sourcePath, destination);
+    return {
+      storageKey: input.storageKey,
+      publicUrl: input.visibility === "public" ? `/uploads/${input.storageKey.replace(/\\/g, "/")}` : null,
+      sizeBytes: file.size,
+    };
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket, publicBaseUrl } = r2BucketFor(input.visibility);
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: input.storageKey,
+    Body: createReadStream(input.sourcePath),
+    ContentLength: file.size,
+    ContentType: input.mimeType,
+    CacheControl: input.visibility === "public" ? "public, max-age=31536000, immutable" : "private, no-store",
+    Metadata: input.metadata,
+  }));
+  return {
+    storageKey: input.storageKey,
+    publicUrl: input.visibility === "public" ? `${publicBaseUrl}/${input.storageKey}` : null,
+    sizeBytes: file.size,
+  };
+}
+
+export async function materializeStoredAsset(storageKey: string, visibility: AssetVisibility, destination: string) {
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider === "local") {
-    const source = localStoragePath(storageKey);
-    await fs.copyFile(source, destination);
+    await fs.copyFile(localStoragePath(storageKey), destination);
     return destination;
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
-  const { client, bucket } = r2BucketFor("private");
+  const { client, bucket } = r2BucketFor(visibility);
   const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
-  if (!object.Body) throw new Error("Private asset body was unavailable");
+  if (!object.Body) throw new Error("Asset body was unavailable");
   await pipeline(object.Body as NodeJS.ReadableStream, createWriteStream(destination));
   return destination;
+}
+
+export async function materializePrivateAsset(storageKey: string, destination: string) {
+  return materializeStoredAsset(storageKey, "private", destination);
 }
 
 export async function promotePrivateAsset(input: {

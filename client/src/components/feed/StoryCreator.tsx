@@ -61,7 +61,6 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
     // Reset input value to allow selecting the same file again
     e.target.value = '';
     
-    console.log('File selected:', file.name, 'type:', file.type, 'size:', file.size);
   };
   
   // Upload mutation
@@ -81,7 +80,6 @@ export const StoryCreator = ({ isOpen, onClose }: StoryCreatorProps) => {
     },
     onSuccess: () => {
       // Invalidate and immediately refetch stories data
-      console.log('Story created, refreshing stories data');
       queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
       
       // Force an immediate refetch

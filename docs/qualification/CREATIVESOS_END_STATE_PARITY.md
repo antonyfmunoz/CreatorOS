@@ -1,5 +1,10 @@
 # CreativesOS desired end-state parity ledger
 
+The dependency-ordered implementation program is maintained in
+[`CREATIVESOS_DESIRED_END_STATE_ROADMAP.md`](../CREATIVESOS_DESIRED_END_STATE_ROADMAP.md).
+This ledger remains the qualification state of each implemented capability;
+the roadmap defines the missing product families and execution order.
+
 This ledger is the canonical implementation and release boundary for the
 standalone CreativesOS projection. It reconciles the current product doctrine,
 the Stitch visual reference, the checked-in qualification matrices, and the
@@ -81,7 +86,14 @@ field evidence.
 | Connected creation loop | Completed Broadcast programs, isolated sources and markers open directly as lineage-preserving CutStudio projects without export/re-upload | `verified_complete` (native) | One generated source now passes the mobile and desktop golden journey: private Broadcast program and isolated track, idempotent CutStudio handoff, transcript correction, deterministic highlights, kinetic-caption render, public distribution promotion, native publication, post-scoped comment automation, second-user keyword comment, public reply, DM and post analytics. External destinations remain provider gates. |
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
-| Operations | Health/readiness, usage/capacity, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` | Local migration/recovery/security/capacity gates and v311 production readiness pass across all 84 migrations; production migrations use a transaction-scoped advisory lock safe for the database transaction pooler |
+| Shared creator platform | Media Cloud, DAM, planning, analytics/attribution, audience/notification, discovery and rights/trust foundations | `verified_complete` (local native); production refresh pending | Isolated contracts, migrations and two-viewport lifecycle journeys exist for every family. Provider-scale packaging, delivery and production-volume evidence remain separate. |
+| Owned publishing suite | Audience, Podcast, Design and Creator Site studios | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop persisted lifecycle evidence passes; external delivery/directories/domains and authorized operator comparisons remain. |
+| Commercial suite | Sponsorship, affiliate/referral, booking/ticketing and marketplace operations | `verified_complete` (local native); `not_benchmarked` (competitive) | Tenant-safe lifecycle evidence passes; funded settlement, tax/legal activation and authorized operator comparisons remain. |
+| Community engagement | Guided onboarding, required questions, evidence-based points, level ladder, badges and leaderboard | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop member and manager journeys pass, including rolling-window anti-spam behavior; Skool/Discord/Circle comparison remains. |
+| Developer platform | Scoped APIs, OpenAPI, opaque pagination, key custody, delegated OAuth, typed SDKs, sandbox tenants, reviewed app marketplace, signed webhooks, retry/dead letter and distributed rate limits | `verified_complete` (local native); production refresh pending | Mobile/desktop authorization, cross-tenant denial, atomic code exchange and refresh rotation, SSRF rejection, signed delivery, app review, sandbox expiry/revocation and database-backed limit evidence pass. Public registry publication and independently controlled third-party adoption remain release evidence. |
+| Data portability | Versioned exports, dry-run validation, atomic/idempotent imports, durable source mappings and specialized audience/podcast/media migration paths | `verified_complete` (local native); production refresh pending | Products, nested courses, contacts and inactive automation definitions import transactionally with tenant isolation, advisory locking, replay/conflict behavior and secret rejection. Imported offers remain draft; private media URLs never appear in export manifests. Representative competitor-export and production-volume reconciliation remain field evidence. |
+| Installable web application | Privacy-safe PWA shell, offline fallback and device-protected post/message/media outbox without caching private API/navigation data | `verified_complete` (local PWA) | Manifest/service-worker contracts and mobile/desktop disconnect/reconnect journeys pass. JSON mutations are mirrored and server-idempotent; media blobs use bounded IndexedDB storage and restartable upload intents. Native iOS/Android binaries, operating-system background capture/upload, push and physical-device evidence remain Phase 6. |
+| Operations | Health/readiness, exact release identity, SLOs, error budgets, usage/cost boundaries, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` (local control plane); production refresh pending | The current worktree publishes seven SLOs, preserves `unmeasured`, meters tenant usage/cost and persists budgets, and fails production readiness closed unless source commit, full worktree fingerprint, dirty state, build identity and the exact migration ledger agree. Mobile/desktop evidence passes. v311 production readiness remains the latest deployed evidence at 84 migrations, while the current empty-database ledger passes locally at 103 migrations. |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
 | Legal publication | Terms, privacy, creator/seller/payment/AI/recording/community policies | `decision_pending` | Counsel-approved text, policy owner and effective dates; placeholders must not publish |
@@ -110,9 +122,9 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] Empty PostgreSQL migration qualification and the v311 production release ledger both pass across all 84 migrations.
+- [x] Empty PostgreSQL qualification passes all 103 current-worktree migrations; v311 remains the latest confirmed production ledger at 84 migrations until deployment access is restored.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
-- [x] The 126-execution isolated PostgreSQL browser matrix (63 journeys on mobile and desktop) covers every provider-independent capability and material local role transition above.
+- [x] The 178-execution isolated PostgreSQL browser matrix (89 journeys on mobile and desktop across 30 specifications) covers every provider-independent capability and material local role transition above.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
@@ -153,6 +165,85 @@ This qualification plus the v310 production checks are release evidence. They ar
 native phone-binary, physical-camera/background-capture field test, an authorized
 competitor benchmark, live third-party destinations, remote guests, regional
 encoder failover or external AI/transcription behavior.
+
+## 2026-08-15 local desired-state closure evidence
+
+This is current-worktree evidence and does not overwrite the older deployed
+v311 production record:
+
+- all 103 migrations replayed from an empty disposable PostgreSQL database,
+  producing the 214-table required schema and 35 explicitly checked critical columns;
+- focused developer/operations contracts passed, followed by TypeScript;
+- delegated OAuth, typed SDK, reviewed marketplace, expiring sandbox and data
+  portability journeys pass across Pixel 7 and desktop Chromium, covering
+  atomic token rotation, administrator review, full credential revocation,
+  dry-run migration validation, atomic import, idempotent replay/conflict,
+  tenant isolation, secret rejection and responsive operator rendering;
+- the preceding current-worktree slices separately qualified Media Cloud/DAM,
+  audience, planning, analytics, discovery, trust/rights, Podcast, Design,
+  Creator Site, Sponsorship, Affiliate, Booking/Ticketing, marketplace maturity,
+  native social safety, competitive evidence capture, UGC sample logistics and
+  community onboarding/gamification on mobile and desktop;
+- all ten competitive records remain `not_benchmarked`; no local test is being
+  presented as an authorized competitor outcome, production deployment, live
+  provider round trip, native app, physical-device or regional-failover proof.
+
+The final reconciled release candidate adds the following current evidence:
+
+- 110 unit/integration/contract files and 409 assertions pass, followed by
+  TypeScript, the production Vite/esbuild build, bundle budgets and the
+  Cloudflare Worker typecheck/dry run;
+- all 178 Playwright executions across 30 journey files pass on Pixel 7 and
+  desktop Chromium. Each project ran serially against an independently fresh
+  103-migration PostgreSQL application after the combined run exceeded the
+  execution wrapper duration without recording a failed test;
+- all 103 migrations replay from empty and the mandatory set covers 214 tables
+  plus 35 critical columns;
+- backup creation, SHA manifest and disposable restore pass with 22 required
+  restored tables, all 103 migration ledger entries and no orphan direct
+  messages;
+- the source-secret scan covers 598 files and the production dependency audit
+  reports zero vulnerabilities;
+- the 200-request, 20-concurrency capacity probe completes with zero failures,
+  236.5 requests/second and 152.4 ms p95 latency on the local qualification
+  host;
+- the exact-release contract computes a deterministic SHA-256 worktree
+  fingerprint, embeds non-secret commit/fingerprint/dirty/build metadata in the
+  image, compares the live 103-entry migration ledger, fails `/api/ready`
+  closed on drift and requires the deploy runner to match `/api/release` back
+  to the invoking source; its updated operations journey passes on Pixel 7 and
+  desktop Chromium against a fresh database;
+- the checked-in production workflow is manual, main-only, non-cancelling and
+  GitHub-environment-gated; it repeats code, migration and two-viewport browser
+  qualification, uses a commit-pinned Fly setup action, requires a completed
+  private backup receipt before migration, and proves the exact serving
+  identity afterward;
+- browser and server debug traces that exposed filenames, user objects,
+  participant IDs, post/comment payloads, story paths and tag coordinates were
+  removed; cleanup telemetry now uses minimized structured events, and a source
+  contract prevents raw debug logging from returning outside the two deliberate
+  logging adapters;
+- story publication now compensates both the story row and stored object when
+  canonical asset registration fails, and returns a generic server failure
+  rather than internal exception text or stacks; after that hardening, the
+  affected story-create-and-reload and native-group-chat journeys pass all four
+  Pixel 7 and desktop Chromium executions against the fresh 103-migration
+  qualification database;
+- posts, direct messages and Media Cloud uploads now carry server-enforced
+  client mutation IDs. A bounded, user-scoped device outbox survives disconnect
+  and reconnect, mirrors JSON mutations across local storage engines, keeps
+  media blobs in IndexedDB, refreshes interrupted upload intents, exposes
+  retry/review controls and never caches private API responses. Four focused
+  mobile/desktop field journeys prove exactly-once post/message replay, offline
+  post publication and offline media upload recovery;
+- the final source-level placeholder scan found no skipped/fixme tests or
+  unimplemented native handler; the remaining 501 responses are deliberate
+  demo-mode write denials or the production-disabled demo entitlement route;
+- this is local qualification, not deployment evidence. The current Fly CLI
+  has no access token, the local Docker daemon is unavailable, and current
+  production returns the application HTML shell rather than the new JSON
+  `/api/release` contract. Therefore no production migration, container release
+  or post-deploy identity claim is made.
 
 ## External activation register
 

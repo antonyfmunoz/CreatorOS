@@ -1,0 +1,7 @@
+import { describe, expect, it } from "vitest";
+import { calculateAffiliateCommission, createAffiliateProgramSchema } from "../shared/affiliate";
+describe("affiliate commercial contract", () => {
+  it("calculates integer, bounded percentage and fixed commissions", () => { expect(calculateAffiliateCommission(10_001, { type:"percentage",commissionBps:1500,fixedAmountCents:0,recurringCycles:0,newCustomersOnly:false })).toBe(1_500); expect(calculateAffiliateCommission(2_000,{type:"fixed",commissionBps:0,fixedAmountCents:5_000,recurringCycles:0,newCustomersOnly:false})).toBe(2_000); });
+  it("requires an economically meaningful commission rule", () => { expect(createAffiliateProgramSchema.safeParse({ name:"Partners",slug:"partners",applicationMode:"review",attributionModel:"last_click",attributionWindowDays:30,cookieConsentRequired:true,productIds:[],commissionRule:{type:"percentage",commissionBps:0,fixedAmountCents:0,recurringCycles:0,newCustomersOnly:false},holdDays:30,minimumPayoutCents:5000,currency:"usd",description:"" }).success).toBe(false); });
+  it("rejects dangerous slugs and unbounded attribution windows", () => { const input = { name:"Partners",slug:"../partners",applicationMode:"review",attributionModel:"last_click",attributionWindowDays:500,cookieConsentRequired:true,productIds:[],commissionRule:{type:"percentage",commissionBps:2000,fixedAmountCents:0,recurringCycles:0,newCustomersOnly:false},holdDays:30,minimumPayoutCents:5000,currency:"usd",description:"" }; expect(createAffiliateProgramSchema.safeParse(input).success).toBe(false); });
+});

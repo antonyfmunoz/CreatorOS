@@ -1,5 +1,10 @@
 # CreativesOS MVP acceptance boundary
 
+> This document preserves the first production-MVP acceptance record. The
+> broader current desired-state candidate is tracked in
+> [CREATIVESOS_END_STATE_PARITY.md](CREATIVESOS_END_STATE_PARITY.md), and its
+> local qualification must not be confused with a current production deploy.
+
 This is the release boundary for the first genuinely usable CreativesOS
 product. It is narrower than the desired end state, but it must complete the
 full creator-to-customer loop without mock state or dead controls.

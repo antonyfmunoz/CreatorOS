@@ -1,0 +1,8 @@
+{
+  "name": "@creativesos/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src", "README.md"],
+  "sideEffects": false
+}

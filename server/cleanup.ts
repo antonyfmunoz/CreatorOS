@@ -6,6 +6,11 @@ import { reconcileRoomMediaRuntime } from "./room-media-reconciliation";
 import { redactExpiredAutomationPayloads } from "./automation-retention";
 import { cleanupRelationshipHubRetention } from "./relationship-retention";
 import { processDueAccountPrivacyRequests } from "./account-privacy";
+import { captureServerException, structuredLog } from "./observability";
+
+function recordCleanupFailure(event: string, error: unknown) {
+  captureServerException(error, { event });
+}
 
 /**
  * Cleanup orphaned stories - stories that no longer have associated posts
@@ -14,11 +19,8 @@ import { processDueAccountPrivacyRequests } from "./account-privacy";
  */
 export async function cleanupOrphanedStories(): Promise<number> {
   try {
-    console.log("Running orphaned stories cleanup");
-    
     // Get all stories
     const allStories = await db.select().from(stories);
-    console.log(`Found ${allStories.length} total stories to check for orphaned status`);
     
     let cleanupCount = 0;
     
@@ -60,16 +62,17 @@ export async function cleanupOrphanedStories(): Promise<number> {
       
       // If still no posts found with this media URL, delete the story
       if (postsWithMedia.length === 0) {
-        console.log(`Orphaned story found: ID=${story.id}, no posts with media URL ${story.mediaUrl}`);
         await db.delete(stories).where(eq(stories.id, story.id));
         cleanupCount++;
       }
     }
     
-    console.log(`Cleanup complete. Deleted ${cleanupCount} orphaned stories.`);
+    if (cleanupCount > 0) {
+      structuredLog("info", "cleanup.orphaned_stories.completed", { deleted: cleanupCount });
+    }
     return cleanupCount;
   } catch (error) {
-    console.error("Error cleaning up orphaned stories:", error);
+    recordCleanupFailure("cleanup.orphaned_stories.failed", error);
     return 0;
   }
 }
@@ -81,30 +84,30 @@ export async function cleanupOrphanedStories(): Promise<number> {
 export function scheduleCleanupTasks() {
   // Run the cleanup immediately when the server starts
   cleanupOrphanedStories().then(count => {
-    console.log(`Initial cleanup completed: removed ${count} orphaned stories`);
+    structuredLog("info", "cleanup.orphaned_stories.initialized", { deleted: count });
   });
   cleanupExpiredRoomMedia()
-    .then((result) => console.log("Initial room media retention completed:", result))
-    .catch((error) => console.error("Initial room media retention failed:", error));
+    .then((result) => structuredLog("info", "cleanup.room_media_retention.initialized", result))
+    .catch((error) => recordCleanupFailure("cleanup.room_media_retention.failed", error));
   redactExpiredAutomationPayloads()
-    .then((result) => console.log("Initial automation retention completed:", result))
-    .catch((error) => console.error("Initial automation retention failed:", error));
+    .then((result) => structuredLog("info", "cleanup.automation_retention.initialized", result))
+    .catch((error) => recordCleanupFailure("cleanup.automation_retention.failed", error));
   cleanupRelationshipHubRetention()
-    .then((result) => console.log("Initial relationship retention completed:", result))
-    .catch((error) => console.error("Initial relationship retention failed:", error));
+    .then((result) => structuredLog("info", "cleanup.relationship_retention.initialized", result))
+    .catch((error) => recordCleanupFailure("cleanup.relationship_retention.failed", error));
   reconcileRoomMediaRuntime()
-    .then((result) => console.log("Initial room media recovery completed:", result))
-    .catch((error) => console.error("Initial room media recovery failed:", error));
+    .then((result) => structuredLog("info", "cleanup.room_media_recovery.initialized", result))
+    .catch((error) => recordCleanupFailure("cleanup.room_media_recovery.failed", error));
   processDueAccountPrivacyRequests()
-    .then((result) => console.log("Initial account privacy processing completed:", result))
-    .catch((error) => console.error("Initial account privacy processing failed:", error));
+    .then((result) => structuredLog("info", "cleanup.account_privacy.initialized", result))
+    .catch((error) => recordCleanupFailure("cleanup.account_privacy.failed", error));
   
   // Schedule the cleanup to run every 5 minutes
   const FIVE_MINUTES_MS = 5 * 60 * 1000;
   setInterval(() => {
     cleanupOrphanedStories().then(count => {
       if (count > 0) {
-        console.log(`Scheduled cleanup completed: removed ${count} orphaned stories`);
+        structuredLog("info", "cleanup.orphaned_stories.scheduled", { deleted: count });
       }
     });
     reconcileRoomMediaRuntime()
@@ -114,10 +117,10 @@ export function scheduleCleanupTasks() {
           result.staleRecordingsFailed ||
           result.staleAgentSessionsFailed
         )
-          console.log("Scheduled room media recovery completed:", result);
+          structuredLog("info", "cleanup.room_media_recovery.scheduled", result);
       })
       .catch((error) =>
-        console.error("Scheduled room media recovery failed:", error),
+        recordCleanupFailure("cleanup.room_media_recovery.failed", error),
       );
   }, FIVE_MINUTES_MS);
 
@@ -130,27 +133,30 @@ export function scheduleCleanupTasks() {
           result.transcriptSegmentsDeleted ||
           result.agentSessionsDeleted
         )
-          console.log("Scheduled room media retention completed:", result);
+          structuredLog("info", "cleanup.room_media_retention.scheduled", result);
       })
       .catch((error) =>
-        console.error("Scheduled room media retention failed:", error),
+        recordCleanupFailure("cleanup.room_media_retention.failed", error),
       );
     redactExpiredAutomationPayloads()
       .then((result) => {
-        if (result.runsRedacted) console.log("Scheduled automation retention completed:", result);
+        if (result.runsRedacted) structuredLog("info", "cleanup.automation_retention.scheduled", result);
       })
-      .catch((error) => console.error("Scheduled automation retention failed:", error));
+      .catch((error) => recordCleanupFailure("cleanup.automation_retention.failed", error));
     cleanupRelationshipHubRetention()
       .then((result) => {
-        if (Object.values(result).some((value) => value > 0)) console.log("Scheduled relationship retention completed:", result);
+        if (Object.values(result).some((value) => value > 0)) structuredLog("info", "cleanup.relationship_retention.scheduled", result);
       })
-      .catch((error) => console.error("Scheduled relationship retention failed:", error));
+      .catch((error) => recordCleanupFailure("cleanup.relationship_retention.failed", error));
     processDueAccountPrivacyRequests()
       .then((result) => {
-        if (Object.values(result).some((value) => value > 0)) console.log("Scheduled account privacy processing completed:", result);
+        if (Object.values(result).some((value) => value > 0)) structuredLog("info", "cleanup.account_privacy.scheduled", result);
       })
-      .catch((error) => console.error("Scheduled account privacy processing failed:", error));
+      .catch((error) => recordCleanupFailure("cleanup.account_privacy.failed", error));
   }, ONE_HOUR_MS);
   
-  console.log("Automated story cleanup scheduled to run every 5 minutes");
+  structuredLog("info", "cleanup.scheduler.started", {
+    orphanedStoryIntervalMs: FIVE_MINUTES_MS,
+    retentionIntervalMs: ONE_HOUR_MS,
+  });
 }

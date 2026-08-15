@@ -12,6 +12,9 @@ VITE_CLERK_PUBLISHABLE_KEY=op://CreativesOS/Development/VITE_CLERK_PUBLISHABLE_K
 STRIPE_SECRET_KEY=op://CreativesOS/Development/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://CreativesOS/Development/STRIPE_WEBHOOK_SECRET
 STRIPE_CONNECT_CLIENT_ID=op://CreativesOS/Development/STRIPE_CONNECT_CLIENT_ID
+# Authenticates internal scheduler and backup dispatch. It is server-only and
+# is also required by the fail-closed production deployment preflight.
+DISTRIBUTION_DISPATCH_SECRET=op://CreativesOS/Development/DISTRIBUTION_DISPATCH_SECRET
 PUBLIC_APP_URL=http://localhost:3000
 # Media storage. Keep local development on disk. Production R2 values are
 # imported directly from 1Password by scripts/export-r2-secrets-from-onepassword.cjs

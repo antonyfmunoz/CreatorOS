@@ -9,6 +9,7 @@ import { BarChart2, ImagePlus, Mic, Upload, Video } from "lucide-react";
 import { PollCreator } from "@/components/feed/PollCreator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HorizontalRail } from "@/components/ui/horizontal-rail";
+import { sendOrQueueOfflineOperation } from "@/lib/offline-queue";
 
 type ContentDraft = {
   id: string;
@@ -75,12 +76,19 @@ export default function NewTextPost() {
   });
   
   const createPostMutation = useMutation({
+    // This mutation owns its offline transport. TanStack Query otherwise
+    // pauses the mutation before the durable outbox can accept it.
+    networkMode: "always",
     mutationFn: async (postData: any) => {
-      const res = await apiRequest('POST', '/api/posts', postData);
-      return res.json();
+      if (!user) throw new Error("Sign in to publish");
+      return sendOrQueueOfflineOperation({
+        ownerUserId: user.id,
+        kind: "post.create",
+        payload: postData,
+      });
     },
-    onSuccess: async () => {
-      if (draftId) {
+    onSuccess: async (result) => {
+      if (draftId && result.state === "sent") {
         try {
           await apiRequest("DELETE", `/api/content-drafts/${draftId}`);
           queryClient.invalidateQueries({ queryKey: ["/api/content-drafts"] });
@@ -89,7 +97,10 @@ export default function NewTextPost() {
           // cleanup was interrupted and let the user remove it later.
         }
       }
-      toast({
+      toast(result.state === "queued" ? {
+        title: "Post protected offline",
+        description: "It will publish automatically when your connection recovers.",
+      } : {
         title: 'Post created!',
         description: 'Your post has been successfully shared.'
       });
@@ -98,11 +109,11 @@ export default function NewTextPost() {
       if (addToStory) {
         queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
       }
-      
-      setLocation('/');
+
+      if (result.state === "sent") setLocation('/');
+      else setContent("");
     },
-    onError: (error) => {
-      console.error('Error creating post:', error);
+    onError: () => {
       toast({
         title: 'Error',
         description: 'Failed to create post. Please try again.',
@@ -139,7 +150,6 @@ export default function NewTextPost() {
       ...(pollData && { pollData })
     };
     
-    console.log("Submitting post:", postData);
     createPostMutation.mutate(postData);
   };
 
@@ -249,11 +259,9 @@ export default function NewTextPost() {
           <PollCreator 
             isOpen={true}
             onClose={() => {
-              console.log("Closing poll modal");
               setIsPollModalOpen(false);
             }}
             onSave={(data) => {
-              console.log("Poll data saved:", data);
               setPollData(data);
               toast({
                 title: "Poll Added",

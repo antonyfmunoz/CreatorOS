@@ -39,7 +39,6 @@ const storage = multer.diskStorage({
       prefix = file.mimetype.startsWith('video/') ? 'story-video' : 'story-image';
     }
     
-    console.log(`Creating file with prefix: ${prefix}`);
     cb(null, `${prefix}-${uniqueSuffix}${ext}`);
   }
 });
@@ -66,10 +65,8 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     const isVideoMime = file.mimetype.startsWith('video/');
     
     if ((isImageExt && isImageMime) || (isVideoExt && isVideoMime)) {
-      console.log('Story media file accepted');
       return cb(null, true);
     } else {
-      console.log('Story media file rejected - invalid type');
       cb(new Error('Only image or video files are allowed for stories!'));
     }
   } else if (mediaType === 'photo' || file.fieldname === 'profile' || file.fieldname === 'image' || file.fieldname.startsWith('image')) {
@@ -119,7 +116,6 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     }
   } else {
     // Default for other file types
-    console.log('Unexpected file field:', file.fieldname);
     cb(new Error('Unexpected file field'));
   }
 };

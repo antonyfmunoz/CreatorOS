@@ -11,7 +11,6 @@ import { useLocation, useSearch } from "wouter";
 import { useAppStore } from "@/lib/stores";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { User } from "@/types";
 
 // Import new feed components
 import { Tabs, TabType } from "@/components/feed/Tabs";
@@ -27,17 +26,24 @@ const Explore = () => {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const initialStoryId = parseStoryId(search);
-  
+
   // Feed Tab State
   const [activeTab, setActiveTab] = useState<TabType>("forYou");
-  
+
   // The approved Explore surface is intentionally unfiltered; discovery filters
   // live in Marketplace so the feed keeps its compact Stitch layout.
   const [contentFilter] = useState<ContentFilterType>("all");
-  
+
   // Enable caching of posts to prevent reordering on refresh
   const { data: posts, isLoading } = useQuery<PostType[]>({
-    queryKey: ["/api/posts", activeTab, contentFilter],
+    queryKey: ["/api/discovery/feed", activeTab, contentFilter],
+    queryFn: async () => {
+      const mode = activeTab === "following" ? "following" : "recommended";
+      const response = await fetch(`/api/discovery/feed?mode=${mode}&limit=50`);
+      if (!response.ok) throw new Error("Failed to load the discovery feed");
+      const payload = (await response.json()) as { items: PostType[] };
+      return payload.items;
+    },
     // Set a longer staleTime to prevent unnecessary refetching
     staleTime: 1000 * 60 * 5, // 5 minutes
     // Make sure posts are stable even on refresh
@@ -45,32 +51,23 @@ const Explore = () => {
       if (!data) return [];
       // Filter posts based on selected content type
       let filteredPosts = [...data];
-      
+
       if (contentFilter === "photo") {
-        filteredPosts = filteredPosts.filter(post => post.imageUrl);
+        filteredPosts = filteredPosts.filter((post) => post.imageUrl);
       } else if (contentFilter === "audio") {
-        filteredPosts = filteredPosts.filter(post => post.audioUrl);
+        filteredPosts = filteredPosts.filter((post) => post.audioUrl);
       } else if (contentFilter === "video") {
-        filteredPosts = filteredPosts.filter(post => post.videoUrl);
+        filteredPosts = filteredPosts.filter((post) => post.videoUrl);
       } else if (contentFilter === "text") {
-        filteredPosts = filteredPosts.filter(post => !post.imageUrl && !post.audioUrl && !post.videoUrl);
+        filteredPosts = filteredPosts.filter(
+          (post) => !post.imageUrl && !post.audioUrl && !post.videoUrl,
+        );
       }
-      
-      // Sort by ID to ensure consistent order
-      return filteredPosts.sort((a, b) => b.id - a.id);
+
+      return filteredPosts;
     },
   });
 
-  const { data: following = [] } = useQuery<User[]>({
-    queryKey: ["/api/users", user?.id, "following"],
-    enabled: activeTab === "following" && !!user,
-    queryFn: async () => {
-      const response = await fetch(`/api/users/${user!.id}/following`);
-      if (!response.ok) throw new Error("Failed to load followed creators");
-      return response.json();
-    },
-  });
-  
   // Effect to scroll to targeted post when posts are loaded
   useEffect(() => {
     if (!isLoading && posts && targetPostId) {
@@ -79,10 +76,10 @@ const Explore = () => {
         const postElement = document.getElementById(`post-${targetPostId}`);
         if (postElement) {
           // Get the top navbar and tabs/stories container
-          const headerElement = document.querySelector('.sticky.top-0');
-          const tabsElement = document.querySelector('.feed-tabs');
-          const storiesElement = document.querySelector('.stories-container');
-          
+          const headerElement = document.querySelector(".sticky.top-0");
+          const tabsElement = document.querySelector(".feed-tabs");
+          const storiesElement = document.querySelector(".stories-container");
+
           // Calculate the offset (header + tabs + stories + padding)
           let offset = 20; // Start with some minimal padding
           if (headerElement) {
@@ -94,49 +91,43 @@ const Explore = () => {
           if (storiesElement) {
             offset += storiesElement.clientHeight;
           }
-          
+
           // Directly position the post at the top of the feed area
-          const postPosition = postElement.getBoundingClientRect().top + window.pageYOffset;
+          const postPosition =
+            postElement.getBoundingClientRect().top + window.pageYOffset;
           window.scrollTo({
             top: postPosition - offset - 20, // Add extra padding to ensure it's visible
-            behavior: 'smooth'
+            behavior: "smooth",
           });
-          
+
           // Add a highlight effect
-          postElement.classList.add('highlighted-post');
-          
-          // Log positioned values for debugging
-          console.log('Post positioned with offset:', offset, 'final position:', postPosition - offset);
-          
+          postElement.classList.add("highlighted-post");
+
           // Remove highlight after animation completes
           setTimeout(() => {
-            postElement.classList.remove('highlighted-post');
+            postElement.classList.remove("highlighted-post");
             // Clear the target post ID after scrolling to it
             clearTargetPost();
           }, 2000);
         } else {
           // If post not found, just clear the target post ID without showing a toast
-          console.log('Post not found in feed:', targetPostId);
           clearTargetPost();
         }
       }, 500); // Increased delay to ensure DOM is ready
     }
   }, [isLoading, posts, targetPostId, clearTargetPost]);
 
-  // Sort posts by ID in descending order to maintain consistent position
   const sortedPosts = useMemo(() => {
     if (!posts) return [];
-    const followedIds = new Set(following.map((followedUser) => followedUser.id));
-    const visiblePosts = activeTab === "following"
-      ? posts.filter((post) => followedIds.has(post.userId))
-      : posts;
-    return [...visiblePosts].sort((a, b) => b.id - a.id);
-  }, [activeTab, following, posts]);
+    return posts;
+  }, [posts]);
 
   // Callback for story click in the following tab
   const handleStoryClick = (userId: number) => {
     // Use existing Stories component functionality
-    const storyElement = document.querySelector(`.stories-container [data-user-id="${userId}"]`) as HTMLElement;
+    const storyElement = document.querySelector(
+      `.stories-container [data-user-id="${userId}"]`,
+    ) as HTMLElement;
     if (storyElement) {
       storyElement.click();
     }
@@ -146,9 +137,17 @@ const Explore = () => {
     <div className="min-h-dvh bg-black pb-20 text-white">
       {/* Sticky Header */}
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-black px-4 py-2">
-        <span className="text-xl font-bold tracking-tight text-white">CreativesOS</span>
+        <span className="text-xl font-bold tracking-tight text-white">
+          CreativesOS
+        </span>
         <div className="flex items-center space-x-3">
-          <Button size="icon" variant="ghost" className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white" onClick={() => setLocation('/search')} aria-label="Search CreativesOS">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="rounded-full text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            onClick={() => setLocation("/search")}
+            aria-label="Search CreativesOS"
+          >
             <Search className="h-5 w-5" />
           </Button>
           <NotificationBell />
@@ -175,7 +174,10 @@ const Explore = () => {
           Array(3)
             .fill(0)
             .map((_, i) => (
-              <div key={i} className="overflow-hidden border-b border-zinc-800 bg-black">
+              <div
+                key={i}
+                className="overflow-hidden border-b border-zinc-800 bg-black"
+              >
                 <div className="p-4">
                   <div className="flex items-center mb-3">
                     <Skeleton className="w-10 h-10 rounded-full mr-3" />
@@ -200,15 +202,19 @@ const Explore = () => {
         ) : (
           <>
             {/* Regular post listing */}
-            {sortedPosts.map((post) => <Post key={post.id} post={post} surface="dark" />)}
-            
+            {sortedPosts.map((post) => (
+              <Post key={post.id} post={post} surface="dark" />
+            ))}
+
             {/* Empty state */}
             {sortedPosts.length === 0 && !isLoading && (
               <div className="text-center py-10">
-                <h3 className="mb-2 text-xl font-medium text-white">No posts yet</h3>
+                <h3 className="mb-2 text-xl font-medium text-white">
+                  No posts yet
+                </h3>
                 <p className="text-zinc-500">
-                  {activeTab === "following" 
-                    ? "Start following creators to see posts in your feed" 
+                  {activeTab === "following"
+                    ? "Start following creators to see posts in your feed"
                     : contentFilter !== "all"
                       ? `No ${contentFilter} content available`
                       : "We'll show posts here as they become available"}
@@ -218,7 +224,6 @@ const Explore = () => {
           </>
         )}
       </div>
-      
     </div>
   );
 };

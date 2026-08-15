@@ -319,7 +319,12 @@ test("CutStudio routes named audio buses into a private render", async ({ page }
 });
 
 test("CutStudio reuses a private business audio mix across projects", async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  // This journey generates two real media projects and drives two complete UI
+  // workspaces. Under the serialized release matrix, preceding FFmpeg work can
+  // leave the shared runner CPU-bound even though every product assertion is
+  // healthy. Keep the assertions strict while allowing the real-media setup
+  // its measured worst-case envelope.
+  test.setTimeout(150_000);
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
   const fixture = generateFixtures(testInfo);

@@ -63,6 +63,7 @@ import {
 } from "./social-oauth";
 import { emitProjectionEvent } from "./umh";
 import { createBroadcastLiveKitToken, getLiveKitConfiguration } from "./livekit";
+import { queueMediaIngestJobs, recordAssetUsage, registerAssetLineage } from "./media-cloud";
 
 const idSchema = z.string().uuid();
 const studioInputSchema = z.object({
@@ -483,6 +484,8 @@ async function persistRuntimeRecording(runtime: Runtime) {
       },
     })
     .returning();
+  await queueMediaIngestJobs(asset);
+  await recordAssetUsage({ assetId: asset.id, actorUserId: runtime.ownerUserId, surfaceType: "broadcast", surfaceId: runtime.sessionId, useType: "broadcast" });
   return asset;
 }
 async function finalizeRuntime(runtime: Runtime, code: number | null) {
@@ -2048,6 +2051,16 @@ export function registerBroadcastStudioRoutes(app: Express) {
           },
         })
         .returning();
+      await Promise.all([
+        queueMediaIngestJobs(publicAsset),
+        registerAssetLineage({
+          parentAssetId: recording.id,
+          childAssetId: publicAsset.id,
+          relationship: "published_from",
+          createdByUserId: req.dbUser!.id,
+          metadata: { instrument: "broadcast", sessionId: session.id },
+        }),
+      ]);
       await db
         .update(assets)
         .set({

@@ -44,6 +44,7 @@ export function resolveBottomNavigationTab(
       "/events",
       "/ai",
       "/automations",
+      "/library",
     ].some((path) => matchesRouteFamily(location, path))
   ) {
     return "create";

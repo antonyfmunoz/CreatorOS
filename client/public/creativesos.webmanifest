@@ -1,0 +1,35 @@
+{
+  "name": "CreativesOS",
+  "short_name": "CreativesOS",
+  "description": "The creator-owned operating system for production, publishing, audience, community, commerce, and relationships.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "any",
+  "categories": ["business", "productivity", "social", "photo", "video"],
+  "icons": [
+    {
+      "src": "/field-capture-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Create", "short_name": "Create", "url": "/create" },
+    {
+      "name": "Relationship Hub",
+      "short_name": "Inbox",
+      "url": "/relationship-hub"
+    },
+    {
+      "name": "Production planner",
+      "short_name": "Planner",
+      "url": "/production-planner"
+    },
+    { "name": "Media library", "short_name": "Media", "url": "/media" }
+  ]
+}

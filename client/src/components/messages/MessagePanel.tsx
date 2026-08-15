@@ -33,6 +33,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import MessageCard from './MessageCard';
+import { useToast } from '@/hooks/use-toast';
 
 interface MessagePanelProps {
   onClose?: () => void;
@@ -40,6 +41,7 @@ interface MessagePanelProps {
 
 const MessagePanel = ({ onClose }: MessagePanelProps) => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -182,29 +184,24 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
   
   const handleStartConversation = async (targetUserId: number) => {
     if (!user) {
-      console.error('Cannot start conversation: No authenticated user');
+      toast({ title: 'Sign in required', description: 'Sign in before starting a conversation.', variant: 'destructive' });
       return;
     }
     
     if (!targetUserId || typeof targetUserId !== 'number') {
-      console.error('Cannot start conversation: Invalid target user ID', targetUserId);
+      toast({ title: 'Profile unavailable', description: 'This conversation cannot be started.', variant: 'destructive' });
       return;
     }
     
-    console.log('Starting conversation with user ID:', targetUserId);
-    console.log('Current user ID:', user.id);
-    
     // Don't allow conversation with self
     if (targetUserId === user.id) {
-      console.error('Cannot start conversation with yourself');
+      toast({ title: 'Choose another person', description: 'You cannot start a direct conversation with yourself.' });
       return;
     }
     
     try {
       // Make sure the user IDs are correct and in the right order
       const userIds = [user.id, targetUserId].sort((a, b) => a - b); // Sort to ensure consistent order
-      console.log('Creating conversation with userIds:', userIds);
-      
       // Check if conversation already exists
       const existingConversation = conversations.find(
         conv => !conv.isGroup && conv.participants && 
@@ -213,13 +210,10 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
       );
       
       if (existingConversation) {
-        console.log('Conversation already exists, using existing:', existingConversation.id);
         setSelectedConversation(existingConversation.id);
       } else {
         // Create a new conversation with selected user
         const conversationId = await createConversation(userIds);
-        console.log('Created new conversation with ID:', conversationId);
-        
         // Select the newly created conversation
         setSelectedConversation(conversationId);
       }
@@ -231,8 +225,11 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
       // Switch back to conversations tab
       setActiveTab('conversations');
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      console.error('Error details:', error instanceof Error ? error.message : JSON.stringify(error));
+      toast({
+        title: 'Conversation not started',
+        description: error instanceof Error ? error.message : 'Try again in a moment.',
+        variant: 'destructive',
+      });
     }
   };
   
@@ -574,7 +571,6 @@ const MessagePanel = ({ onClose }: MessagePanelProps) => {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              console.log('Message button clicked for user:', user);
                               // Call handleStartConversation with the user ID from search results
                               handleStartConversation(user.id);
                             }}

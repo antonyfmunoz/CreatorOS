@@ -101,7 +101,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       // Stop any existing camera streams first
       stopCamera();
       
-      console.log('Starting camera with facing mode:', facingMode);
       setCameraError(null);
       setCameraMode(true);
       
@@ -117,17 +116,13 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         }, 
       };
       
-      console.log('Requesting camera access with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('Camera access granted, setting up video stream');
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
         // Ensure the video element is properly initialized
         videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded, video dimensions:', 
-            videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
           if (videoRef.current) videoRef.current.play();
         };
       }
@@ -166,7 +161,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
         }, 
       };
       
-      console.log('Switching camera to:', newFacingMode);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       if (videoRef.current) {
@@ -367,7 +361,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
       
       // If adding to story, also invalidate stories query to refresh immediately
       if (addToStory) {
-        console.log('Post added to story, refreshing stories data');
         // Invalidate the cache first
         queryClient.invalidateQueries({ queryKey: ['/api/stories'] });
         
@@ -415,7 +408,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
     
     // Add tagged users data if present
     if (taggedUsers.length > 0) {
-      console.log('Tagged users being sent with post:', taggedUsers);
       formData.append('taggedUsers', JSON.stringify(taggedUsers));
     }
     
@@ -627,7 +619,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                   type="button"
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-full border border-border cursor-pointer bg-transparent"
                   onClick={() => {
-                    console.log("Opening poll modal");
                     setIsPollModalOpen(true);
                   }}
                 >
@@ -642,7 +633,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 type="button"
                 className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
                 onClick={() => {
-                  console.log("Opening tag editor");
                   setIsTagEditorOpen(true);
                 }}
               >
@@ -682,7 +672,6 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
                 type="button"
                 className="flex items-center justify-between w-full py-2 px-0 bg-transparent border-none cursor-pointer"
                 onClick={() => {
-                  console.log("Setting location modal to open");
                   setIsLocationModalOpen(true);
                 }}
               >
@@ -956,11 +945,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <PollCreator 
                 isOpen={true}
                 onClose={() => {
-                  console.log("Closing poll modal");
                   setIsPollModalOpen(false);
                 }}
                 onSave={(data) => {
-                  console.log("Poll data saved:", data);
                   setPollData(data);
                   toast({
                     title: "Poll Added",
@@ -977,11 +964,9 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <LocationPicker 
                 isOpen={true}
                 onClose={() => {
-                  console.log("Closing location modal");
                   setIsLocationModalOpen(false);
                 }}
                 onSelect={(location) => {
-                  console.log("Location selected:", location);
                   setSelectedLocation(location);
                   toast({
                     title: "Location Added",
@@ -998,13 +983,11 @@ export const PhotoUploader = ({ onClose }: PhotoUploaderProps) => {
               <TagEditor
                 isOpen={true}
                 onClose={() => {
-                  console.log("Closing tag editor");
                   setIsTagEditorOpen(false);
                 }}
                 image={currentImageIndex >= 0 ? imagePreviews[currentImageIndex] : undefined}
                 initialTags={taggedUsers}
                 onTagSave={(users) => {
-                  console.log("Tags saved:", users);
                   setTaggedUsers(users);
                   toast({
                     title: "Tags Saved",

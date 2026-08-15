@@ -25,14 +25,24 @@ New-Item -ItemType Directory -Path $parent -Force | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "pg_dump failed" }
 
 $file = Get-Item -LiteralPath $absoluteDestination
-$hash = Get-FileHash -LiteralPath $absoluteDestination -Algorithm SHA256
+$stream = [System.IO.File]::OpenRead($absoluteDestination)
+try {
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $sha256.Dispose()
+  }
+} finally {
+  $stream.Dispose()
+}
 $manifestPath = "$absoluteDestination.manifest.json"
 $manifest = [ordered]@{
   schemaVersion = "creativesos.backup-manifest.v1"
   createdAt = (Get-Date).ToUniversalTime().ToString("o")
   filename = $file.Name
   sizeBytes = $file.Length
-  sha256 = $hash.Hash.ToLowerInvariant()
+  sha256 = $hash
   format = "postgres-custom"
 }
 $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding UTF8

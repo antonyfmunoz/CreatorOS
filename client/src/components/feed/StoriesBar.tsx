@@ -51,7 +51,6 @@ export const StoriesBar = ({ onStoryClick }: StoriesBarProps) => {
   // Always refetch stories data when component mounts
   useEffect(() => {
     refetchStories();
-    console.log('Refreshing stories data on StoriesBar mount');
   }, [refetchStories]);
   
   const isLoading = storiesLoading;

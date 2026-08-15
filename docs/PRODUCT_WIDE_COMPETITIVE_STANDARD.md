@@ -131,6 +131,11 @@ screen composition.
 
 ## Roadmap rule
 
+The complete dependency-ordered product program is maintained in
+[`CREATIVESOS_DESIRED_END_STATE_ROADMAP.md`](CREATIVESOS_DESIRED_END_STATE_ROADMAP.md).
+This standard governs the competitive evidence required by every roadmap
+family.
+
 Every roadmap capability must now carry four pieces of information:
 
 - the target workflow and comparison family;

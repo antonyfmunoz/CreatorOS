@@ -589,6 +589,139 @@
       "when": 1786726800000,
       "tag": "0083_ugc_marketplace",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1786730400000,
+      "tag": "0084_media_cloud",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1786734000000,
+      "tag": "0085_audience_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1786737600000,
+      "tag": "0086_podcast_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1786741200000,
+      "tag": "0087_design_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1786744800000,
+      "tag": "0088_creator_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1786748400000,
+      "tag": "0089_sponsorship_studio",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1786752000000,
+      "tag": "0090_affiliate_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1786755600000,
+      "tag": "0091_booking_ticketing",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1786759200000,
+      "tag": "0092_marketplace_maturity",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1786762800000,
+      "tag": "0093_native_social_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1786766400000,
+      "tag": "0094_competitive_benchmarks",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1786770000000,
+      "tag": "0095_ugc_sample_logistics",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1786773600000,
+      "tag": "0096_community_engagement",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1786777200000,
+      "tag": "0097_developer_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1786780800000,
+      "tag": "0098_operational_control_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1786784400000,
+      "tag": "0099_developer_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1786788000000,
+      "tag": "0100_developer_marketplace_sandbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1786791600000,
+      "tag": "0101_data_portability",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1786795200000,
+      "tag": "0102_offline_resilience",
+      "breakpoints": true
     }
   ]
 }

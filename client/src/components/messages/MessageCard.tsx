@@ -276,8 +276,6 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                             onClick={() => {
                               // Extract the post ID from the link and navigate to it in the feed
                               if (parsedContent.postId) {
-                                console.log('Clicked on post card with ID:', parsedContent.postId);
-                                
                                 // Close the message panel first
                                 const { closeMessagePanel } = useMessaging.getState();
                                 closeMessagePanel();
@@ -348,11 +346,14 @@ const MessageCard = ({ message, replyToMessage }: MessageCardProps) => {
                         {message.isEdited && (
                           <span className="ml-1 italic">· edited</span>
                         )}
+                        {message.deliveryState === "queued" && (
+                          <span className="ml-1 font-semibold text-amber-300">· protected offline</span>
+                        )}
                       </p>
                       
                       <div className="flex items-center gap-2">
                         {/* More options menu (like comments) */}
-                        {isOwnMessage && (
+                        {isOwnMessage && message.deliveryState !== "queued" && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0">

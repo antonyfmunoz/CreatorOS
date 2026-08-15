@@ -23,12 +23,18 @@ const BottomNavigation = lazy(
 const ApplicationOverlays = lazy(
   () => import("@/components/layout/ApplicationOverlays"),
 );
+const OfflineOperations = lazy(
+  () => import("@/components/system/OfflineOperations"),
+);
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
 // business workspaces into every download.
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Explore = lazy(() => import("@/pages/explore"));
+const CompetitiveBenchmarksPage = lazy(
+  () => import("@/pages/competitive-benchmarks"),
+);
 const Marketplace = lazy(() => import("@/pages/marketplace"));
 const AI = lazy(() => import("@/pages/ai"));
 const Communities = lazy(() => import("@/pages/communities"));
@@ -61,7 +67,9 @@ const DistributionConnections = lazy(
 );
 const CutStudioPage = lazy(() => import("@/pages/cut-studio"));
 const CutStudioReviewPage = lazy(() => import("@/pages/cut-studio-review"));
-const CutStudioWorkspacePage = lazy(() => import("@/pages/cut-studio-workspace"));
+const CutStudioWorkspacePage = lazy(
+  () => import("@/pages/cut-studio-workspace"),
+);
 const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BroadcastAudiencePage = lazy(() => import("@/pages/broadcast-audience"));
 const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
@@ -75,12 +83,47 @@ const UmhApprovalsPage = lazy(() => import("@/pages/umh-approvals"));
 const CheckoutSuccessPage = lazy(() => import("@/pages/checkout-success"));
 const EarningsPage = lazy(() => import("@/pages/earnings"));
 const ModerationPage = lazy(() => import("@/pages/moderation"));
+const AdminAppsPage = lazy(() => import("@/pages/admin-apps"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
 const PrivacySettingsPage = lazy(() => import("@/pages/privacy-settings"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const TrustCenterPage = lazy(() => import("@/pages/trust-center"));
 const TrustPolicyPage = lazy(() => import("@/pages/trust-policy"));
+const MediaLibraryPage = lazy(() => import("@/pages/media-library"));
+const AnalyticsOverviewPage = lazy(() => import("@/pages/analytics-overview"));
+const ProductionPlannerPage = lazy(() => import("@/pages/production-planner"));
+const DeveloperPlatformPage = lazy(() => import("@/pages/developer-platform"));
+const DataPortabilityPage = lazy(() => import("@/pages/data-portability"));
+const OperationsPage = lazy(() => import("@/pages/operations"));
+const OAuthAuthorizePage = lazy(() => import("@/pages/oauth-authorize"));
+const AppsPage = lazy(() => import("@/pages/apps"));
+const AudienceStudioPage = lazy(() => import("@/pages/audience-studio"));
+const AudiencePublicPage = lazy(() => import("@/pages/audience-public"));
+const AudiencePreferencesPage = lazy(
+  () => import("@/pages/audience-preferences"),
+);
+const PodcastStudioPage = lazy(() => import("@/pages/podcast-studio"));
+const PodcastPublicPage = lazy(() => import("@/pages/podcast-public"));
+const DesignStudioPage = lazy(() => import("@/pages/design-studio"));
+const DesignStudioReviewPage = lazy(
+  () => import("@/pages/design-studio-review"),
+);
+const CreatorSiteStudioPage = lazy(() => import("@/pages/creator-site-studio"));
+const CreatorSitePublicPage = lazy(() => import("@/pages/creator-site-public"));
+const SponsorshipStudioPage = lazy(() => import("@/pages/sponsorship-studio"));
+const SponsorshipPortalPage = lazy(() => import("@/pages/sponsorship-portal"));
+const AffiliateStudioPage = lazy(() => import("@/pages/affiliate-studio"));
+const AffiliateProgramPage = lazy(() => import("@/pages/affiliate-program"));
+const BookingStudioPage = lazy(() => import("@/pages/booking-studio"));
+const BookingPublicPage = lazy(() => import("@/pages/booking-public"));
+const EventTicketingPage = lazy(() => import("@/pages/event-ticketing"));
+const EventOperationsPage = lazy(() => import("@/pages/event-operations"));
+const MarketplaceOperationsPage = lazy(
+  () => import("@/pages/marketplace-operations"),
+);
+const StorefrontPage = lazy(() => import("@/pages/storefront"));
+const SupportCenterPage = lazy(() => import("@/pages/support-center"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = import.meta.env.VITE_CREATOROS_DEMO_MODE === "true";
@@ -196,6 +239,7 @@ function Router() {
         "earnings",
         "products",
         "automations",
+        "library",
       ].includes(path)
     )
       return setActiveTab("create");
@@ -241,6 +285,23 @@ function Router() {
       <Route path="/review/cut/:token" component={CutStudioReviewPage} />
       <Route path="/ugc/creator/:id" component={UgcCreatorPage} />
       <Route path="/broadcast/field" component={BroadcastFieldPage} />
+      <Route path="/subscribe/:publicId" component={AudiencePublicPage} />
+      <Route
+        path="/audience/preferences/:token"
+        component={AudiencePreferencesPage}
+      />
+      <Route path="/podcasts/:publicId" component={PodcastPublicPage} />
+      <Route path="/design/review/:token" component={DesignStudioReviewPage} />
+      <Route path="/s/:slug" component={CreatorSitePublicPage} />
+      <Route
+        path="/sponsorship/portal/:token"
+        component={SponsorshipPortalPage}
+      />
+      <Route path="/affiliates/:slug" component={AffiliateProgramPage} />
+      <Route path="/book/:slug" component={BookingPublicPage} />
+      <Route path="/events/:id/tickets" component={EventTicketingPage} />
+      <Route path="/store/:slug" component={StorefrontPage} />
+      <Route path="/apps" component={AppsPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/cart" component={CartPage} />
@@ -259,18 +320,78 @@ function Router() {
         component={DistributionConnections}
       />
       <ProtectedRoute path="/cut-studio" component={CutStudioPage} />
-      <ProtectedRoute path="/cut-studio/workspace/:id" component={CutStudioWorkspacePage} />
+      <ProtectedRoute
+        path="/cut-studio/workspace/:id"
+        component={CutStudioWorkspacePage}
+      />
       <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
-      <ProtectedRoute path="/broadcast/control/:id" component={BroadcastControlPage} />
-      <ProtectedRoute path="/broadcast/audience/:id" component={BroadcastAudiencePage} />
+      <ProtectedRoute
+        path="/broadcast/control/:id"
+        component={BroadcastControlPage}
+      />
+      <ProtectedRoute
+        path="/broadcast/audience/:id"
+        component={BroadcastAudiencePage}
+      />
       <ProtectedRoute path="/business" component={BusinessDashboard} />
+      <ProtectedRoute
+        path="/business/benchmarks"
+        component={CompetitiveBenchmarksPage}
+      />
+      <ProtectedRoute
+        path="/business/analytics"
+        component={AnalyticsOverviewPage}
+      />
+      <ProtectedRoute
+        path="/business/planner"
+        component={ProductionPlannerPage}
+      />
+      <ProtectedRoute
+        path="/business/developer"
+        component={DeveloperPlatformPage}
+      />
+      <ProtectedRoute path="/business/operations" component={OperationsPage} />
+      <ProtectedRoute path="/oauth/authorize" component={OAuthAuthorizePage} />
+      <ProtectedRoute
+        path="/business/audience"
+        component={AudienceStudioPage}
+      />
+      <ProtectedRoute path="/business/podcasts" component={PodcastStudioPage} />
+      <ProtectedRoute
+        path="/business/design/:id"
+        component={DesignStudioPage}
+      />
+      <ProtectedRoute path="/business/design" component={DesignStudioPage} />
+      <ProtectedRoute path="/business/site" component={CreatorSiteStudioPage} />
+      <ProtectedRoute
+        path="/business/sponsorship"
+        component={SponsorshipStudioPage}
+      />
+      <ProtectedRoute
+        path="/business/affiliates"
+        component={AffiliateStudioPage}
+      />
+      <ProtectedRoute
+        path="/business/booking/events/:id"
+        component={EventOperationsPage}
+      />
+      <ProtectedRoute path="/business/booking" component={BookingStudioPage} />
+      <ProtectedRoute
+        path="/business/marketplace"
+        component={MarketplaceOperationsPage}
+      />
+      <ProtectedRoute path="/support/:id" component={SupportCenterPage} />
+      <ProtectedRoute path="/support" component={SupportCenterPage} />
       <ProtectedRoute path="/business/approvals" component={UmhApprovalsPage} />
+      <ProtectedRoute path="/business/portability" component={DataPortabilityPage} />
       <ProtectedRoute path="/earnings" component={EarningsPage} />
       <ProtectedRoute path="/moderation" component={ModerationPage} />
+      <ProtectedRoute path="/admin/apps" component={AdminAppsPage} />
       <ProtectedRoute path="/campaigns" component={CampaignsPage} />
       <ProtectedRoute path="/ugc" component={UgcPage} />
       <ProtectedRoute path="/ai" component={AI} />
       <ProtectedRoute path="/automations" component={AutomationsPage} />
+      <ProtectedRoute path="/library" component={MediaLibraryPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
       <ProtectedRoute
         path="/settings/privacy"
@@ -354,6 +475,7 @@ function AppContent() {
         </div>
         {!chrome.isAuth && (
           <Suspense fallback={null}>
+            <OfflineOperations />
             {chrome.showBottomNavigation && <BottomNavigation />}
             <ApplicationOverlays />
           </Suspense>

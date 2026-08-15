@@ -1,5 +1,10 @@
 # CreativesOS non-provider release qualification
 
+> Historical first-MVP qualification snapshot (through Fly v305). The current
+> desired-state candidate and all superseding counts are recorded in
+> [CREATIVESOS_END_STATE_PARITY.md](CREATIVESOS_END_STATE_PARITY.md); do not use
+> this snapshot as evidence that the current worktree is deployed.
+
 Qualified scope: roadmap items 1-6, excluding external provider activation and provider-owned end-to-end delivery.
 
 ## Release gates

@@ -23,8 +23,20 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"], extraHTTPHeaders: { "x-creativesos-demo-user": "1" } } },
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], extraHTTPHeaders: { "x-creativesos-demo-user": "2" } } },
+    {
+      name: "mobile-chromium",
+      use: {
+        ...devices["Pixel 7"],
+        extraHTTPHeaders: { "x-creativesos-demo-user": "1" },
+      },
+    },
+    {
+      name: "desktop-chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        extraHTTPHeaders: { "x-creativesos-demo-user": "2" },
+      },
+    },
   ],
   webServer: {
     command: "npm run dev",
@@ -40,6 +52,10 @@ export default defineConfig({
       UMH_COMMAND_SIGNING_SECRET: "qualification-only-umh-command-secret",
       UMH_INSTALLATION_ID: "creativesos-browser-qualification",
       PUBLIC_APP_URL: baseURL,
+      SOCIAL_TOKEN_ENCRYPTION_KEY:
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      DEVELOPER_API_KEY_PEPPER:
+        "qualification-only-developer-api-key-pepper",
     },
   },
 });

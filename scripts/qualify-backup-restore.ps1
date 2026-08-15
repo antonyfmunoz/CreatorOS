@@ -35,7 +35,17 @@ try {
   $manifestPath = "$dumpPath.manifest.json"
   if (-not (Test-Path -LiteralPath $manifestPath)) { throw "Backup manifest missing" }
   $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-  $actualHash = (Get-FileHash -LiteralPath $dumpPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $stream = [System.IO.File]::OpenRead($dumpPath)
+  try {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $actualHash = [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+    } finally {
+      $sha256.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
   if ($manifest.sha256 -ne $actualHash) { throw "Backup manifest hash mismatch" }
 
   & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-backup-restore.ps1 -BackupFile $dumpPath

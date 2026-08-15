@@ -29,6 +29,7 @@ import { attachUser } from "./auth";
 import { businessRoleCanAdminister, businessRoleCanManage, ensureDefaultBusiness, userBusinessRole } from "./businesses";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
+import { assetRightsAllowUse, queueMediaIngestJobs, recordAssetUsage, registerAssetLineage } from "./media-cloud";
 import {
   createPrivateAssetReadUrl,
   materializePrivateAsset,
@@ -151,6 +152,19 @@ const idSchema = z.string().uuid();
 const proxyRequestSchema = z.object({ mediaId: z.string().uuid() });
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
+
+async function registerCutArtifact(parentAssetId: string, artifact: typeof assets.$inferSelect, relationship: "rendered_from" | "derived_from") {
+  await Promise.all([
+    queueMediaIngestJobs(artifact),
+    registerAssetLineage({
+      parentAssetId,
+      childAssetId: artifact.id,
+      relationship,
+      createdByUserId: artifact.ownerUserId,
+      metadata: { instrument: "cutstudio" },
+    }),
+  ]);
+}
 
 function noStore(res: Response) {
   res.setHeader("Cache-Control", "no-store");
@@ -596,6 +610,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
+      await registerCutArtifact(source.id, artifact, "rendered_from");
       return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };
     }
     const sourcePath = path.join(temp, source.originalFilename || "source.mp4");
@@ -656,6 +671,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     await runProcess("ffmpeg", args, 30 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
+    await registerCutArtifact(source.id, artifact, "rendered_from");
     return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
@@ -697,6 +713,7 @@ async function createProxyJob(jobId: string, project: typeof cutStudioProjects.$
       originalFilename: outputName,
       metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, proxyForAssetId: original.id, projectMediaId: media.id, maxWidth: 1280 },
     }).returning();
+    await registerCutArtifact(original.id, artifact, "derived_from");
     return { artifact, output: { filename: outputName, mediaId: media.id, originalAssetId: original.id, maxWidth: 1280, codec: "h264", container: "mp4" } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
@@ -889,10 +906,12 @@ export function registerCutStudioRoutes(app: Express) {
     if (!parsed.success) return res.status(400).json({ message: "Valid source media, name, duration, and media type are required" });
     const source = await ownedAsset(req.dbUser!.id, parsed.data.sourceAssetId);
     if (!source || source.visibility !== "private" || source.status !== "ready") return res.status(400).json({ message: "The private source media is not ready" });
+    if (!(await assetRightsAllowUse(source.id, "editing"))) return res.status(409).json({ message: "Source rights do not permit editing" });
     if (!source.mimeType?.startsWith(`${parsed.data.mediaKind}/`)) return res.status(400).json({ message: "The source media type does not match the project" });
     const business = await ensureDefaultBusiness(req.dbUser!);
     const [project] = await db.insert(cutStudioProjects).values({ ...parsed.data, ownerUserId: req.dbUser!.id, businessId: business.id, edl: { version: 2, clips: [{ id: "clip_00", start: 0, end: parsed.data.duration, label: "clip00", speed: 1, volume: 1, fadeIn: 0, fadeOut: 0 }] } }).returning();
     await db.insert(cutStudioProjectMedia).values({ projectId: project.id, assetId: source.id, ownerUserId: req.dbUser!.id, name: source.originalFilename ?? project.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration });
+    await recordAssetUsage({ assetId: source.id, actorUserId: req.dbUser!.id, surfaceType: "cutstudio", surfaceId: project.id, useType: "editing" });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.project.created", actorUserId: req.dbUser!.id, payload: { businessId: business.id, sourceAssetId: project.sourceAssetId, mediaKind: project.mediaKind, duration: project.duration }, idempotencyKey: `cutstudio:${project.id}:project.created` });
     res.status(201).json(project);
   });
@@ -1335,6 +1354,10 @@ export function registerCutStudioRoutes(app: Express) {
     const existingId = typeof artifact.metadata?.distributionAssetId === "string" ? artifact.metadata.distributionAssetId : null; if (existingId) { const existing = await ownedAsset(req.dbUser!.id, existingId); if (existing) return res.json(existing); }
     const promoted = await promotePrivateAsset({ storageKey: artifact.storageKey, ownerUserId: req.dbUser!.id, kind: "video", filename: artifact.originalFilename ?? "cutstudio-render.mp4", mimeType: artifact.mimeType ?? "video/mp4" });
     const [publicAsset] = await db.insert(assets).values({ ownerUserId: req.dbUser!.id, businessId: artifact.businessId, kind: "video", storageProvider: "r2", storageKey: promoted.storageKey, publicUrl: promoted.publicUrl, mimeType: artifact.mimeType, sizeBytes: promoted.sizeBytes, visibility: "public", status: "ready", originalFilename: artifact.originalFilename, metadata: { cutStudioProjectId: job.projectId, cutStudioJobId: job.id, sourcePrivateAssetId: artifact.id } }).returning();
+    await Promise.all([
+      queueMediaIngestJobs(publicAsset),
+      registerAssetLineage({ parentAssetId: artifact.id, childAssetId: publicAsset.id, relationship: "published_from", createdByUserId: req.dbUser!.id, metadata: { instrument: "cutstudio", jobId: job.id } }),
+    ]);
     await db.update(assets).set({ metadata: { ...artifact.metadata, distributionAssetId: publicAsset.id } }).where(eq(assets.id, artifact.id));
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.asset.promoted", actorUserId: req.dbUser!.id, payload: { businessId: artifact.businessId, jobId: job.id, privateAssetId: artifact.id, distributionAssetId: publicAsset.id }, idempotencyKey: `cutstudio:${job.id}:asset.promoted` });
     res.status(201).json(publicAsset);

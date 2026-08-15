@@ -16,6 +16,9 @@ import { captureServerException, requestObservability, structuredLog } from "./o
 import { closeDatabase } from "./db";
 import { shutdownPostHog } from "./posthog";
 import { scheduleBroadcastRecovery } from "./broadcast-studio";
+import { scheduleMediaCloudProcessing } from "./media-processing";
+import { scheduleDeveloperWebhookProcessing } from "./developer-platform";
+import { operationalRequestTelemetry } from "./operations";
 
 const app = express();
 if (process.env.CREATOROS_QUALIFICATION_MODE === "true" && process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
@@ -27,6 +30,7 @@ app.use(securityHeaders);
 app.use(sameOriginMutationGuard);
 app.use(apiRateLimiter());
 app.use(requestObservability);
+app.use(operationalRequestTelemetry);
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, body) => {
@@ -82,6 +86,8 @@ app.use("/uploads", express.static(uploadDirectory, {
     scheduleXRelationshipTokenRefresh();
     scheduleStripeCommerceRecovery();
     scheduleBroadcastRecovery();
+    scheduleMediaCloudProcessing();
+    scheduleDeveloperWebhookProcessing();
     log("background workers scheduled");
   });
 

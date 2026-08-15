@@ -28,7 +28,9 @@ function normalizeUsername(seed: string): string {
   return cleaned || "user";
 }
 
-function verifiedPrimaryEmail(clerkUser: Awaited<ReturnType<typeof clerkClient.users.getUser>>): string | undefined {
+function verifiedPrimaryEmail(
+  clerkUser: Awaited<ReturnType<typeof clerkClient.users.getUser>>,
+): string | undefined {
   const primaryEmail = clerkUser.emailAddresses.find(
     (email) => email.id === clerkUser.primaryEmailAddressId,
   );
@@ -85,7 +87,11 @@ export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
   if (primaryEmail) {
     const legacyUser = await storage.getUserByAuthEmail(primaryEmail);
     if (legacyUser) {
-      const reboundUser = await storage.rebindClerkIdentity(legacyUser.id, clerkUserId, primaryEmail);
+      const reboundUser = await storage.rebindClerkIdentity(
+        legacyUser.id,
+        clerkUserId,
+        primaryEmail,
+      );
       await ensureDefaultBusiness(reboundUser);
       return reboundUser;
     }
@@ -99,7 +105,10 @@ export async function getOrCreateDbUser(clerkUserId: string): Promise<User> {
   const username = await uniqueUsername(usernameSeed);
 
   const displayName =
-    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
+    [clerkUser.firstName, clerkUser.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
     clerkUser.username ||
     username;
 
@@ -173,7 +182,8 @@ export function anonymousHomeRedirectPath(input: {
   userId: string | null;
   hasClerkHandshake: boolean;
 }): string | null {
-  if (input.localIdentity || input.userId || input.hasClerkHandshake) return null;
+  if (input.localIdentity || input.userId || input.hasClerkHandshake)
+    return null;
   return "/auth/login";
 }
 
@@ -216,9 +226,10 @@ export async function attachUser(
   try {
     if (usesLocalQualificationIdentity()) {
       const requestedDemoUser = Number(req.get("x-creativesos-demo-user") ?? 1);
-      const demoUserId = Number.isInteger(requestedDemoUser) && requestedDemoUser > 0
-        ? requestedDemoUser
-        : 1;
+      const demoUserId =
+        Number.isInteger(requestedDemoUser) && requestedDemoUser > 0
+          ? requestedDemoUser
+          : 1;
       const demoUser = await storage.getUser(demoUserId);
       if (!demoUser) {
         return res.status(500).json({ message: "Demo user is unavailable" });
@@ -250,8 +261,31 @@ export async function attachUser(
   }
 }
 
+/** Resolve an identity when one is present while preserving public routes. */
+export async function attachUserIfPresent(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (usesLocalQualificationIdentity()) return attachUser(req, res, next);
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return next();
+    req.dbUser = await getOrCreateDbUser(userId);
+    if (req.dbUser.status === "deleted") {
+      return res.status(410).json({ message: "This account has been deleted" });
+    }
+    return next();
+  } catch {
+    // Public content remains readable when no valid Clerk context is supplied.
+    return next();
+  }
+}
+
 function usesLocalQualificationIdentity(): boolean {
   if (process.env.CREATOROS_DEMO_MODE === "true") return true;
-  return process.env.CREATOROS_QUALIFICATION_MODE === "true"
-    && process.env.QUALIFICATION_ISOLATED_DATABASE === "true";
+  return (
+    process.env.CREATOROS_QUALIFICATION_MODE === "true" &&
+    process.env.QUALIFICATION_ISOLATED_DATABASE === "true"
+  );
 }
