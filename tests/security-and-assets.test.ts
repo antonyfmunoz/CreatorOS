@@ -143,6 +143,11 @@ describe("production safety boundaries", () => {
   });
 
   it("throttles upload attempts per authenticated account", () => {
+    // This contract verifies the real production limit. The release workflow
+    // enables qualification mode globally so browser journeys can reuse
+    // synthetic actors without tripping cost controls; opt this unit test out
+    // before constructing the limiter so the explicit max remains observable.
+    process.env.CREATOROS_QUALIFICATION_MODE = "false";
     const limiter = assetUploadRateLimiter({ max: 1, windowMs: 60_000 });
     const response = () => {
       const state = { statusCode: 0 };
