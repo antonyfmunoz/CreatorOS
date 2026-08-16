@@ -5,6 +5,8 @@ const deploySource = readFileSync(new URL("../scripts/deploy-production.ps1", im
 const migrationSource = readFileSync(new URL("../scripts/migrate-production.mjs", import.meta.url), "utf8");
 const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
+const verifyWorkflowSource = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
+const cleanSourceContract = readFileSync(new URL("../scripts/assert-clean-source.mjs", import.meta.url), "utf8");
 
 describe("production deployment contract", () => {
   it("applies the current additive ledger before deploy and verifies it again after deploy", () => {
@@ -22,7 +24,12 @@ describe("production deployment contract", () => {
 
   it("embeds a non-secret exact-source identity into every production image", () => {
     expect(deploySource).toContain("Production releases require a clean source worktree");
+    expect(deploySource).toContain("node scripts/assert-clean-source.mjs");
     expect(deploySource).toContain('$sourceDirty = "false"');
+    expect(cleanSourceContract).toContain('"status", "--porcelain=v1"');
+    expect(cleanSourceContract).toContain('"--untracked-files=normal"');
+    expect(workflowSource).toContain("node scripts/assert-clean-source.mjs");
+    expect(verifyWorkflowSource).toContain("node scripts/assert-clean-source.mjs");
     expect(deploySource).toContain("node scripts/source-fingerprint.mjs");
     for (const name of [
       "CREATIVESOS_SOURCE_COMMIT",

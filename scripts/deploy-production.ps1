@@ -20,15 +20,9 @@ if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40,64}$') {
   throw "Unable to resolve the release source commit"
 }
 
-$dirtyEntries = @(git status --porcelain=v1 --untracked-files=normal)
+node scripts/assert-clean-source.mjs
 if ($LASTEXITCODE -ne 0) {
-  throw "Unable to inspect the release source worktree"
-}
-if ($dirtyEntries.Count -gt 0) {
-  $dirtyPaths = $dirtyEntries |
-    ForEach-Object { if ($_.Length -gt 3) { $_.Substring(3) } else { $_ } } |
-    Sort-Object -Unique
-  throw "Production releases require a clean source worktree. Changed paths: $($dirtyPaths -join ', ')"
+  throw "Production releases require a clean source worktree"
 }
 
 $sourceFingerprint = (node scripts/source-fingerprint.mjs).Trim()
