@@ -722,6 +722,13 @@
       "when": 1786795200000,
       "tag": "0102_offline_resilience",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1786798800000,
+      "tag": "0103_native_mobile",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import NativeMobileControls from "@/components/system/NativeMobileControls";
 
 type UserSettings = {
   pushNotificationsEnabled: boolean;
@@ -50,6 +51,7 @@ export default function SettingsPage() {
           <div className="min-w-0 flex-1"><p className="font-bold">Push notifications</p><p className="mt-1 text-sm leading-5 text-zinc-400">Allow account and community activity alerts on supported devices.</p></div>
           <Switch aria-label="Push notifications" checked={current.pushNotificationsEnabled} disabled={settings.isLoading || update.isPending} onCheckedChange={(checked) => update.mutate({ pushNotificationsEnabled: checked })} />
         </div>
+        <NativeMobileControls enabled={current.pushNotificationsEnabled} />
       </section>
 
       <section aria-labelledby="display-heading" className="border-b border-zinc-900 px-4 py-6">

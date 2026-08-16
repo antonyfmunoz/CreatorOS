@@ -13,6 +13,7 @@ import {
   retryBlockedOfflineOperations,
   type OfflineOperation,
 } from "@/lib/offline-queue";
+import { nativeWakeEvent } from "@/lib/native-runtime";
 
 function operationLabel(operation: OfflineOperation) {
   if (operation.kind === "post.create") return "Post";
@@ -89,6 +90,7 @@ export default function OfflineOperations() {
     };
     window.addEventListener("online", connectivity);
     window.addEventListener("offline", connectivity);
+    window.addEventListener(nativeWakeEvent, connectivity);
     window.addEventListener(offlineQueueEvent, queueUpdate);
     document.addEventListener("visibilitychange", visibility);
     navigator.serviceWorker?.addEventListener("message", serviceWorkerMessage);
@@ -96,6 +98,7 @@ export default function OfflineOperations() {
     return () => {
       window.removeEventListener("online", connectivity);
       window.removeEventListener("offline", connectivity);
+      window.removeEventListener(nativeWakeEvent, connectivity);
       window.removeEventListener(offlineQueueEvent, queueUpdate);
       document.removeEventListener("visibilitychange", visibility);
       navigator.serviceWorker?.removeEventListener("message", serviceWorkerMessage);

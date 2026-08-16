@@ -158,6 +158,7 @@ import {
 import { registerOperationsRoutes } from "./operations";
 import { registerDataPortabilityRoutes } from "./data-portability";
 import { registerTrustRoutes } from "./trust";
+import { registerMobileRoutes } from "./mobile";
 import { relationshipRoomContext } from "./relationship-room-context";
 import {
   finalizeRelationshipUsage,
@@ -734,6 +735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "asset_collection_items",
       "media_playback_sessions",
       "media_playback_events",
+      "mobile_device_registrations",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",
@@ -831,6 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerOperationsRoutes(app);
   registerDataPortabilityRoutes(app);
   registerTrustRoutes(app);
+  registerMobileRoutes(app);
   registerUmhRoutes(app);
   registerStripeRoutes(app);
 

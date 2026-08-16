@@ -93,6 +93,7 @@ field evidence.
 | Developer platform | Scoped APIs, OpenAPI, opaque pagination, key custody, delegated OAuth, typed SDKs, sandbox tenants, reviewed app marketplace, signed webhooks, retry/dead letter and distributed rate limits | `verified_complete` (native); production release verified, authenticated refresh pending | Mobile/desktop authorization, cross-tenant denial, atomic code exchange and refresh rotation, SSRF rejection, signed delivery, app review, sandbox expiry/revocation and database-backed limit evidence pass. The exact qualified candidate is deployed at v312; public registry publication and independently controlled third-party adoption remain release evidence. |
 | Data portability | Versioned exports, dry-run validation, atomic/idempotent imports, durable source mappings and specialized audience/podcast/media migration paths | `verified_complete` (native); production release verified, authenticated refresh pending | Products, nested courses, contacts and inactive automation definitions import transactionally with tenant isolation, advisory locking, replay/conflict behavior and secret rejection. Imported offers remain draft; private media URLs never appear in export manifests. The exact qualified candidate is deployed at v312; representative competitor-export and production-volume reconciliation remain field evidence. |
 | Installable web application | Privacy-safe PWA shell, offline fallback and device-protected post/message/media outbox without caching private API/navigation data | `verified_complete` (local PWA) | Manifest/service-worker contracts and mobile/desktop disconnect/reconnect journeys pass. JSON mutations are mirrored and server-idempotent; media blobs use bounded IndexedDB storage and restartable upload intents. Native iOS/Android binaries, operating-system background capture/upload, push and physical-device evidence remain Phase 6. |
+| Native mobile shell | Capacitor iOS/Android projects, lifecycle/network recovery, safe deep links, explicit push consent, encrypted owner-scoped token custody and bounded background wake | `verified_complete` (local source/sync); `device_pending` (binary and runtime); `provider_pending` (push delivery) | TypeScript, production web build, Capacitor sync and native contract checks pass. The runner stores only connectivity/wake metadata; authenticated outbox data remains in the WebView and flushes on resume/network recovery. Android binary compilation awaits acceptance/installation of the Android SDK; iOS compilation, APNs/FCM delivery, signing, store submission and physical-device endurance require external accounts, devices or platform approval. |
 | Operations | Health/readiness, exact release identity, SLOs, error budgets, usage/cost boundaries, provider state, alerts, recovery, backup/restore and migration parity | `verified_complete` (native and production) | The control plane publishes seven SLOs, preserves `unmeasured`, meters tenant usage/cost and persists budgets, and fails production readiness closed unless source commit, full worktree fingerprint, dirty state, build identity and the exact migration ledger agree. v312 established the protected-main production baseline and v313 repeated the workflow from merge commit `1b0c340bd3fa74ae41545363df18c07bf2304614`, with healthy/readiness/release evidence and all 103 migrations. `/api/release` is canonical for the current runtime identity. |
 | Projection-side UMH bridge | Signed scoped ingress, replay/idempotency/tenant controls, approvals, audit and durable outbox | `verified_complete` (projection side) | Invalid-signature denial, replay/idempotency, tenant authority, local approval and duplicate-decision rejection pass; paired round trip remains in UMH pairing |
 | UMH pairing | Cockpit discovery, capability negotiation, command/evidence exchange | `umh_pending` | UMH-side binding and live signed round trip |
@@ -131,6 +132,36 @@ styling:
 - [x] Production field evidence retains the earlier safe signed-in LiveKit, AI-quota, Stripe, creation-studio, Distribution, automation, profile, marketplace and community runs described below. Release v312 adds a protected-workflow deployment of the exact 110-file / 413-test / 178-browser-execution candidate, all 103 production migrations, healthy/readiness/release identity, two healthy IAD machines, separate login/registration, correct protected-route redirects, protected-API `401` boundaries, public discovery contracts, branding and security headers. A fresh authenticated v312 browser repeat is not claimed until an authorized signed-in session is available. Physical camera publication is not claimed because the automated in-app browser had no granted camera device. The unchanged anonymous auth entry retains its Lighthouse evidence at 96 performance and 100 accessibility.
 - [x] Provider-disabled states are honest: mixed native/external distribution remains `needs_connection`, retries preserve one native receipt, and unconfigured realtime/AI/channel surfaces fail closed.
 - [ ] Provider credentials, legal publication, UMH-side pairing and irreversible production actions remain explicit handoff gates.
+
+## 2026-08-16 native-mobile local qualification
+
+This section records the new native-shell candidate without rewriting v312/v313
+production truth:
+
+- Capacitor 8 iOS and Android projects were generated and synchronized from the
+  same `dist/public` application build;
+- safe HTTPS/custom-scheme deep links, resume/network outbox wake, explicit
+  notification permission, encrypted token custody, revocation and redacted
+  device responses are implemented;
+- background execution records only bounded connectivity/wake metadata and does
+  not copy credentials, private content or the authenticated outbox into a
+  headless runtime;
+- focused native contract tests, TypeScript, production web build and Capacitor
+  synchronization pass locally;
+- the final candidate passes 111 unit/integration/contract files with 418
+  assertions, the production build and bundle/Worker gates, all 104 migrations,
+  backup/restore, secret, dependency, capacity and relationship-release gates;
+- all 180 Pixel 7/desktop Chromium executions across 31 specifications pass on
+  one fresh isolated PostgreSQL lifecycle, including owner-isolated device
+  registration, response redaction, token rotation/revocation and web/native
+  surface separation;
+- the full browser run also exposed and drove closure of a Windows managed-media
+  path canonicalization defect. The junction/symlink regression is covered and
+  the focused Broadcast/CutStudio/podcast replay plus the complete matrix now
+  finish without terminating the application server;
+- Android compilation reached Gradle dependency resolution but cannot complete
+  until the Android SDK license/toolchain is installed; iOS compilation requires
+  macOS/Xcode. Neither limitation is represented as runtime evidence.
 
 ## 2026-08-14 local creation-studio qualification
 

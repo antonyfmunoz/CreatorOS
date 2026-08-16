@@ -2,7 +2,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
-const tracked = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
+// Scan the exact candidate, including untracked source that is about to be
+// committed. A tracked-only scan can report clean while a newly generated
+// native project still contains a credential.
+const tracked = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { encoding: "utf8" })
   .split("\0")
   .filter(Boolean)
   .filter((file) => !file.startsWith("attached_assets/") && !file.endsWith("package-lock.json"));

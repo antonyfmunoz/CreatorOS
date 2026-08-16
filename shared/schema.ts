@@ -13,6 +13,7 @@ import {
   unique,
   uniqueIndex,
   index,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -5911,6 +5912,60 @@ export const notificationSuppressions = pgTable(
   }),
 );
 
+// Push-provider tokens are encrypted at rest and are never projected through
+// public API fields. The installation id is app-generated and contains no
+// hardware identifier, advertising id, or device fingerprint.
+export const mobileDeviceRegistrations = pgTable(
+  "mobile_device_registrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    installationId: text("installation_id").notNull(),
+    platform: text("platform").notNull(),
+    pushProvider: text("push_provider").notNull(),
+    pushTokenHash: text("push_token_hash").notNull(),
+    pushTokenCiphertext: text("push_token_ciphertext").notNull(),
+    appVersion: text("app_version"),
+    status: text("status").notNull().default("active"),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => ({
+    userInstallationUnique: unique(
+      "mobile_device_registrations_user_installation_unique",
+    ).on(table.userId, table.installationId),
+    activeTokenHashUnique: uniqueIndex(
+      "mobile_device_registrations_active_token_hash_unique",
+    )
+      .on(table.pushTokenHash)
+      .where(sql`${table.status} = 'active'`),
+    userStatusIdx: index("mobile_device_registrations_user_status_idx").on(
+      table.userId,
+      table.status,
+    ),
+    platformProviderCheck: check(
+      "mobile_device_registrations_platform_provider_check",
+      sql`(${table.platform} = 'ios' AND ${table.pushProvider} = 'apns') OR (${table.platform} = 'android' AND ${table.pushProvider} = 'fcm')`,
+    ),
+    platformCheck: check(
+      "mobile_device_registrations_platform_check",
+      sql`${table.platform} IN ('ios', 'android')`,
+    ),
+    providerCheck: check(
+      "mobile_device_registrations_provider_check",
+      sql`${table.pushProvider} IN ('apns', 'fcm')`,
+    ),
+    statusCheck: check(
+      "mobile_device_registrations_status_check",
+      sql`${table.status} IN ('active', 'revoked')`,
+    ),
+  }),
+);
+
 // Audience Studio owns capture and publishing workflow while the canonical
 // relationship record remains the identity system of record.
 export const audienceForms = pgTable(
@@ -9874,6 +9929,8 @@ export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type MobileDeviceRegistration =
+  typeof mobileDeviceRegistrations.$inferSelect;
 
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
