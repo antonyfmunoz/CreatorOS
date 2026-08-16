@@ -12,8 +12,9 @@
   post/message/media outbox.
 - Notification permission is requested only from an explicit Settings action.
 - Device registrations are authenticated, rate-limited, owner-scoped and
-  revocable. Provider tokens are SHA-256 indexed, AES-256-GCM encrypted at rest
-  and excluded from every response.
+  revocable. Provider tokens are indexed with a domain-separated keyed HMAC,
+  AES-256-GCM encrypted at rest and excluded from every response. Encryption-key
+  rotation therefore requires a coordinated device re-registration window.
 - The background runner stores only a timestamp and connectivity status. It is
   not a persistent capture daemon and never receives cookies, tokens, private
   media or outbox payloads.
