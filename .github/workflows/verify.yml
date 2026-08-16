@@ -35,6 +35,32 @@ jobs:
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
 
+  native-android:
+    name: Android native shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - run: npm ci
+      - name: Verify install hooks preserve source
+        run: node scripts/assert-clean-source.mjs
+      - name: Synchronize native projects
+        run: npm run mobile:sync
+      - name: Verify generated native projects are reproducible
+        run: node scripts/assert-clean-source.mjs
+      - name: Compile unsigned Android debug shell
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
   database:
     name: Database and durable workflows
     runs-on: ubuntu-latest

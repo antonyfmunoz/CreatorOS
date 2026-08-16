@@ -60,4 +60,12 @@ describe("production deployment contract", () => {
     expect(deploySource).toContain('backupReceipt.status -ne "completed"');
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
   });
+
+  it("compiles the synchronized Android shell on the protected Linux workflow", () => {
+    expect(verifyWorkflowSource).toContain("name: Android native shell");
+    expect(verifyWorkflowSource).toContain("actions/setup-java@v5");
+    expect(verifyWorkflowSource).toContain("npm run mobile:sync");
+    expect(verifyWorkflowSource).toContain("./gradlew assembleDebug --no-daemon");
+    expect(verifyWorkflowSource.match(/node scripts\/assert-clean-source\.mjs/g)).toHaveLength(3);
+  });
 });
