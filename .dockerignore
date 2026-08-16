@@ -6,7 +6,17 @@ node_modules
 dist
 attached_assets
 tests
+server/public
+.DS_Store
+vite.config.ts.*
+dump*.sql
+New Text Document*.txt
+.wrangler
+workers/**/.wrangler
+test-results
+playwright-report
 *.log
+*.tar.gz.env
 .env
 .env.*
 !.env.example

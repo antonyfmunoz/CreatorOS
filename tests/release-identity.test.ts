@@ -65,6 +65,22 @@ describe("release identity", () => {
     });
   });
 
+  it("fails closed when source-dirty metadata is absent from otherwise valid production identity", () => {
+    const result = buildReleaseIdentity({
+      NODE_ENV: "production",
+      CREATIVESOS_SOURCE_COMMIT: "a".repeat(40),
+      CREATIVESOS_SOURCE_FINGERPRINT: "b".repeat(64),
+      CREATIVESOS_BUILD_ID: "20260815T120000Z-bbbbbbbbbbbb",
+      CREATIVESOS_BUILD_TIME: "2026-08-15T12:00:00.000Z",
+    }, exactLedger);
+
+    expect(result.status).toBe("unverified");
+    expect(result.build).toMatchObject({
+      sourceDirty: null,
+      identityVerified: false,
+    });
+  });
+
   it("fails closed when the live migration ledger drifts from the checked-in release", () => {
     const result = buildReleaseIdentity({ NODE_ENV: "development" }, {
       count: Math.max(0, expectedMigrationLedger.count - 1),
