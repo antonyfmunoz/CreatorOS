@@ -51,6 +51,17 @@ jobs:
       - name: Install media qualification runtime
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: npm ci
+      - name: Verify clean release source
+        shell: pwsh
+        run: |
+          $dirtyEntries = @(git status --porcelain=v1 --untracked-files=normal)
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to inspect the release source worktree"
+          }
+          if ($dirtyEntries.Count -gt 0) {
+            $dirtyEntries | ForEach-Object { Write-Error $_ }
+            throw "Production qualification requires a clean source worktree"
+          }
       - run: npm run verify:secrets
       - run: npm run verify
       - name: Apply and qualify the exact migration ledger

@@ -21,6 +21,8 @@ describe("production deployment contract", () => {
   });
 
   it("embeds a non-secret exact-source identity into every production image", () => {
+    expect(deploySource).toContain("Production releases require a clean source worktree");
+    expect(deploySource).toContain('$sourceDirty = "false"');
     expect(deploySource).toContain("node scripts/source-fingerprint.mjs");
     for (const name of [
       "CREATIVESOS_SOURCE_COMMIT",
@@ -35,6 +37,7 @@ describe("production deployment contract", () => {
     }
     expect(deploySource).toContain("https://creativesos.net/api/release");
     expect(deploySource).toContain("releaseIdentity.build.sourceFingerprint -ne $sourceFingerprint");
+    expect(deploySource).toContain("releaseIdentity.build.sourceDirty -ne $false");
     expect(deploySource).toContain("releaseIdentity.migrations.parity -ne $true");
   });
 

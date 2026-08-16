@@ -76,7 +76,7 @@ const AuthPage = () => {
       {/* Hero section */}
       <div className="hidden w-full items-center justify-center bg-gradient-to-br from-sky-500/10 to-violet-500/10 p-8 md:flex md:w-1/2">
         <div className="max-w-lg space-y-6">
-          <h2 className="text-3xl font-bold">Everything Creators Need in One Place</h2>
+          <h2 className="text-3xl font-bold">Everything You Need to Create and Distribute</h2>
 
           <div className="space-y-4">
             <div className="bg-white/80 p-4 rounded-lg shadow-sm">

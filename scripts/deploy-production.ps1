@@ -20,12 +20,23 @@ if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40,64}$') {
   throw "Unable to resolve the release source commit"
 }
 
+$dirtyEntries = @(git status --porcelain=v1 --untracked-files=normal)
+if ($LASTEXITCODE -ne 0) {
+  throw "Unable to inspect the release source worktree"
+}
+if ($dirtyEntries.Count -gt 0) {
+  $dirtyPaths = $dirtyEntries |
+    ForEach-Object { if ($_.Length -gt 3) { $_.Substring(3) } else { $_ } } |
+    Sort-Object -Unique
+  throw "Production releases require a clean source worktree. Changed paths: $($dirtyPaths -join ', ')"
+}
+
 $sourceFingerprint = (node scripts/source-fingerprint.mjs).Trim()
 if ($LASTEXITCODE -ne 0 -or $sourceFingerprint -notmatch '^[0-9a-f]{64}$') {
   throw "Unable to calculate the release source fingerprint"
 }
 
-$sourceDirty = if ((git status --porcelain --untracked-files=normal | Measure-Object).Count -gt 0) { "true" } else { "false" }
+$sourceDirty = "false"
 $buildTime = (Get-Date).ToUniversalTime().ToString("o")
 $buildId = "$(Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ')-$($sourceFingerprint.Substring(0, 12))"
 
@@ -78,6 +89,7 @@ if (
   $releaseIdentity.status -ne "verified" -or
   $releaseIdentity.build.sourceCommit -ne $sourceCommit.ToLowerInvariant() -or
   $releaseIdentity.build.sourceFingerprint -ne $sourceFingerprint -or
+  $releaseIdentity.build.sourceDirty -ne $false -or
   $releaseIdentity.build.id -ne $buildId -or
   $releaseIdentity.migrations.parity -ne $true
 ) {

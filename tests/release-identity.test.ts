@@ -48,6 +48,23 @@ describe("release identity", () => {
     });
   });
 
+  it("refuses to verify a production image built from a dirty worktree", () => {
+    const result = buildReleaseIdentity({
+      NODE_ENV: "production",
+      CREATIVESOS_SOURCE_COMMIT: "a".repeat(40),
+      CREATIVESOS_SOURCE_FINGERPRINT: "b".repeat(64),
+      CREATIVESOS_BUILD_ID: "20260815T120000Z-bbbbbbbbbbbb",
+      CREATIVESOS_BUILD_TIME: "2026-08-15T12:00:00.000Z",
+      CREATIVESOS_SOURCE_DIRTY: "true",
+    }, exactLedger);
+
+    expect(result.status).toBe("unverified");
+    expect(result.build).toMatchObject({
+      sourceDirty: true,
+      identityVerified: false,
+    });
+  });
+
   it("fails closed when the live migration ledger drifts from the checked-in release", () => {
     const result = buildReleaseIdentity({ NODE_ENV: "development" }, {
       count: Math.max(0, expectedMigrationLedger.count - 1),
