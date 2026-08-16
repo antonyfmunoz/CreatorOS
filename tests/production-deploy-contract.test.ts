@@ -66,6 +66,13 @@ describe("production deployment contract", () => {
     expect(verifyWorkflowSource).toContain("actions/setup-java@v5");
     expect(verifyWorkflowSource).toContain("npm run mobile:sync");
     expect(verifyWorkflowSource).toContain("./gradlew assembleDebug --no-daemon");
-    expect(verifyWorkflowSource.match(/node scripts\/assert-clean-source\.mjs/g)).toHaveLength(3);
+  });
+
+  it("compiles the synchronized iOS shell without signing on the protected macOS workflow", () => {
+    expect(verifyWorkflowSource).toContain("name: iOS native shell");
+    expect(verifyWorkflowSource).toContain("runs-on: macos-15");
+    expect(verifyWorkflowSource).toContain("-project ios/App/App.xcodeproj");
+    expect(verifyWorkflowSource).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(verifyWorkflowSource.match(/node scripts\/assert-clean-source\.mjs/g)).toHaveLength(5);
   });
 });

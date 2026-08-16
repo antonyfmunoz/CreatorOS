@@ -61,6 +61,35 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
+  native-ios:
+    name: iOS native shell
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Verify install hooks preserve source
+        run: node scripts/assert-clean-source.mjs
+      - name: Synchronize native projects
+        run: npm run mobile:sync
+      - name: Verify generated native projects are reproducible
+        run: node scripts/assert-clean-source.mjs
+      - name: Compile unsigned iOS simulator shell
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/creativesos-derived-data"
+          CODE_SIGNING_ALLOWED=NO
+          build
+
   database:
     name: Database and durable workflows
     runs-on: ubuntu-latest
