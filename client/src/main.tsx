@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { initializeNativeRuntime } from "./lib/native-runtime";
 import "./index.css";
+
+void initializeNativeRuntime();
 import { initPostHog } from "./lib/posthog";
 
 initPostHog();

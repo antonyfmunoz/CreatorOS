@@ -140,6 +140,7 @@ const requiredTables = [
   "notification_events",
   "notification_deliveries",
   "notification_suppressions",
+  "mobile_device_registrations",
   "audience_forms",
   "audience_form_submissions",
   "audience_landing_pages",

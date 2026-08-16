@@ -139,8 +139,10 @@ do not yet have the locked side-by-side operator evidence required for a
 - Provider-backed adaptive packaging/transcoding, global CDN behavior and
   regional media/realtime failover remain activation and scale evidence, not
   missing local product contracts.
-- Native iOS/Android binaries, background upload/capture, push delivery and
-  physical-device/app-store qualification remain beyond the installable PWA.
+- Native iOS/Android shells, lifecycle/deep-link handling, explicit push
+  consent, encrypted device-token custody and bounded background wake are now
+  implemented locally. Provider delivery, sustained background capture/upload,
+  physical-device and app-store qualification remain external/device gates.
 - The developer ecosystem and portability foundation are native-qualified;
   public package-registry publication and third-party adoption remain external
   release evidence rather than missing product contracts.
@@ -154,7 +156,7 @@ do not yet have the locked side-by-side operator evidence required for a
 | Product family | Current state | Next material move | Desired end state |
 | --- | --- | --- | --- |
 | Identity and tenancy | Native-qualified | Repeat with independently controlled production identities; extend every new domain through the same authority model | One creator and business identity with explicit roles across every instrument |
-| Native social | Core publishing and interaction qualified; competitively unbenchmarked | Add media telemetry, Following/For You contracts, discovery, notifications and deeper safety | Dependable owned social network whose engagement becomes reusable audience and commercial context |
+| Native social | Publishing, interaction, playback telemetry, Following/For You and chronological discovery, governed notifications and safety are native-qualified; competitively unbenchmarked | Run authorized daily-use benchmark and close only evidenced workflow gaps | Dependable owned social network whose engagement becomes reusable audience and commercial context |
 | Media hosting | Provider-neutral Media Cloud, renditions, jobs, authorization, playback telemetry and portability are locally qualified | Activate production processing/CDN adapters and run volume, deletion and migration exercises | Secure live/VOD media platform for every CreativesOS instrument |
 | Asset management | Unified DAM, collections, search, versions, rights and cross-instrument lineage are locally qualified | Repeat with production storage and representative large libraries | One governed creative library from source through every derivative and publication |
 | Planning | Unified production planner, calendar, dependencies, assignments and connected work objects are locally qualified | Production team field run and notification-provider activation | Idea-to-retrospective operating plan across teams and channels |
@@ -178,7 +180,7 @@ do not yet have the locked side-by-side operator evidence required for a
 | Podcasts | Shows, episodes, chapters, RSS, transcripts, access and analytics are locally qualified | Production feed validation, directory/provider activation and competitive benchmark | Audio/video podcast hosting and growth using Broadcast, CutStudio and Media Cloud |
 | Creator site | Page composition, link hub, storefront, SEO/capture/attribution and custom-domain contracts are locally qualified | Production DNS/domain automation and operator conversion benchmark | Owned branded destination for content, community and commerce |
 | Rights and safety | Rights, releases, licenses, provenance, takedown/counter-notice/appeal and safety workflows are locally qualified | Counsel decisions and production operational exercises | Enforceable provenance, usage authority and public-platform trust operations |
-| Mobile | Responsive web, installable privacy-safe PWA and Broadcast field client are qualified | Native shells, background upload/push, physical-device and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
+| Mobile | Responsive PWA plus generated iOS/Android shells, safe deep links, lifecycle/network recovery, encrypted push-device registration and bounded background wake are locally qualified | Add provider signing/delivery, sustained OS background transfer/capture, physical-device endurance and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
 | Operations and scale | Native control plane and exact release identity are production-qualified since v312; v313 repeated the protected workflow with all 103 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
 | UMH integration | Projection side qualified | Pair from UMH and prove signed bidirectional round trip | Cockpit coordination without surrendering standalone authority |
 | Developer ecosystem | Scoped API/OpenAPI, delegated OAuth, typed SDKs, sandbox tenants, reviewed marketplace listings, signed webhooks and full revocation are locally qualified | Publish packages and repeat with independently controlled third-party apps | Safe third-party extension and integration marketplace |
@@ -443,8 +445,9 @@ authorized operator performs the same-input run; no parity claim is inferred.
 
 ### Native social
 
-- Add watch-session telemetry, Following/For You controls, mature notification,
-  block/mute/restriction and creator analytics experiences.
+- Maintain the implemented watch-session telemetry, Following/For You and
+  chronological contracts, governed notifications, block/mute/restriction and
+  creator analytics experiences.
 - Benchmark publishing, consumption, interaction, discovery and recovery
   against Instagram, TikTok, YouTube and X normal creator workflows.
 
@@ -528,10 +531,12 @@ it.
 
 **Current worktree state:** installable PWA, web field client, bounded
 user-scoped offline post/message/media outbox, server idempotency, restartable
-upload intents, published SLOs, error budgets, durable usage/cost metering,
-tenant budgets, capacity and recovery gates are implemented and locally
-qualified. Native binaries, operating-system background behavior, physical
-device proof, regional failover and production-volume evidence remain.
+upload intents, generated Capacitor iOS/Android projects, safe deep links,
+native lifecycle/network recovery, explicit push consent, encrypted
+device-token custody and privacy-safe bounded background wake are implemented
+and locally qualified. Signed provider delivery, sustained operating-system
+background upload/capture, physical-device proof, app-store release, regional
+failover and production-volume evidence remain.
 
 - Native iOS and Android shells for social consumption, capture, messaging,
   rooms, Broadcast field production, background upload and push.
@@ -632,16 +637,20 @@ closure is now bounded by product, publication or external evidence:
    audience, products, courses, podcasts, contacts and automations;
 4. **Complete locally:** web/PWA offline post, message and media queues,
    conflict review, server idempotency and restartable uploads;
-5. decide and scaffold the minimum native iOS/Android shell only after the
-   background-capture, push and distribution requirements are fixed;
+5. **Complete locally:** scaffold the native iOS/Android shell, safe deep links,
+   lifecycle/network recovery, explicit push consent, encrypted device
+   registration and bounded background wake; sustained capture/upload remains
+   a physical-device and platform-policy gate;
 6. **Complete locally:** run the complete unit/build/migration/security,
-   recovery, capacity and 178-execution browser suite and reconcile its
+   recovery, capacity and 180-execution browser suite and reconcile its
    evidence without overwriting older production truth;
-7. **Complete for deployment and anonymous boundaries:** deploy the qualified
-   worktree, apply all 103 migrations, and verify health/readiness, exact
+7. **Complete through the previous production baseline:** deploy the qualified
+   web worktree, apply all 103 migrations, and verify health/readiness, exact
    production identity, auth routing, public routes and protected API/route
-   boundaries. A fresh safe signed-in route repeat remains an authorized-session
-   evidence gate rather than missing native code;
+   boundaries. The native-mobile candidate adds migration 0103 and requires a
+   new protected release before production can claim 104-migration parity. A
+   fresh safe signed-in route repeat remains an authorized-session evidence gate
+   rather than missing native code;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.

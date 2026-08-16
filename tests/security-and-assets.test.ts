@@ -104,6 +104,32 @@ describe("production safety boundaries", () => {
     })).rejects.toThrow(/escaped the managed upload and processing directories/i);
   });
 
+  it("accepts a managed source when its configured root is a filesystem alias", async () => {
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-source-alias-"));
+    const canonicalRoot = path.join(sandbox, "canonical");
+    const configuredRoot = path.join(sandbox, "configured");
+    await fs.mkdir(canonicalRoot, { recursive: true });
+    await fs.symlink(canonicalRoot, configuredRoot, process.platform === "win32" ? "junction" : "dir");
+    process.env.NODE_ENV = "development";
+    process.env.ASSET_STORAGE_PROVIDER = "local";
+    process.env.CREATOROS_UPLOAD_DIR = configuredRoot;
+    try {
+      const sourcePath = path.join(configuredRoot, "processing", "render.mp4");
+      await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+      await fs.writeFile(sourcePath, "rendered media");
+      const stored = await persistPrivateFile({
+        sourcePath,
+        ownerUserId: 42,
+        kind: "cut-render",
+        filename: "render.mp4",
+        mimeType: "video/mp4",
+      });
+      await expect(fs.readFile(path.join(configuredRoot, stored.storageKey), "utf8")).resolves.toBe("rendered media");
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true });
+    }
+  });
+
   it("promotes private local media for field tests while keeping production fail-closed", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-promote-"));
     process.env.NODE_ENV = "test";

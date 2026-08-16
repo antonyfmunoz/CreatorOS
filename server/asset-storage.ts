@@ -74,8 +74,15 @@ async function safeManagedSourcePath(candidate: string) {
   }
   const confined = path.join(managedRoot, ...segments.map((segment) => path.basename(segment)));
   if (confined !== lexicalPath) throw new Error("Managed source path could not be confined");
-  const canonicalPath = await fs.realpath(confined);
-  const canonicalRelative = path.relative(managedRoot, canonicalPath);
+  // Compare like with like after resolving junctions, symlinks, short-path
+  // aliases, and casing. Comparing a canonical file path with the lexical root
+  // incorrectly rejects legitimate managed files on Windows and can terminate
+  // long-running studio jobs through the global unhandled-rejection boundary.
+  const [canonicalRoot, canonicalPath] = await Promise.all([
+    fs.realpath(managedRoot),
+    fs.realpath(confined),
+  ]);
+  const canonicalRelative = path.relative(canonicalRoot, canonicalPath);
   if (canonicalRelative === ".." || canonicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(canonicalRelative)) {
     throw new Error("Managed source path resolved outside its managed root");
   }
