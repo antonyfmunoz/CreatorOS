@@ -735,6 +735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "asset_collection_items",
       "media_playback_sessions",
       "media_playback_events",
+      "mobile_device_registrations",
     ];
     const requiredFederationColumns = [
       "projection_events.correlation_id",

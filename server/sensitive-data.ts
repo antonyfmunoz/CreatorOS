@@ -43,6 +43,24 @@ export function encryptSensitiveValue(
   ].join(".");
 }
 
+/**
+ * Produces a domain-separated, non-reversible identifier for sensitive values
+ * that need deterministic equality checks without storing a plain digest.
+ */
+export function fingerprintSensitiveValue(
+  value: string,
+  purpose: string,
+  environment: Record<string, string | undefined> = process.env,
+) {
+  const key = dataKey(environment);
+  if (!key) throw new Error("Sensitive-data encryption is not configured");
+  return crypto
+    .createHmac("sha256", key)
+    .update(`${purpose}\0`, "utf8")
+    .update(value, "utf8")
+    .digest("hex");
+}
+
 export function decryptSensitiveValue(
   encoded: string,
   environment: Record<string, string | undefined> = process.env,

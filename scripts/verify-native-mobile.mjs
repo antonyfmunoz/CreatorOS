@@ -25,7 +25,7 @@ const checks = [
   [runner.includes("creativesos:last-background-wake"), "privacy-safe background wake"],
   [migration.includes('"push_token_ciphertext" text NOT NULL'), "encrypted token storage"],
   [migration.includes('UNIQUE("user_id", "installation_id")'), "owner-scoped installation uniqueness"],
-  [migration.includes('WHERE "status" = \'active\''), "active-token uniqueness"],
+  [/CREATE UNIQUE INDEX IF NOT EXISTS "mobile_device_registrations_active_token_hash_unique"[\s\S]*?ON "mobile_device_registrations" \("push_token_hash"\)[\s\S]*?WHERE "status" = 'active';/.test(migration), "active-token uniqueness"],
   [!swiftPackage.includes("..\\..\\..\\node_modules"), "portable iOS package paths"],
 ];
 const failed = checks.filter(([ok]) => !ok).map(([, label]) => label);

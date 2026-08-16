@@ -6,6 +6,7 @@ import {
   type Token,
 } from "@capacitor/push-notifications";
 import { apiRequest } from "@/lib/queryClient";
+import { safeNativeAppPath } from "@/lib/native-links";
 
 const INSTALLATION_KEY = "creativesos:native-installation-id:v1";
 export const nativeWakeEvent = "creativesos:native-wake";
@@ -24,25 +25,16 @@ export function nativeInstallationId() {
   return id;
 }
 
-function safeAppPath(raw: unknown) {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  try {
-    const url = new URL(raw, "https://creativesos.net");
-    const allowedWebOrigin = url.origin === "https://creativesos.net";
-    const allowedAppScheme = url.protocol === "creativesos:";
-    if (!allowedWebOrigin && !allowedAppScheme) return null;
-    const path = allowedAppScheme
-      ? `/${url.host}${url.pathname}`.replace(/\/{2,}/g, "/")
-      : url.pathname;
-    return `${path || "/"}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
+function navigateApp(path: string) {
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (current === path) return;
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 function navigateFromNotification(data: Record<string, unknown> | undefined) {
-  const path = safeAppPath(data?.url ?? data?.path ?? data?.linkTo);
-  if (path) window.location.assign(path);
+  const path = safeNativeAppPath(data?.url ?? data?.path ?? data?.linkTo);
+  if (path) navigateApp(path);
 }
 
 export async function initializeNativeRuntime() {
@@ -50,8 +42,8 @@ export async function initializeNativeRuntime() {
   initialized = true;
   await Promise.all([
     App.addListener("appUrlOpen", ({ url }) => {
-      const path = safeAppPath(url);
-      if (path) window.location.assign(path);
+      const path = safeNativeAppPath(url);
+      if (path) navigateApp(path);
     }),
     App.addListener("resume", () => {
       window.dispatchEvent(new CustomEvent(nativeWakeEvent, { detail: { source: "resume" } }));
@@ -93,7 +85,9 @@ export async function registerNativePush() {
   const timeout = window.setTimeout(() => rejectToken(new Error("Device registration timed out. Try again.")), 30_000);
   let token: Token;
   try {
-    await PushNotifications.register();
+    await PushNotifications.register().catch((error: unknown) => {
+      rejectToken(error instanceof Error ? error : new Error("Device registration failed."));
+    });
     token = await tokenPromise;
   } finally {
     window.clearTimeout(timeout);

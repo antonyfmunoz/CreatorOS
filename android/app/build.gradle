@@ -46,9 +46,16 @@ apply from: 'capacitor.build.gradle'
 
 try {
     def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
+    if (servicesJSON.exists() && servicesJSON.length() > 0) {
         apply plugin: 'com.google.gms.google-services'
+    } else if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }) {
+        throw new GradleException('Android release requires app/google-services.json for FCM registration')
+    } else {
+        logger.lifecycle('google-services.json not found; FCM is disabled for this non-release build')
     }
 } catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }) {
+        throw e
+    }
+    logger.lifecycle("Google Services is unavailable for this non-release build: ${e.message}")
 }

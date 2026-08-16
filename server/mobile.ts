@@ -1,7 +1,6 @@
-import crypto from "node:crypto";
 import type { Express, RequestHandler } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { rateLimit } from "express-rate-limit";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import {
   mobileInstallationIdSchema,
   registerMobileDeviceSchema,
@@ -9,13 +8,20 @@ import {
 import { mobileDeviceRegistrations } from "@shared/schema";
 import { attachUser } from "./auth";
 import { db } from "./db";
-import { encryptSensitiveValue } from "./sensitive-data";
+import {
+  encryptSensitiveValue,
+  fingerprintSensitiveValue,
+} from "./sensitive-data";
 
 const deviceWriteLimit = rateLimit({
   windowMs: 60_000,
   limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  keyGenerator: (req) =>
+    req.dbUser?.id
+      ? `mobile-user:${req.dbUser.id}`
+      : `mobile-ip:${ipKeyGenerator(req.ip ?? "")}`,
 });
 
 const safe = (handler: RequestHandler): RequestHandler => (req, res, next) => {
@@ -39,7 +45,7 @@ const publicDeviceFields = {
 };
 
 function tokenHash(token: string) {
-  return crypto.createHash("sha256").update(token).digest("hex");
+  return fingerprintSensitiveValue(token, "mobile-push-token");
 }
 
 export function registerMobileRoutes(app: Express) {
@@ -65,54 +71,68 @@ export function registerMobileRoutes(app: Express) {
     const hash = tokenHash(parsed.data.pushToken);
     const ciphertext = encryptSensitiveValue(parsed.data.pushToken);
 
-    // A provider token belongs to one installation. Revoke any stale owner
-    // before the owner-scoped upsert so account changes cannot cross-deliver.
-    await db
-      .update(mobileDeviceRegistrations)
-      .set({ status: "revoked", revokedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(mobileDeviceRegistrations.pushTokenHash, hash),
-          eq(mobileDeviceRegistrations.status, "active"),
-        ),
-      );
+    try {
+      const device = await db.transaction(async (tx) => {
+        // Serialize transfers of the same provider token and commit revocation
+        // with replacement so a failed upsert cannot strand the prior owner.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`mobile-device:${hash}`}, 0))`);
+        await tx
+          .update(mobileDeviceRegistrations)
+          .set({ status: "revoked", revokedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(mobileDeviceRegistrations.pushTokenHash, hash),
+              eq(mobileDeviceRegistrations.status, "active"),
+            ),
+          );
 
-    const [device] = await db
-      .insert(mobileDeviceRegistrations)
-      .values({
-        userId: req.dbUser!.id,
-        installationId: parsed.data.installationId,
-        platform: parsed.data.platform,
-        pushProvider: parsed.data.provider,
-        pushTokenHash: hash,
-        pushTokenCiphertext: ciphertext,
-        appVersion: parsed.data.appVersion ?? null,
-        status: "active",
-        lastSeenAt: now,
-        updatedAt: now,
-        revokedAt: null,
-      })
-      .onConflictDoUpdate({
-        target: [
-          mobileDeviceRegistrations.userId,
-          mobileDeviceRegistrations.installationId,
-        ],
-        set: {
-          platform: parsed.data.platform,
-          pushProvider: parsed.data.provider,
-          pushTokenHash: hash,
-          pushTokenCiphertext: ciphertext,
-          appVersion: parsed.data.appVersion ?? null,
-          status: "active",
-          lastSeenAt: now,
-          updatedAt: now,
-          revokedAt: null,
-        },
-      })
-      .returning(publicDeviceFields);
+        const [row] = await tx
+          .insert(mobileDeviceRegistrations)
+          .values({
+            userId: req.dbUser!.id,
+            installationId: parsed.data.installationId,
+            platform: parsed.data.platform,
+            pushProvider: parsed.data.provider,
+            pushTokenHash: hash,
+            pushTokenCiphertext: ciphertext,
+            appVersion: parsed.data.appVersion ?? null,
+            status: "active",
+            lastSeenAt: now,
+            updatedAt: now,
+            revokedAt: null,
+          })
+          .onConflictDoUpdate({
+            target: [
+              mobileDeviceRegistrations.userId,
+              mobileDeviceRegistrations.installationId,
+            ],
+            set: {
+              platform: parsed.data.platform,
+              pushProvider: parsed.data.provider,
+              pushTokenHash: hash,
+              pushTokenCiphertext: ciphertext,
+              appVersion: parsed.data.appVersion ?? null,
+              status: "active",
+              lastSeenAt: now,
+              updatedAt: now,
+              revokedAt: null,
+            },
+          })
+          .returning(publicDeviceFields);
+        if (!row) throw new Error("Mobile device registration was not returned");
+        return row;
+      });
 
-    res.setHeader("Cache-Control", "private, no-store");
-    return res.status(201).json({ device });
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.status(201).json({ device });
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return res.status(409).json({
+          message: "This device token is being registered. Try again.",
+        });
+      }
+      throw error;
+    }
   }));
 
   app.delete(

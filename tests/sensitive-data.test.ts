@@ -4,6 +4,7 @@ import {
   decryptSensitiveValue,
   encryptSensitiveJson,
   encryptSensitiveValue,
+  fingerprintSensitiveValue,
   isSensitiveDataEncryptionConfigured,
 } from "../server/sensitive-data";
 
@@ -41,5 +42,21 @@ describe("sensitive data envelope", () => {
       if (prior === undefined) delete process.env.CREATOROS_DATA_ENCRYPTION_KEY;
       else process.env.CREATOROS_DATA_ENCRYPTION_KEY = prior;
     }
+  });
+
+  it("creates deterministic, domain-separated sensitive fingerprints", () => {
+    const first = fingerprintSensitiveValue(
+      "provider-token",
+      "mobile",
+      environment,
+    );
+    expect(
+      fingerprintSensitiveValue("provider-token", "mobile", environment),
+    ).toBe(first);
+    expect(
+      fingerprintSensitiveValue("provider-token", "other", environment),
+    ).not.toBe(first);
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
+    expect(first).not.toContain("provider-token");
   });
 });

@@ -2,10 +2,11 @@ import { z } from "zod";
 
 export const mobilePlatformSchema = z.enum(["ios", "android"]);
 export const mobilePushProviderSchema = z.enum(["apns", "fcm"]);
+export const mobileInstallationIdSchema = z.string().uuid();
 
 export const registerMobileDeviceSchema = z
   .object({
-    installationId: z.string().uuid(),
+    installationId: mobileInstallationIdSchema,
     platform: mobilePlatformSchema,
     provider: mobilePushProviderSchema,
     pushToken: z.string().trim().min(16).max(4096),
@@ -22,7 +23,5 @@ export const registerMobileDeviceSchema = z
       });
     }
   });
-
-export const mobileInstallationIdSchema = z.string().uuid();
 
 export type RegisterMobileDevice = z.infer<typeof registerMobileDeviceSchema>;

@@ -43,8 +43,9 @@ current Xcode installation.
 4. Supply APNs credentials through the selected push adapter and prove the same
    lifecycle on iPhone/iPad.
 5. Publish platform association files only after Android signing certificate
-   fingerprints and the Apple Team ID are known. Custom-scheme deep links work
-   independently in development.
+   fingerprints and the Apple Team ID are known, then enable Android
+   `autoVerify` and iOS Associated Domains. Custom-scheme links use the bounded
+   `creativesos://app/...` contract independently in development.
 6. Run foreground/background/terminated notification tests, offline media
    recovery, low-power/thermal/network-transition tests and sustained field
    capture on the supported device matrix.

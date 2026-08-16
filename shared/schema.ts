@@ -5951,6 +5951,18 @@ export const mobileDeviceRegistrations = pgTable(
       "mobile_device_registrations_platform_provider_check",
       sql`(${table.platform} = 'ios' AND ${table.pushProvider} = 'apns') OR (${table.platform} = 'android' AND ${table.pushProvider} = 'fcm')`,
     ),
+    platformCheck: check(
+      "mobile_device_registrations_platform_check",
+      sql`${table.platform} IN ('ios', 'android')`,
+    ),
+    providerCheck: check(
+      "mobile_device_registrations_provider_check",
+      sql`${table.pushProvider} IN ('apns', 'fcm')`,
+    ),
+    statusCheck: check(
+      "mobile_device_registrations_status_check",
+      sql`${table.status} IN ('active', 'revoked')`,
+    ),
   }),
 );
 

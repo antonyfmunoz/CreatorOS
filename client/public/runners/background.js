@@ -3,7 +3,7 @@
 // Background Runner is intentionally a bounded wake signal, not a persistent
 // media or network daemon. The authenticated WebView owns private outbox data;
 // the next app resume/network event performs the durable flush.
-addEventListener("creativesosBackgroundSync", async (_event, resolve, reject) => {
+addEventListener("creativesosBackgroundSync", async (resolve, reject, _args) => {
   try {
     const network = await CapacitorDevice.getNetworkStatus();
     await CapacitorKV.set(

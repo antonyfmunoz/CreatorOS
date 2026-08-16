@@ -37,7 +37,12 @@ test("mobile device registration is owner-scoped, redacted, rotatable and revoca
 
   const ownerList = await api(page, owner, "GET", "/api/mobile/devices");
   expect(ownerList.ok(), await ownerList.text()).toBeTruthy();
-  expect(await ownerList.json()).toMatchObject({ devices: [{ installationId, status: "active" }] });
+  expect(
+    (await ownerList.json()).devices.find(
+      (device: { installationId: string }) =>
+        device.installationId === installationId,
+    ),
+  ).toMatchObject({ installationId, status: "active" });
   const outsiderList = await api(page, outsider, "GET", "/api/mobile/devices");
   expect(outsiderList.ok()).toBeTruthy();
   expect(
@@ -67,4 +72,53 @@ test("mobile device registration is owner-scoped, redacted, rotatable and revoca
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByText("This mobile device")).toHaveCount(0);
+});
+
+test("concurrent token ownership changes leave exactly one active recipient", async ({ page }) => {
+  const token = `concurrency-${randomUUID()}-${randomUUID()}`;
+  const firstInstallation = randomUUID();
+  const secondInstallation = randomUUID();
+
+  const [first, second] = await Promise.all([
+    api(page, 1, "POST", "/api/mobile/devices", {
+      installationId: firstInstallation,
+      platform: "android",
+      provider: "fcm",
+      pushToken: token,
+      appVersion: "concurrency (1)",
+    }),
+    api(page, 2, "POST", "/api/mobile/devices", {
+      installationId: secondInstallation,
+      platform: "android",
+      provider: "fcm",
+      pushToken: token,
+      appVersion: "concurrency (1)",
+    }),
+  ]);
+
+  expect([201, 409]).toContain(first.status());
+  expect([201, 409]).toContain(second.status());
+  expect([first.status(), second.status()].filter((status) => status === 201).length).toBeGreaterThanOrEqual(1);
+
+  const [firstList, secondList] = await Promise.all([
+    api(page, 1, "GET", "/api/mobile/devices"),
+    api(page, 2, "GET", "/api/mobile/devices"),
+  ]);
+  const activeMatches = [
+    ...(await firstList.json()).devices,
+    ...(await secondList.json()).devices,
+  ].filter(
+    (device: { installationId: string; status: string }) =>
+      [firstInstallation, secondInstallation].includes(device.installationId) &&
+      device.status === "active",
+  );
+  expect(activeMatches).toHaveLength(1);
+
+  const cleanup = await Promise.all([
+    api(page, 1, "DELETE", `/api/mobile/devices/${firstInstallation}`),
+    api(page, 2, "DELETE", `/api/mobile/devices/${secondInstallation}`),
+  ]);
+  for (const response of cleanup) {
+    expect([200, 404]).toContain(response.status());
+  }
 });
