@@ -51,6 +51,8 @@ jobs:
       - name: Install media qualification runtime
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: npm ci
+      - name: Verify clean release source
+        run: node scripts/assert-clean-source.mjs
       - run: npm run verify:secrets
       - run: npm run verify
       - name: Apply and qualify the exact migration ledger

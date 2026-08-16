@@ -54,7 +54,7 @@ export function buildReleaseIdentity(
       ? false
       : null;
   const buildIdentityVerified = !production || Boolean(
-    sourceCommit && sourceFingerprint && buildId && builtAt && sourceDirty !== null,
+    sourceCommit && sourceFingerprint && buildId && builtAt && sourceDirty === false,
   );
   const migrationParity = actualMigrations.count === expectedMigrationLedger.count
     && actualMigrations.latest === expectedMigrationLedger.latest;

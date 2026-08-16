@@ -5,6 +5,9 @@ const deploySource = readFileSync(new URL("../scripts/deploy-production.ps1", im
 const migrationSource = readFileSync(new URL("../scripts/migrate-production.mjs", import.meta.url), "utf8");
 const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
+const verifyWorkflowSource = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
+const cleanSourceContract = readFileSync(new URL("../scripts/assert-clean-source.mjs", import.meta.url), "utf8");
+const dockerIgnoreSource = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
 
 describe("production deployment contract", () => {
   it("applies the current additive ledger before deploy and verifies it again after deploy", () => {
@@ -21,7 +24,27 @@ describe("production deployment contract", () => {
   });
 
   it("embeds a non-secret exact-source identity into every production image", () => {
-    expect(deploySource).toContain("node scripts/source-fingerprint.mjs");
+    const cleanIndex = deploySource.indexOf("node scripts/assert-clean-source.mjs");
+    const archiveIndex = deploySource.indexOf("git archive --format=tar");
+    const fingerprintIndex = deploySource.indexOf("Get-FileHash -LiteralPath $archivePath");
+    const deployIndex = deploySource.indexOf("flyctl deploy .");
+    expect(deploySource).toContain("Production releases require a clean source worktree");
+    expect(cleanIndex).toBeGreaterThan(-1);
+    expect(cleanIndex).toBeLessThan(archiveIndex);
+    expect(archiveIndex).toBeLessThan(fingerprintIndex);
+    expect(fingerprintIndex).toBeLessThan(deployIndex);
+    expect(deploySource.lastIndexOf("node scripts/assert-clean-source.mjs")).toBeLessThan(deployIndex);
+    expect(deploySource).toContain("Push-Location $snapshotPath");
+    expect(deploySource).toContain("Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force");
+    expect(deploySource).toContain('$sourceDirty = "false"');
+    expect(cleanSourceContract).toContain('"status", "--porcelain=v1"');
+    expect(cleanSourceContract).toContain('"--untracked-files=normal"');
+    expect(workflowSource).toContain("node scripts/assert-clean-source.mjs");
+    expect(verifyWorkflowSource).toContain("node scripts/assert-clean-source.mjs");
+    for (const ignored of ["dump*.sql", "*.tar.gz.env", ".wrangler", "test-results", "playwright-report"]) {
+      expect(dockerIgnoreSource).toContain(ignored);
+    }
+    expect(dockerIgnoreSource).not.toMatch(/^uploads\/?$/m);
     for (const name of [
       "CREATIVESOS_SOURCE_COMMIT",
       "CREATIVESOS_SOURCE_FINGERPRINT",
@@ -33,12 +56,20 @@ describe("production deployment contract", () => {
       expect(dockerSource).toContain(`ARG ${name}`);
       expect(dockerSource).toContain(`ENV ${name}=$${name}`);
     }
+    expect(deploySource).toContain('--build-arg "CREATIVESOS_SOURCE_DIRTY=$sourceDirty"');
     expect(deploySource).toContain("https://creativesos.net/api/release");
     expect(deploySource).toContain("releaseIdentity.build.sourceFingerprint -ne $sourceFingerprint");
+    expect(deploySource).toContain("releaseIdentity.build.sourceDirty -ne $false");
     expect(deploySource).toContain("releaseIdentity.migrations.parity -ne $true");
   });
 
   it("keeps production deployment manual, main-only, serialized, backed up, and environment-gated", () => {
+    expect(workflowSource.indexOf("node scripts/assert-clean-source.mjs")).toBeLessThan(
+      workflowSource.indexOf("run: npm run verify:secrets"),
+    );
+    expect(verifyWorkflowSource.indexOf("node scripts/assert-clean-source.mjs")).toBeLessThan(
+      verifyWorkflowSource.indexOf("run: npm run verify:secrets"),
+    );
     expect(workflowSource).toContain("workflow_dispatch:");
     expect(workflowSource).toContain("github.ref == 'refs/heads/main'");
     expect(workflowSource).toContain("cancel-in-progress: false");
@@ -49,5 +80,20 @@ describe("production deployment contract", () => {
     expect(deploySource).toContain("/api/internal/operations/backup");
     expect(deploySource).toContain('backupReceipt.status -ne "completed"');
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
+  });
+
+  it("compiles the synchronized Android shell on the protected Linux workflow", () => {
+    expect(verifyWorkflowSource).toContain("name: Android native shell");
+    expect(verifyWorkflowSource).toContain("actions/setup-java@v5");
+    expect(verifyWorkflowSource).toContain("npm run mobile:sync");
+    expect(verifyWorkflowSource).toContain("./gradlew assembleDebug --no-daemon");
+  });
+
+  it("compiles the synchronized iOS shell without signing on the protected macOS workflow", () => {
+    expect(verifyWorkflowSource).toContain("name: iOS native shell");
+    expect(verifyWorkflowSource).toContain("runs-on: macos-15");
+    expect(verifyWorkflowSource).toContain("-project ios/App/App.xcodeproj");
+    expect(verifyWorkflowSource).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(verifyWorkflowSource.match(/node scripts\/assert-clean-source\.mjs/g)).toHaveLength(5);
   });
 });

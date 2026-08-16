@@ -29,9 +29,66 @@ jobs:
       - name: Install media qualification runtime
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: npm ci
+      - name: Verify clean release source
+        run: node scripts/assert-clean-source.mjs
       - run: npm run verify:secrets
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
+
+  native-android:
+    name: Android native shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - run: npm ci
+      - name: Verify install hooks preserve source
+        run: node scripts/assert-clean-source.mjs
+      - name: Synchronize native projects
+        run: npm run mobile:sync
+      - name: Verify generated native projects are reproducible
+        run: node scripts/assert-clean-source.mjs
+      - name: Compile unsigned Android debug shell
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+  native-ios:
+    name: iOS native shell
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Verify install hooks preserve source
+        run: node scripts/assert-clean-source.mjs
+      - name: Synchronize native projects
+        run: npm run mobile:sync
+      - name: Verify generated native projects are reproducible
+        run: node scripts/assert-clean-source.mjs
+      - name: Compile unsigned iOS simulator shell
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/creativesos-derived-data"
+          CODE_SIGNING_ALLOWED=NO
+          build
 
   database:
     name: Database and durable workflows

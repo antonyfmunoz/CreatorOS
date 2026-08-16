@@ -18,6 +18,7 @@ const config = readFileSync("capacitor.config.ts", "utf8");
 const runner = readFileSync("client/public/runners/background.js", "utf8");
 const migration = readFileSync("migrations/0103_native_mobile.sql", "utf8");
 const swiftPackage = readFileSync("ios/App/CapApp-SPM/Package.swift", "utf8");
+const androidBuild = readFileSync("android/app/build.gradle", "utf8");
 const checks = [
   [config.includes('appId: "net.creativesos.app"'), "stable app id"],
   [config.includes('webDir: "dist/public"'), "Vite web directory"],
@@ -27,6 +28,7 @@ const checks = [
   [migration.includes('UNIQUE("user_id", "installation_id")'), "owner-scoped installation uniqueness"],
   [/CREATE UNIQUE INDEX IF NOT EXISTS "mobile_device_registrations_active_token_hash_unique"[\s\S]*?ON "mobile_device_registrations" \("push_token_hash"\)[\s\S]*?WHERE "status" = 'active';/.test(migration), "active-token uniqueness"],
   [!swiftPackage.includes("..\\..\\..\\node_modules"), "portable iOS package paths"],
+  [androidBuild.includes("@capacitor/background-runner/android/src/main/libs"), "background runner Android engine path"],
 ];
 const failed = checks.filter(([ok]) => !ok).map(([, label]) => label);
 if (failed.length) {

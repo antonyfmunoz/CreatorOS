@@ -75,6 +75,7 @@ describe("native mobile contract", () => {
 
   it("fails Android release assembly without Firebase configuration", () => {
     const build = readFileSync("android/app/build.gradle", "utf8");
+    expect(build).toContain("@capacitor/background-runner/android/src/main/libs");
     expect(build).toContain("servicesJSON.exists() && servicesJSON.length() > 0");
     expect(build).toContain("throw new GradleException");
     expect(build).toContain("google-services.json");
