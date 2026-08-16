@@ -23,8 +23,8 @@ RUN chmod +x /app/scripts/migrate-production.mjs
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
-# Non-secret release metadata makes the serving image and source worktree
-# independently identifiable after deployment, including dirty-tree releases.
+# Non-secret release metadata binds the serving image to its immutable source
+# snapshot. Production identity rejects dirty or incomplete release metadata.
 ARG CREATIVESOS_SOURCE_COMMIT
 ARG CREATIVESOS_SOURCE_FINGERPRINT
 ARG CREATIVESOS_SOURCE_DIRTY
