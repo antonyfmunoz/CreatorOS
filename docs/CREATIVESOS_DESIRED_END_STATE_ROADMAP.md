@@ -101,6 +101,26 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
+- Protected workflow run
+  [`31965242974`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31965242974)
+  deployed exact `main` merge commit
+  `e7642ed2001f44d06353cddd1cdf6ee9ba085e68` from an immutable `git archive`
+  snapshot after repeating 111 files / 426 tests, TypeScript, the production
+  build, bundle and Worker gates, all 104 migrations, and all 180 Pixel
+  7/desktop Chromium executions.
+- The release made a completed private backup, hydrated the immutable snapshot
+  from its exact lockfile without lifecycle scripts, verified the migration
+  ledger before and after deployment, completed Fly's release command, and
+  rolled image `deployment-01M05Z0BB8D9CE1J40H49AJ4ED` across both machines.
+- Independent live checks prove `/api/health` and `/api/ready` are healthy with
+  no release blockers. `/api/release` reports build
+  `20260816T185750Z-fb2292d2b7a3`, the exact merge commit, fingerprint
+  `fb2292d2b7a34f96440f28e43148403f18d5d934870b3804eda5a67de24506fc`,
+  `sourceDirty: false`, verified identity, and 104/104 migration parity.
+- Protected PR workflow
+  [`31964459158`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31964459158)
+  compiles the synchronized unsigned Android debug shell and iOS simulator
+  shell in addition to the core, database, browser and CodeQL gates.
 - Fly release `v312` established the desired-state native production baseline
   from source commit
   `6ee7d88ac1e81d127745fe46750d7ad334de5f8d` from the protected `main`
@@ -109,12 +129,14 @@ do not yet have the locked side-by-side operator evidence required for a
   bundle and Worker gates, all 103 migrations, backup/restore, security and
   capacity checks, and all 178 Pixel 7/desktop Chromium executions before
   deployment.
-- `https://creativesos.net/api/health`, `/api/ready`, and `/api/release` return
-  healthy, release-ready and exact-source evidence. The production database is
-  at all 103 migrations and both IAD machines serve the same release image.
+- At v312, `https://creativesos.net/api/health`, `/api/ready`, and
+  `/api/release` returned healthy, release-ready and exact-source evidence; the
+  production database was at all 103 migrations and both IAD machines served
+  the same release image.
 - Anonymous field checks prove auth routing, separate login/registration,
   protected-route redirection, protected-API `401` boundaries, public discovery
-  contracts, production branding and security headers. A fresh authenticated
+  contracts, production branding, the creation-and-distribution copy, and
+  security headers on the current clean release. A fresh authenticated
   route repeat still requires an authorized signed-in browser session; older
   authenticated production evidence remains recorded in the parity ledger.
 - After this evidence was merged, the same protected workflow produced the
@@ -140,8 +162,9 @@ do not yet have the locked side-by-side operator evidence required for a
   regional media/realtime failover remain activation and scale evidence, not
   missing local product contracts.
 - Native iOS/Android shells, lifecycle/deep-link handling, explicit push
-  consent, encrypted device-token custody and bounded background wake are now
-  implemented locally. Provider delivery, sustained background capture/upload,
+  consent, encrypted device-token custody and bounded background wake are
+  implemented and their unsigned Android/iOS projects compile in protected CI.
+  Provider signing/delivery, sustained background capture/upload,
   physical-device and app-store qualification remain external/device gates.
 - The developer ecosystem and portability foundation are native-qualified;
   public package-registry publication and third-party adoption remain external
@@ -180,8 +203,8 @@ do not yet have the locked side-by-side operator evidence required for a
 | Podcasts | Shows, episodes, chapters, RSS, transcripts, access and analytics are locally qualified | Production feed validation, directory/provider activation and competitive benchmark | Audio/video podcast hosting and growth using Broadcast, CutStudio and Media Cloud |
 | Creator site | Page composition, link hub, storefront, SEO/capture/attribution and custom-domain contracts are locally qualified | Production DNS/domain automation and operator conversion benchmark | Owned branded destination for content, community and commerce |
 | Rights and safety | Rights, releases, licenses, provenance, takedown/counter-notice/appeal and safety workflows are locally qualified | Counsel decisions and production operational exercises | Enforceable provenance, usage authority and public-platform trust operations |
-| Mobile | Responsive PWA plus generated iOS/Android shells, safe deep links, lifecycle/network recovery, encrypted push-device registration and bounded background wake are locally qualified | Add provider signing/delivery, sustained OS background transfer/capture, physical-device endurance and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
-| Operations and scale | Native control plane and exact release identity are production-qualified since v312; v313 repeated the protected workflow with all 103 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
+| Mobile | Responsive PWA plus generated iOS/Android shells, safe deep links, lifecycle/network recovery, encrypted push-device registration and bounded background wake are qualified; protected CI compiles unsigned Android and iOS shells | Add provider signing/delivery, sustained OS background transfer/capture, physical-device endurance and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
+| Operations and scale | Native control plane, immutable release source and exact clean production identity are qualified at commit `e7642ed` with all 104 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
 | UMH integration | Projection side qualified | Pair from UMH and prove signed bidirectional round trip | Cockpit coordination without surrendering standalone authority |
 | Developer ecosystem | Scoped API/OpenAPI, delegated OAuth, typed SDKs, sandbox tenants, reviewed marketplace listings, signed webhooks and full revocation are locally qualified | Publish packages and repeat with independently controlled third-party apps | Safe third-party extension and integration marketplace |
 | Data portability | Audience CSV, podcast RSS, Media Library ingest and versioned cross-domain migration packages are locally qualified | Run representative imports from selected competitor exports and verify reconciliation at volume | Reversible movement into and out of canonical assets, audiences, offers, courses, contacts and automations |
@@ -641,16 +664,15 @@ closure is now bounded by product, publication or external evidence:
    lifecycle/network recovery, explicit push consent, encrypted device
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
-6. **Complete locally:** run the complete unit/build/migration/security,
+6. **Complete locally and in protected CI:** run the complete unit/build/migration/security,
    recovery, capacity and 180-execution browser suite and reconcile its
    evidence without overwriting older production truth;
-7. **Complete through the previous production baseline:** deploy the qualified
-   web worktree, apply all 103 migrations, and verify health/readiness, exact
-   production identity, auth routing, public routes and protected API/route
-   boundaries. The native-mobile candidate adds migration 0103 and requires a
-   new protected release before production can claim 104-migration parity. A
-   fresh safe signed-in route repeat remains an authorized-session evidence gate
-   rather than missing native code;
+7. **Complete in production:** deploy exact merge commit `e7642ed` from an
+   immutable clean snapshot, apply all 104 migrations, and verify
+   health/readiness, `sourceDirty: false`, exact production identity, auth
+   routing, public routes and protected API/route boundaries. A fresh safe
+   signed-in route repeat remains an authorized-session evidence gate rather
+   than missing native code;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.

@@ -29,18 +29,22 @@ npx cap sync
 npm run verify:mobile
 ```
 
-Android compilation additionally requires JDK 21, the Android SDK 36 toolchain
-and acceptance of Google's SDK license. iOS compilation requires macOS and a
-current Xcode installation.
+Protected workflow
+[`31964459158`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31964459158)
+repeats synchronization from a clean install, proves generated projects are
+reproducible, compiles an unsigned Android debug shell with JDK 21/SDK 36, and
+compiles an unsigned iOS simulator shell on macOS/Xcode. This closes the
+toolchain/build gate but does not substitute for signing or physical-device
+runtime evidence.
 
 ## External and user-controlled completion gates
 
-1. Accept the Android SDK license, install platform/build tools 36, compile and
-   run the debug build on representative Android devices.
+1. Supply production Android signing custody and run the compiled application
+   on representative Android devices.
 2. Supply a Firebase project and `google-services.json`; prove token rotation,
    delivery, action routing, opt-out and deletion on Android.
-3. Open the iOS project on macOS, select the Apple Developer team, enable Push
-   Notifications, Background Processing and Associated Domains, then compile.
+3. Select the Apple Developer team, enable Push Notifications, Background
+   Processing and Associated Domains, then produce a signed device build.
 4. Supply APNs credentials through the selected push adapter and prove the same
    lifecycle on iPhone/iPad.
 5. Publish platform association files only after Android signing certificate
