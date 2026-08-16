@@ -74,6 +74,15 @@ try {
   Push-Location $snapshotPath
   $locationPushed = $true
 
+  # git archive deliberately excludes node_modules. Hydrate the immutable
+  # snapshot from its exact lockfile without running package lifecycle scripts,
+  # then use those dependencies for both migration-ledger checks. node_modules
+  # remains excluded from the Fly build context by .dockerignore.
+  npm ci --ignore-scripts --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to hydrate immutable release dependencies"
+  }
+
   # Every checked-in migration is additive. Apply and verify the immutable
   # ledger before replacing application machines. Fly's release command remains
   # a second, image-local guard.

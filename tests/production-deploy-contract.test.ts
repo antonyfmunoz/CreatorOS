@@ -12,7 +12,11 @@ const dockerIgnoreSource = readFileSync(new URL("../.dockerignore", import.meta.
 describe("production deployment contract", () => {
   it("applies the current additive ledger before deploy and verifies it again after deploy", () => {
     const calls = deploySource.match(/node scripts\/migrate-production\.mjs/g) ?? [];
+    const snapshotDependencyIndex = deploySource.indexOf("npm ci --ignore-scripts --no-audit --no-fund");
     expect(calls).toHaveLength(2);
+    expect(snapshotDependencyIndex).toBeGreaterThan(deploySource.indexOf("Push-Location $snapshotPath"));
+    expect(snapshotDependencyIndex).toBeLessThan(deploySource.indexOf(calls[0]));
+    expect(deploySource).toContain("Unable to hydrate immutable release dependencies");
     expect(deploySource.indexOf(calls[0])).toBeLessThan(deploySource.indexOf("flyctl deploy"));
     expect(deploySource.lastIndexOf(calls[1])).toBeGreaterThan(deploySource.indexOf("flyctl deploy"));
   });
