@@ -3359,6 +3359,12 @@ export const mediaProcessingJobs = pgTable(
       .default({}),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    workerId: text("worker_id"),
+    workerRegion: text("worker_region"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    cancellationRequestedAt: timestamp("cancellation_requested_at"),
     availableAt: timestamp("available_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),
     finishedAt: timestamp("finished_at"),
@@ -3378,6 +3384,39 @@ export const mediaProcessingJobs = pgTable(
     ownerCreatedIdx: index("media_processing_jobs_owner_created_idx").on(
       table.ownerUserId,
       table.createdAt,
+    ),
+    leaseIdx: index("media_processing_jobs_lease_idx").on(
+      table.state,
+      table.leaseExpiresAt,
+    ),
+    workerIdx: index("media_processing_jobs_worker_idx").on(
+      table.workerId,
+      table.state,
+    ),
+  }),
+);
+
+export const mediaWorkerNodes = pgTable(
+  "media_worker_nodes",
+  {
+    id: text("id").primaryKey(),
+    region: text("region").notNull(),
+    status: text("status").notNull().default("active"),
+    capabilities: json("capabilities").$type<string[]>().notNull().default([]),
+    maxConcurrency: integer("max_concurrency").notNull().default(1),
+    activeJobs: integer("active_jobs").notNull().default(0),
+    version: text("version"),
+    heartbeatAt: timestamp("heartbeat_at").defaultNow().notNull(),
+    drainStartedAt: timestamp("drain_started_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    regionStatusHeartbeatIdx: index(
+      "media_worker_nodes_region_status_heartbeat_idx",
+    ).on(table.region, table.status, table.heartbeatAt),
+    heartbeatIdx: index("media_worker_nodes_heartbeat_idx").on(
+      table.heartbeatAt,
     ),
   }),
 );
@@ -4183,6 +4222,12 @@ export const cutStudioJobs = pgTable(
       onDelete: "set null",
     }),
     errorCode: text("error_code"),
+    workerId: text("worker_id"),
+    workerRegion: text("worker_region"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    cancellationRequestedAt: timestamp("cancellation_requested_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),
     finishedAt: timestamp("finished_at"),
@@ -4195,6 +4240,14 @@ export const cutStudioJobs = pgTable(
     stateCreatedIdx: index("cut_studio_jobs_state_created_idx").on(
       table.state,
       table.createdAt,
+    ),
+    leaseIdx: index("cut_studio_jobs_lease_idx").on(
+      table.state,
+      table.leaseExpiresAt,
+    ),
+    workerIdx: index("cut_studio_jobs_worker_idx").on(
+      table.workerId,
+      table.state,
     ),
   }),
 );

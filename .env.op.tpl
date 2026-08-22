@@ -20,6 +20,19 @@ PUBLIC_APP_URL=http://localhost:3000
 # imported directly from 1Password by scripts/export-r2-secrets-from-onepassword.cjs
 # so Windows shell encoding cannot corrupt a multi-secret environment file.
 ASSET_STORAGE_PROVIDER=local
+# Media execution can remain embedded for a single-machine development stack.
+# Set the corresponding mode to external only when the dedicated worker process
+# is deployed from the exact same release image and database migration ledger.
+MEDIA_PROCESSING_MODE=embedded
+CUT_STUDIO_PROCESSING_MODE=embedded
+MEDIA_WORKER_REGION=local
+MEDIA_WORKER_CONCURRENCY=2
+CUT_WORKER_REGION=local
+CUT_WORKER_CONCURRENCY=2
+# Set measured infrastructure rates to attribute compute cost. Zero means
+# unpriced, not free; the operations UI preserves that distinction.
+MEDIA_WORKER_COST_MICROS_PER_MINUTE=0
+CUT_WORKER_COST_MICROS_PER_MINUTE=0
 # R2_ACCOUNT_ID=op://CreativesOS/Development/R2_ACCOUNT_ID
 # R2_ACCESS_KEY_ID=op://CreativesOS/Development/R2_ACCESS_KEY_ID
 # R2_SECRET_ACCESS_KEY=op://CreativesOS/Development/R2_SECRET_ACCESS_KEY

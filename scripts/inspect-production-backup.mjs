@@ -60,7 +60,10 @@ try {
   }
 
   const { stdout: archiveList } = await execFileAsync("pg_restore", ["--list", dumpPath], { maxBuffer: 10 * 1024 * 1024 });
-  const requiredArchiveTables = ["users", "posts", "orders", "production_backups", "cut_studio_audio_templates", "broadcast_studios", "broadcast_studio_versions", "broadcast_template_catalog", "broadcast_destinations", "broadcast_sessions", "broadcast_audience_messages"];
+  // This validates the mandatory pre-migration backup. Do not require a table
+  // introduced by the release being deployed, because it cannot exist in that
+  // rollback archive until after the migration succeeds.
+  const requiredArchiveTables = ["users", "posts", "orders", "production_backups", "cut_studio_audio_templates", "cut_studio_jobs", "media_processing_jobs", "broadcast_studios", "broadcast_studio_versions", "broadcast_template_catalog", "broadcast_destinations", "broadcast_sessions", "broadcast_audience_messages"];
   const missingArchiveTables = requiredArchiveTables.filter((table) => !new RegExp(`TABLE public ${table}(?:\\r?\\n|\\s)`).test(archiveList));
   if (missingArchiveTables.length) throw new Error(`Production archive is missing required tables: ${missingArchiveTables.join(", ")}`);
 

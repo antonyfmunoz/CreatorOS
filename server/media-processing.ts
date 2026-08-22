@@ -1,13 +1,16 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
-import { assets, mediaProcessingJobs, mediaRenditions, type Asset, type MediaProcessingJob } from "@shared/schema";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { assets, mediaProcessingJobs, mediaRenditions, mediaWorkerNodes, type Asset, type MediaProcessingJob } from "@shared/schema";
+import { nativeMediaWorkerCapabilities, normalizeMediaWorkerConfiguration } from "@shared/media-workers";
 import { materializeStoredAsset, persistManagedFile, persistManagedFileAtKey } from "./asset-storage";
 import { db } from "./db";
+import { recordOperationalServiceEvent } from "./operations";
+import { estimatedComputeCostMicros } from "@shared/operations";
 
 type Probe = {
   durationMs: number;
@@ -25,6 +28,85 @@ type Probe = {
 const running = new Set<string>();
 const activeProcesses = new Map<string, Set<ReturnType<typeof spawn>>>();
 let timer: NodeJS.Timeout | null = null;
+let nodeHeartbeatTimer: NodeJS.Timeout | null = null;
+let workerRegistered = false;
+let lastWorkerPruneAt = 0;
+let workerStopping = false;
+
+const leaseMs = Math.max(30_000, Math.min(30 * 60_000, Number(process.env.MEDIA_WORKER_LEASE_MS) || 5 * 60_000));
+
+export type MediaWorkerIdentity = {
+  id: string;
+  region: string;
+  capabilities: string[];
+  maxConcurrency: number;
+  version: string | null;
+};
+
+export function mediaWorkerIdentity(environment: NodeJS.ProcessEnv = process.env): MediaWorkerIdentity {
+  return normalizeMediaWorkerConfiguration({
+    id: environment.MEDIA_WORKER_ID || `${os.hostname()}:${process.pid}`,
+    region: environment.MEDIA_WORKER_REGION || environment.FLY_REGION || "local",
+    capabilities: environment.MEDIA_WORKER_CAPABILITIES,
+    maxConcurrency: environment.MEDIA_WORKER_CONCURRENCY,
+    version: environment.RELEASE_COMMIT || environment.FLY_IMAGE_REF || null,
+    allowedCapabilities: nativeMediaWorkerCapabilities.slice(0, 5),
+  });
+}
+
+const worker = mediaWorkerIdentity();
+
+export async function claimMediaJob(jobId: string, identity: MediaWorkerIdentity, leaseToken: string, now = new Date()) {
+  const [claimed] = await db.update(mediaProcessingJobs).set({
+    state: "running",
+    progress: 0.05,
+    attempt: sql`${mediaProcessingJobs.attempt} + 1`,
+    workerId: identity.id,
+    workerRegion: identity.region,
+    leaseToken,
+    leaseExpiresAt: new Date(now.getTime() + leaseMs),
+    heartbeatAt: now,
+    cancellationRequestedAt: null,
+    startedAt: now,
+    updatedAt: now,
+  }).where(and(
+    eq(mediaProcessingJobs.id, jobId),
+    eq(mediaProcessingJobs.state, "queued"),
+    inArray(mediaProcessingJobs.kind, identity.capabilities),
+  )).returning();
+  return claimed;
+}
+
+async function heartbeatWorker(requestedStatus?: "active" | "draining" | "offline") {
+  const now = new Date();
+  const status = requestedStatus ?? (workerStopping ? "draining" : "active");
+  await db.insert(mediaWorkerNodes).values({
+    ...worker,
+    status,
+    activeJobs: Math.min(running.size, worker.maxConcurrency),
+    heartbeatAt: now,
+    drainStartedAt: status === "draining" ? now : null,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: mediaWorkerNodes.id,
+    set: {
+      region: worker.region,
+      capabilities: worker.capabilities,
+      maxConcurrency: worker.maxConcurrency,
+      activeJobs: Math.min(running.size, worker.maxConcurrency),
+      version: worker.version,
+      status,
+      heartbeatAt: now,
+      drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now})` : null,
+      updatedAt: now,
+    },
+  });
+  workerRegistered = status !== "offline";
+  if (now.getTime() - lastWorkerPruneAt >= 6 * 60 * 60_000) {
+    lastWorkerPruneAt = now.getTime();
+    await db.delete(mediaWorkerNodes).where(lt(mediaWorkerNodes.heartbeatAt, new Date(now.getTime() - 7 * 24 * 60 * 60_000)));
+  }
+}
 
 function extension(filename: string | null, fallback: string) {
   const value = path.extname(filename ?? "").toLowerCase();
@@ -237,7 +319,7 @@ async function executeJob(job: MediaProcessingJob) {
     else if (job.kind === "waveform") output = await processWaveform(asset, inputPath, directory, job.id);
     else if (job.kind === "package") output = await processPackage(asset, inputPath, directory, job.id);
     else throw Object.assign(new Error(`${job.kind} requires an approved provider or specialist processor`), { code: "processor_unavailable" });
-    await db.update(mediaProcessingJobs).set({ state: "succeeded", progress: 1, output: (output ?? {}) as Record<string, unknown>, errorCode: null, errorMessage: null, finishedAt: new Date(), updatedAt: new Date() }).where(and(eq(mediaProcessingJobs.id, job.id), eq(mediaProcessingJobs.state, "running")));
+    return (output ?? {}) as Record<string, unknown>;
   } finally {
     await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -255,37 +337,99 @@ export async function processMediaJob(jobId: string) {
   if (running.has(jobId)) return false;
   running.add(jobId);
   try {
-    const [claimed] = await db.update(mediaProcessingJobs).set({ state: "running", progress: 0.05, attempt: sql`${mediaProcessingJobs.attempt} + 1`, startedAt: new Date(), updatedAt: new Date() }).where(and(eq(mediaProcessingJobs.id, jobId), eq(mediaProcessingJobs.state, "queued"))).returning();
+    const now = new Date();
+    const leaseToken = randomUUID();
+    const claimed = await claimMediaJob(jobId, worker, leaseToken, now);
     if (!claimed) return false;
+    await heartbeatWorker();
+    const heartbeat = setInterval(() => {
+      const heartbeatAt = new Date();
+      void db.update(mediaProcessingJobs).set({
+        heartbeatAt,
+        leaseExpiresAt: new Date(heartbeatAt.getTime() + leaseMs),
+        updatedAt: heartbeatAt,
+      }).where(and(
+        eq(mediaProcessingJobs.id, claimed.id),
+        eq(mediaProcessingJobs.state, "running"),
+        eq(mediaProcessingJobs.leaseToken, leaseToken),
+      )).returning({ id: mediaProcessingJobs.id }).then((rows) => {
+        if (!rows.length) cancelMediaProcess(claimed.id);
+      }).catch((error) => console.error("Media worker lease heartbeat failed", { jobId: claimed.id, errorType: error instanceof Error ? error.name : typeof error }));
+    }, Math.max(10_000, Math.floor(leaseMs / 3)));
+    heartbeat.unref();
     try {
-      await executeJob(claimed);
-      return true;
+      const output = await executeJob(claimed);
+      const finishedAt = new Date();
+      const [completed] = await db.update(mediaProcessingJobs).set({
+        state: "succeeded",
+        progress: 1,
+        output,
+        errorCode: null,
+        errorMessage: null,
+        leaseExpiresAt: null,
+        heartbeatAt: finishedAt,
+        finishedAt,
+        updatedAt: finishedAt,
+      }).where(and(
+        eq(mediaProcessingJobs.id, claimed.id),
+        eq(mediaProcessingJobs.state, "running"),
+        eq(mediaProcessingJobs.leaseToken, leaseToken),
+      )).returning({ id: mediaProcessingJobs.id });
+      if (completed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: true, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
+      return Boolean(completed);
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 1_000) : "Media processing failed";
       const code = typeof error === "object" && error && "code" in error ? String(error.code).slice(0, 120) : "media_processing_failed";
-      await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, finishedAt: new Date(), updatedAt: new Date() }).where(and(eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running")));
+      const finishedAt = new Date();
+      const [failed] = await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, leaseExpiresAt: null, heartbeatAt: finishedAt, finishedAt, updatedAt: finishedAt }).where(and(eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"), eq(mediaProcessingJobs.leaseToken, leaseToken))).returning({ id: mediaProcessingJobs.id });
+      if (failed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: false, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
       return false;
+    } finally {
+      clearInterval(heartbeat);
     }
   } finally {
     running.delete(jobId);
+    void heartbeatWorker().catch((error) => console.error("Media worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error }));
   }
 }
 
-export async function processDueMediaJobs(limit = 2) {
-  const jobs = await db.select({ id: mediaProcessingJobs.id }).from(mediaProcessingJobs).where(and(eq(mediaProcessingJobs.state, "queued"), lt(mediaProcessingJobs.availableAt, new Date(Date.now() + 1_000)))).orderBy(desc(mediaProcessingJobs.priority), asc(mediaProcessingJobs.createdAt)).limit(Math.max(1, Math.min(10, limit)));
+export async function processDueMediaJobs(limit = worker.maxConcurrency) {
+  const availableSlots = Math.max(0, worker.maxConcurrency - running.size);
+  if (!availableSlots) return 0;
+  const jobs = await db.select({ id: mediaProcessingJobs.id }).from(mediaProcessingJobs).where(and(eq(mediaProcessingJobs.state, "queued"), inArray(mediaProcessingJobs.kind, worker.capabilities), lt(mediaProcessingJobs.availableAt, new Date(Date.now() + 1_000)))).orderBy(desc(mediaProcessingJobs.priority), asc(mediaProcessingJobs.createdAt)).limit(Math.max(1, Math.min(availableSlots, limit)));
   await Promise.all(jobs.map((job) => processMediaJob(job.id)));
   return jobs.length;
 }
 
 export async function recoverInterruptedMediaJobs() {
   const cutoff = new Date(Date.now() - 60 * 60_000);
-  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, startedAt: null, availableAt: new Date(), errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: new Date() }).where(and(eq(mediaProcessingJobs.state, "running"), lt(mediaProcessingJobs.updatedAt, cutoff))).returning({ id: mediaProcessingJobs.id });
+  const now = new Date();
+  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null, availableAt: now, errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: now }).where(and(eq(mediaProcessingJobs.state, "running"), or(and(isNotNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.leaseExpiresAt, now)), and(isNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.updatedAt, cutoff))))).returning({ id: mediaProcessingJobs.id });
   return recovered.length;
 }
 
 export function scheduleMediaCloudProcessing() {
   if (timer) return;
+  workerStopping = false;
+  void heartbeatWorker().catch((error) => console.error("Media worker registration failed", { errorType: error instanceof Error ? error.name : typeof error }));
+  nodeHeartbeatTimer = setInterval(() => void heartbeatWorker().catch((error) => console.error("Media worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error })), 15_000);
+  nodeHeartbeatTimer.unref();
   void recoverInterruptedMediaJobs().then(() => processDueMediaJobs()).catch((error) => console.error("Media Cloud recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
   timer = setInterval(() => void processDueMediaJobs().catch((error) => console.error("Media Cloud processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
   timer.unref();
+}
+
+export async function stopMediaCloudProcessing() {
+  workerStopping = true;
+  if (timer) clearInterval(timer);
+  if (nodeHeartbeatTimer) clearInterval(nodeHeartbeatTimer);
+  timer = null;
+  nodeHeartbeatTimer = null;
+  if (!workerRegistered) return;
+  if (running.size) {
+    await heartbeatWorker("draining");
+    const deadline = Date.now() + 10_000;
+    while (running.size && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await heartbeatWorker(running.size ? "draining" : "offline");
 }

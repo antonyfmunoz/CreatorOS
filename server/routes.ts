@@ -728,6 +728,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "ugc_performance_snapshots",
       "ugc_earnings_ledger",
       "media_processing_jobs",
+      "media_worker_nodes",
       "media_renditions",
       "media_text_tracks",
       "asset_lineage_edges",

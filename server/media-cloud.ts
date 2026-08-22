@@ -282,7 +282,8 @@ export function registerMediaCloudRoutes(app: Express) {
     const [job] = await db.select().from(mediaProcessingJobs).where(and(eq(mediaProcessingJobs.id, req.params.id), eq(mediaProcessingJobs.ownerUserId, req.dbUser!.id))).limit(1);
     if (!job) return res.status(404).json({ message: "Media job not found" });
     if (!["queued", "running"].includes(job.state)) return res.status(409).json({ message: "This media job can no longer be cancelled" });
-    const [updated] = await db.update(mediaProcessingJobs).set({ state: "cancelled", finishedAt: new Date(), updatedAt: new Date() }).where(and(eq(mediaProcessingJobs.id, job.id), inArray(mediaProcessingJobs.state, ["queued", "running"]))).returning();
+    const cancelledAt = new Date();
+    const [updated] = await db.update(mediaProcessingJobs).set({ state: "cancelled", cancellationRequestedAt: cancelledAt, leaseExpiresAt: null, finishedAt: cancelledAt, updatedAt: cancelledAt }).where(and(eq(mediaProcessingJobs.id, job.id), inArray(mediaProcessingJobs.state, ["queued", "running"]))).returning();
     if (!updated) return res.status(409).json({ message: "The media job changed before cancellation" });
     cancelMediaProcess(job.id);
     return res.json(updated);
@@ -293,7 +294,7 @@ export function registerMediaCloudRoutes(app: Express) {
     if (!job) return res.status(404).json({ message: "Media job not found" });
     if (!["failed", "cancelled"].includes(job.state)) return res.status(409).json({ message: "Only failed or cancelled media jobs can be retried" });
     if (job.attempt >= job.maxAttempts) return res.status(409).json({ message: "This media job exhausted its retry budget" });
-    const [updated] = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, errorCode: null, errorMessage: null, availableAt: new Date(), startedAt: null, finishedAt: null, updatedAt: new Date() }).where(eq(mediaProcessingJobs.id, job.id)).returning();
+    const [updated] = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, errorCode: null, errorMessage: null, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, cancellationRequestedAt: null, availableAt: new Date(), startedAt: null, finishedAt: null, updatedAt: new Date() }).where(eq(mediaProcessingJobs.id, job.id)).returning();
     return res.json(updated);
   }));
 

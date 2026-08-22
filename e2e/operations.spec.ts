@@ -33,6 +33,15 @@ test("operations evidence remains honest and cost boundaries persist", async ({ 
   const dashboard = await request(page, testInfo, "GET", "/api/operations");
   expect(dashboard.ok()).toBeTruthy();
   const body = await dashboard.json();
+  expect(body.services).toHaveLength(9);
+  expect(body.mediaWorkers).toMatchObject({
+    activeNodes: expect.any(Number),
+    drainingNodes: expect.any(Number),
+    staleNodes: expect.any(Number),
+    activeJobs: expect.any(Number),
+    maxConcurrency: expect.any(Number),
+    regions: expect.any(Array),
+  });
   const commerce = body.services.find((item: { service: string }) => item.service === "commerce");
   expect(commerce.observed.total).toBeGreaterThan(0);
   expect(commerce.observed.failed).toBeGreaterThan(0);
@@ -51,6 +60,9 @@ test("operations evidence remains honest and cost boundaries persist", async ({ 
   await page.goto("/business/operations");
   await expect(page.getByRole("heading", { name: "Operations control plane" })).toBeVisible();
   await expect(page.getByText("Media playback", { exact: true })).toBeVisible();
+  await expect(page.getByText("Media processing", { exact: true })).toBeVisible();
+  await expect(page.getByText("CutStudio rendering", { exact: true })).toBeVisible();
+  await expect(page.getByText("Worker capacity", { exact: true })).toBeVisible();
   await expect(page.getByText("Commerce", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
 });
