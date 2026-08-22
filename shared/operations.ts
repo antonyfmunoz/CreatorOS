@@ -8,6 +8,8 @@ export const operationalServices = [
   "realtime",
   "developer_api",
   "webhooks",
+  "media_processing",
+  "rendering",
 ] as const;
 
 export type OperationalService = (typeof operationalServices)[number];
@@ -26,7 +28,14 @@ export const operationalServiceLevels: ReadonlyArray<{
   { service: "realtime", name: "Realtime rooms", targetAvailability: 0.995, targetP95Ms: 1_500, windowDays: 30 },
   { service: "developer_api", name: "Developer API", targetAvailability: 0.999, targetP95Ms: 800, windowDays: 30 },
   { service: "webhooks", name: "Webhook delivery", targetAvailability: 0.995, targetP95Ms: 5_000, windowDays: 30 },
+  { service: "media_processing", name: "Media processing", targetAvailability: 0.995, targetP95Ms: 30 * 60_000, windowDays: 30 },
+  { service: "rendering", name: "CutStudio rendering", targetAvailability: 0.995, targetP95Ms: 30 * 60_000, windowDays: 30 },
 ];
+
+export function estimatedComputeCostMicros(durationMs: number, microsPerMinute: number) {
+  if (!Number.isFinite(durationMs) || !Number.isFinite(microsPerMinute)) return 0;
+  return Math.max(0, Math.round((Math.max(0, durationMs) / 60_000) * Math.max(0, microsPerMinute)));
+}
 
 export const operationalBudgetSchema = z.object({
   service: z.enum(operationalServices),

@@ -114,6 +114,7 @@ const requiredTables = [
   "ugc_performance_snapshots",
   "ugc_earnings_ledger",
   "media_processing_jobs",
+  "media_worker_nodes",
   "media_renditions",
   "media_text_tracks",
   "asset_lineage_edges",
@@ -229,6 +230,8 @@ const requiredTables = [
 ];
 
 const requiredColumns = {
+  media_processing_jobs: ["worker_id", "worker_region", "lease_token", "lease_expires_at", "heartbeat_at", "cancellation_requested_at"],
+  cut_studio_jobs: ["worker_id", "worker_region", "lease_token", "lease_expires_at", "heartbeat_at", "cancellation_requested_at"],
   users: ["profile_links", "push_notifications_enabled", "color_mode"],
   products: ["product_type", "billing_model", "billing_interval"],
   orders: [

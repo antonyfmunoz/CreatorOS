@@ -729,6 +729,13 @@
       "when": 1786798800000,
       "tag": "0103_native_mobile",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1787431062734,
+      "tag": "0104_scalable_media_workers",
+      "breakpoints": true
     }
   ]
 }

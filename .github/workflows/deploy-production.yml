@@ -57,6 +57,8 @@ jobs:
       - run: npm run verify
       - name: Apply and qualify the exact migration ledger
         run: node scripts/migrate-qualification.mjs
+      - name: Qualify cross-machine worker lease recovery
+        run: npx tsx scripts/qualify-worker-resilience.ts
       - name: Seed browser qualification
         run: npx tsx scripts/seed-browser-qualification.ts
       - name: Install Chromium

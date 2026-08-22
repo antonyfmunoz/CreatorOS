@@ -558,19 +558,26 @@ upload intents, generated Capacitor iOS/Android projects, safe deep links,
 native lifecycle/network recovery, explicit push consent, encrypted
 device-token custody and privacy-safe bounded background wake are implemented
 and locally qualified. Signed provider delivery, sustained operating-system
-background upload/capture, physical-device proof, app-store release, regional
-failover and production-volume evidence remain.
+background upload/capture, physical-device proof, app-store release, a paid
+multi-region rollout and production-volume evidence remain.
 
 - Native iOS and Android shells for social consumption, capture, messaging,
   rooms, Broadcast field production, background upload and push.
 - Extend the qualified web outbox/conflict/upload-continuation behavior into
   native background execution once the iOS/Android shell is approved.
-- Independent media workers, regional failover, autoscaling and workload
-  isolation for render, transcode, live and AI jobs.
-- Playback, messaging, automation, commerce and room SLOs with error budgets.
+- Independent Media Cloud and CutStudio worker entrypoints, renewable
+  compare-and-set leases, regional/capability-aware custody, bounded
+  concurrency, cancellation, drain/offline state, expired-lease recovery and
+  aggregate capacity telemetry are implemented. Deployment of paid regional
+  worker groups, autoscaling policy and real-region loss evidence remain.
+- Playback, messaging, automation, commerce, room, media-processing and
+  rendering SLOs with error budgets are implemented; representative production
+  volume remains an evidence gate.
 - Abuse, fraud, spam, copyright, payment-risk and moderation operations at
   production volume.
-- Cost attribution and quotas per tenant, creator, asset and delivery minute.
+- Cost attribution and quotas per tenant, creator, asset and delivery minute;
+  media and render compute now accept explicit per-minute rates and preserve
+  unpriced work as zero rather than inventing cost.
 - Disaster recovery exercises, data residency choices and verified restore
   objectives.
 
@@ -665,14 +672,15 @@ closure is now bounded by product, publication or external evidence:
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
 6. **Complete locally and in protected CI:** run the complete unit/build/migration/security,
-   recovery, capacity and 180-execution browser suite and reconcile its
+   recovery, capacity and 186-execution browser suite and reconcile its
    evidence without overwriting older production truth;
-7. **Complete in production:** deploy exact merge commit `e7642ed` from an
-   immutable clean snapshot, apply all 104 migrations, and verify
+7. **Release gate for this tranche:** deploy the exact protected merge commit
+   from an immutable clean snapshot, apply all 105 migrations, and verify
    health/readiness, `sourceDirty: false`, exact production identity, auth
-   routing, public routes and protected API/route boundaries. A fresh safe
-   signed-in route repeat remains an authorized-session evidence gate rather
-   than missing native code;
+   routing, public routes and protected API/route boundaries. The merge commit
+   and live runtime identity must be taken from `/api/release`, never predicted
+   in this roadmap. A fresh safe signed-in route repeat remains an
+   authorized-session evidence gate rather than missing native code;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.

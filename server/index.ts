@@ -16,9 +16,10 @@ import { captureServerException, requestObservability, structuredLog } from "./o
 import { closeDatabase } from "./db";
 import { shutdownPostHog } from "./posthog";
 import { scheduleBroadcastRecovery } from "./broadcast-studio";
-import { scheduleMediaCloudProcessing } from "./media-processing";
+import { scheduleMediaCloudProcessing, stopMediaCloudProcessing } from "./media-processing";
 import { scheduleDeveloperWebhookProcessing } from "./developer-platform";
 import { operationalRequestTelemetry } from "./operations";
+import { scheduleCutStudioProcessing, stopCutStudioProcessing } from "./cut-studio";
 
 const app = express();
 if (process.env.CREATOROS_QUALIFICATION_MODE === "true" && process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
@@ -86,7 +87,8 @@ app.use("/uploads", express.static(uploadDirectory, {
     scheduleXRelationshipTokenRefresh();
     scheduleStripeCommerceRecovery();
     scheduleBroadcastRecovery();
-    scheduleMediaCloudProcessing();
+    if (process.env.MEDIA_PROCESSING_MODE !== "external") scheduleMediaCloudProcessing();
+    if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") scheduleCutStudioProcessing();
     scheduleDeveloperWebhookProcessing();
     log("background workers scheduled");
   });
@@ -101,6 +103,7 @@ app.use("/uploads", express.static(uploadDirectory, {
     forcedExit.unref();
     server.close(async (closeError) => {
       if (closeError) captureServerException(closeError, { signal, phase: "http_close" });
+      await Promise.allSettled([stopMediaCloudProcessing(), stopCutStudioProcessing()]);
       await Promise.allSettled([closeDatabase(), shutdownPostHog()]);
       clearTimeout(forcedExit);
       process.exit(error || closeError ? 1 : 0);

@@ -128,6 +128,8 @@ jobs:
         run: npx tsx scripts/qualify-relationship-operations.ts
       - name: Qualify account privacy lifecycle
         run: npx tsx scripts/qualify-account-privacy.ts
+      - name: Qualify cross-machine worker lease recovery
+        run: npx tsx scripts/qualify-worker-resilience.ts
 
   browser:
     name: Browser journeys

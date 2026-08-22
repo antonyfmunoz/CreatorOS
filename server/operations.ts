@@ -12,6 +12,7 @@ import {
   operationalBudgets,
   operationalServiceEvents,
   operationalUsageEvents,
+  mediaWorkerNodes,
 } from "@shared/schema";
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness } from "./businesses";
@@ -107,7 +108,7 @@ export function registerOperationsRoutes(app: Express) {
     const monthStart = new Date();
     monthStart.setUTCDate(1);
     monthStart.setUTCHours(0, 0, 0, 0);
-    const [observations, usage, budgets] = await Promise.all([
+    const [observations, usage, budgets, workerCapacity] = await Promise.all([
       db
         .select({
           service: operationalServiceEvents.service,
@@ -128,13 +129,31 @@ export function registerOperationsRoutes(app: Express) {
         .where(and(eq(operationalUsageEvents.businessId, business.id), gte(operationalUsageEvents.occurredAt, monthStart)))
         .groupBy(operationalUsageEvents.service),
       db.select().from(operationalBudgets).where(eq(operationalBudgets.businessId, business.id)),
+      db.select({
+        region: mediaWorkerNodes.region,
+        status: mediaWorkerNodes.status,
+        maxConcurrency: mediaWorkerNodes.maxConcurrency,
+        activeJobs: mediaWorkerNodes.activeJobs,
+        heartbeatAt: mediaWorkerNodes.heartbeatAt,
+      }).from(mediaWorkerNodes),
     ]);
     const observationByService = new Map(observations.map((row) => [row.service, row]));
     const usageByService = new Map(usage.map((row) => [row.service, row]));
     const budgetByService = new Map(budgets.map((row) => [row.service, row]));
+    const workerCutoff = new Date(Date.now() - 60_000);
+    const staleWorkerRetentionCutoff = new Date(Date.now() - 24 * 60 * 60_000);
+    const recentWorkerCapacity = workerCapacity.filter((node) => node.heartbeatAt >= workerCutoff && node.status !== "offline");
     res.setHeader("Cache-Control", "no-store");
     res.json({
       windowDays: 30,
+      mediaWorkers: {
+        regions: Array.from(new Set(recentWorkerCapacity.map((node) => node.region))).sort(),
+        activeNodes: recentWorkerCapacity.filter((node) => node.status === "active").length,
+        drainingNodes: recentWorkerCapacity.filter((node) => node.status === "draining").length,
+        staleNodes: workerCapacity.filter((node) => node.status !== "offline" && node.heartbeatAt < workerCutoff && node.heartbeatAt >= staleWorkerRetentionCutoff).length,
+        activeJobs: recentWorkerCapacity.reduce((total, node) => total + node.activeJobs, 0),
+        maxConcurrency: recentWorkerCapacity.reduce((total, node) => total + node.maxConcurrency, 0),
+      },
       services: operationalServiceLevels.map((objective) => {
         const observed = observationByService.get(objective.service) ?? { total: 0, failed: 0, p95Ms: 0 };
         const rawUsage = usageByService.get(objective.service) ?? { quantity: 0, estimatedCostMicros: 0 };

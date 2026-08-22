@@ -1,12 +1,13 @@
 import type { Express, RequestHandler, Response } from "express";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, notifications, users } from "@shared/schema";
+import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
+import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
 import {
   buildCmx3600Edl,
   buildKineticAssCaptions,
@@ -28,6 +29,8 @@ import {
 import { attachUser } from "./auth";
 import { businessRoleCanAdminister, businessRoleCanManage, ensureDefaultBusiness, userBusinessRole } from "./businesses";
 import { db } from "./db";
+import { recordOperationalServiceEvent } from "./operations";
+import { estimatedComputeCostMicros } from "@shared/operations";
 import { emitProjectionEvent } from "./umh";
 import { assetRightsAllowUse, queueMediaIngestJobs, recordAssetUsage, registerAssetLineage } from "./media-cloud";
 import {
@@ -152,6 +155,54 @@ const idSchema = z.string().uuid();
 const proxyRequestSchema = z.object({ mediaId: z.string().uuid() });
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
+let cutWorkerTimer: NodeJS.Timeout | null = null;
+let cutNodeHeartbeatTimer: NodeJS.Timeout | null = null;
+let cutWorkerRegistered = false;
+let lastCutWorkerPruneAt = 0;
+let cutWorkerStopping = false;
+const cutLeaseMs = Math.max(30_000, Math.min(30 * 60_000, Number(process.env.CUT_WORKER_LEASE_MS) || 5 * 60_000));
+const cutKinds = ["render", "proxy", "highlights", "transcribe"] as const;
+
+export function cutWorkerIdentity(environment: NodeJS.ProcessEnv = process.env) {
+  return normalizeMediaWorkerConfiguration({
+    id: environment.CUT_WORKER_ID || `${os.hostname()}:${process.pid}:cut`,
+    region: environment.CUT_WORKER_REGION || environment.FLY_REGION || "local",
+    capabilities: environment.CUT_WORKER_CAPABILITIES,
+    maxConcurrency: environment.CUT_WORKER_CONCURRENCY,
+    version: environment.RELEASE_COMMIT || environment.FLY_IMAGE_REF || null,
+    allowedCapabilities: cutKinds.map((kind) => `cut_${kind}`),
+  });
+}
+
+const cutWorker = cutWorkerIdentity();
+function supportedKinds(identity: ReturnType<typeof cutWorkerIdentity>) {
+  return identity.capabilities.map((capability) => capability.replace(/^cut_/, ""));
+}
+const supportedCutKinds = supportedKinds(cutWorker);
+
+export async function claimCutStudioJob(jobId: string, identity: ReturnType<typeof cutWorkerIdentity>, leaseToken: string, now = new Date()) {
+  const [claimed] = await db.update(cutStudioJobs).set({ state: "running", detail: "Starting", progress: 0.05, workerId: identity.id, workerRegion: identity.region, leaseToken, leaseExpiresAt: new Date(now.getTime() + cutLeaseMs), heartbeatAt: now, cancellationRequestedAt: null, startedAt: now })
+    .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"), inArray(cutStudioJobs.kind, supportedKinds(identity)))).returning();
+  return claimed;
+}
+
+async function heartbeatCutWorker(requestedStatus?: "active" | "draining" | "offline") {
+  const now = new Date();
+  const status = requestedStatus ?? (cutWorkerStopping ? "draining" : "active");
+  await db.insert(mediaWorkerNodes).values({ ...cutWorker, status, activeJobs: Math.min(running.size, cutWorker.maxConcurrency), heartbeatAt: now, drainStartedAt: status === "draining" ? now : null, updatedAt: now }).onConflictDoUpdate({
+    target: mediaWorkerNodes.id,
+    set: { region: cutWorker.region, capabilities: cutWorker.capabilities, maxConcurrency: cutWorker.maxConcurrency, activeJobs: Math.min(running.size, cutWorker.maxConcurrency), version: cutWorker.version, status, heartbeatAt: now, drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now})` : null, updatedAt: now },
+  });
+  cutWorkerRegistered = status !== "offline";
+  if (now.getTime() - lastCutWorkerPruneAt >= 6 * 60 * 60_000) {
+    lastCutWorkerPruneAt = now.getTime();
+    await db.delete(mediaWorkerNodes).where(lt(mediaWorkerNodes.heartbeatAt, new Date(now.getTime() - 7 * 24 * 60 * 60_000)));
+  }
+}
+
+async function updateCutJobProgress(jobId: string, leaseToken: string, progress: number, detail: string) {
+  await db.update(cutStudioJobs).set({ progress, detail }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken)));
+}
 
 async function registerCutArtifact(parentAssetId: string, artifact: typeof assets.$inferSelect, relationship: "rendered_from" | "derived_from") {
   await Promise.all([
@@ -392,6 +443,7 @@ async function appendCaptionFilter(filters: string[], videoLabel: string, reques
 
 async function renderMultitrack(
   jobId: string,
+  leaseToken: string,
   project: typeof cutStudioProjects.$inferSelect,
   source: typeof assets.$inferSelect,
   request: z.infer<typeof cutRenderRequestSchema>,
@@ -549,7 +601,7 @@ async function renderMultitrack(
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
   const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
-  await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering multitrack edit" }).where(eq(cutStudioJobs.id, jobId));
+  await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }
 
@@ -589,7 +641,7 @@ function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
   return filters;
 }
 
-async function renderJob(jobId: string, project: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
+async function renderJob(jobId: string, leaseToken: string, project: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
   const outputName = `${project.name.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "cut"}.mp4`;
   const outputPath = path.join(temp, outputName);
@@ -606,7 +658,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     const lutPaths = await materializeCutLuts(project, clips, temp);
     if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve") || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
-      await renderMultitrack(jobId, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
+      await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
@@ -667,7 +719,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
     const inputArgs = ["-y", "-i", sourcePath];
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
     const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
-    await db.update(cutStudioJobs).set({ progress: 0.35, detail: "Rendering edit" }).where(eq(cutStudioJobs.id, jobId));
+    await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
     await runProcess("ffmpeg", args, 30 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
@@ -678,7 +730,7 @@ async function renderJob(jobId: string, project: typeof cutStudioProjects.$infer
   }
 }
 
-async function createProxyJob(jobId: string, project: typeof cutStudioProjects.$inferSelect, requestInput: unknown) {
+async function createProxyJob(jobId: string, leaseToken: string, project: typeof cutStudioProjects.$inferSelect, requestInput: unknown) {
   const request = proxyRequestSchema.parse(requestInput);
   const [media] = await db.select().from(cutStudioProjectMedia).where(and(
     eq(cutStudioProjectMedia.id, request.mediaId),
@@ -696,7 +748,7 @@ async function createProxyJob(jobId: string, project: typeof cutStudioProjects.$
     await materializePrivateAsset(original.storageKey, inputPath);
     const probed = await probeMedia(inputPath);
     if (!probed.hasVideo) throw Object.assign(new Error("The selected media does not contain video"), { code: "proxy_source_required" });
-    await db.update(cutStudioJobs).set({ progress: .25, detail: "Creating lightweight editing media" }).where(eq(cutStudioJobs.id, jobId));
+    await updateCutJobProgress(jobId, leaseToken, 0.25, "Creating lightweight editing media");
     await runProcess("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", "scale=w='min(1280,iw)':h=-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", ...(probed.hasAudio ? ["-c:a", "aac", "-b:a", "96k"] : ["-an"]), "-movflags", "+faststart", outputPath], 20 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-proxy", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({
@@ -720,15 +772,29 @@ async function createProxyJob(jobId: string, project: typeof cutStudioProjects.$
   }
 }
 
-async function processJob(jobId: string) {
+export async function processCutStudioJob(jobId: string) {
   if (running.has(jobId)) return;
   running.add(jobId);
+  const leaseToken = randomUUID();
+  let leaseHeartbeat: NodeJS.Timeout | null = null;
+  const processingStartedAt = Date.now();
+  let processingBusinessId: string | null = null;
+  let processingOutcome: boolean | null = null;
   try {
-    const [claimed] = await db.update(cutStudioJobs).set({ state: "running", detail: "Starting", progress: 0.05, startedAt: new Date() })
-      .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"))).returning();
+    const now = new Date();
+    const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken, now);
     if (!claimed) return;
+    await heartbeatCutWorker();
+    leaseHeartbeat = setInterval(() => {
+      const heartbeatAt = new Date();
+      void db.update(cutStudioJobs).set({ heartbeatAt, leaseExpiresAt: new Date(heartbeatAt.getTime() + cutLeaseMs) }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).then((rows) => {
+        if (!rows.length) activeProcesses.get(jobId)?.kill("SIGKILL");
+      }).catch((error) => console.error("CutStudio worker lease heartbeat failed", { jobId, errorType: error instanceof Error ? error.name : typeof error }));
+    }, Math.max(10_000, Math.floor(cutLeaseMs / 3)));
+    leaseHeartbeat.unref();
     const project = await ownedProject(claimed.ownerUserId, claimed.projectId);
     if (!project) throw new Error("CutStudio project no longer exists");
+    processingBusinessId = project.businessId;
     const source = await ownedAsset(claimed.ownerUserId, project.sourceAssetId);
     if (!source) throw new Error("Source media no longer exists");
     if (claimed.kind === "transcribe") {
@@ -737,50 +803,107 @@ async function processJob(jobId: string) {
       const inputPath = path.join(temp, source.originalFilename || "source.mp4");
       try {
         await materializePrivateAsset(source.storageKey, inputPath);
-        await db.update(cutStudioJobs).set({ progress: 0.3, detail: "Transcribing media" }).where(eq(cutStudioJobs.id, jobId));
+        await updateCutJobProgress(jobId, leaseToken, 0.3, "Transcribing media");
         const result = await transcribeMedia(inputPath, temp, jobId);
         const words = (result.words ?? []).map((word: any) => ({ word: String(word.word ?? "").trim(), start: Number(word.start ?? 0), end: Number(word.end ?? word.start ?? 0) })).filter((word: any) => word.word);
         const segments = (result.segments ?? []).map((segment: any, index: number) => ({ id: String(segment.id ?? index), start: Number(segment.start ?? 0), end: Number(segment.end ?? 0), text: String(segment.text ?? "").trim(), words: words.filter((word: any) => word.start >= Number(segment.start ?? 0) && word.end <= Number(segment.end ?? project.duration) + 0.1) }));
         const transcript: CutTranscript = { duration: Number(result.duration ?? project.duration), language: String(result.language ?? "en"), segments: segments.length ? segments : [{ id: "0", start: 0, end: project.duration, text: String(result.text ?? ""), words }] };
-        await db.update(cutStudioProjects).set({ transcript, updatedAt: new Date() }).where(eq(cutStudioProjects.id, project.id));
+        const completed = await db.transaction(async (transaction) => {
+          const [row] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Transcript ready", progress: 1, output: { wordCount: words.length }, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id });
+          if (!row) return false;
+          await transaction.update(cutStudioProjects).set({ transcript, updatedAt: new Date() }).where(eq(cutStudioProjects.id, project.id));
+          return true;
+        });
+        if (!completed) return;
+        processingOutcome = true;
         await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.transcript.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, wordCount: words.length }, idempotencyKey: `cutstudio:${jobId}:transcript.ready` });
-        await db.update(cutStudioJobs).set({ state: "done", detail: "Transcript ready", progress: 1, output: { wordCount: words.length }, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId));
       } finally { await fs.rm(temp, { recursive: true, force: true }); }
     } else if (claimed.kind === "highlights") {
       if (!project.transcript) throw Object.assign(new Error("Transcribe the media before extracting highlights"), { code: "transcript_required" });
       const candidates = highlightCandidates(project.transcript);
-      await db.update(cutStudioJobs).set({ state: "done", detail: `${candidates.length} highlights found`, progress: 1, output: { candidates }, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId));
+      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: `${candidates.length} highlights found`, progress: 1, output: { candidates }, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id });
+      if (!completed) return;
+      processingOutcome = true;
     } else if (claimed.kind === "render") {
       const request = cutRenderRequestSchema.parse(claimed.request);
-      const result = await renderJob(jobId, project, source, request);
-      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, finishedAt: new Date() })
-        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).returning();
+      const result = await renderJob(jobId, leaseToken, project, source, request);
+      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
+        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning();
       if (!completed) {
         await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
         await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
         return;
       }
+      processingOutcome = true;
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.render.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, ...result.output }, idempotencyKey: `cutstudio:${jobId}:render.ready` });
     } else if (claimed.kind === "proxy") {
-      const result = await createProxyJob(jobId, project, claimed.request);
-      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Editing proxy ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, finishedAt: new Date() })
-        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).returning();
+      const result = await createProxyJob(jobId, leaseToken, project, claimed.request);
+      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Editing proxy ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
+        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning();
       if (!completed) {
         await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
         await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
         return;
       }
+      processingOutcome = true;
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.proxy.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, mediaId: result.output.mediaId, originalAssetId: result.output.originalAssetId }, idempotencyKey: `cutstudio:${jobId}:proxy.ready` });
     }
   } catch (error) {
     console.error("CutStudio job failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "processing_failed";
-    await db.update(cutStudioJobs).set({ state: "error", detail: error instanceof Error ? error.message.slice(0, 240) : "Processing failed", errorCode: code, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"))).catch(() => undefined);
-  } finally { running.delete(jobId); }
+    const failed = await db.update(cutStudioJobs).set({ state: "error", detail: error instanceof Error ? error.message.slice(0, 240) : "Processing failed", errorCode: code, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).catch(() => []);
+    if (failed.length) processingOutcome = false;
+  } finally {
+    if (leaseHeartbeat) clearInterval(leaseHeartbeat);
+    running.delete(jobId);
+    if (processingBusinessId && processingOutcome !== null) void recordOperationalServiceEvent({ businessId: processingBusinessId, service: "rendering", success: processingOutcome, durationMs: Date.now() - processingStartedAt, sourceType: "cut_studio_job", sourceId: jobId, quantity: Date.now() - processingStartedAt, unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(Date.now() - processingStartedAt, Number(process.env.CUT_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
+    void heartbeatCutWorker().catch((error) => console.error("CutStudio worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error }));
+  }
 }
 
-function queueJob(jobId: string) {
-  setImmediate(() => void processJob(jobId));
+function queueJob(_jobId: string) {
+  if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") setImmediate(() => void processDueCutStudioJobs());
+}
+
+export async function recoverInterruptedCutStudioJobs() {
+  const now = new Date();
+  const legacyCutoff = new Date(now.getTime() - 35 * 60_000);
+  const recovered = await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted worker lease", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null }).where(and(eq(cutStudioJobs.state, "running"), or(and(isNotNull(cutStudioJobs.leaseExpiresAt), lt(cutStudioJobs.leaseExpiresAt, now)), and(isNull(cutStudioJobs.leaseExpiresAt), isNotNull(cutStudioJobs.startedAt), lt(cutStudioJobs.startedAt, legacyCutoff))))).returning({ id: cutStudioJobs.id });
+  return recovered.length;
+}
+
+export async function processDueCutStudioJobs(limit = cutWorker.maxConcurrency) {
+  const availableSlots = Math.max(0, cutWorker.maxConcurrency - running.size);
+  if (!availableSlots) return 0;
+  const jobs = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(eq(cutStudioJobs.state, "queued"), inArray(cutStudioJobs.kind, supportedCutKinds))).orderBy(asc(cutStudioJobs.createdAt)).limit(Math.max(1, Math.min(availableSlots, limit)));
+  await Promise.all(jobs.map((job) => processCutStudioJob(job.id)));
+  return jobs.length;
+}
+
+export function scheduleCutStudioProcessing() {
+  if (cutWorkerTimer) return;
+  cutWorkerStopping = false;
+  void heartbeatCutWorker().catch((error) => console.error("CutStudio worker registration failed", { errorType: error instanceof Error ? error.name : typeof error }));
+  cutNodeHeartbeatTimer = setInterval(() => void heartbeatCutWorker().catch((error) => console.error("CutStudio worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error })), 15_000);
+  cutNodeHeartbeatTimer.unref();
+  void recoverInterruptedCutStudioJobs().then(() => processDueCutStudioJobs()).catch((error) => console.error("CutStudio worker recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
+  cutWorkerTimer = setInterval(() => void processDueCutStudioJobs().catch((error) => console.error("CutStudio processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
+  cutWorkerTimer.unref();
+}
+
+export async function stopCutStudioProcessing() {
+  cutWorkerStopping = true;
+  if (cutWorkerTimer) clearInterval(cutWorkerTimer);
+  if (cutNodeHeartbeatTimer) clearInterval(cutNodeHeartbeatTimer);
+  cutWorkerTimer = null;
+  cutNodeHeartbeatTimer = null;
+  if (!cutWorkerRegistered) return;
+  if (running.size) {
+    await heartbeatCutWorker("draining");
+    const deadline = Date.now() + 10_000;
+    while (running.size && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await heartbeatCutWorker(running.size ? "draining" : "offline");
 }
 
 export function registerCutStudioRoutes(app: Express) {
@@ -1309,8 +1432,8 @@ export function registerCutStudioRoutes(app: Express) {
   cut.get("/api/cut/jobs/:id", attachUser, async (req, res) => {
     noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job) return res.status(404).json({ message: "Job not found" });
     if (job.state === "queued") queueJob(job.id);
-    else if (job.state === "running" && job.startedAt && Date.now() - job.startedAt.getTime() > 35 * 60_000) {
-      await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted job", progress: 0, startedAt: null }).where(eq(cutStudioJobs.id, job.id));
+    else if (job.state === "running" && job.leaseExpiresAt && job.leaseExpiresAt < new Date()) {
+      await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted job", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.state, "running"), lt(cutStudioJobs.leaseExpiresAt, new Date())));
       queueJob(job.id);
       return res.json({ ...job, state: "queued", detail: "Recovering interrupted job", progress: 0 });
     }
@@ -1322,7 +1445,8 @@ export function registerCutStudioRoutes(app: Express) {
     if (!job) return res.status(404).json({ message: "Job not found" });
     if (job.kind !== "render") return res.status(409).json({ message: "Only render jobs can be cancelled" });
     if (job.state !== "queued" && job.state !== "running") return res.status(409).json({ message: "Only an active job can be cancelled" });
-    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled by user", errorCode: null, finishedAt: new Date() })
+    const cancelledAt = new Date();
+    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled by user", errorCode: null, cancellationRequestedAt: cancelledAt, leaseExpiresAt: null, finishedAt: cancelledAt })
       .where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), sql`${cutStudioJobs.state} in ('queued', 'running')`)).returning();
     if (!cancelled) return res.status(409).json({ message: "The job already finished" });
     activeProcesses.get(job.id)?.kill("SIGKILL");
