@@ -5,6 +5,12 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 export default defineConfig({
+  // Browser qualification runs against a disposable cache so stale optimized
+  // dependency metadata from an earlier local install cannot invalidate lazy
+  // route chunks midway through the field-test matrix.
+  cacheDir: process.env.CREATOROS_VITE_CACHE_DIR
+    ? path.resolve(process.env.CREATOROS_VITE_CACHE_DIR)
+    : undefined,
   plugins: [
     react(),
     runtimeErrorOverlay(),

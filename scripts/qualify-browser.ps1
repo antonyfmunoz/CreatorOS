@@ -13,6 +13,7 @@ $qualificationPort = Get-Random -Minimum 56000 -Maximum 56999
 $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
 $priorUploadDirectory = $env:CREATOROS_UPLOAD_DIR
+$priorViteCacheDirectory = $env:CREATOROS_VITE_CACHE_DIR
 $postgresStarted = $false
 
 if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -33,6 +34,7 @@ try {
   $env:DATABASE_URL = "postgresql://postgres@127.0.0.1:$qualificationPort/creativesos_browser"
   $env:QUALIFICATION_ISOLATED_DATABASE = "true"
   $env:CREATOROS_UPLOAD_DIR = Join-Path $qualificationPath "uploads"
+  $env:CREATOROS_VITE_CACHE_DIR = Join-Path $qualificationPath "vite-cache"
   & node scripts/migrate-qualification.mjs
   if ($LASTEXITCODE -ne 0) { throw "Browser database migration failed" }
   & npx.cmd tsx scripts/seed-browser-qualification.ts
@@ -46,6 +48,7 @@ try {
   $env:DATABASE_URL = $priorDatabaseUrl
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
   $env:CREATOROS_UPLOAD_DIR = $priorUploadDirectory
+  $env:CREATOROS_VITE_CACHE_DIR = $priorViteCacheDirectory
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {

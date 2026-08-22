@@ -612,6 +612,11 @@ export default function MessagesPage() {
           <div className="mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none]">
             {["open", "mine", "unassigned", "ai"].map((item) => <button key={item} onClick={() => setQueue(item)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold capitalize ${queue === item ? "bg-white text-black" : "bg-zinc-950 text-zinc-500"}`}>{item}</button>)}
           </div>
+          <div className="mt-3 flex items-center gap-4 lg:hidden">
+            <button onClick={() => setLocation("/automations")} className="text-[10px] font-bold text-[#1d9bf0]">Automations</button>
+            {canAdminister && <button onClick={() => setGovernanceOpen(true)} className="text-[10px] font-bold text-[#1d9bf0]">AI policy</button>}
+            <button onClick={() => setOperationsOpen(true)} className="text-[10px] font-bold text-[#1d9bf0]">Usage &amp; health</button>
+          </div>
         </header>
         <div className="flex-1 overflow-y-auto">
           {conversations.isLoading || initializeNative.isPending ? <div className="p-8 text-center text-sm text-zinc-600">Loading the unified inbox…</div> : filteredConversations.length ? filteredConversations.map((conversation) => (
