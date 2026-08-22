@@ -102,21 +102,26 @@ do not yet have the locked side-by-side operator evidence required for a
 ### Production closure evidence
 
 - Protected workflow run
-  [`31965242974`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31965242974)
-  deployed exact `main` merge commit
-  `e7642ed2001f44d06353cddd1cdf6ee9ba085e68` from an immutable `git archive`
-  snapshot after repeating 111 files / 426 tests, TypeScript, the production
-  build, bundle and Worker gates, all 104 migrations, and all 180 Pixel
-  7/desktop Chromium executions.
+  [`32603964955`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32603964955)
+  deployed the dated 2026-08-22 production baseline from exact `main` merge
+  commit `6b8e5d0aadb3da8668a2d1bb73c39d7fb9ef63b9` and an immutable
+  `git archive` snapshot after repeating 112 files / 432 tests, TypeScript,
+  the production build, bundle and Worker gates, the worker lease/recovery
+  qualifier, all 105 migrations, and all 186 Pixel 7/desktop Chromium
+  executions in deployment order.
 - The release made a completed private backup, hydrated the immutable snapshot
   from its exact lockfile without lifecycle scripts, verified the migration
   ledger before and after deployment, completed Fly's release command, and
-  rolled image `deployment-01M05Z0BB8D9CE1J40H49AJ4ED` across both machines.
-- Independent live checks prove `/api/health` and `/api/ready` are healthy with
-  no release blockers. `/api/release` reports build
-  `20260816T185750Z-fb2292d2b7a3`, the exact merge commit, fingerprint
-  `fb2292d2b7a34f96440f28e43148403f18d5d934870b3804eda5a67de24506fc`,
-  `sourceDirty: false`, verified identity, and 104/104 migration parity.
+  completed a healthy two-machine rolling update. The workflow record and live
+  release endpoint are the durable deployment evidence; no mutable image alias
+  is treated as canonical.
+- Independent live checks at that baseline proved `/api/health` and
+  `/api/ready` healthy with no release blockers. `/api/release` reported build
+  `20260822T231601Z-ae40d0f51350`, the exact merge commit, fingerprint
+  `ae40d0f513503cd4499e74493cdd1bf1446663fda21787f3d45beedebea2827f`,
+  `sourceDirty: false`, verified identity, and 105/105 migration parity. The
+  live `/api/release` response, rather than any dated value in this document,
+  is canonical for the currently deployed runtime.
 - Protected PR workflow
   [`31964459158`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/31964459158)
   compiles the synchronized unsigned Android debug shell and iOS simulator
@@ -204,7 +209,7 @@ do not yet have the locked side-by-side operator evidence required for a
 | Creator site | Page composition, link hub, storefront, SEO/capture/attribution and custom-domain contracts are locally qualified | Production DNS/domain automation and operator conversion benchmark | Owned branded destination for content, community and commerce |
 | Rights and safety | Rights, releases, licenses, provenance, takedown/counter-notice/appeal and safety workflows are locally qualified | Counsel decisions and production operational exercises | Enforceable provenance, usage authority and public-platform trust operations |
 | Mobile | Responsive PWA plus generated iOS/Android shells, safe deep links, lifecycle/network recovery, encrypted push-device registration and bounded background wake are qualified; protected CI compiles unsigned Android and iOS shells | Add provider signing/delivery, sustained OS background transfer/capture, physical-device endurance and app-store evidence | Reliable iOS/Android creation, consumption, messaging and field production |
-| Operations and scale | Native control plane, immutable release source and exact clean production identity are qualified at commit `e7642ed` with all 104 migrations | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
+| Operations and scale | Native control plane, immutable release source and exact clean production identity are qualified; `/api/release` is canonical for the current commit and migration ledger | Repeat authorized signed-in field evidence, then exercise regional media/realtime resilience and production volume | Published SLOs, bounded cost, tested recovery and safe multi-tenant scale |
 | UMH integration | Projection side qualified | Pair from UMH and prove signed bidirectional round trip | Cockpit coordination without surrendering standalone authority |
 | Developer ecosystem | Scoped API/OpenAPI, delegated OAuth, typed SDKs, sandbox tenants, reviewed marketplace listings, signed webhooks and full revocation are locally qualified | Publish packages and repeat with independently controlled third-party apps | Safe third-party extension and integration marketplace |
 | Data portability | Audience CSV, podcast RSS, Media Library ingest and versioned cross-domain migration packages are locally qualified | Run representative imports from selected competitor exports and verify reconciliation at volume | Reversible movement into and out of canonical assets, audiences, offers, courses, contacts and automations |
