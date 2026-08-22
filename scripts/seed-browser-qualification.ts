@@ -27,6 +27,11 @@ const [owner, peer, moderator, buyer, learner] = await db.insert(users).values([
   { clerkId: "qualification_learner", authEmail: "learner@example.invalid", username: "learner", displayName: "Course Learner", bio: "Learns from working creatives." },
 ]).returning();
 
+const actorIds = [owner.id, peer.id, moderator.id, buyer.id, learner.id];
+if (actorIds.join(",") !== "1,2,3,4,5") {
+  throw new Error(`Browser qualification requires a pristine isolated actor ledger; received ${actorIds.join(",")}`);
+}
+
 const [ownerBusiness, peerBusiness] = await db.insert(businesses).values([
   { ownerUserId: owner.id, name: "Owner Creative Studio", handle: "owner-creative-studio", isDefault: true },
   { ownerUserId: peer.id, name: "Sarah Mitchell Studio", handle: "sarah-mitchell-studio", isDefault: true },
