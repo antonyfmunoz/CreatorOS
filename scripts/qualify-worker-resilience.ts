@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, closeDatabase } from "../server/db";
 import { claimCutStudioJob, recoverInterruptedCutStudioJobs } from "../server/cut-studio";
 import { claimMediaJob, recoverInterruptedMediaJobs } from "../server/media-processing";
@@ -6,6 +6,12 @@ import { assets, businesses, cutStudioJobs, cutStudioProjects, mediaProcessingJo
 
 const expired = new Date(Date.now() - 60_000);
 const active = new Date(Date.now() + 5 * 60_000);
+const workerNodeIds = ["iad-active", "sjc-stale"];
+let qualificationPassed = false;
+
+if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
+  throw new Error("Worker resilience qualification requires an isolated disposable database");
+}
 
 try {
   const [user] = await db.insert(users).values({ clerkId: "worker_resilience", username: "worker_resilience", displayName: "Worker resilience" }).returning();
@@ -56,7 +62,33 @@ try {
   if (activeCut?.state !== "running" || activeCut.workerId !== "iad-active") throw new Error("Active CutStudio lease was incorrectly recovered");
   const activeNode = await db.select().from(mediaWorkerNodes).where(and(eq(mediaWorkerNodes.id, "iad-active"), eq(mediaWorkerNodes.status, "active"))).limit(1);
   if (!activeNode.length) throw new Error("Worker registry lost the active node");
-  console.log(JSON.stringify({ status: "qualified", mediaRecovered, cutRecovered, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true }));
+  qualificationPassed = true;
 } finally {
-  await closeDatabase();
+  try {
+    const [fixtureUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, "worker_resilience"))
+      .limit(1);
+    if (fixtureUser) {
+      await db.delete(cutStudioJobs).where(eq(cutStudioJobs.ownerUserId, fixtureUser.id));
+      await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.ownerUserId, fixtureUser.id));
+      await db.delete(cutStudioProjects).where(eq(cutStudioProjects.ownerUserId, fixtureUser.id));
+      await db.delete(assets).where(eq(assets.ownerUserId, fixtureUser.id));
+      await db.delete(businesses).where(eq(businesses.ownerUserId, fixtureUser.id));
+      await db.delete(users).where(eq(users.id, fixtureUser.id));
+    }
+    await db.delete(mediaWorkerNodes).where(inArray(mediaWorkerNodes.id, workerNodeIds));
+    await db.execute(sql`SELECT setval(pg_get_serial_sequence('users', 'id'), COALESCE(MAX(id), 0) + 1, false) FROM users`);
+    const leakedFixtures = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, "worker_resilience"));
+    if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
+    if (qualificationPassed) {
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true, fixtureLeakage: 0 }));
+    }
+  } finally {
+    await closeDatabase();
+  }
 }

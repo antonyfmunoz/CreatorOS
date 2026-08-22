@@ -1,6 +1,7 @@
 param(
   [string[]]$PlaywrightArgs = @(),
-  [string]$Grep = ""
+  [string]$Grep = "",
+  [switch]$PreflightWorkerResilience
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,10 @@ try {
   $env:CREATOROS_VITE_CACHE_DIR = Join-Path $qualificationPath "vite-cache"
   & node scripts/migrate-qualification.mjs
   if ($LASTEXITCODE -ne 0) { throw "Browser database migration failed" }
+  if ($PreflightWorkerResilience) {
+    & npx.cmd tsx scripts/qualify-worker-resilience.ts
+    if ($LASTEXITCODE -ne 0) { throw "Worker resilience qualification failed before browser seeding" }
+  }
   & npx.cmd tsx scripts/seed-browser-qualification.ts
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification fixture setup failed" }
   $playwrightArguments = @($PlaywrightArgs)
