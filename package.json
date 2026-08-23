@@ -22,7 +22,7 @@
     "verify:browser": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-browser.ps1",
     "verify:production-smoke": "node scripts/qualify-production-smoke.mjs",
     "verify:stitch": "node scripts/qualify-stitch-references.mjs",
-    "verify:infrastructure": "node scripts/verify-scaled-infrastructure.mjs",
+    "verify:infrastructure": "node scripts/verify-scaled-infrastructure.mjs && node --test scripts/audit-live-fly-topology.test.mjs",
     "verify:media-cloud": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-media-cloud.ps1",
     "verify:backup-restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-backup-restore.ps1",
     "verify:secrets": "node scripts/scan-source-secrets.mjs",
