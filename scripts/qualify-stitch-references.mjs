@@ -24,8 +24,7 @@ const entries = [];
 for (const folder of folders) {
   if (!/^[a-z0-9_]+$/.test(folder)) throw new Error(`Unsafe Stitch folder name: ${folder}`);
   const screenPath = join(referenceRoot, folder, "screen.png");
-  const htmlPath = join(referenceRoot, folder, "code.html");
-  if (!existsSync(screenPath) || !existsSync(htmlPath)) throw new Error(`Incomplete Stitch reference folder: ${folder}`);
+  if (!existsSync(screenPath)) throw new Error(`Stitch screen reference is missing: ${folder}`);
   const resolvedScreen = resolve(screenPath);
   if (!resolvedScreen.startsWith(`${resolve(referenceRoot)}${sep}`)) throw new Error(`Reference escaped authoritative root: ${folder}`);
   const image = readFileSync(screenPath);
@@ -36,7 +35,6 @@ for (const folder of folders) {
   entries.push({
     folder,
     screen: relative(repositoryRoot, screenPath).replaceAll("\\", "/"),
-    html: relative(repositoryRoot, htmlPath).replaceAll("\\", "/"),
     width: metadata.width,
     height: metadata.height,
     sha256: createHash("sha256").update(image).digest("hex"),

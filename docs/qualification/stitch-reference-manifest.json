@@ -6,7 +6,6 @@
     {
       "folder": "community_chat_context_menu_cleaned",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_chat_context_menu_cleaned/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_chat_context_menu_cleaned/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "21cd648af3f962eca01332b686fb9d1d5c85bb05c39370cab3bbd62f883c3c59"
@@ -14,7 +13,6 @@
     {
       "folder": "community_chat_large_header_text",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_chat_large_header_text/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_chat_large_header_text/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "08fcec982727c307ab146f9f491b6c3920c7ab9edc70a7205397c74352e3858c"
@@ -22,7 +20,6 @@
     {
       "folder": "community_detail_light_theme_view",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_detail_light_theme_view/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_detail_light_theme_view/code.html",
       "width": 508,
       "height": 1600,
       "sha256": "c882b87b0238cfd0ad4b2977b73a17704a21ed5cebcc718d96d26aaa25a75365"
@@ -30,7 +27,6 @@
     {
       "folder": "community_refined_sidebar",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_refined_sidebar/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_refined_sidebar/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "6bd3ed053530394f798d9493c131fadf1774b7d4fe2454fa4acab38d2f32c9ad"
@@ -38,7 +34,6 @@
     {
       "folder": "community_search_recent_messages_view",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_recent_messages_view/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_recent_messages_view/code.html",
       "width": 692,
       "height": 1600,
       "sha256": "9be6deb9d0597b53283e7612e609e14e578a05b99276dc88222d73928ef721b3"
@@ -46,7 +41,6 @@
     {
       "folder": "community_search_refined_labels",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_refined_labels/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_refined_labels/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "6fa9749b32a8d69f6c922f3971c0566507188f792af01ffa01b1bca042ad9c0d"
@@ -54,7 +48,6 @@
     {
       "folder": "community_search_selection_view",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_selection_view/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_selection_view/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "9df59666d7b0826fc768f02f69300668937dc01168dcf5d715c719e0b79e5e67"
@@ -62,7 +55,6 @@
     {
       "folder": "community_search_white_ring_highlights",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_white_ring_highlights/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/community_search_white_ring_highlights/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "d8e0052055b49b6abc0e85965e076e4e7d691e8d3dcae5e7d4a29ce25f88ffcd"
@@ -70,7 +62,6 @@
     {
       "folder": "create_event_pure_black_theme",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/create_event_pure_black_theme/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/create_event_pure_black_theme/code.html",
       "width": 571,
       "height": 1600,
       "sha256": "0959a85a62b05847244e0f9e5edddee887bb1e94362d8c77ffee028fcf78efa0"
@@ -78,7 +69,6 @@
     {
       "folder": "direct_message_alex_rivera",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/direct_message_alex_rivera/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/direct_message_alex_rivera/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "ee0ca671b301ed56af3ea92068e4826523a530aaed0eae03ea88b9b80489dd86"
@@ -86,7 +76,6 @@
     {
       "folder": "direct_message_suggested_refined",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/direct_message_suggested_refined/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/direct_message_suggested_refined/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "b41c606fd2b660472e0276bd22cfeeafbf0ca6f8af78d95e41a29e150b4e8aed"
@@ -94,7 +83,6 @@
     {
       "folder": "edit_bio_refined_button",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/edit_bio_refined_button/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/edit_bio_refined_button/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "2a366672d357642fa281ffcd76299e58c2649e5222a2c568c6ab67b7c8653b0f"
@@ -102,7 +90,6 @@
     {
       "folder": "edit_links_refined_button",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/edit_links_refined_button/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/edit_links_refined_button/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "9d8d0ee3689246a477f060420dcf3d4d711ecea3d38851072c29aec4c5c0124b"
@@ -110,7 +97,6 @@
     {
       "folder": "edit_name_stacked_layout",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/edit_name_stacked_layout/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/edit_name_stacked_layout/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "470a8b3fdc40164bbffcb681383a3975eff6fc9338fa00d3de24370cd3a34d9d"
@@ -118,7 +104,6 @@
     {
       "folder": "edit_profile_refined_header",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/edit_profile_refined_header/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/edit_profile_refined_header/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "f5bbe1607773f84eee6bfaac52b0d4f1b220176e4d25e11b4ba386321ca9f9cc"
@@ -126,7 +111,6 @@
     {
       "folder": "explore_compact_light_theme_mirrored_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_light_theme_mirrored_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_light_theme_mirrored_1/code.html",
       "width": 456,
       "height": 1600,
       "sha256": "2c2113e335cf8a4395436e9d3ab4f8252612a65c33de47a4dd2020ca45b99abd"
@@ -134,7 +118,6 @@
     {
       "folder": "explore_compact_light_theme_mirrored_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_light_theme_mirrored_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_light_theme_mirrored_2/code.html",
       "width": 456,
       "height": 1600,
       "sha256": "c24d888e124f235a0e02ee2029c0e798079a9842b8393b0a29b2f7faac646e21"
@@ -142,7 +125,6 @@
     {
       "folder": "explore_compact_stories_row_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_1/code.html",
       "width": 390,
       "height": 884,
       "sha256": "e108d2f205b0c859f6f1b806041f7a73e83689f0835187c69f3bb3efc7d236de"
@@ -150,7 +132,6 @@
     {
       "folder": "explore_compact_stories_row_10",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_10/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_10/code.html",
       "width": 567,
       "height": 1600,
       "sha256": "888ab69337bab21489acc9ada36ae2d358862ae7bfad923ef8b0436484178101"
@@ -158,7 +139,6 @@
     {
       "folder": "explore_compact_stories_row_11",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_11/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_11/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "2fcae71f417c76b6643a1eabd4ddb6786281c7cbcc8089ad254e787fb06fa83b"
@@ -166,7 +146,6 @@
     {
       "folder": "explore_compact_stories_row_12",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_12/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_12/code.html",
       "width": 390,
       "height": 884,
       "sha256": "d40f46cb977854b8420c8d583bef8275ab3281165cbe626013769deaa2e90d20"
@@ -174,7 +153,6 @@
     {
       "folder": "explore_compact_stories_row_13",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_13/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_13/code.html",
       "width": 474,
       "height": 1600,
       "sha256": "7923cf5cc605e26e65310dbee3c244518b8bc5d8ab9bbef873742b3fbf4ba2ea"
@@ -182,7 +160,6 @@
     {
       "folder": "explore_compact_stories_row_14",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_14/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_14/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "b0f66751816f1febe7ab299ea0f556e0f2ff98ae08912bb00394de18a8b29d7d"
@@ -190,7 +167,6 @@
     {
       "folder": "explore_compact_stories_row_15",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_15/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_15/code.html",
       "width": 533,
       "height": 1600,
       "sha256": "360832db21727a05b7e42181e63b17680ef82ef93f761310bf9af8499a6d7c57"
@@ -198,7 +174,6 @@
     {
       "folder": "explore_compact_stories_row_16",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_16/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_16/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "d2700b07b312dde6301828e2f8da1f95856b81f2c3eeeb5bc495e48123ebfd86"
@@ -206,7 +181,6 @@
     {
       "folder": "explore_compact_stories_row_17",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_17/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_17/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "d2700b07b312dde6301828e2f8da1f95856b81f2c3eeeb5bc495e48123ebfd86"
@@ -214,7 +188,6 @@
     {
       "folder": "explore_compact_stories_row_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "64088993ab55bbab44755f6e12cf38227e52e1afd77b0cf192a12d19de3684c2"
@@ -222,7 +195,6 @@
     {
       "folder": "explore_compact_stories_row_3",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_3/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_3/code.html",
       "width": 390,
       "height": 884,
       "sha256": "92af4aca881540a98158959198dbacecb419c7fbf7c50984a20a4242b1779801"
@@ -230,7 +202,6 @@
     {
       "folder": "explore_compact_stories_row_4",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_4/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_4/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "4c35f61d0473db02ee2bed64966d3fb173548d3c42b3fd2f79f0de6bfa7442c2"
@@ -238,7 +209,6 @@
     {
       "folder": "explore_compact_stories_row_5",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_5/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_5/code.html",
       "width": 390,
       "height": 884,
       "sha256": "9902b50b6aed1f015c27cdb693d0a55d6bae574d21aeccad2d66f0204b4e48a3"
@@ -246,7 +216,6 @@
     {
       "folder": "explore_compact_stories_row_6",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_6/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_6/code.html",
       "width": 489,
       "height": 1600,
       "sha256": "5e99da903affa10d9fae42e98f4afc97ebd0f6a36a7a40bb63fadd1c89ea2f45"
@@ -254,7 +223,6 @@
     {
       "folder": "explore_compact_stories_row_7",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_7/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_7/code.html",
       "width": 390,
       "height": 884,
       "sha256": "6856b709e075624e3795b8e0751c11a4fe0d853be6ea1c91282caaba7d002abb"
@@ -262,7 +230,6 @@
     {
       "folder": "explore_compact_stories_row_8",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_8/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_8/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "c2f083e33fcef53f8a84e0028e4beeff6106d0985cd0eec7c8a856b6c1dae5f7"
@@ -270,7 +237,6 @@
     {
       "folder": "explore_compact_stories_row_9",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_9/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_compact_stories_row_9/code.html",
       "width": 508,
       "height": 1600,
       "sha256": "3b955eeedc521ce126d103076968abea36a163ff3cd9009fa03f7216e03e9ff7"
@@ -278,7 +244,6 @@
     {
       "folder": "explore_following_active_final_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_following_active_final_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_following_active_final_1/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "41f7d1497fddec74b2f0e28eb92ee4e1972e19bd48c876e2fd6389e69d87abbb"
@@ -286,7 +251,6 @@
     {
       "folder": "explore_following_active_final_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/explore_following_active_final_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/explore_following_active_final_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "41f7d1497fddec74b2f0e28eb92ee4e1972e19bd48c876e2fd6389e69d87abbb"
@@ -294,7 +258,6 @@
     {
       "folder": "generated_screen_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_1/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "51ddab527faac19379aa9cd5aa614aa7ac56b7ae28804abf7955f7172b08cc32"
@@ -302,7 +265,6 @@
     {
       "folder": "generated_screen_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "ba4fceab909344d9542651ccf545d9087ebe841c522614165ada8bbb3216f675"
@@ -310,7 +272,6 @@
     {
       "folder": "generated_screen_3",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_3/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_3/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "5b2fbd469059b97d0cfb1f80e5b12451fcbd28bab444cf9243be86bbc54e9934"
@@ -318,7 +279,6 @@
     {
       "folder": "generated_screen_4",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_4/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/generated_screen_4/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "37b55cb56fe47e718a7b14f2f4a21f4c8cfc3b55c9777cd352e355efcfae5aa8"
@@ -326,7 +286,6 @@
     {
       "folder": "invite_friends_monochromatic_search_bar",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/invite_friends_monochromatic_search_bar/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/invite_friends_monochromatic_search_bar/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "07d5cf8ddef58d38c6cff09e13859eded2d4dff220b7f75d6586fca079a0a7c3"
@@ -334,7 +293,6 @@
     {
       "folder": "marketplace_corrected_add_icon",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/marketplace_corrected_add_icon/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/marketplace_corrected_add_icon/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "1c3ae490757995f675b634f10c26af433c80d40f7da8bc364ee284d4b82c9431"
@@ -342,7 +300,6 @@
     {
       "folder": "marketplace_corrected_navigation",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/marketplace_corrected_navigation/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/marketplace_corrected_navigation/code.html",
       "width": 518,
       "height": 1600,
       "sha256": "3e8a0d91df0e437169f8c6fba63c2d20e52fc1ca51a6ca3c19c028cb3891de4f"
@@ -350,7 +307,6 @@
     {
       "folder": "messages_bold_recent_header",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_bold_recent_header/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_bold_recent_header/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "ce62970e6170bb32a28906c1cc582c6c2da242dbf2c81f942d110f1f772f6cec"
@@ -358,7 +314,6 @@
     {
       "folder": "messages_corrected_polished_view",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_corrected_polished_view/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_corrected_polished_view/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "7ace43f6b456e1300fb06ca27558c4582a2379b39aa49523168e33500670123a"
@@ -366,7 +321,6 @@
     {
       "folder": "messages_group_name_input_added",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_group_name_input_added/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_group_name_input_added/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "00c4750c0f22d439cec80bf713ec21b1cb9210fb80c6381a02abe06bcd1c4086"
@@ -374,7 +328,6 @@
     {
       "folder": "messages_sophie_profile_fixed",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_sophie_profile_fixed/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_sophie_profile_fixed/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "28db35db68f4cf954d16c02d1f701074b0a501f2b1be45b7e1fcea917e05d510"
@@ -382,7 +335,6 @@
     {
       "folder": "messages_streamlined_view_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_streamlined_view_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_streamlined_view_1/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "50520fc07e589143a40e15168bfebe07fd8b0d6c8db08c8742b47610a265dd9b"
@@ -390,7 +342,6 @@
     {
       "folder": "messages_streamlined_view_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/messages_streamlined_view_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/messages_streamlined_view_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "0553e067721df15c054d9e0ed699b8f2850a86b02fecf68d5b0e28b2b0ddefc8"
@@ -398,7 +349,6 @@
     {
       "folder": "notifications_brand_aligned_header_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_1/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "e5ed1bd9c70a05cb609d0bc537296d82a14d31303f33f145ce7e4fae3bdbca94"
@@ -406,7 +356,6 @@
     {
       "folder": "notifications_brand_aligned_header_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "47b70af2936494e5b4a7f1aabc1a071eff0b0164cbfeb0f7437a0f7d0384b233"
@@ -414,7 +363,6 @@
     {
       "folder": "notifications_brand_aligned_header_3",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_3/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_3/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "4344fbf7d9f2033cca47f1942a1eb83526cfed2f6df0385f78e938c0d6580408"
@@ -422,7 +370,6 @@
     {
       "folder": "notifications_brand_aligned_header_4",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_4/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_brand_aligned_header_4/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "01b0d27cf7fffcb93193f97255174b2a01b8b10ba9dcb40eda713a73add1c41d"
@@ -430,7 +377,6 @@
     {
       "folder": "notifications_matched_header_height",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_matched_header_height/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/notifications_matched_header_height/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "1f6e9459c3b71ffa73980775aa34291b57f9d609fc0a3905d8a8dfb5ed3a6d88"
@@ -438,7 +384,6 @@
     {
       "folder": "profile_concise_offer_brands",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_concise_offer_brands/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_concise_offer_brands/code.html",
       "width": 664,
       "height": 1600,
       "sha256": "8a20f855046d48070794cefa2888877cf9621b2c6613e6d569624fd05e217a14"
@@ -446,7 +391,6 @@
     {
       "folder": "profile_feed_actions_aligned",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_feed_actions_aligned/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_feed_actions_aligned/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "483af0b0db959e78bb232f012918a29b548187d1959596c98f1e022eb37a2bd9"
@@ -454,7 +398,6 @@
     {
       "folder": "profile_likes_tab_selected",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_likes_tab_selected/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_likes_tab_selected/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "17327ad356a37ead94fd5a979ae0b385a6da4efd5d3f04e912e491c1c3c3c2b9"
@@ -462,7 +405,6 @@
     {
       "folder": "profile_repost_selected_state_fix",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_repost_selected_state_fix/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_repost_selected_state_fix/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "c7887ad1c2859015544cb5114f25b8f2d2ffd602c7c7f7ff05e91c5f1667cd09"
@@ -470,7 +412,6 @@
     {
       "folder": "profile_stats_refined_likes",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_likes/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_likes/code.html",
       "width": 390,
       "height": 884,
       "sha256": "242ccde13cc7430c11c4e8be166589ac1df17e5d813dd65adcc32e068f8e37a3"
@@ -478,7 +419,6 @@
     {
       "folder": "profile_stats_refined_offers",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_offers/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_offers/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "cebb9d554079d898975c90166cbd2ec6fe6350b23821135661baea2e2955955b"
@@ -486,7 +426,6 @@
     {
       "folder": "profile_stats_refined_playlists",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_playlists/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_playlists/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "7dc540372a951ec3b0403f238286feb36d8efa9a791156aa749be01649f4e8ff"
@@ -494,7 +433,6 @@
     {
       "folder": "profile_stats_refined_public",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_public/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_public/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "7c6e8a2edc588dddd068c945e3b59cbe2d7cd3dcc33811d7f0af2cf776d3def6"
@@ -502,7 +440,6 @@
     {
       "folder": "profile_stats_refined_reposts",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_reposts/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_stats_refined_reposts/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "148a36fcef936b4c3c97da4536df6417c8d219bb3e97fbc59b30d7c296631e26"
@@ -510,7 +447,6 @@
     {
       "folder": "profile_tagged_tab_blue_mentions",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_tagged_tab_blue_mentions/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_tagged_tab_blue_mentions/code.html",
       "width": 390,
       "height": 884,
       "sha256": "74f6fbc30bea744d2dc89f828cc4af99f3a5815c6eab414a19ff18f4178abdd1"
@@ -518,7 +454,6 @@
     {
       "folder": "profile_tagged_tab_selected",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_tagged_tab_selected/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_tagged_tab_selected/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "69c59ec71b669dafe6e6b9d2e2ebc50086ede9d8bd044c0bed4b0a37525ee12c"
@@ -526,7 +461,6 @@
     {
       "folder": "profile_youtube_style_playlists",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/profile_youtube_style_playlists/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/profile_youtube_style_playlists/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "8eb59be2b02ccc82d13b992ee5138eab6874020f939f8dbc2eed4f32e0e6c75c"
@@ -534,7 +468,6 @@
     {
       "folder": "search_no_navbar_1",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_1/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_1/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "bb4d1d214c1ec57fa001a50e4f0adcc8ae2f485b1ef95a9cc51744f311befb6f"
@@ -542,7 +475,6 @@
     {
       "folder": "search_no_navbar_2",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_2/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_2/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "90fe1ece949ddfcd86e7aba7ef04afe807ba4a93fc70260af56a9867cc4a945e"
@@ -550,7 +482,6 @@
     {
       "folder": "search_no_navbar_3",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_3/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_3/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "02594ba4cdbd295f5da3474f27fb95d76cd789aeafc273eed79cc5befab74e9c"
@@ -558,7 +489,6 @@
     {
       "folder": "search_no_navbar_4",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_4/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/search_no_navbar_4/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "8b13421e06e1fb99665347eafa991bfed5d06d027c59abadc5afef93c060ccdc"
@@ -566,7 +496,6 @@
     {
       "folder": "settings_notifications_toggle_added",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/settings_notifications_toggle_added/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/settings_notifications_toggle_added/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "5e7b3a96b7d9afae495cfa2184a87de57be9fde0efe5de23887fa4e2cfe52939"
@@ -574,7 +503,6 @@
     {
       "folder": "share_profile_light_theme",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/share_profile_light_theme/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/share_profile_light_theme/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "6e05ed046dbff78e66423ea557b9185e05ca3330b1ea5bc99db4cc66bb231991"
@@ -582,7 +510,6 @@
     {
       "folder": "share_profile_refined_header_typography",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/share_profile_refined_header_typography/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/share_profile_refined_header_typography/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "39ca41e82f39e58444622b4102a9dd9679e44b928287b31b92f7ca7efe26e93c"
@@ -590,7 +517,6 @@
     {
       "folder": "voice_lobby_compact_header",
       "screen": "attached_assets/stitch_creatoros/stitch_creatoros/voice_lobby_compact_header/screen.png",
-      "html": "attached_assets/stitch_creatoros/stitch_creatoros/voice_lobby_compact_header/code.html",
       "width": 706,
       "height": 1600,
       "sha256": "427f3951d51a98223b72a0a8d11c3b0f74350da906bc7ba64502863714260a8c"
