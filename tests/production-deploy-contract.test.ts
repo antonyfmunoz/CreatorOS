@@ -86,6 +86,17 @@ describe("production deployment contract", () => {
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
   });
 
+  it("makes exact-source public browser smoke part of every successful production deployment", () => {
+    const deployStepIndex = workflowSource.indexOf("Execute fail-closed production release");
+    const smokeStepIndex = workflowSource.indexOf("Verify exact deployed release through the public application boundary");
+    expect(deployStepIndex).toBeGreaterThan(-1);
+    expect(smokeStepIndex).toBeGreaterThan(deployStepIndex);
+    expect(workflowSource).toContain("CREATIVESOS_PRODUCTION_SMOKE_MODE: public");
+    expect(workflowSource).toContain("CREATIVESOS_EXPECTED_COMMIT: ${{ github.sha }}");
+    expect(workflowSource).toContain("npm run verify:production-smoke:public");
+    expect(workflowSource).toContain("post-deploy-public-smoke-evidence");
+  });
+
   it("compiles the synchronized Android shell on the protected Linux workflow", () => {
     expect(verifyWorkflowSource).toContain("name: Android native shell");
     expect(verifyWorkflowSource).toContain("actions/setup-java@v5");
