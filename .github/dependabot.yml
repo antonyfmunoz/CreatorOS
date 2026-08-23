@@ -8,11 +8,24 @@ updates:
       time: "09:00"
       timezone: America/Los_Angeles
     open-pull-requests-limit: 5
+    # Major framework/runtime migrations are deliberately selected and
+    # qualified one ecosystem at a time. Do not let the routine updater force
+    # React, Zod, Express, Vite, or similar major lines into a grouped PR.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       production-dependencies:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
       development-dependencies:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
