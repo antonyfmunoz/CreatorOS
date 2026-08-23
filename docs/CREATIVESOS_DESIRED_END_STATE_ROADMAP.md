@@ -123,10 +123,11 @@ do not yet have the locked side-by-side operator evidence required for a
   observed one active legacy `app` Machine and one release image. No paid
   `web`, `media`, or `cut` expansion has been applied.
 - Protected public production-smoke run
-  [`32626124784`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32626124784)
-  passed the exact-commit release, health/readiness, auth-boundary, and
-  accessibility checks on mobile and desktop. Authenticated production
-  workspaces remain a separate authorized-session evidence gate.
+  [`32665173137`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32665173137)
+  independently passed the exact deployed commit's release,
+  health/readiness, auth-boundary and accessibility checks on mobile and
+  desktop. Authenticated production workspaces remain a separate
+  authorized-session evidence gate.
 - Protected workflow run
   [`32603964955`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32603964955)
   deployed the dated 2026-08-22 production baseline from exact `main` merge
