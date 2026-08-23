@@ -13,7 +13,7 @@ function runtimeFailures(page: Page) {
   return failures;
 }
 
-test("immutable production identity, readiness, and auth entry are healthy", async ({ page, request }) => {
+test("@public immutable production identity, readiness, and auth entry are healthy", async ({ page, request }) => {
   const [releaseResponse, healthResponse, readyResponse] = await Promise.all([
     request.get("/api/release"),
     request.get("/api/health"),
@@ -37,7 +37,7 @@ test("immutable production identity, readiness, and auth entry are healthy", asy
   expect(accessibility.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);
 });
 
-test("authenticated production workspaces render without destructive mutations", async ({ page }) => {
+test("@authenticated production workspaces render without destructive mutations", async ({ page }) => {
   const failures = runtimeFailures(page);
   const routes = [
     "/", "/profile", "/marketplace", "/messages", "/communities", "/create",

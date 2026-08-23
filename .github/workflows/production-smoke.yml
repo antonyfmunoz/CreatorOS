@@ -7,6 +7,14 @@ on:
         description: Optional exact deployed commit to require
         required: false
         type: string
+      scope:
+        description: Run public checks, or include authenticated workspaces when the session secret is configured
+        required: true
+        default: public
+        type: choice
+        options:
+          - public
+          - all
 
 permissions:
   contents: read
@@ -16,8 +24,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  public-smoke:
+    name: Public production boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://creativesos.net
+    env:
+      CREATIVESOS_PRODUCTION_BASE_URL: https://creativesos.net
+      CREATIVESOS_PRODUCTION_SMOKE_MODE: public
+      CREATIVESOS_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify public release, readiness, auth boundary, and accessibility
+        run: npm run verify:production-smoke:public
+      - name: Preserve public smoke evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: public-production-smoke-evidence
+          path: |
+            test-results/
+            production-smoke-report/
+          retention-days: 14
+
   authenticated-smoke:
     name: Authenticated production journeys
+    if: inputs.scope == 'all'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -26,6 +68,7 @@ jobs:
     env:
       CREATIVESOS_PRODUCTION_BASE_URL: https://creativesos.net
       CREATIVESOS_PRODUCTION_SESSION_TOKEN: ${{ secrets.CREATIVESOS_PRODUCTION_SESSION_TOKEN }}
+      CREATIVESOS_PRODUCTION_SMOKE_MODE: authenticated
       CREATIVESOS_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
     steps:
       - uses: actions/checkout@v7
