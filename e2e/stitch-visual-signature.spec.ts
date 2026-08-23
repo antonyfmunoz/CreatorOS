@@ -98,7 +98,7 @@ async function waitForCanonicalSurface(page: Page, route: string) {
     await expect(page.getByRole("searchbox", { name: "Search marketplace" })).toBeVisible();
     await expect(page.getByText("Loading marketplace…", { exact: true })).toHaveCount(0);
   } else if (route === "/messages") {
-    await page.getByRole("button", { name: /Start (or manage )?native chat/i }).click();
+    await page.getByRole("button", { name: "Start or manage native chats", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Messages", exact: true })).toBeVisible();
   } else if (route === "/profile") {
     await expect(page.getByRole("button", { name: "Edit profile", exact: true })).toBeVisible();
