@@ -27,7 +27,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Install media qualification runtime
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+        run: bash scripts/install-media-quality-runtime.sh
       - run: npm ci
       - name: Verify clean release source
         run: node scripts/assert-clean-source.mjs
@@ -163,7 +163,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Install media qualification runtime
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+        run: bash scripts/install-media-quality-runtime.sh
       - run: npm ci
       - run: node scripts/migrate-qualification.mjs
       - run: npx tsx scripts/seed-browser-qualification.ts
