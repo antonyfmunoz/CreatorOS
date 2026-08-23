@@ -101,6 +101,24 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
+- Protected deployment run
+  [`32623652819`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32623652819)
+  requalified and deployed exact protected `main` commit
+  `004e50c45328c02ceeb8d0d54a623fc6e8e2e586` while preserving the detected
+  compact Fly topology. Live `/api/release` now reports verified clean source,
+  fingerprint
+  `50b56bff60f2f4df67691477738e2e7854bca93ea1da3246ac15cc3cdf1b4b14`,
+  and 105/105 migration parity; `/api/health` and `/api/ready` are healthy with
+  zero release blockers and configured private R2 asset delivery.
+- Read-only topology audit
+  [`32624543906`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32624543906)
+  observed one active legacy `app` Machine and one release image. No paid
+  `web`, `media`, or `cut` expansion has been applied.
+- Protected public production-smoke run
+  [`32626124784`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32626124784)
+  passed the exact-commit release, health/readiness, auth-boundary, and
+  accessibility checks on mobile and desktop. Authenticated production
+  workspaces remain a separate authorized-session evidence gate.
 - Protected workflow run
   [`32603964955`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32603964955)
   deployed the dated 2026-08-22 production baseline from exact `main` merge
