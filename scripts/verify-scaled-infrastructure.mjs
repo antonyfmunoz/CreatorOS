@@ -8,6 +8,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const production = readFileSync(join(root, "infra", "fly.production-scaled.toml"), "utf8");
 const staging = readFileSync(join(root, "infra", "fly.staging.toml"), "utf8");
 const policy = JSON.parse(readFileSync(join(root, "infra", "worker-scaling-policy.json"), "utf8"));
+const deploymentWorkflow = readFileSync(join(root, ".github", "workflows", "deploy-production.yml"), "utf8");
+const deploymentScript = readFileSync(join(root, "scripts", "deploy-production.ps1"), "utf8");
 
 for (const [name, manifest] of [["production", production], ["staging", staging]]) {
   for (const invariant of [
@@ -28,4 +30,15 @@ for (const [queue, config] of Object.entries(policy.queues)) {
   if (config.targetQueuedPerWorker < 1 || config.scaleOutOldestQueuedSeconds < 1 || config.scaleInIdleSeconds <= policy.cooldownSeconds) throw new Error(`Invalid ${queue} scaling thresholds`);
 }
 if (!Object.values(policy.failClosed).every(Boolean)) throw new Error("Scaling safety gates must fail closed");
+for (const guard of [
+  "topology_change:",
+  "APPLY_SCALED_TOPOLOGY",
+  "APPLY_COMPACT_TOPOLOGY",
+  "CREATIVESOS_FLY_CONFIG",
+]) if (!deploymentWorkflow.includes(guard)) throw new Error(`Production deployment workflow is missing topology guard: ${guard}`);
+for (const guard of [
+  "resolve-live-fly-config.mjs",
+  "--config $flyConfigPath",
+  "audit-live-fly-topology.mjs $topologyPath --enforce",
+]) if (!deploymentScript.includes(guard)) throw new Error(`Production deployment script is missing topology guard: ${guard}`);
 console.log(JSON.stringify({ status: "qualified", environments: ["production", "staging"], processGroups: ["web", "media", "cut"], costCeilingUsd: policy.monthlyCostCeilingUsd }));

@@ -7,6 +7,19 @@ on:
         description: Type DEPLOY to run the protected production release
         required: true
         type: string
+      topology_change:
+        description: Preserve live topology, or explicitly transition its paid machine layout
+        required: true
+        default: preserve
+        type: choice
+        options:
+          - preserve
+          - apply-scaled
+          - apply-compact
+      topology_confirm:
+        description: For a transition, type APPLY_SCALED_TOPOLOGY or APPLY_COMPACT_TOPOLOGY
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -81,6 +94,8 @@ jobs:
       VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
       DISTRIBUTION_DISPATCH_SECRET: ${{ secrets.DISTRIBUTION_DISPATCH_SECRET }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      CREATIVESOS_FLY_CONFIG: ${{ inputs.topology_change == 'apply-scaled' && 'infra/fly.production-scaled.toml' || inputs.topology_change == 'apply-compact' && 'fly.toml' || '' }}
+      CREATIVESOS_TOPOLOGY_CONFIRM: ${{ inputs.topology_confirm }}
     steps:
       - uses: actions/checkout@v7
         with:
