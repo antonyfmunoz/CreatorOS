@@ -10,6 +10,9 @@ updates are isolated by ecosystem and require a migration note plus rollback.
 - GitHub `actions/checkout` and `actions/setup-node` are qualified at v7.
 - Production and development package updates must remain within the declared
   semver ranges unless a dedicated migration changes the range.
+- Dependabot groups only minor and patch updates and ignores automatic major
+  version updates. Major candidates are selected during the quarterly review
+  and opened as dedicated migration work, never forced into a routine group.
 - Zod 4, Express 5, React 19, Vite 8, Tailwind 4, OpenAI 7, and other major
   lines are intentionally excluded from grouped dependency maintenance. Each
   changes runtime or type contracts and requires its own verified migration.
