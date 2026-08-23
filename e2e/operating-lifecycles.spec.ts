@@ -201,6 +201,13 @@ test("privacy export and reversible deletion scheduling are account-scoped", asy
   const payload = await exported.json();
   expect(payload.schemaVersion).toBe("creativesos.account-export.v1");
   expect(payload.account.id).toBe(student);
+  expect(payload).toMatchObject({
+    creatorStudio: {
+      cutStudioAudioTemplates: expect.any(Array),
+      broadcastStudioVersions: expect.any(Array),
+    },
+    providerActivations: { runs: expect.any(Array), evidence: expect.any(Array) },
+  });
   expect(payload).toHaveProperty("privacyRequestId");
   expect((await api(page, student, "POST", "/api/privacy/deletion-requests", { confirmation: "wrong" })).status()).toBe(400);
   const scheduled = await api(page, student, "POST", "/api/privacy/deletion-requests", { confirmation: privacy.confirmation });

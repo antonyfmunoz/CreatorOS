@@ -20,6 +20,7 @@ import {
   Braces,
   Activity,
   DatabaseBackup,
+  PlugZap,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -105,6 +106,13 @@ export default function BusinessDashboard() {
       ? `${scheduledJobs} queued · ${waitingForConnection} awaiting connection`
       : `${scheduledJobs} queued`;
   const actions = [
+    {
+      title: "Provider Activation",
+      description:
+        "Qualify every external capability with current, append-only field-test evidence before treating it as production-ready.",
+      icon: PlugZap,
+      href: "/business/providers",
+    },
     {
       title: "Data Portability",
       description:

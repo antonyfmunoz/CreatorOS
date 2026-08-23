@@ -101,6 +101,14 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
+- The current provider-activation candidate is locally qualified but is not yet
+  represented as deployed production: 117 unit/contract files and 449 tests,
+  TypeScript, production build, bundle and Worker gates, a fresh 106-migration
+  database with 218 required tables, backup/restore, worker recovery, secrets,
+  dependency, infrastructure, mobile and capacity gates all pass. The complete
+  two-viewport field matrix scheduled 202 executions, with 196 passing and six
+  intentional skips and no failures. The current live identity below remains
+  historical truth until the exact protected merge commit is deployed.
 - Protected deployment run
   [`32623652819`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32623652819)
   requalified and deployed exact protected `main` commit
@@ -547,28 +555,39 @@ named workflow, current comparison source, failures, reviewer and measurements.
 activation may run earlier only when it is required to qualify an already-built
 critical path.
 
-**Current state:** intentionally deferred by product direction except for
-providers already evidenced in production. Every inactive adapter remains
-fail-closed and must pass the acceptance template below.
+**Current state:** actual third-party activation remains intentionally deferred
+by product direction except for providers already evidenced in production.
+CreativesOS now owns a tenant-scoped activation control plane for 22 capability
+families across sandbox, staging and production. It records append-only,
+credential-free evidence, derives readiness from the latest evidence for every
+required stage, prevents cross-tenant writes and early qualification, bounds
+operational history, preserves the audit record in privacy export/deletion, and
+keeps closed runs immutable. This native dossier does not turn an untested
+credential into a successful provider round trip.
 
 - Video processing/delivery provider for adaptive VOD and live playback.
 - Transactional and bulk email delivery, bounce/complaint and reputation loops.
 - Web push and native mobile notification delivery.
 - Podcast directory connections and destination verification.
-- YouTube, Meta, TikTok, X and other approved publishing/analytics adapters.
+- YouTube, Facebook, Instagram, TikTok, X and other approved
+  publishing/analytics adapters.
 - Instagram, Messenger, WhatsApp and supported external inbox adapters.
 - Remote guest, transcription and realtime-agent workers.
 - Relationship AI model provider and cloned-voice provider.
 - Broadcast live destinations and encoder health callbacks.
-- Successful creator payout with a valid connected-account bank.
+- Stripe platform-commerce payment, subscription, invoice, refund, dispute and
+  entitlement evidence, kept distinct from creator proceeds.
+- Successful Stripe creator payout with a valid connected-account bank and
+  allocation/remediation evidence.
 - UMH pairing, capability negotiation and signed command/evidence round trip.
 
 ### Provider acceptance template
 
-Every provider requires connect, refresh/revoke, inbound, outbound, webhook
-signature, idempotency, rate-limit, retry, dead-letter, receipt, privacy export,
-deletion and failure-recovery evidence. A credential being present is not an
-activation proof.
+Every provider requires connect, credential custody, refresh/revoke, inbound,
+outbound, webhook signature, idempotency, rate-limit, retry, dead-letter,
+receipt, privacy export, deletion and failure-recovery evidence. A passing
+stage requires a durable secret-free HTTPS reference; expired evidence no
+longer qualifies. A credential being present is not an activation proof.
 
 ## Phase 6 — Native mobile, scale and operational maturity
 
@@ -694,11 +713,12 @@ closure is now bounded by product, publication or external evidence:
    lifecycle/network recovery, explicit push consent, encrypted device
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
-6. **Complete locally and in protected CI:** run the complete unit/build/migration/security,
-   recovery, capacity and 186-execution browser suite and reconcile its
+6. **Complete locally; protected CI pending for the current candidate:** run the
+   complete unit/build/migration/security, recovery, capacity and 202-execution
+   browser suite and reconcile its
    evidence without overwriting older production truth;
 7. **Release gate for this tranche:** deploy the exact protected merge commit
-   from an immutable clean snapshot, apply all 105 migrations, and verify
+   from an immutable clean snapshot, apply all 106 migrations, and verify
    health/readiness, `sourceDirty: false`, exact production identity, auth
    routing, public routes and protected API/route boundaries. The merge commit
    and live runtime identity must be taken from `/api/release`, never predicted
