@@ -96,6 +96,9 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       CREATIVESOS_FLY_CONFIG: ${{ inputs.topology_change == 'apply-scaled' && 'infra/fly.production-scaled.toml' || inputs.topology_change == 'apply-compact' && 'fly.toml' || '' }}
       CREATIVESOS_TOPOLOGY_CONFIRM: ${{ inputs.topology_confirm }}
+      CREATIVESOS_PRODUCTION_BASE_URL: https://creativesos.net
+      CREATIVESOS_PRODUCTION_SMOKE_MODE: public
+      CREATIVESOS_EXPECTED_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -109,3 +112,18 @@ jobs:
       - name: Execute fail-closed production release
         shell: pwsh
         run: ./scripts/deploy-production.ps1
+      - name: Install production smoke browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify exact deployed release through the public application boundary
+        id: public_production_smoke
+        run: npm run verify:production-smoke:public
+      - name: Preserve post-deploy public smoke evidence on failure
+        if: failure() && steps.public_production_smoke.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: post-deploy-public-smoke-evidence
+          path: |
+            test-results/
+            production-smoke-report/
+          if-no-files-found: ignore
+          retention-days: 14
