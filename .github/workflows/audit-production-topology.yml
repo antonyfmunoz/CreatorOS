@@ -1,0 +1,54 @@
+name: Audit production topology
+
+on:
+  workflow_dispatch:
+    inputs:
+      enforce_target:
+        description: Fail when live topology differs from the qualified scaled target
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creativesos-production-topology-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Read-only Fly topology audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://creativesos.net
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+      - name: Read live topology without mutating machines
+        run: flyctl machines list --app creatoros-app --json > "${RUNNER_TEMP}/fly-machines.json"
+      - name: Build sanitized topology report
+        shell: bash
+        run: |
+          args=("${RUNNER_TEMP}/fly-machines.json")
+          if [[ "${{ inputs.enforce_target }}" == "true" ]]; then args+=(--enforce); fi
+          node scripts/audit-live-fly-topology.mjs "${args[@]}" | tee "${RUNNER_TEMP}/fly-topology-report.json"
+          {
+            echo '## CreativesOS production topology'
+            echo '```json'
+            cat "${RUNNER_TEMP}/fly-topology-report.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Preserve sanitized audit evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-topology-audit
+          path: ${{ runner.temp }}/fly-topology-report.json
+          retention-days: 30
