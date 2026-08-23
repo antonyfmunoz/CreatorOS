@@ -118,8 +118,8 @@ do not yet have the locked side-by-side operator evidence required for a
   and 106/106 migration parity; `/api/health` and `/api/ready` are healthy with
   zero release blockers, configured private R2 asset delivery and production
   authentication.
-- Read-only topology audit
-  [`32624543906`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32624543906)
+- Post-release read-only topology audit
+  [`32665248113`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32665248113)
   observed one active legacy `app` Machine and one release image. No paid
   `web`, `media`, or `cut` expansion has been applied.
 - Protected public production-smoke run
