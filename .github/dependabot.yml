@@ -15,6 +15,19 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # drizzle-zod 0.8.x targets the newer Zod type surface. Updating it in
+      # isolation currently breaks the shared schema's TypeScript contract,
+      # so keep routine grouped updates on the qualified 0.7 line until the
+      # Zod/schema migration is handled as a dedicated change.
+      - dependency-name: drizzle-zod
+        versions:
+          - ">=0.8.0 <1.0.0"
+      # Capacitor CLI 8.5.0 currently resolves xcode/uuid versions covered by
+      # GHSA-w5hq-g745-h8pq. Keep the audited 8.4.2 toolchain until a later
+      # release removes that development-time dependency path.
+      - dependency-name: "@capacitor/cli"
+        versions:
+          - "8.5.0"
     groups:
       production-dependencies:
         dependency-type: production
