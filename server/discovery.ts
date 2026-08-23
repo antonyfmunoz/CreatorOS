@@ -6,6 +6,7 @@ import {
   discoveryPolicySchema,
   discoveryPreferenceSchema,
   feedModes,
+  selectDiverseDiscoveryCandidates,
 } from "@shared/discovery";
 import { userSafetyControlSchema } from "@shared/native-social-safety";
 import {
@@ -335,10 +336,6 @@ export function registerDiscoveryRoutes(app: Express) {
           right.score - left.score ||
           right.post.createdAt.getTime() - left.post.createdAt.getTime(),
       );
-    const counts = new Map<number, number>();
-    const selected: typeof scored = [];
-    let lastTopic = "";
-
     // A creator must be able to see the result of their latest publication in
     // the recommended feed. Preserve one deterministic self-publication slot,
     // then let the ranking and diversity guardrails govern the remaining feed.
@@ -351,35 +348,14 @@ export function registerDiscoveryRoutes(app: Express) {
                 right.post.createdAt.getTime() - left.post.createdAt.getTime(),
             )[0]
         : undefined;
-    if (newestOwned) {
-      selected.push(newestOwned);
-      counts.set(newestOwned.post.userId, 1);
-      lastTopic = newestOwned.topic;
-    }
-
-    for (const candidate of scored) {
-      if (selected.includes(candidate)) continue;
-      if (
-        (counts.get(candidate.post.userId) ?? 0) >=
-        Number(guardrails.maxPerCreator)
-      )
-        continue;
-      if (
-        guardrails.diversityTopics &&
-        candidate.topic === lastTopic &&
-        scored.some(
-          (other) => other.topic !== lastTopic && !selected.includes(other),
-        )
-      )
-        continue;
-      selected.push(candidate);
-      counts.set(
-        candidate.post.userId,
-        (counts.get(candidate.post.userId) ?? 0) + 1,
-      );
-      lastTopic = candidate.topic;
-      if (selected.length >= limit) break;
-    }
+    const selected = selectDiverseDiscoveryCandidates(scored, {
+      limit,
+      maxPerCreator: Number(guardrails.maxPerCreator),
+      diversityTopics: Boolean(guardrails.diversityTopics),
+      creatorId: (candidate) => candidate.post.userId,
+      topic: (candidate) => candidate.topic,
+      pinned: newestOwned,
+    });
     const requestId = crypto.randomUUID();
     if (selected.length)
       await db

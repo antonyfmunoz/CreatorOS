@@ -21,17 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Install media qualification runtime
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+        run: bash scripts/install-media-quality-runtime.sh
       - run: npm ci
       - name: Verify clean release source
         run: node scripts/assert-clean-source.mjs
       - run: npm run verify:secrets
+      - run: npm run verify:stitch
+      - run: npm run verify:infrastructure
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
 
@@ -40,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -66,8 +68,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -112,8 +114,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_qualification
       QUALIFICATION_ISOLATED_DATABASE: "true"
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -155,13 +157,13 @@ jobs:
       CREATOROS_QUALIFICATION_MODE: "true"
       VITE_CREATOROS_QUALIFICATION_MODE: "true"
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Install media qualification runtime
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+        run: bash scripts/install-media-quality-runtime.sh
       - run: npm ci
       - run: node scripts/migrate-qualification.mjs
       - run: npx tsx scripts/seed-browser-qualification.ts

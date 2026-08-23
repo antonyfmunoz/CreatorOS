@@ -1,0 +1,50 @@
+name: Production smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Optional exact deployed commit to require
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creativesos-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  authenticated-smoke:
+    name: Authenticated production journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://creativesos.net
+    env:
+      CREATIVESOS_PRODUCTION_BASE_URL: https://creativesos.net
+      CREATIVESOS_PRODUCTION_SESSION_TOKEN: ${{ secrets.CREATIVESOS_PRODUCTION_SESSION_TOKEN }}
+      CREATIVESOS_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run non-destructive authenticated production field tests
+        run: npm run verify:production-smoke
+      - name: Preserve smoke evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-smoke-evidence
+          path: |
+            test-results/
+            production-smoke-report/
+          retention-days: 14

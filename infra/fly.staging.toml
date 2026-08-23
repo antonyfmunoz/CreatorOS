@@ -1,0 +1,45 @@
+app = "creatoros-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "node scripts/migrate-production.mjs"
+
+[processes]
+  web = "node dist/index.js"
+  media = "npm run media:worker"
+  cut = "npm run cut:worker"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  PUBLIC_APP_URL = "https://creatoros-staging.fly.dev"
+  MEDIA_PROCESSING_MODE = "external"
+  CUT_STUDIO_PROCESSING_MODE = "external"
+
+[http_service]
+  processes = ["web"]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "GET"
+  path = "/api/ready"
+  timeout = "5s"
+
+[[vm]]
+  processes = ["web"]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[[vm]]
+  processes = ["media", "cut"]
+  size = "performance-2x"
+  memory = "4gb"

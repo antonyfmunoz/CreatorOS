@@ -8,7 +8,9 @@ vite.config.ts.*
 # Local dev cruft / DB dumps — never commit.
 dump*.sql
 New Text Document*.txt
-attached_assets/stitch_creatoros/
+# The 74 Stitch screen.png files are the versioned visual-regression goldens.
+# Stitch's generated implementation HTML is not application source.
+attached_assets/stitch_creatoros/**/code.html
 # Runtime and field-test media stay local or in object storage. Historical
 # tracked fixtures remain available, but new uploads must never enter a release.
 uploads/*
@@ -17,6 +19,7 @@ attached_assets/creativesos-youtube-field-test.mp4
 workers/**/.wrangler/
 test-results/
 playwright-report/
+production-smoke-report/
 
 # WP-P4-SECRETS-001: real env files are secret-bearing — never commit.
 .env

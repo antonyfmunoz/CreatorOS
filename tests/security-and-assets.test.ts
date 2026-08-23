@@ -58,6 +58,29 @@ describe("production safety boundaries", () => {
     expect(blocked.state.retryAfter).toBeDefined();
   });
 
+  it("admits exactly the production burst budget and throttles every excess request", () => {
+    const limiter = apiRateLimiter({ max: 240, windowMs: 60_000 });
+    const statuses: number[] = [];
+    const retryAfter: string[] = [];
+    let admitted = 0;
+    for (let index = 0; index < 260; index += 1) {
+      const state = { statusCode: 0 };
+      limiter(
+        { path: "/api/notifications", ip: "198.51.100.25" } as never,
+        {
+          setHeader: (key: string, value: string) => { if (key === "Retry-After") retryAfter.push(value); },
+          status: (code: number) => ({ json: () => { state.statusCode = code; } }),
+        } as never,
+        () => { admitted += 1; },
+      );
+      statuses.push(state.statusCode || 200);
+    }
+    expect(admitted).toBe(240);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(20);
+    expect(retryAfter).toHaveLength(20);
+    expect(retryAfter.every((value) => Number(value) >= 1 && Number(value) <= 60)).toBe(true);
+  });
+
   it("keeps local assets development-only and records provider-neutral paths", async () => {
     process.env.NODE_ENV = "development";
     process.env.ASSET_STORAGE_PROVIDER = "local";

@@ -8,3 +8,40 @@ export const discoveryPreferenceSchema = z.object({ interests: z.array(z.string(
 export const contentModerationStateSchema = z.object({ targetType: z.enum(["post", "product", "community", "user"]), targetId: z.string().trim().min(1).max(120), visibility: z.enum(["visible", "restricted", "removed"]), sensitive: z.boolean().default(false), reason: z.string().trim().max(1_000).nullable().default(null) }).strict();
 
 export type RankedDiscoveryItem<T> = { item: T; score: number; explanation: string[]; policyVersion: number; rank: number };
+
+export function selectDiverseDiscoveryCandidates<T>(
+  candidates: T[],
+  options: {
+    limit: number;
+    maxPerCreator: number;
+    diversityTopics: boolean;
+    creatorId: (candidate: T) => number;
+    topic: (candidate: T) => string;
+    pinned?: T;
+  },
+) {
+  const selected: T[] = [];
+  const counts = new Map<number, number>();
+  let lastTopic = "";
+  if (options.pinned && candidates.includes(options.pinned)) {
+    selected.push(options.pinned);
+    counts.set(options.creatorId(options.pinned), 1);
+    lastTopic = options.topic(options.pinned);
+  }
+  for (const candidate of candidates) {
+    if (selected.includes(candidate)) continue;
+    const creator = options.creatorId(candidate);
+    const topic = options.topic(candidate);
+    if ((counts.get(creator) ?? 0) >= options.maxPerCreator) continue;
+    if (
+      options.diversityTopics &&
+      topic === lastTopic &&
+      candidates.some((other) => options.topic(other) !== lastTopic && !selected.includes(other))
+    ) continue;
+    selected.push(candidate);
+    counts.set(creator, (counts.get(creator) ?? 0) + 1);
+    lastTopic = topic;
+    if (selected.length >= options.limit) break;
+  }
+  return selected;
+}
