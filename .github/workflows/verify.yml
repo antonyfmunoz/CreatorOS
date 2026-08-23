@@ -35,7 +35,8 @@ jobs:
       - run: npm run verify:stitch
       - run: npm run verify:infrastructure
       - run: npm run verify
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Audit production and build dependency graph
+        run: npm audit --audit-level=moderate
 
   native-android:
     name: Android native shell
