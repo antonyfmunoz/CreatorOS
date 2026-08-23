@@ -41,10 +41,10 @@ jobs:
       CREATOROS_QUALIFICATION_MODE: "true"
       VITE_CREATOROS_QUALIFICATION_MODE: "true"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -54,6 +54,8 @@ jobs:
       - name: Verify clean release source
         run: node scripts/assert-clean-source.mjs
       - run: npm run verify:secrets
+      - run: npm run verify:stitch
+      - run: npm run verify:infrastructure
       - run: npm run verify
       - name: Apply and qualify the exact migration ledger
         run: node scripts/migrate-qualification.mjs
@@ -80,10 +82,10 @@ jobs:
       DISTRIBUTION_DISPATCH_SECRET: ${{ secrets.DISTRIBUTION_DISPATCH_SECRET }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm

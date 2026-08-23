@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "creativesos.worker-scaling.v1",
+  "evaluationWindowSeconds": 120,
+  "cooldownSeconds": 300,
+  "monthlyCostCeilingUsd": 2500,
+  "queues": {
+    "media": { "min": 1, "max": 12, "targetQueuedPerWorker": 4, "scaleOutOldestQueuedSeconds": 60, "scaleInIdleSeconds": 900 },
+    "cut": { "min": 1, "max": 8, "targetQueuedPerWorker": 2, "scaleOutOldestQueuedSeconds": 90, "scaleInIdleSeconds": 1200 }
+  },
+  "failClosed": {
+    "unknownTelemetry": true,
+    "costEstimateOverCeiling": true,
+    "mixedReleaseImages": true
+  }
+}

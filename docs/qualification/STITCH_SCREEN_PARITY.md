@@ -49,3 +49,8 @@ until its independent live round trip passes; future visual changes must still
 use only this 74-folder Stitch set unless the product owner replaces it.
 
 The register contains all 74 authoritative Stitch folders exactly once.
+`e2e/stitch-visual-signature.spec.ts` also compares six canonical mobile
+surfaces against their selected Stitch frames using normalized palette,
+luminance, edge-density, colorfulness and pixel-distance bounds. Marketplace
+uses a luminance-inverted derivative of its Stitch source because the light
+palette is explicitly superseded; no non-Stitch image is used as a reference.

@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
+import { analyzeMediaQuality } from "../server/media-quality";
 
 function ownerFor(testInfo: TestInfo) {
   return testInfo.project.name.startsWith("mobile") ? 1 : 2;
@@ -154,6 +155,41 @@ test("CutStudio measures calibrated private-source loudness", async ({ page }, t
   await expect(page.getByText("Measuring private source loudness…", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Calibrated loudness analysis").getByText("LUFS-I")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/Measured -?\d+\.\d LUFS/)).toBeVisible();
+});
+
+test("CutStudio preserves objective media quality and audio-video timing", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(testInfo);
+  const directory = testInfo.outputPath("media-quality-fixtures");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/reference.mp4`;
+  const outputPath = `${directory}/candidate.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=2", "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  const source = await uploadPrivate(page, owner, sourcePath, "quality-reference.mp4", "video/mp4", "video");
+  const createResponse = await api(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Quality gate ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(createResponse);
+  const project = await createResponse.json();
+  const renderResponse = await api(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, audioPreset: "original", masterGainDb: 0, quality: "social", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await api(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 90_000, intervals: [500, 1_000, 2_000] }).toBe("done");
+  const mediaResponse = await api(page, owner, "GET", `/api/cut/jobs/${render.id}/media`);
+  await expectOk(mediaResponse);
+  const media = await mediaResponse.json() as { url: string };
+  const fileResponse = await page.request.get(media.url);
+  await expectOk(fileResponse);
+  writeFileSync(outputPath, await fileResponse.body());
+  const evidence = analyzeMediaQuality(sourcePath, outputPath);
+  expect(evidence.video).toMatchObject({ codec: "h264", width: 1280, height: 720, fps: 24 });
+  expect(evidence.video.vmaf).toBeGreaterThanOrEqual(80);
+  expect(evidence.video.ssim).toBeGreaterThanOrEqual(0.94);
+  expect(evidence.video.psnrDb).toBeGreaterThanOrEqual(30);
+  expect(evidence.timing.durationDriftSeconds).toBeLessThanOrEqual(0.1);
+  expect(evidence.timing.candidateAvStartOffsetSeconds).not.toBeNull();
+  expect(evidence.timing.candidateAvStartOffsetSeconds!).toBeLessThanOrEqual(0.05);
+  expect(evidence.audio.integratedLufs).not.toBeNull();
+  expect(evidence.audio.truePeakDbfs).not.toBeNull();
+  await testInfo.attach("media-quality-evidence", { body: JSON.stringify(evidence, null, 2), contentType: "application/json" });
 });
 
 test("CutStudio privately marks and inserts media from a dedicated source monitor", async ({ page }, testInfo) => {
