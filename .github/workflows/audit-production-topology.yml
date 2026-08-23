@@ -47,7 +47,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
       - name: Preserve sanitized audit evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: production-topology-audit
           path: ${{ runner.temp }}/fly-topology-report.json
