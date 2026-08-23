@@ -101,23 +101,23 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
-- The current provider-activation candidate is locally qualified but is not yet
-  represented as deployed production: 117 unit/contract files and 449 tests,
-  TypeScript, production build, bundle and Worker gates, a fresh 106-migration
-  database with 218 required tables, backup/restore, worker recovery, secrets,
-  dependency, infrastructure, mobile and capacity gates all pass. The complete
-  two-viewport field matrix scheduled 202 executions, with 196 passing and six
-  intentional skips and no failures. The current live identity below remains
-  historical truth until the exact protected merge commit is deployed.
+- The provider-activation control plane is locally, CI and production
+  qualified: 117 unit/contract files and 449 tests, TypeScript, production
+  build, bundle and Worker gates, a fresh 106-migration database with 218
+  required tables, backup/restore, worker recovery, secrets, dependency,
+  infrastructure, mobile and capacity gates all pass. The complete two-viewport
+  field matrix scheduled 202 executions, with 196 passing and six intentional
+  skips and no failures.
 - Protected deployment run
-  [`32623652819`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32623652819)
+  [`32664016977`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32664016977)
   requalified and deployed exact protected `main` commit
-  `004e50c45328c02ceeb8d0d54a623fc6e8e2e586` while preserving the detected
-  compact Fly topology. Live `/api/release` now reports verified clean source,
+  `e0f6409d1a0645d41fe920893e4c164b51ab20d6` while preserving the detected
+  compact Fly topology. Live `/api/release` reports verified clean source,
   fingerprint
-  `50b56bff60f2f4df67691477738e2e7854bca93ea1da3246ac15cc3cdf1b4b14`,
-  and 105/105 migration parity; `/api/health` and `/api/ready` are healthy with
-  zero release blockers and configured private R2 asset delivery.
+  `a630ae460daa78451420d308d3000f2706caa83e56047798f2491e525dee3053`,
+  and 106/106 migration parity; `/api/health` and `/api/ready` are healthy with
+  zero release blockers, configured private R2 asset delivery and production
+  authentication.
 - Read-only topology audit
   [`32624543906`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32624543906)
   observed one active legacy `app` Machine and one release image. No paid
@@ -713,17 +713,19 @@ closure is now bounded by product, publication or external evidence:
    lifecycle/network recovery, explicit push consent, encrypted device
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
-6. **Complete locally; protected CI pending for the current candidate:** run the
-   complete unit/build/migration/security, recovery, capacity and 202-execution
-   browser suite and reconcile its
-   evidence without overwriting older production truth;
-7. **Release gate for this tranche:** deploy the exact protected merge commit
-   from an immutable clean snapshot, apply all 106 migrations, and verify
-   health/readiness, `sourceDirty: false`, exact production identity, auth
-   routing, public routes and protected API/route boundaries. The merge commit
-   and live runtime identity must be taken from `/api/release`, never predicted
-   in this roadmap. A fresh safe signed-in route repeat remains an
-   authorized-session evidence gate rather than missing native code;
+6. **Complete locally and in protected CI:** the complete
+   unit/build/migration/security, recovery, capacity and 202-execution browser
+   suite passes for exact merge commit
+   `e0f6409d1a0645d41fe920893e4c164b51ab20d6` without overwriting older
+   production truth;
+7. **Release gate complete for this tranche:** protected workflow `32664016977`
+   deployed that immutable clean commit, completed a private backup, applied all
+   106 migrations, preserved the compact topology, and passed chained public
+   smoke. Independent `/api/release`, `/api/ready` and `/api/health` checks prove
+   `sourceDirty: false`, exact commit/fingerprint identity, 106/106 migration
+   parity, ready production dependencies and zero release blockers. A fresh safe
+   signed-in route repeat remains an authorized-session evidence gate rather
+   than missing native code;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.
