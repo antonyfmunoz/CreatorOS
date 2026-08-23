@@ -64,3 +64,26 @@ selected machine sizes, storage throughput, representative 4K inputs,
 long-duration cancellation, regional loss, queue saturation, cost ceilings and
 artifact integrity. External live destinations and physical-device capture are
 separate provider/device gates.
+
+## Production topology transitions
+
+The protected production deployment preserves the process-group layout it
+observes before releasing. A compact `app` deployment therefore stays compact,
+while an existing `web`/`media`/`cut` deployment keeps using the scaled
+manifest. Mixed or unknown process groups fail closed rather than allowing a
+release to destroy or silently reshape machines.
+
+The one-time transition is exposed through the manual production workflow:
+
+- select `apply-scaled` and enter `APPLY_SCALED_TOPOLOGY` to create the
+  separately sized process groups;
+- select `apply-compact` and enter `APPLY_COMPACT_TOPOLOGY` to return to the
+  compact layout;
+- leave `preserve` selected for an ordinary release.
+
+Both transitions execute the normal backup, exact-source qualification,
+migration and release-identity gates. A scaled transition additionally fails
+unless the post-deployment live audit finds two running web Machines and one
+running worker for each media queue at the qualified resource classes. The
+workflow must not be dispatched until the operator accepts the resulting Fly
+cost change.

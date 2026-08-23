@@ -28,10 +28,27 @@ if ($LASTEXITCODE -ne 0) {
 $releaseTempRoot = Join-Path ([IO.Path]::GetTempPath()) "creativesos-release-$([guid]::NewGuid().ToString('N'))"
 $snapshotPath = Join-Path $releaseTempRoot "source"
 $archivePath = Join-Path $releaseTempRoot "source.tar"
+$topologyPath = Join-Path $releaseTempRoot "fly-machines.json"
 $locationPushed = $false
 
 try {
   New-Item -ItemType Directory -Path $snapshotPath -Force | Out-Null
+
+  $liveTopology = (& flyctl machines list --app creatoros-app --json | Out-String)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($liveTopology)) {
+    throw "Unable to read the live Fly topology before deployment"
+  }
+  [IO.File]::WriteAllText($topologyPath, $liveTopology, [Text.UTF8Encoding]::new($false))
+
+  $resolverArguments = @($topologyPath)
+  if (-not [string]::IsNullOrWhiteSpace($env:CREATIVESOS_FLY_CONFIG)) {
+    $resolverArguments += "--override=$env:CREATIVESOS_FLY_CONFIG"
+    $resolverArguments += "--confirm=$env:CREATIVESOS_TOPOLOGY_CONFIRM"
+  }
+  $flyConfigPath = (& node scripts/resolve-live-fly-config.mjs @resolverArguments | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $flyConfigPath -notin @("fly.toml", "infra/fly.production-scaled.toml")) {
+    throw "Unable to resolve a safe Fly deployment topology"
+  }
 
   git archive --format=tar --output=$archivePath $sourceCommit
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $archivePath)) {
@@ -39,7 +56,11 @@ try {
   }
 
   tar -xf $archivePath -C $snapshotPath
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $snapshotPath "fly.toml"))) {
+  if (
+    $LASTEXITCODE -ne 0 -or
+    -not (Test-Path -LiteralPath (Join-Path $snapshotPath "fly.toml")) -or
+    -not (Test-Path -LiteralPath (Join-Path $snapshotPath $flyConfigPath))
+  ) {
     throw "Unable to extract the immutable release source snapshot"
   }
 
@@ -93,6 +114,7 @@ try {
 
   flyctl deploy . `
     --app creatoros-app `
+    --config $flyConfigPath `
     --remote-only `
     --release-command-timeout 10m `
     --build-arg "VITE_CLERK_PUBLISHABLE_KEY=$env:VITE_CLERK_PUBLISHABLE_KEY" `
@@ -127,6 +149,22 @@ try {
     $releaseIdentity.migrations.parity -ne $true
   ) {
     throw "Production is not serving the exact qualified release identity"
+  }
+
+  $deployedTopology = (& flyctl machines list --app creatoros-app --json | Out-String)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($deployedTopology)) {
+    throw "Unable to verify the live Fly topology after deployment"
+  }
+  [IO.File]::WriteAllText($topologyPath, $deployedTopology, [Text.UTF8Encoding]::new($false))
+  $deployedConfigPath = (& node scripts/resolve-live-fly-config.mjs $topologyPath | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $deployedConfigPath -ne $flyConfigPath) {
+    throw "Production topology does not match the selected deployment topology"
+  }
+  if ($flyConfigPath -eq "infra/fly.production-scaled.toml") {
+    node scripts/audit-live-fly-topology.mjs $topologyPath --enforce
+    if ($LASTEXITCODE -ne 0) {
+      throw "Scaled production topology failed its post-deployment audit"
+    }
   }
 } finally {
   if ($locationPushed) {

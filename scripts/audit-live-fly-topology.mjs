@@ -12,13 +12,13 @@ export const targetTopology = Object.freeze({
 const activeStates = new Set(["created", "starting", "started", "replacing", "suspended"]);
 const runningStates = new Set(["starting", "started", "replacing"]);
 
-function machinesFromPayload(payload) {
+export function machinesFromPayload(payload) {
   if (Array.isArray(payload)) return payload;
   for (const key of ["machines", "Machines", "data"]) if (Array.isArray(payload?.[key])) return payload[key];
   throw new Error("Fly topology payload does not contain a machine array");
 }
 
-function machineGroup(machine) {
+export function machineGroup(machine) {
   return machine?.config?.metadata?.fly_process_group
     ?? machine?.config?.env?.FLY_PROCESS_GROUP
     ?? machine?.process_group
