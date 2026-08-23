@@ -86,6 +86,12 @@ describe("production deployment contract", () => {
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
   });
 
+  it("fails protected verification on moderate or higher findings anywhere in the dependency graph", () => {
+    expect(verifyWorkflowSource).toContain("name: Audit production and build dependency graph");
+    expect(verifyWorkflowSource).toContain("run: npm audit --audit-level=moderate");
+    expect(verifyWorkflowSource).not.toContain("npm audit --omit=dev");
+  });
+
   it("makes exact-source public browser smoke part of every successful production deployment", () => {
     const deployStepIndex = workflowSource.indexOf("Execute fail-closed production release");
     const smokeStepIndex = workflowSource.indexOf("Verify exact deployed release through the public application boundary");
