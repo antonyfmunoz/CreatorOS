@@ -34,6 +34,8 @@ const requiredTables = [
   "operational_service_events",
   "operational_usage_events",
   "operational_budgets",
+  "provider_activation_runs",
+  "provider_activation_evidence",
   "developer_oauth_apps",
   "developer_oauth_installations",
   "developer_oauth_authorization_codes",

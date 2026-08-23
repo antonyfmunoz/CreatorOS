@@ -107,6 +107,7 @@ export async function buildAccountExport(user: User) {
     organizations,
     automations,
     relationshipHub,
+    providerActivations,
     privacyRequests,
   ] = await Promise.all([
     Promise.all([
@@ -210,6 +211,10 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from relationship_tasks where created_by_user_id = ${userId} or assigned_to_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from relationship_audit_events where actor_user_id = ${userId} order by created_at limit 100000`),
     ]),
+    Promise.all([
+      exportRows(sql`select * from provider_activation_runs where business_id in (select id from businesses where owner_user_id = ${userId}) order by started_at`),
+      exportRows(sql`select * from provider_activation_evidence where business_id in (select id from businesses where owner_user_id = ${userId}) order by created_at`),
+    ]),
     exportRows(sql`select * from account_privacy_requests where user_id = ${userId} order by created_at`),
   ]);
 
@@ -227,15 +232,16 @@ export async function buildAccountExport(user: User) {
       assets: creatorStudio[3], products: creatorStudio[4], campaigns: creatorStudio[5],
       aiAgents: creatorStudio[6], aiChats: creatorStudio[7], revenue: creatorStudio[8],
       contacts: creatorStudio[9], documents: creatorStudio[10],
-      cutStudioProjects: creatorStudio[11], cutStudioJobs: creatorStudio[12],
-      cutStudioVersions: creatorStudio[13], cutStudioReviewLinks: creatorStudio[14],
-      cutStudioReviewComments: creatorStudio[15], cutStudioReviewDecisions: creatorStudio[16],
-      broadcastStudios: creatorStudio[17], broadcastDestinations: creatorStudio[18], broadcastSessions: creatorStudio[19],
-      broadcastBrandKits: creatorStudio[20],
-      broadcastSessionTracks: creatorStudio[21],
-      broadcastStudioCollaborations: creatorStudio[22],
-      broadcastAudienceMessages: creatorStudio[23],
-      broadcastTemplates: creatorStudio[24],
+      cutStudioProjects: creatorStudio[11], cutStudioAudioTemplates: creatorStudio[12], cutStudioJobs: creatorStudio[13],
+      cutStudioVersions: creatorStudio[14], cutStudioReviewLinks: creatorStudio[15],
+      cutStudioReviewComments: creatorStudio[16], cutStudioReviewDecisions: creatorStudio[17],
+      broadcastStudios: creatorStudio[18], broadcastStudioVersions: creatorStudio[19],
+      broadcastDestinations: creatorStudio[20], broadcastSessions: creatorStudio[21],
+      broadcastBrandKits: creatorStudio[22],
+      broadcastSessionTracks: creatorStudio[23],
+      broadcastStudioCollaborations: creatorStudio[24],
+      broadcastAudienceMessages: creatorStudio[25],
+      broadcastTemplates: creatorStudio[26],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],
@@ -262,6 +268,7 @@ export async function buildAccountExport(user: User) {
       relationships: relationshipHub[0], consents: relationshipHub[1], conversations: relationshipHub[2],
       messages: relationshipHub[3], notes: relationshipHub[4], tasks: relationshipHub[5], auditEvents: relationshipHub[6],
     },
+    providerActivations: { runs: providerActivations[0], evidence: providerActivations[1] },
     privacyRequests,
   };
 

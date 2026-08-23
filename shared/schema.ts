@@ -3095,6 +3095,114 @@ export const operationalBudgets = pgTable(
   }),
 );
 
+// External activation evidence is append-only and business-scoped. A provider
+// is never represented as qualified because credentials exist; every required
+// acceptance stage must have current, referenced evidence in one explicit run.
+export const providerActivationRuns = pgTable(
+  "provider_activation_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: text("provider").notNull(),
+    environment: text("environment").notNull(),
+    status: text("status").notNull().default("draft"),
+    summary: text("summary").notNull().default(""),
+    startedByUserId: integer("started_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+    abandonedAt: timestamp("abandoned_at"),
+    closedByUserId: integer("closed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessProviderEnvironmentIdx: index("provider_activation_runs_business_provider_environment_idx").on(
+      table.businessId,
+      table.provider,
+      table.environment,
+      table.startedAt,
+    ),
+    idBusinessUnique: unique("provider_activation_runs_id_business_unique").on(
+      table.id,
+      table.businessId,
+    ),
+    providerCheck: check(
+      "provider_activation_runs_provider_check",
+      sql`${table.provider} IN ('media_delivery', 'email_delivery', 'push_delivery', 'podcast_directories', 'youtube_distribution', 'facebook_distribution', 'instagram_distribution', 'tiktok_distribution', 'x_distribution', 'instagram_inbox', 'messenger_inbox', 'whatsapp_inbox', 'x_inbox', 'remote_guests', 'transcription', 'realtime_ai', 'relationship_ai', 'cloned_voice', 'broadcast_destinations', 'stripe_platform_commerce', 'stripe_creator_payouts', 'umh_federation')`,
+    ),
+    environmentCheck: check(
+      "provider_activation_runs_environment_check",
+      sql`${table.environment} IN ('sandbox', 'staging', 'production')`,
+    ),
+    statusCheck: check(
+      "provider_activation_runs_status_check",
+      sql`${table.status} IN ('draft', 'qualified', 'abandoned')`,
+    ),
+    completionCheck: check(
+      "provider_activation_runs_completion_check",
+      sql`((${table.status} = 'qualified') = (${table.completedAt} IS NOT NULL)) AND ((${table.status} = 'abandoned') = (${table.abandonedAt} IS NOT NULL))`,
+    ),
+  }),
+);
+
+export const providerActivationEvidence = pgTable(
+  "provider_activation_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id").notNull(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    stage: text("stage").notNull(),
+    outcome: text("outcome").notNull(),
+    evidenceUrl: text("evidence_url"),
+    summary: text("summary").notNull(),
+    observedAt: timestamp("observed_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at"),
+    recordedByUserId: integer("recorded_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    runBusinessForeignKey: foreignKey({
+      columns: [table.runId, table.businessId],
+      foreignColumns: [providerActivationRuns.id, providerActivationRuns.businessId],
+      name: "provider_activation_evidence_run_business_fk",
+    }).onDelete("cascade"),
+    runStageCreatedIdx: index("provider_activation_evidence_run_stage_created_idx").on(
+      table.runId,
+      table.stage,
+      table.createdAt,
+    ),
+    businessCreatedIdx: index("provider_activation_evidence_business_created_idx").on(
+      table.businessId,
+      table.createdAt,
+    ),
+    stageCheck: check(
+      "provider_activation_evidence_stage_check",
+      sql`${table.stage} IN ('connect', 'credential_custody', 'refresh_revoke', 'inbound', 'outbound', 'webhook_signature', 'idempotency', 'rate_limit', 'retry', 'dead_letter', 'receipt', 'privacy_export', 'deletion', 'failure_recovery')`,
+    ),
+    outcomeCheck: check(
+      "provider_activation_evidence_outcome_check",
+      sql`${table.outcome} IN ('passed', 'failed', 'blocked')`,
+    ),
+    passedReferenceCheck: check(
+      "provider_activation_evidence_passed_reference_check",
+      sql`${table.outcome} <> 'passed' OR ${table.evidenceUrl} IS NOT NULL`,
+    ),
+    expiryCheck: check(
+      "provider_activation_evidence_expiry_check",
+      sql`${table.expiresAt} IS NULL OR ${table.expiresAt} > ${table.observedAt}`,
+    ),
+  }),
+);
+
 export const developerApiRateWindows = pgTable(
   "developer_api_rate_windows",
   {

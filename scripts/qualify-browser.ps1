@@ -27,7 +27,12 @@ try {
   & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Failed to initialize the disposable browser database" }
   & pg_ctl -D $qualificationPath -l $qualificationLog -o "-p $qualificationPort -h 127.0.0.1" -w start
-  if ($LASTEXITCODE -ne 0) { throw "Failed to start the disposable browser database" }
+  if ($LASTEXITCODE -ne 0) {
+    if (Test-Path -LiteralPath $qualificationLog) {
+      Write-Error "Disposable browser database log:`n$(Get-Content -LiteralPath $qualificationLog -Raw)"
+    }
+    throw "Failed to start the disposable browser database"
+  }
   $postgresStarted = $true
   & createdb -h 127.0.0.1 -p $qualificationPort -U postgres creativesos_browser
   if ($LASTEXITCODE -ne 0) { throw "Failed to create the disposable browser database" }

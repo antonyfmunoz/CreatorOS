@@ -156,6 +156,7 @@ import {
   registerDeveloperPlatformRoutes,
 } from "./developer-platform";
 import { registerOperationsRoutes } from "./operations";
+import { registerProviderActivationRoutes } from "./provider-activation";
 import { registerDataPortabilityRoutes } from "./data-portability";
 import { registerTrustRoutes } from "./trust";
 import { registerMobileRoutes } from "./mobile";
@@ -832,6 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerCommunityEngagementRoutes(app);
   registerDeveloperPlatformRoutes(app);
   registerOperationsRoutes(app);
+  registerProviderActivationRoutes(app);
   registerDataPortabilityRoutes(app);
   registerTrustRoutes(app);
   registerMobileRoutes(app);

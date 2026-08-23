@@ -16,16 +16,9 @@ import { AuthProvider, DemoAuthProvider } from "./hooks/use-auth";
 import { routeChrome } from "./lib/route-chrome";
 import { captureClientException, capturePageView } from "./lib/posthog";
 import AuthPage from "@/pages/auth-page";
-
-const BottomNavigation = lazy(
-  () => import("@/components/layout/BottomNavigation"),
-);
-const ApplicationOverlays = lazy(
-  () => import("@/components/layout/ApplicationOverlays"),
-);
-const OfflineOperations = lazy(
-  () => import("@/components/system/OfflineOperations"),
-);
+import BottomNavigation from "@/components/layout/BottomNavigation";
+import ApplicationOverlays from "@/components/layout/ApplicationOverlays";
+import OfflineOperations from "@/components/system/OfflineOperations";
 
 // Route-level loading keeps the first render focused on the destination the
 // person chose instead of forcing the social, marketplace, community, AI, and
@@ -96,6 +89,7 @@ const ProductionPlannerPage = lazy(() => import("@/pages/production-planner"));
 const DeveloperPlatformPage = lazy(() => import("@/pages/developer-platform"));
 const DataPortabilityPage = lazy(() => import("@/pages/data-portability"));
 const OperationsPage = lazy(() => import("@/pages/operations"));
+const ProviderActivationsPage = lazy(() => import("@/pages/provider-activations"));
 const OAuthAuthorizePage = lazy(() => import("@/pages/oauth-authorize"));
 const AppsPage = lazy(() => import("@/pages/apps"));
 const AudienceStudioPage = lazy(() => import("@/pages/audience-studio"));
@@ -138,6 +132,10 @@ function recoverFromStaleBuild(error: unknown): boolean {
   const retryKey = `creativesos:stale-build-retry:${message}`;
   if (sessionStorage.getItem(retryKey)) return false;
   sessionStorage.setItem(retryKey, "1");
+  if (!navigator.onLine) {
+    window.addEventListener("online", () => window.location.reload(), { once: true });
+    return true;
+  }
   window.location.reload();
   return true;
 }
@@ -351,6 +349,7 @@ function Router() {
         component={DeveloperPlatformPage}
       />
       <ProtectedRoute path="/business/operations" component={OperationsPage} />
+      <ProtectedRoute path="/business/providers" component={ProviderActivationsPage} />
       <ProtectedRoute path="/oauth/authorize" component={OAuthAuthorizePage} />
       <ProtectedRoute
         path="/business/audience"
