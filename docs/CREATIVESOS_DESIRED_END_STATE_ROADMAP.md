@@ -102,7 +102,7 @@ do not yet have the locked side-by-side operator evidence required for a
 ### Production closure evidence
 
 - The provider-activation control plane is locally, CI and production
-  qualified: 117 unit/contract files and 449 tests, TypeScript, production
+  qualified: 118 unit/contract files and 451 tests, TypeScript, production
   build, bundle and Worker gates, a fresh 106-migration database with 218
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
@@ -122,12 +122,14 @@ do not yet have the locked side-by-side operator evidence required for a
   [`32665248113`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32665248113)
   observed one active legacy `app` Machine and one release image. No paid
   `web`, `media`, or `cut` expansion has been applied.
-- Protected public production-smoke run
-  [`32665173137`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32665173137)
-  independently passed the exact deployed commit's release,
-  health/readiness, auth-boundary and accessibility checks on mobile and
-  desktop. Authenticated production workspaces remain a separate
-  authorized-session evidence gate.
+- Protected all-scope production-smoke run
+  [`32760646885`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32760646885)
+  independently passed public release, health/readiness, auth-boundary and
+  accessibility checks plus all 16 authenticated production workspaces on
+  mobile and desktop against exact deployed commit
+  `3fdd0b95b9e8e4243dbe9cfbd8e584c5ae94cf48`. Authentication used a dedicated
+  smoke identity and short-lived Clerk testing state; no personal session or
+  static cookie is retained.
 - Protected workflow run
   [`32603964955`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32603964955)
   deployed the dated 2026-08-22 production baseline from exact `main` merge
@@ -168,9 +170,9 @@ do not yet have the locked side-by-side operator evidence required for a
 - Anonymous field checks prove auth routing, separate login/registration,
   protected-route redirection, protected-API `401` boundaries, public discovery
   contracts, production branding, the creation-and-distribution copy, and
-  security headers on the current clean release. A fresh authenticated
-  route repeat still requires an authorized signed-in browser session; older
-  authenticated production evidence remains recorded in the parity ledger.
+  security headers on the clean release. Renewable authenticated production
+  smoke now independently traverses all 16 workspaces at both viewports; the
+  live `/api/release` endpoint remains canonical for current source identity.
 - After this evidence was merged, the same protected workflow produced the
   documentation-only Fly release `v313` from merge commit
   `1b0c340bd3fa74ae41545363df18c07bf2304614`. The live `/api/release` endpoint,
@@ -759,14 +761,14 @@ closure is now bounded by product, publication or external evidence:
    suite passes for exact merge commit
    `e0f6409d1a0645d41fe920893e4c164b51ab20d6` without overwriting older
    production truth;
-7. **Release gate complete for this tranche:** protected workflow `32664016977`
-   deployed that immutable clean commit, completed a private backup, applied all
-   106 migrations, preserved the compact topology, and passed chained public
-   smoke. Independent `/api/release`, `/api/ready` and `/api/health` checks prove
-   `sourceDirty: false`, exact commit/fingerprint identity, 106/106 migration
-   parity, ready production dependencies and zero release blockers. A fresh safe
-   signed-in route repeat remains an authorized-session evidence gate rather
-   than missing native code;
+7. **Release gate complete for this tranche:** protected workflow `32758515220`
+   deployed immutable clean commit
+   `3fdd0b95b9e8e4243dbe9cfbd8e584c5ae94cf48`, completed a private backup,
+   applied all 106 migrations, preserved the compact topology, and proved exact
+   release identity. Protected all-scope smoke `32760646885` then passed public
+   boundaries and all 16 authenticated production workspaces at mobile and
+   desktop viewports. `/api/release`, `/api/ready` and `/api/health` remain the
+   canonical current identity and readiness boundaries;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.
