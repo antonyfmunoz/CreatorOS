@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessBenchmarkSchema,
   benchmarkReductionBps,
   benchmarkEnvironmentSchema,
   benchmarkFamilies,
   competitiveState,
   completeBenchmarkRunSchema,
+  createBenchmarkDefinitionSchema,
   requiredBenchmarkEvidenceKinds,
   startBenchmarkRunSchema,
 } from "../shared/competitive-benchmarks";
@@ -122,6 +124,7 @@ describe("competitive benchmark contract", () => {
     expect(
       competitiveState({
         qualityComparable: true,
+        requiredParityPassed: true,
         nativeScores: [4.5, 4.5, 4.5, 4.5],
         comparisonScores: [4.8, 4.8, 4.8, 4.8],
         activeTimeReductionBps: 2_500,
@@ -132,6 +135,7 @@ describe("competitive benchmark contract", () => {
     expect(
       competitiveState({
         qualityComparable: true,
+        requiredParityPassed: true,
         nativeScores: [4, 5, 5, 5],
         comparisonScores: [5, 5, 5, 5],
         activeTimeReductionBps: 9_000,
@@ -142,6 +146,7 @@ describe("competitive benchmark contract", () => {
     expect(
       competitiveState({
         qualityComparable: true,
+        requiredParityPassed: true,
         nativeScores: [5, 5, 5, 5],
         comparisonScores: [5, 5, 5, 5],
         activeTimeReductionBps: 9_000,
@@ -149,5 +154,92 @@ describe("competitive benchmark contract", () => {
         nativeUnrecoverableErrors: 1,
       }),
     ).toBe("parity_failed");
+    expect(
+      competitiveState({
+        qualityComparable: true,
+        requiredParityPassed: false,
+        nativeScores: [5, 5, 5, 5],
+        comparisonScores: [5, 5, 5, 5],
+        activeTimeReductionBps: 9_000,
+        handoffReductionBps: 9_000,
+        nativeUnrecoverableErrors: 0,
+      }),
+    ).toBe("parity_failed");
+  });
+
+  it("requires a unique required-parity contract for every comparison product", () => {
+    const definition = {
+      family: "cut_studio",
+      name: "Replace the normal professional creator edit workflow",
+      targetUser: "A professional creator producing publish-ready video.",
+      workflow: "Import, edit, review, render, and hand the approved master directly to distribution.",
+      comparisonProducts: ["CapCut", "Premiere Pro"],
+      outputSpecification: {},
+      rubric: {},
+      sourceReferences: [{ label: "Official source", url: "https://example.com/source", checkedAt: new Date() }],
+      parityRequirements: [
+        {
+          id: "capcut-required-edit",
+          comparisonProduct: "CapCut",
+          capability: "Complete edit",
+          acceptanceCriterion: "Complete the locked edit without a missing required workflow step.",
+          tier: "required_parity",
+        },
+      ],
+    };
+    expect(createBenchmarkDefinitionSchema.safeParse(definition).success).toBe(false);
+    const complete = {
+      ...definition,
+      parityRequirements: [
+        ...definition.parityRequirements,
+        {
+          id: "premiere-required-edit",
+          comparisonProduct: "Premiere Pro",
+          capability: "Complete edit",
+          acceptanceCriterion: "Complete the locked edit without a missing required workflow step.",
+          tier: "required_parity",
+        },
+      ],
+    };
+    expect(createBenchmarkDefinitionSchema.safeParse(complete).success).toBe(true);
+    expect(
+      createBenchmarkDefinitionSchema.safeParse({
+        ...complete,
+        parityRequirements: [
+          complete.parityRequirements[0],
+          { ...complete.parityRequirements[1], id: complete.parityRequirements[0].id },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires one evidence-linked verdict per submitted capability", () => {
+    const base = {
+      creativesOsRunId: "11111111-1111-4111-8111-111111111111",
+      comparisonRunId: "22222222-2222-4222-8222-222222222222",
+      qualityComparable: true,
+      reviewerNote: "The reviewer inspected both locked runs and documented the complete comparison.",
+      requirementResults: [
+        {
+          requirementId: "capcut-required-edit",
+          status: "passed",
+          evidenceKinds: ["output_artifact"],
+          note: "Both locked output artifacts prove the complete editing outcome.",
+        },
+      ],
+    };
+    expect(assessBenchmarkSchema.safeParse(base).success).toBe(true);
+    expect(
+      assessBenchmarkSchema.safeParse({
+        ...base,
+        requirementResults: [...base.requirementResults, base.requirementResults[0]],
+      }).success,
+    ).toBe(false);
+    expect(
+      assessBenchmarkSchema.safeParse({
+        ...base,
+        requirementResults: [{ ...base.requirementResults[0], evidenceKinds: [] }],
+      }).success,
+    ).toBe(false);
   });
 });

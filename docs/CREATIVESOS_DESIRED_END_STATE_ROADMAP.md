@@ -101,9 +101,9 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
-- The provider-activation control plane is locally, CI and production
-  qualified: 118 unit/contract files and 451 tests, TypeScript, production
-  build, bundle and Worker gates, a fresh 106-migration database with 218
+- The provider-activation control plane and specialist-substitution parity
+  enforcement are locally qualified: 119 unit/contract files and 455 tests,
+  TypeScript, production build, bundle and Worker gates, a fresh 107-migration database with 218
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
   field matrix scheduled 202 executions, with 196 passing and six intentional
@@ -503,6 +503,14 @@ same-input run; no parity claim is inferred. Runs now require identical locked
 source/device/network/operator/locale conditions and hashed input, action-log,
 output and recording artifacts.
 
+Each named comparison product now has a versioned specialist-substitution
+contract. Parity cannot be awarded from aggregate scores, speed or a feature
+sample: every required capability for that product needs one evidence-linked
+reviewer verdict, and any failed capability forces `parity_failed`. A material
+normal-workflow deficit is mandatory product backlog even when CreativesOS has
+a different integrated purpose. Specialist-edge exclusions must be explicit;
+they cannot silently lower the replacement standard.
+
 ### Native social
 
 - Maintain the implemented watch-session telemetry, Following/For You and
@@ -591,6 +599,9 @@ output and recording artifacts.
 
 Every market-facing parity or superiority claim has a dated evidence record,
 named workflow, current comparison source, failures, reviewer and measurements.
+For direct specialist parity, every required capability in the locked product
+contract is passed. Connected advantage is assessed only after that direct
+replacement threshold is met.
 
 ## Phase 5 — Provider activation and live round trips
 

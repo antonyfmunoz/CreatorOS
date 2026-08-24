@@ -36,6 +36,13 @@ type Definition = {
   targetUser: string;
   workflow: string;
   comparisonProducts: string[];
+  parityRequirements: Array<{
+    id: string;
+    comparisonProduct: string;
+    capability: string;
+    acceptanceCriterion: string;
+    tier: "required_parity" | "specialist_edge" | "connected_advantage";
+  }>;
   sourceReferences: Array<{ label: string; url: string; checkedAt: string }>;
   status: "draft" | "locked" | "retired";
   competitiveState:
@@ -50,6 +57,9 @@ type Definition = {
     activeTimeReductionBps: number;
     handoffReductionBps: number;
     reviewerNote: string;
+    requiredCapabilityCount: number;
+    passedCapabilityCount: number;
+    failedCapabilityCount: number;
   }>;
 };
 
@@ -259,6 +269,9 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
   const { toast } = useToast();
   const [reviewNote, setReviewNote] = useState("");
   const [qualityComparable, setQualityComparable] = useState(false);
+  const [requirementReviews, setRequirementReviews] = useState<
+    Record<string, { passed: boolean; note: string }>
+  >({});
   const [runEnvironment, setRunEnvironment] = useState({
     protocolVersion: "1",
     sourceManifestId: "",
@@ -273,6 +286,17 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
   const completedComparison = definition.runs.find(
     (run) => run.implementation === "comparison" && run.status === "completed",
   );
+  const selectedRequirements = definition.parityRequirements.filter(
+    (requirement) =>
+      requirement.comparisonProduct === completedComparison?.comparisonProduct &&
+      requirement.tier === "required_parity",
+  );
+  const requirementReviewsComplete =
+    selectedRequirements.length > 0 &&
+    selectedRequirements.every(
+      (requirement) =>
+        (requirementReviews[requirement.id]?.note.trim().length ?? 0) >= 10,
+    );
   const mutate = useMutation({
     mutationFn: async (request: {
       method: string;
@@ -315,6 +339,14 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
         comparisonRunId: completedComparison.id,
         qualityComparable,
         reviewerNote: reviewNote,
+        requirementResults: selectedRequirements.map((requirement) => ({
+          requirementId: requirement.id,
+          status: requirementReviews[requirement.id]?.passed
+            ? "passed"
+            : "failed",
+          evidenceKinds: requiredBenchmarkEvidenceKinds,
+          note: requirementReviews[requirement.id]?.note ?? "",
+        })),
       },
     });
   };
@@ -341,6 +373,39 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
             </Badge>
           ))}
         </div>
+        <details className="rounded-xl border border-zinc-800 p-3 text-sm text-zinc-400">
+          <summary className="cursor-pointer font-semibold text-zinc-200">
+            Specialist-substitution parity contract
+          </summary>
+          <p className="mt-2">
+            Parity cannot pass until every required capability for the named
+            comparison product has an evidence-linked reviewer verdict.
+          </p>
+          {definition.comparisonProducts.map((product) => {
+            const requirements = definition.parityRequirements.filter(
+              (item) =>
+                item.comparisonProduct === product &&
+                item.tier === "required_parity",
+            );
+            return (
+              <div key={product} className="mt-3">
+                <p className="font-semibold text-white">
+                  {product} · {requirements.length} required capabilities
+                </p>
+                <ul className="mt-1 space-y-2">
+                  {requirements.map((requirement) => (
+                    <li key={requirement.id}>
+                      <span className="text-zinc-200">{requirement.capability}</span>
+                      <span className="block text-xs text-zinc-500">
+                        {requirement.acceptanceCriterion}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </details>
         <details className="text-sm text-zinc-400">
           <summary className="cursor-pointer font-semibold text-zinc-200">
             Current primary sources
@@ -475,6 +540,62 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
               onChange={(event) => setReviewNote(event.target.value)}
               placeholder="At least 40 characters: compare output quality and control, identify any material loss, and document the verdict."
             />
+            <div className="mt-4 space-y-3">
+              <p className="text-sm font-semibold text-white">
+                Required capability verdicts for {completedComparison.comparisonProduct}
+              </p>
+              {selectedRequirements.map((requirement) => {
+                const review = requirementReviews[requirement.id] ?? {
+                  passed: false,
+                  note: "",
+                };
+                return (
+                  <div
+                    key={requirement.id}
+                    className="rounded-lg border border-zinc-800 p-3"
+                  >
+                    <Label className="flex items-start gap-2 text-sm font-normal text-zinc-200">
+                      <Checkbox
+                        checked={review.passed}
+                        onCheckedChange={(checked) =>
+                          setRequirementReviews((current) => ({
+                            ...current,
+                            [requirement.id]: {
+                              ...review,
+                              passed: checked === true,
+                            },
+                          }))
+                        }
+                        aria-label={`Pass capability ${requirement.capability}`}
+                      />
+                      <span>
+                        <span className="block font-semibold">
+                          {requirement.capability}
+                        </span>
+                        <span className="block text-xs text-zinc-500">
+                          {requirement.acceptanceCriterion}
+                        </span>
+                      </span>
+                    </Label>
+                    <Input
+                      className="mt-2"
+                      value={review.note}
+                      onChange={(event) =>
+                        setRequirementReviews((current) => ({
+                          ...current,
+                          [requirement.id]: {
+                            ...review,
+                            note: event.target.value,
+                          },
+                        }))
+                      }
+                      aria-label={`Evidence note for ${requirement.capability}`}
+                      placeholder="Describe the evidence and any material deficit"
+                    />
+                  </div>
+                );
+              })}
+            </div>
             <Label className="mt-3 flex items-start gap-2 text-sm font-normal text-zinc-300">
               <Checkbox
                 checked={qualityComparable}
@@ -490,7 +611,11 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
             <Button
               className="mt-2"
               onClick={assess}
-              disabled={mutate.isPending || reviewNote.trim().length < 40}
+              disabled={
+                mutate.isPending ||
+                reviewNote.trim().length < 40 ||
+                !requirementReviewsComplete
+              }
             >
               Assess locked pair
             </Button>

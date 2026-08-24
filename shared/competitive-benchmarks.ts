@@ -29,6 +29,22 @@ const sourceReferenceSchema = z.object({
   checkedAt: z.coerce.date(),
 });
 
+export const parityRequirementTierSchema = z.enum([
+  "required_parity",
+  "specialist_edge",
+  "connected_advantage",
+]);
+
+export const parityRequirementSchema = z.object({
+  id: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{2,119}$/),
+  comparisonProduct: z.string().trim().min(1).max(100),
+  capability: z.string().trim().min(3).max(240),
+  acceptanceCriterion: z.string().trim().min(10).max(1_000),
+  tier: parityRequirementTierSchema,
+});
+
+export type ParityRequirement = z.infer<typeof parityRequirementSchema>;
+
 export const createBenchmarkDefinitionSchema = z.object({
   family: z.enum(benchmarkFamilies),
   name: z.string().trim().min(4).max(200),
@@ -37,7 +53,24 @@ export const createBenchmarkDefinitionSchema = z.object({
   comparisonProducts: z.array(z.string().trim().min(1).max(100)).min(1).max(12),
   outputSpecification: z.record(z.unknown()).default({}),
   rubric: z.record(z.unknown()).default({}),
+  parityRequirements: z.array(parityRequirementSchema).min(1).max(500),
   sourceReferences: z.array(sourceReferenceSchema).min(1).max(40),
+}).superRefine((value, context) => {
+  const ids = new Set<string>();
+  value.parityRequirements.forEach((requirement, index) => {
+    if (ids.has(requirement.id)) {
+      context.addIssue({ code: "custom", path: ["parityRequirements", index, "id"], message: "Parity requirement IDs must be unique" });
+    }
+    ids.add(requirement.id);
+    if (!value.comparisonProducts.includes(requirement.comparisonProduct)) {
+      context.addIssue({ code: "custom", path: ["parityRequirements", index, "comparisonProduct"], message: "Parity requirements must name a locked comparison product" });
+    }
+  });
+  for (const product of value.comparisonProducts) {
+    if (!value.parityRequirements.some((item) => item.comparisonProduct === product && item.tier === "required_parity")) {
+      context.addIssue({ code: "custom", path: ["parityRequirements"], message: `Every comparison product requires at least one required-parity capability: ${product}` });
+    }
+  }
 });
 
 export const benchmarkEnvironmentSchema = z.object({
@@ -131,11 +164,27 @@ export const completeBenchmarkRunSchema = z
     }
   });
 
+export const requirementAssessmentSchema = z.object({
+  requirementId: z.string().trim().min(3).max(120),
+  status: z.enum(["passed", "failed"]),
+  evidenceKinds: z.array(z.enum(requiredBenchmarkEvidenceKinds)).min(1),
+  note: z.string().trim().min(10).max(1_000),
+});
+
 export const assessBenchmarkSchema = z.object({
   creativesOsRunId: z.string().uuid(),
   comparisonRunId: z.string().uuid(),
   qualityComparable: z.boolean(),
   reviewerNote: z.string().trim().min(40).max(8_000),
+  requirementResults: z.array(requirementAssessmentSchema).min(1).max(500),
+}).superRefine((value, context) => {
+  const ids = new Set<string>();
+  value.requirementResults.forEach((result, index) => {
+    if (ids.has(result.requirementId)) {
+      context.addIssue({ code: "custom", path: ["requirementResults", index, "requirementId"], message: "Each parity requirement may be assessed once" });
+    }
+    ids.add(result.requirementId);
+  });
 });
 
 export function benchmarkReductionBps(
@@ -148,6 +197,7 @@ export function benchmarkReductionBps(
 
 export function competitiveState(input: {
   qualityComparable: boolean;
+  requiredParityPassed: boolean;
   nativeScores: number[];
   comparisonScores: number[];
   activeTimeReductionBps: number;
@@ -159,6 +209,7 @@ export function competitiveState(input: {
       scoreValue >= (input.comparisonScores[index] ?? 5) - 0.5,
   );
   if (
+    !input.requiredParityPassed ||
     !input.qualityComparable ||
     !noMaterialQualityLoss ||
     input.nativeUnrecoverableErrors > 0

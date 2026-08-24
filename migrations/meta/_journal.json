@@ -743,6 +743,13 @@
       "when": 1787510254346,
       "tag": "0105_provider_activation_control_plane",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1787594400000,
+      "tag": "0106_competitor_substitution_parity",
+      "breakpoints": true
     }
   ]
 }
