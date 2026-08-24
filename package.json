@@ -28,6 +28,7 @@
     "verify:backup-restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-backup-restore.ps1",
     "verify:secrets": "node scripts/scan-source-secrets.mjs",
     "verify:capacity": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-capacity.ps1",
+    "benchmarks:evidence": "tsx scripts/build-competitive-evidence.ts",
     "verify:worker-resilience": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-worker-resilience.ps1",
     "verify:bundle": "node scripts/verify-bundle-budget.mjs",
     "verify:worker": "wrangler types workers/distribution-scheduler/worker-configuration.d.ts --config workers/distribution-scheduler/wrangler.jsonc --check && tsc --noEmit --strict --skipLibCheck --module ESNext --moduleResolution Bundler --lib ESNext,WebWorker workers/distribution-scheduler/src/index.ts workers/distribution-scheduler/worker-configuration.d.ts && wrangler deploy --dry-run --config workers/distribution-scheduler/wrangler.jsonc",

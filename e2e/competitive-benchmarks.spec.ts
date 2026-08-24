@@ -25,22 +25,51 @@ const completedRun = (overrides: Record<string, unknown>) => ({
   accessibilityScore: 4.8,
   notes:
     "Qualification operator completed the locked workflow and preserved all required technical evidence.",
-  evidence: [{ kind: "qualification", uri: "artifact://benchmark/native" }],
+  evidence: [
+    {
+      kind: "input_manifest",
+      uri: "artifact://benchmark/input",
+      checksum: "sha256:input",
+    },
+    {
+      kind: "action_log",
+      uri: "artifact://benchmark/actions",
+      checksum: "sha256:actions",
+    },
+    {
+      kind: "output_artifact",
+      uri: "artifact://benchmark/output",
+      checksum: "sha256:output",
+    },
+    {
+      kind: "run_recording",
+      uri: "artifact://benchmark/recording",
+      checksum: "sha256:recording",
+    },
+  ],
   ...overrides,
 });
 
 test("locked equal-input runs preserve evidence and calculate connected advantage", async ({
   page,
 }) => {
+  const lockedEnvironment = {
+    protocolVersion: "1",
+    sourceManifestId: "manifest:native-social-fixture-v1",
+    deviceClass: "desktop-browser",
+    networkClass: "broadband",
+    operatorSkillLevel: "trained",
+    locale: "en-US",
+  };
   const listResponse = await page.request.get("/api/benchmarks");
   await ok(listResponse);
   const definitions = await listResponse.json();
-  expect(definitions).toHaveLength(10);
+  expect(definitions).toHaveLength(20);
   expect(
     new Set(
       definitions.map((definition: { family: string }) => definition.family),
-    ).size,
-  ).toBe(10);
+  ).size,
+  ).toBe(20);
   for (const definition of definitions) {
     expect(definition.sourceReferences.length).toBeGreaterThan(0);
     expect(definition.competitiveState).toBe("not_benchmarked");
@@ -66,7 +95,7 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
       data: {
         implementation: "creativesos",
         comparisonProduct: null,
-        environment: { viewport: "qualification" },
+        environment: lockedEnvironment,
       },
     },
   );
@@ -78,7 +107,7 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
       data: {
         implementation: "comparison",
         comparisonProduct: "X",
-        environment: { viewport: "qualification" },
+        environment: lockedEnvironment,
       },
     },
   );
@@ -102,9 +131,6 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
         activeTimeMs: 600_000,
         elapsedTimeMs: 720_000,
         manualHandoffCount: 1,
-        evidence: [
-          { kind: "qualification", uri: "artifact://benchmark/native" },
-        ],
       }),
     }),
   );
@@ -121,9 +147,6 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
         safetyScore: 5,
         reliabilityScore: 5,
         accessibilityScore: 5,
-        evidence: [
-          { kind: "qualification", uri: "artifact://benchmark/comparison" },
-        ],
       }),
     }),
   );
@@ -151,7 +174,17 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
     page.getByRole("heading", { name: "Competitive Benchmarks" }),
   ).toBeVisible();
   await expect(
-    page.getByText("connected advantage proven").first(),
+    page
+      .locator("div.inline-flex")
+      .filter({ hasText: /^connected advantage proven$/ })
+      .first(),
   ).toBeVisible();
   await expect(page.getByText("Current primary sources").first()).toBeVisible();
+  await page.getByLabel("Search benchmark families").fill("Vimeo");
+  await expect(page.getByText("Showing 1 of 20 families")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Ingest, govern, review, publish and retire reusable media",
+    }),
+  ).toBeVisible();
 });
