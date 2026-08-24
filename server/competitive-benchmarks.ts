@@ -9,6 +9,7 @@ import {
   completeBenchmarkRunSchema,
   createBenchmarkDefinitionSchema,
   startBenchmarkRunSchema,
+  type ParityRequirement,
 } from "@shared/competitive-benchmarks";
 import {
   competitiveBenchmarkAssessments,
@@ -47,10 +48,90 @@ type BenchmarkTemplate = {
   comparisonProducts: string[];
   outputSpecification: Record<string, unknown>;
   rubric: Record<string, unknown>;
+  parityRequirements: ParityRequirement[];
   sourceReferences: Array<{ label: string; url: string; checkedAt: string }>;
 };
 
-export const competitiveBenchmarkTemplates: BenchmarkTemplate[] = [
+type BenchmarkTemplateInput = Omit<BenchmarkTemplate, "parityRequirements">;
+
+function requirementSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 56) || "capability";
+}
+
+function outputCapabilities(
+  value: unknown,
+  path: string[] = [],
+): Array<{ capability: string; acceptanceCriterion: string }> {
+  if (typeof value === "string") {
+    return [{
+      capability: value,
+      acceptanceCriterion: `CreativesOS must produce and preserve ${value} at materially comparable professional quality under the locked run conditions.`,
+    }];
+  }
+  if (value === true && path.length > 0) {
+    const capability = path.join(" ").replace(/([a-z])([A-Z])/g, "$1 $2");
+    return [{
+      capability,
+      acceptanceCriterion: `CreativesOS must provide ${capability} with materially comparable control, persistence, and recovery under the locked run conditions.`,
+    }];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => outputCapabilities(item, [...path, String(index + 1)]));
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, item]) => outputCapabilities(item, [...path, key]));
+  }
+  return [];
+}
+
+function buildParityRequirements(template: BenchmarkTemplateInput): ParityRequirement[] {
+  const outcomes = outputCapabilities(template.outputSpecification);
+  return template.comparisonProducts.flatMap((comparisonProduct) => {
+    const prefix = requirementSlug(comparisonProduct);
+    const universal: Array<Omit<ParityRequirement, "id" | "comparisonProduct">> = [
+      {
+        capability: "Complete target workflow",
+        acceptanceCriterion: "A qualified target user can complete every locked workflow step in CreativesOS without a missing required capability or forced handoff to the comparison product.",
+        tier: "required_parity",
+      },
+      {
+        capability: "Professional output quality",
+        acceptanceCriterion: "The reviewed output is materially equivalent in fidelity, correctness, accessibility, and fitness for the target user's professional purpose.",
+        tier: "required_parity",
+      },
+      {
+        capability: "Control and operational visibility",
+        acceptanceCriterion: "CreativesOS exposes materially equivalent control over the target workflow and enough status, history, and evidence to diagnose and recover normal failures.",
+        tier: "required_parity",
+      },
+      {
+        capability: "Reliability and recovery",
+        acceptanceCriterion: "Persistence, retry, cancellation, recovery, and irreversible-action safeguards are materially equivalent or stronger under the locked failure scenarios.",
+        tier: "required_parity",
+      },
+    ];
+    const required = [...universal, ...outcomes.map((outcome) => ({ ...outcome, tier: "required_parity" as const }))];
+    const requirements = required.map((item, index) => ({
+      ...item,
+      id: `${prefix}-required-${index + 1}-${requirementSlug(item.capability)}`.slice(0, 120),
+      comparisonProduct,
+    }));
+    requirements.push({
+      id: `${prefix}-connected-advantage`,
+      comparisonProduct,
+      capability: "Connected-system advantage",
+      acceptanceCriterion: "When quality parity is met, CreativesOS proves at least 25% less active operator time or 50% fewer manual cross-application handoffs.",
+      tier: "connected_advantage",
+    });
+    return requirements;
+  });
+}
+
+const benchmarkTemplateInputs: BenchmarkTemplateInput[] = [
   {
     family: "native_social" as const,
     name: "Daily creator publishing, discovery, interaction and recovery",
@@ -1022,6 +1103,21 @@ export const competitiveBenchmarkTemplates: BenchmarkTemplate[] = [
   },
 ];
 
+export const competitiveBenchmarkTemplates: BenchmarkTemplate[] =
+  benchmarkTemplateInputs.map((template) => ({
+    ...template,
+    parityRequirements: buildParityRequirements(template),
+  }));
+
+for (const template of competitiveBenchmarkTemplates) {
+  const validation = createBenchmarkDefinitionSchema.safeParse(template);
+  if (!validation.success) {
+    throw new Error(
+      `Invalid competitive benchmark template ${template.family}: ${validation.error.message}`,
+    );
+  }
+}
+
 async function definitionForUser(userId: number, id: string) {
   const [definition] = await db
     .select()
@@ -1036,18 +1132,27 @@ async function definitionForUser(userId: number, id: string) {
 
 async function seedBenchmarkLibrary(userId: number, businessId: string) {
   const existing = await db
-    .select({ family: competitiveBenchmarkDefinitions.family })
+    .select({
+      family: competitiveBenchmarkDefinitions.family,
+      version: competitiveBenchmarkDefinitions.version,
+      parityRequirements: competitiveBenchmarkDefinitions.parityRequirements,
+    })
     .from(competitiveBenchmarkDefinitions)
     .where(eq(competitiveBenchmarkDefinitions.businessId, businessId));
-  const seededFamilies = new Set(existing.map((row) => row.family));
-  const missing = competitiveBenchmarkTemplates.filter(
-    (template) => !seededFamilies.has(template.family),
-  );
-  if (missing.length === 0) return;
+  const upgrades = competitiveBenchmarkTemplates.flatMap((template) => {
+    const versions = existing
+      .filter((row) => row.family === template.family)
+      .sort((left, right) => right.version - left.version);
+    const latest = versions[0];
+    return !latest || latest.parityRequirements.length === 0
+      ? [{ ...template, version: (latest?.version ?? 0) + 1 }]
+      : [];
+  });
+  if (upgrades.length === 0) return;
   await db
     .insert(competitiveBenchmarkDefinitions)
     .values(
-      missing.map((template) => ({
+      upgrades.map((template) => ({
         ...template,
         businessId,
         createdByUserId: userId,
@@ -1080,8 +1185,12 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
         .where(eq(competitiveBenchmarkAssessments.businessId, business.id))
         .orderBy(desc(competitiveBenchmarkAssessments.assessedAt)),
     ]);
+    const latestDefinitions = definitions.filter(
+      (definition, index) =>
+        definitions.findIndex((candidate) => candidate.family === definition.family) === index,
+    );
     return res.json(
-      definitions.map((definition) => ({
+      latestDefinitions.map((definition) => ({
         ...definition,
         runs: runs.filter((run) => run.definitionId === definition.id),
         assessments: assessments.filter(
@@ -1272,6 +1381,51 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
           "CreativesOS and comparison runs must use identical locked source, device, network, operator-skill, locale, and protocol conditions",
       });
     }
+    const requiredCapabilities = definition.parityRequirements.filter(
+      (requirement) =>
+        requirement.comparisonProduct === comparison.comparisonProduct &&
+        requirement.tier === "required_parity",
+    );
+    const requiredIds = new Set(requiredCapabilities.map((item) => item.id));
+    const submittedIds = new Set(
+      parsed.data.requirementResults.map((item) => item.requirementId),
+    );
+    const missing = requiredCapabilities.filter(
+      (requirement) => !submittedIds.has(requirement.id),
+    );
+    const unknown = parsed.data.requirementResults.filter(
+      (result) => !requiredIds.has(result.requirementId),
+    );
+    if (requiredCapabilities.length === 0 || missing.length > 0 || unknown.length > 0) {
+      return res.status(409).json({
+        message:
+          "Assess every locked required-parity capability for the selected comparison product",
+        missingRequirementIds: missing.map((item) => item.id),
+        unknownRequirementIds: unknown.map((item) => item.requirementId),
+      });
+    }
+    const nativeEvidenceKinds = new Set(native.evidence.map((item) => item.kind));
+    const comparisonEvidenceKinds = new Set(
+      comparison.evidence.map((item) => item.kind),
+    );
+    const ungrounded = parsed.data.requirementResults.filter((result) =>
+      result.evidenceKinds.some(
+        (kind) =>
+          !nativeEvidenceKinds.has(kind) || !comparisonEvidenceKinds.has(kind),
+      ),
+    );
+    if (ungrounded.length > 0) {
+      return res.status(409).json({
+        message:
+          "Capability verdicts must reference evidence present in both locked runs",
+        ungroundedRequirementIds: ungrounded.map((item) => item.requirementId),
+      });
+    }
+    const passedCapabilityCount = parsed.data.requirementResults.filter(
+      (item) => item.status === "passed",
+    ).length;
+    const failedCapabilityCount =
+      parsed.data.requirementResults.length - passedCapabilityCount;
     const activeTimeReductionBps = benchmarkReductionBps(
       comparison.activeTimeMs!,
       native.activeTimeMs!,
@@ -1282,6 +1436,7 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
     );
     const state = competitiveState({
       qualityComparable: parsed.data.qualityComparable,
+      requiredParityPassed: failedCapabilityCount === 0,
       nativeScores: [
         native.outputQualityScore!,
         native.safetyScore!,
@@ -1311,6 +1466,10 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
         handoffReductionBps,
         reviewerUserId: req.dbUser!.id,
         reviewerNote: parsed.data.reviewerNote,
+        requirementResults: parsed.data.requirementResults,
+        requiredCapabilityCount: requiredCapabilities.length,
+        passedCapabilityCount,
+        failedCapabilityCount,
       })
       .returning();
     return res.status(201).json(assessment);

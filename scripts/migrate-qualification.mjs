@@ -272,6 +272,13 @@ const requiredColumns = {
   comments: ["visibility"],
   ugc_opportunities: ["sample_terms"],
   community_memberships: ["onboarding_completed_at"],
+  competitive_benchmark_definitions: ["parity_requirements"],
+  competitive_benchmark_assessments: [
+    "requirement_results",
+    "required_capability_count",
+    "passed_capability_count",
+    "failed_capability_count",
+  ],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

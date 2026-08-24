@@ -8116,6 +8116,16 @@ export const competitiveBenchmarkDefinitions = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    parityRequirements: json("parity_requirements")
+      .$type<Array<{
+        id: string;
+        comparisonProduct: string;
+        capability: string;
+        acceptanceCriterion: string;
+        tier: "required_parity" | "specialist_edge" | "connected_advantage";
+      }>>()
+      .notNull()
+      .default([]),
     sourceReferences: json("source_references")
       .$type<Array<{ label: string; url: string; checkedAt: string }>>()
       .notNull()
@@ -8220,6 +8230,24 @@ export const competitiveBenchmarkAssessments = pgTable(
       .references(() => users.id, { onDelete: "restrict" })
       .notNull(),
     reviewerNote: text("reviewer_note").notNull(),
+    requirementResults: json("requirement_results")
+      .$type<Array<{
+        requirementId: string;
+        status: "passed" | "failed";
+        evidenceKinds: string[];
+        note: string;
+      }>>()
+      .notNull()
+      .default([]),
+    requiredCapabilityCount: integer("required_capability_count")
+      .notNull()
+      .default(0),
+    passedCapabilityCount: integer("passed_capability_count")
+      .notNull()
+      .default(0),
+    failedCapabilityCount: integer("failed_capability_count")
+      .notNull()
+      .default(0),
     assessedAt: timestamp("assessed_at").defaultNow().notNull(),
   },
   (table) => ({

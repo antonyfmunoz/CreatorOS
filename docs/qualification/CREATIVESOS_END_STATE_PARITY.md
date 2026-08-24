@@ -60,6 +60,14 @@ field evidence.
 | `umh_pending` | Projection side is ready; paired UMH-side configuration or round trip is outside this repository. |
 | `decision_pending` | A binding product, policy, or legal decision is required before publication. |
 
+Competitive parity is product-specific, not family-level approximation. Each
+named comparison product has a locked required-capability contract. An
+assessment must attach a verdict and evidence kinds to every required
+capability; omissions are rejected and any failed capability produces
+`parity_failed`, regardless of aggregate quality scores or operator-time gains.
+Only after direct substitution parity passes may the connected workflow earn a
+`connected_advantage_proven` result.
+
 ## Capability parity
 
 | Capability | Native implementation target | Current state | Evidence still required |

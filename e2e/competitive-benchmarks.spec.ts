@@ -79,6 +79,15 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
   );
   expect(social.competitiveState).toBe("not_benchmarked");
   expect(social.sourceReferences.length).toBeGreaterThanOrEqual(4);
+  const xRequirements = social.parityRequirements.filter(
+    (requirement: {
+      comparisonProduct: string;
+      tier: string;
+    }) =>
+      requirement.comparisonProduct === "X" &&
+      requirement.tier === "required_parity",
+  );
+  expect(xRequirements.length).toBeGreaterThanOrEqual(8);
 
   const lockResponse = await page.request.post(
     `/api/benchmarks/${social.id}/lock`,
@@ -151,6 +160,39 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
     }),
   );
 
+  const requirementResults = xRequirements.map(
+    (requirement: { id: string; capability: string }) => ({
+      requirementId: requirement.id,
+      status: "passed",
+      evidenceKinds: [
+        "input_manifest",
+        "action_log",
+        "output_artifact",
+        "run_recording",
+      ],
+      note: `The locked evidence proves ${requirement.capability} in both compared runs.`,
+    }),
+  );
+  const incompleteAssessment = await page.request.post(
+    `/api/benchmarks/${social.id}/assess`,
+    {
+      data: {
+        creativesOsRunId: nativeRun.id,
+        comparisonRunId: comparisonRun.id,
+        qualityComparable: true,
+        reviewerNote:
+          "This deliberately incomplete review must not be accepted as specialist-substitution parity.",
+        requirementResults: requirementResults.slice(1),
+      },
+    },
+  );
+  expect(incompleteAssessment.status()).toBe(409);
+  expect(await incompleteAssessment.json()).toMatchObject({
+    message:
+      "Assess every locked required-parity capability for the selected comparison product",
+    missingRequirementIds: [xRequirements[0]!.id],
+  });
+
   const assessmentResponse = await page.request.post(
     `/api/benchmarks/${social.id}/assess`,
     {
@@ -160,6 +202,7 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
         qualityComparable: true,
         reviewerNote:
           "The locked outputs are materially comparable across output quality, safety, reliability, and accessibility for this qualification fixture.",
+        requirementResults,
       },
     },
   );
@@ -167,11 +210,17 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
   expect(await assessmentResponse.json()).toMatchObject({
     state: "connected_advantage_proven",
     qualityComparable: true,
+    requiredCapabilityCount: xRequirements.length,
+    passedCapabilityCount: xRequirements.length,
+    failedCapabilityCount: 0,
   });
 
   await page.goto("/business/benchmarks");
   await expect(
     page.getByRole("heading", { name: "Competitive Benchmarks" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Specialist-substitution parity contract").first(),
   ).toBeVisible();
   await expect(
     page
