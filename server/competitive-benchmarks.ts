@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { and, desc, eq, max } from "drizzle-orm";
 import {
   assessBenchmarkSchema,
+  benchmarkEnvironmentSchema,
   benchmarkFamilies,
   benchmarkReductionBps,
   competitiveState,
@@ -20,7 +21,13 @@ import { db } from "./db";
 
 type BenchmarkFamily = (typeof benchmarkFamilies)[number];
 
+function benchmarkEnvironmentKey(value: unknown): string | null {
+  const parsed = benchmarkEnvironmentSchema.safeParse(value);
+  return parsed.success ? JSON.stringify(parsed.data) : null;
+}
+
 const checkedAt = "2026-08-14T00:00:00.000Z";
+const expandedCheckedAt = "2026-08-24T00:00:00.000Z";
 
 const commonRubric = {
   scales: "0-5",
@@ -345,6 +352,87 @@ export const competitiveBenchmarkTemplates: BenchmarkTemplate[] = [
     ],
   },
   {
+    family: "media_hosting_dam",
+    name: "Ingest, govern, review, publish and retire reusable media",
+    targetUser:
+      "A creator team that needs secure media ingest, searchable asset custody, professional playback, review history and reversible portability across every instrument.",
+    workflow:
+      "Upload a large source, preserve its checksum and rights metadata, create playback renditions and a private review link, organize it in a permissioned collection, complete a time-coded review and version replacement, publish an embedded player, inspect engagement telemetry, export the original and metadata, and prove deletion removes unauthorized playback without breaking the audit record.",
+    comparisonProducts: ["Vimeo", "Frame.io", "Mux", "Cloudflare Stream"],
+    outputSpecification: {
+      requiredOutcomes: [
+        "durable ingest",
+        "checksum and provenance",
+        "adaptive playback",
+        "permissioned collection",
+        "time-coded review",
+        "version lineage",
+        "embeddable player",
+        "engagement telemetry",
+        "portable export",
+        "verified deletion",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Vimeo professional video library",
+        url: "https://vimeo.com/features/video-library",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Mux Video API",
+        url: "https://www.mux.com/video-api",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Cloudflare Stream overview",
+        url: "https://developers.cloudflare.com/stream/",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "planning_work_management",
+    name: "Plan and coordinate a cross-channel production from idea to retrospective",
+    targetUser:
+      "A creator-led team coordinating ideas, briefs, dependencies, approvals, assets, deadlines and measurable outcomes without reconstructing work in a separate project system.",
+    workflow:
+      "Capture an idea, convert it into a campaign and production plan, assign dependent work with owners and dates, attach canonical assets and briefs, view the plan as board and calendar, resolve a blocker, approve the deliverable, trigger publication, and close the retrospective with performance evidence and follow-up work.",
+    comparisonProducts: ["Notion", "Asana", "ClickUp", "Monday.com"],
+    outputSpecification: {
+      requiredOutcomes: [
+        "captured idea",
+        "connected campaign",
+        "dependency graph",
+        "owned assignments",
+        "board and calendar views",
+        "asset and brief continuity",
+        "approval",
+        "publication handoff",
+        "evidence-based retrospective",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Notion projects",
+        url: "https://www.notion.com/product/projects",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Asana workflows",
+        url: "https://asana.com/product/workflows",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "ClickUp project management",
+        url: "https://clickup.com/features/project-management",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
     family: "cut_studio",
     name: "Edit one source into a polished master and channel-ready derivatives",
     targetUser:
@@ -467,6 +555,278 @@ export const competitiveBenchmarkTemplates: BenchmarkTemplate[] = [
     ],
   },
   {
+    family: "meeting_intelligence",
+    name: "Run a consent-governed meeting with role-scoped realtime assistance",
+    targetUser:
+      "A creator, salesperson or community operator who needs reliable meeting capture, useful guest context, discreet role-appropriate coaching and accountable AI participation.",
+    workflow:
+      "Schedule a room, disclose recording and AI participation, admit a guest, resolve the guest to the permitted relationship record, capture separate speakers and a live transcript, surface a role-approved briefing and one evidence-linked coaching suggestion, invite an explicitly authorized AI role to speak, hand control back to a human, generate decisions and tasks, correct the transcript, revoke access, and verify the audit trail.",
+    comparisonProducts: [
+      "Zoom",
+      "Google Meet",
+      "Fireflies.ai",
+      "Fathom",
+      "Cluely",
+    ],
+    outputSpecification: {
+      requiredOutcomes: [
+        "consent receipt",
+        "guest identity resolution",
+        "speaker-separated recording",
+        "live transcript",
+        "permission-bounded guest brief",
+        "evidence-linked coaching",
+        "disclosed AI participant",
+        "human override",
+        "decisions and tasks",
+        "transcript correction",
+        "revocation",
+        "audit trail",
+      ],
+      prohibitedOutcomes: [
+        "undisclosed recording",
+        "covert impersonation",
+        "diagnostic psychological claims",
+        "AI access beyond the assigned role",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Google Meet transcripts",
+        url: "https://support.google.com/meet/answer/12849897",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Fireflies meeting assistant",
+        url: "https://fireflies.ai/product",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Fathom AI meeting assistant",
+        url: "https://www.fathom.ai/",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "audience_email",
+    name: "Own an audience relationship from consent through attributable conversion",
+    targetUser:
+      "A creator business that needs portable audience identity, lawful consent, segmentation, email sequences and relationship continuity independent of social algorithms.",
+    workflow:
+      "Publish a capture form, record consent provenance, merge a known subscriber safely, create a dynamic segment, build and approve a branded campaign plus an automated sequence, send through an available delivery adapter, process a reply and unsubscribe, suppress the contact everywhere required, attribute a conversion, and export the audience with consent and engagement history.",
+    comparisonProducts: ["Kit", "beehiiv", "Mailchimp", "HubSpot"],
+    outputSpecification: {
+      requiredOutcomes: [
+        "capture form",
+        "consent provenance",
+        "safe identity merge",
+        "dynamic segment",
+        "branded campaign",
+        "automated sequence",
+        "delivery evidence",
+        "reply handoff",
+        "global suppression",
+        "conversion attribution",
+        "portable export",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Kit email marketing",
+        url: "https://kit.com/features/email-marketing",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "beehiiv newsletter platform",
+        url: "https://www.beehiiv.com/features",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Mailchimp marketing automation",
+        url: "https://mailchimp.com/features/marketing-automation/",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "design_studio",
+    name: "Create an approved brand system and production-ready campaign variants",
+    targetUser:
+      "A creator or team producing consistent thumbnails, covers, carousels and campaign graphics from governed brand assets without rebuilding context in a separate design tool.",
+    workflow:
+      "Create a brand kit, compose a reusable template with text and image layers, apply accessible typography and contrast, generate square, portrait and landscape variants, replace a linked asset once, collaborate through a review revision, export print- and web-appropriate outputs, and hand approved variants directly to a campaign and creator site.",
+    comparisonProducts: ["Canva", "Adobe Express", "Figma"],
+    outputSpecification: {
+      requiredOutcomes: [
+        "brand kit",
+        "layered editable canvas",
+        "reusable template",
+        "accessible typography and contrast",
+        "multi-format variants",
+        "linked asset replacement",
+        "review history",
+        "professional exports",
+        "campaign and site handoff",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Canva brand tools",
+        url: "https://www.canva.com/brand/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Adobe Express",
+        url: "https://www.adobe.com/express/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Figma design",
+        url: "https://www.figma.com/design/",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "podcasting",
+    name: "Produce, host, distribute and learn from a professional podcast episode",
+    targetUser:
+      "A creator publishing an audio or video show that must preserve source quality, metadata, accessibility, distribution ownership and audience learning.",
+    workflow:
+      "Create a show, ingest or record an episode, edit the source, define chapters and an accessible transcript, attach rights and artwork, publish a standards-valid RSS episode with protected and public variants, verify playback, submit or deliver to an available directory, replace the media without breaking the episode identity, inspect analytics, and generate promotional derivatives.",
+    comparisonProducts: [
+      "Spotify for Creators",
+      "Transistor",
+      "Buzzsprout",
+      "Riverside",
+    ],
+    outputSpecification: {
+      requiredOutcomes: [
+        "durable show identity",
+        "edited episode",
+        "chapters",
+        "accessible transcript",
+        "rights and artwork",
+        "valid RSS",
+        "public and protected access",
+        "stable replacement",
+        "playback analytics",
+        "promotional derivatives",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Spotify for Creators",
+        url: "https://creators.spotify.com/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Transistor podcast hosting features",
+        url: "https://transistor.fm/features/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Apple Podcasts RSS requirements",
+        url: "https://podcasters.apple.com/support/823-podcast-requirements",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "creator_site",
+    name: "Launch an owned creator destination that converts and remains portable",
+    targetUser:
+      "A creator who needs a fast branded home for content, audience capture, offers and attribution without surrendering the underlying audience or assets.",
+    workflow:
+      "Select a theme, compose accessible responsive pages, connect the canonical profile and media library, publish a link hub and storefront offer, add an audience capture form with consent, configure metadata and a custom-domain contract, verify mobile performance and broken-link handling, trace a visitor to conversion, export the site content, and roll back a failed publication.",
+    comparisonProducts: ["Linktree", "Beacons", "Stan", "Squarespace"],
+    outputSpecification: {
+      requiredOutcomes: [
+        "branded responsive pages",
+        "canonical profile and media",
+        "link hub",
+        "storefront offer",
+        "consented audience capture",
+        "SEO metadata",
+        "custom-domain contract",
+        "mobile performance",
+        "conversion attribution",
+        "portable export",
+        "publication rollback",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Linktree features",
+        url: "https://linktr.ee/s/features",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Beacons creator store",
+        url: "https://beacons.ai/i/app-pages/store",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Squarespace websites",
+        url: "https://www.squarespace.com/websites",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "commercial_growth",
+    name: "Operate sponsorship, affiliate, booking and ticket revenue with accountable fulfillment",
+    targetUser:
+      "A creator business managing brand partnerships, referrals, appointments and paid events while preserving rights, evidence, finance and relationship context.",
+    workflow:
+      "Qualify a sponsor opportunity, issue a scoped proposal with rights and deliverables, approve a campaign, generate an attributable affiliate or referral link, accept a booking or ticket order, fulfill the promised work, reconcile invoice and commission states, process a cancellation or reversal safely, report verified performance, and create the renewal action.",
+    comparisonProducts: [
+      "Passionfroot",
+      "GRIN",
+      "impact.com",
+      "Calendly",
+      "Eventbrite",
+    ],
+    outputSpecification: {
+      requiredOutcomes: [
+        "qualified opportunity",
+        "rights-aware proposal",
+        "approved deliverables",
+        "attributable referral",
+        "booking or ticket entitlement",
+        "fulfillment evidence",
+        "invoice and commission reconciliation",
+        "safe cancellation or reversal",
+        "performance report",
+        "renewal action",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Passionfroot creator partnerships",
+        url: "https://www.passionfroot.me/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "impact.com partnership management",
+        url: "https://impact.com/partnerships-management-platform/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Eventbrite organizer features",
+        url: "https://www.eventbrite.com/organizer/features/",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
     family: "business_analytics",
     name: "Turn creator, audience, commerce and operations data into an accountable decision",
     targetUser:
@@ -507,6 +867,103 @@ export const competitiveBenchmarkTemplates: BenchmarkTemplate[] = [
         label: "Stripe reporting",
         url: "https://docs.stripe.com/reports",
         checkedAt,
+      },
+    ],
+  },
+  {
+    family: "trust_operations",
+    name: "Operate a multi-tenant creator platform through abuse, privacy and recovery events",
+    targetUser:
+      "A platform operator responsible for tenant isolation, user safety, privacy rights, evidence custody, incident response and dependable recovery across high-risk creative workflows.",
+    workflow:
+      "Exercise owner, staff, moderator, member and outsider roles across two tenants; attempt unauthorized reads and mutations; report and appeal abusive content; enforce consent withdrawal and a data request; verify secret and sensitive-field redaction; trigger rate limiting; trace an incident through logs and alerts; restore from a tested backup; revoke a compromised session and delegated app; and produce a complete audit packet without exposing another tenant.",
+    comparisonProducts: [
+      "OWASP ASVS",
+      "SOC 2 SaaS operating controls",
+      "Cloudflare security controls",
+    ],
+    outputSpecification: {
+      requiredOutcomes: [
+        "tenant isolation",
+        "role enforcement",
+        "moderation and appeal",
+        "consent withdrawal",
+        "data access and deletion workflow",
+        "secret redaction",
+        "rate limiting",
+        "incident evidence",
+        "tested restore",
+        "session and app revocation",
+        "complete audit packet",
+      ],
+      zeroTolerance: [
+        "cross-tenant disclosure",
+        "unrecoverable protected-data loss",
+        "secret disclosure",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "OWASP Application Security Verification Standard",
+        url: "https://owasp.org/www-project-application-security-verification-standard/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "OWASP API Security Top 10",
+        url: "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "NIST Cybersecurity Framework",
+        url: "https://www.nist.gov/cyberframework",
+        checkedAt: expandedCheckedAt,
+      },
+    ],
+  },
+  {
+    family: "developer_ecosystem",
+    name: "Authorize, operate, revoke and migrate a third-party CreativesOS integration",
+    targetUser:
+      "A creator business and an independent developer extending CreativesOS without gaining ambient access or creating irreversible data lock-in.",
+    workflow:
+      "Create a sandbox tenant, register an application, request the minimum delegated scopes, complete OAuth authorization, read and mutate only allowed resources through a versioned API and typed SDK, receive and verify a signed webhook with retry and replay protection, inspect usage and audit evidence, revoke the grant, prove subsequent denial, export canonical data, import it into a clean tenant, and reconcile counts and identifiers.",
+    comparisonProducts: [
+      "Zapier Developer Platform",
+      "Shopify App Platform",
+      "Stripe Apps",
+      "GitHub Apps",
+    ],
+    outputSpecification: {
+      requiredOutcomes: [
+        "sandbox tenant",
+        "registered application",
+        "least-privilege delegated scopes",
+        "OAuth authorization",
+        "versioned API and typed SDK",
+        "signed idempotent webhook",
+        "usage and audit evidence",
+        "complete revocation",
+        "portable export",
+        "reconciled import",
+      ],
+    },
+    rubric: commonRubric,
+    sourceReferences: [
+      {
+        label: "Zapier Developer Platform",
+        url: "https://zapier.com/developer-platform",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "Shopify app platform",
+        url: "https://shopify.dev/docs/apps/build",
+        checkedAt: expandedCheckedAt,
+      },
+      {
+        label: "GitHub Apps documentation",
+        url: "https://docs.github.com/en/apps/overview",
+        checkedAt: expandedCheckedAt,
       },
     ],
   },
@@ -799,6 +1256,20 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
     ) {
       return res.status(409).json({
         message: "Completed CreativesOS and comparison runs are required",
+      });
+    }
+    const nativeEnvironment = benchmarkEnvironmentKey(native.environment);
+    const comparisonEnvironment = benchmarkEnvironmentKey(
+      comparison.environment,
+    );
+    if (
+      !nativeEnvironment ||
+      !comparisonEnvironment ||
+      nativeEnvironment !== comparisonEnvironment
+    ) {
+      return res.status(409).json({
+        message:
+          "CreativesOS and comparison runs must use identical locked source, device, network, operator-skill, locale, and protocol conditions",
       });
     }
     const activeTimeReductionBps = benchmarkReductionBps(

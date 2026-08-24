@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { requiredBenchmarkEvidenceKinds } from "@shared/competitive-benchmarks";
 
 type Run = {
   id: string;
@@ -70,9 +71,19 @@ function RunCompletionForm({ run }: { run: Run }) {
     safetyScore: "",
     reliabilityScore: "",
     accessibilityScore: "",
-    evidenceUri: "",
     notes: "",
   });
+  const [evidence, setEvidence] = useState(() =>
+    Object.fromEntries(
+      requiredBenchmarkEvidenceKinds.map((kind) => [
+        kind,
+        { uri: "", checksum: "" },
+      ]),
+    ) as Record<
+      (typeof requiredBenchmarkEvidenceKinds)[number],
+      { uri: string; checksum: string }
+    >,
+  );
   const mutation = useMutation({
     mutationFn: async () =>
       (
@@ -93,7 +104,11 @@ function RunCompletionForm({ run }: { run: Run }) {
           reliabilityScore: Number(values.reliabilityScore),
           accessibilityScore: Number(values.accessibilityScore),
           notes: values.notes,
-          evidence: [{ kind: "operator_evidence", uri: values.evidenceUri }],
+          evidence: requiredBenchmarkEvidenceKinds.map((kind) => ({
+            kind,
+            uri: evidence[kind].uri,
+            checksum: evidence[kind].checksum,
+          })),
         })
       ).json(),
     onSuccess: () => {
@@ -182,14 +197,44 @@ function RunCompletionForm({ run }: { run: Run }) {
           </Label>
         ))}
       </div>
-      <Label className="mt-3 block">
-        Evidence URI
-        <Input
-          value={values.evidenceUri}
-          onChange={(event) => update("evidenceUri", event.target.value)}
-          placeholder="artifact://…, r2://…, or approved report URL"
-        />
-      </Label>
+      <div className="mt-3 space-y-3 rounded-xl border border-zinc-800 p-3">
+        <p className="text-sm font-semibold text-zinc-200">
+          Required tamper-evident artifacts
+        </p>
+        {requiredBenchmarkEvidenceKinds.map((kind) => (
+          <div key={kind} className="grid gap-2 sm:grid-cols-[1fr_0.7fr]">
+            <Label>
+              {kind.replaceAll("_", " ")} URI
+              <Input
+                value={evidence[kind].uri}
+                onChange={(event) =>
+                  setEvidence((current) => ({
+                    ...current,
+                    [kind]: { ...current[kind], uri: event.target.value },
+                  }))
+                }
+                placeholder="artifact://…, r2://…, or approved report URL"
+              />
+            </Label>
+            <Label>
+              Checksum
+              <Input
+                value={evidence[kind].checksum}
+                onChange={(event) =>
+                  setEvidence((current) => ({
+                    ...current,
+                    [kind]: {
+                      ...current[kind],
+                      checksum: event.target.value,
+                    },
+                  }))
+                }
+                placeholder="sha256:…"
+              />
+            </Label>
+          </div>
+        ))}
+      </div>
       <Label className="mt-3 block">
         Operator notes
         <Textarea
@@ -214,6 +259,14 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
   const { toast } = useToast();
   const [reviewNote, setReviewNote] = useState("");
   const [qualityComparable, setQualityComparable] = useState(false);
+  const [runEnvironment, setRunEnvironment] = useState({
+    protocolVersion: "1",
+    sourceManifestId: "",
+    deviceClass: "desktop-browser",
+    networkClass: "broadband",
+    operatorSkillLevel: "trained" as "novice" | "trained" | "expert",
+    locale: "en-US",
+  });
   const completedNative = definition.runs.find(
     (run) => run.implementation === "creativesos" && run.status === "completed",
   );
@@ -249,7 +302,7 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
       body: {
         implementation,
         comparisonProduct,
-        environment: { capturedBy: "operator" },
+        environment: runEnvironment,
       },
     });
   const assess = () => {
@@ -324,25 +377,84 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
           </Button>
         ) : null}
         {definition.status === "locked" ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => start("creativesos", null)}
-              disabled={mutate.isPending}
-            >
-              <Play className="mr-2 h-4 w-4" />
-              Start CreativesOS run
-            </Button>
-            {definition.comparisonProducts.map((product) => (
+          <div className="space-y-3">
+            <div className="grid gap-3 rounded-xl border border-zinc-800 p-3 sm:grid-cols-2">
+              <Label>
+                Locked source manifest ID
+                <Input
+                  value={runEnvironment.sourceManifestId}
+                  onChange={(event) =>
+                    setRunEnvironment((current) => ({
+                      ...current,
+                      sourceManifestId: event.target.value,
+                    }))
+                  }
+                  placeholder="manifest:campaign-source-v1"
+                />
+              </Label>
+              <Label>
+                Device class
+                <Input
+                  value={runEnvironment.deviceClass}
+                  onChange={(event) =>
+                    setRunEnvironment((current) => ({
+                      ...current,
+                      deviceClass: event.target.value,
+                    }))
+                  }
+                />
+              </Label>
+              <Label>
+                Network class
+                <Input
+                  value={runEnvironment.networkClass}
+                  onChange={(event) =>
+                    setRunEnvironment((current) => ({
+                      ...current,
+                      networkClass: event.target.value,
+                    }))
+                  }
+                />
+              </Label>
+              <Label>
+                Locale
+                <Input
+                  value={runEnvironment.locale}
+                  onChange={(event) =>
+                    setRunEnvironment((current) => ({
+                      ...current,
+                      locale: event.target.value,
+                    }))
+                  }
+                />
+              </Label>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
-                key={product}
-                variant="outline"
-                onClick={() => start("comparison", product)}
-                disabled={mutate.isPending}
+                variant="secondary"
+                onClick={() => start("creativesos", null)}
+                disabled={
+                  mutate.isPending ||
+                  runEnvironment.sourceManifestId.trim().length < 3
+                }
               >
-                Start {product}
+                <Play className="mr-2 h-4 w-4" />
+                Start CreativesOS run
               </Button>
-            ))}
+              {definition.comparisonProducts.map((product) => (
+                <Button
+                  key={product}
+                  variant="outline"
+                  onClick={() => start("comparison", product)}
+                  disabled={
+                    mutate.isPending ||
+                    runEnvironment.sourceManifestId.trim().length < 3
+                  }
+                >
+                  Start {product}
+                </Button>
+              ))}
+            </div>
           </div>
         ) : null}
         <div className="space-y-2">
@@ -390,6 +502,8 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
 }
 
 export default function CompetitiveBenchmarksPage() {
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("all");
   const { data = [], isLoading } = useQuery<Definition[]>({
     queryKey: ["/api/benchmarks"],
   });
@@ -402,6 +516,24 @@ export default function CompetitiveBenchmarksPage() {
       }, {}),
     [data],
   );
+  const filteredDefinitions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return data.filter((definition) => {
+      if (
+        stateFilter !== "all" &&
+        definition.competitiveState !== stateFilter
+      ) {
+        return false;
+      }
+      if (!query) return true;
+      return [
+        definition.family,
+        definition.name,
+        definition.targetUser,
+        ...definition.comparisonProducts,
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [data, search, stateFilter]);
   return (
     <main className="min-h-dvh bg-black px-4 pb-24 pt-6 text-white">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -424,11 +556,37 @@ export default function CompetitiveBenchmarksPage() {
             {stateCounts.connected_advantage_proven ?? 0} connected advantages
             proven
           </p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_220px]">
+            <Input
+              aria-label="Search benchmark families"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search a family or comparison product"
+              className="border-zinc-800 bg-zinc-950"
+            />
+            <select
+              aria-label="Filter benchmark state"
+              value={stateFilter}
+              onChange={(event) => setStateFilter(event.target.value)}
+              className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm"
+            >
+              <option value="all">All competitive states</option>
+              <option value="not_benchmarked">Not benchmarked</option>
+              <option value="parity_failed">Parity failed</option>
+              <option value="parity_met">Parity met</option>
+              <option value="connected_advantage_proven">
+                Connected advantage proven
+              </option>
+            </select>
+          </div>
+          <p className="mt-2 text-xs text-zinc-600">
+            Showing {filteredDefinitions.length} of {data.length} families
+          </p>
         </header>
         {isLoading ? (
           <p>Loading benchmark ledger…</p>
         ) : (
-          data.map((definition) => (
+          filteredDefinitions.map((definition) => (
             <BenchmarkCard key={definition.id} definition={definition} />
           ))
         )}

@@ -495,8 +495,11 @@ financial evidence.
 **Priority:** continuous after their dependencies exist.
 
 **Current worktree state:** native capability closure and benchmark evidence
-capture are implemented. Every comparison remains `not_benchmarked` until an
-authorized operator performs the same-input run; no parity claim is inferred.
+capture are implemented across twenty explicit comparison families. Every
+comparison remains `not_benchmarked` until an authorized operator performs the
+same-input run; no parity claim is inferred. Runs now require identical locked
+source/device/network/operator/locale conditions and hashed input, action-log,
+output and recording artifacts.
 
 ### Native social
 
@@ -505,6 +508,15 @@ authorized operator performs the same-input run; no parity claim is inferred.
   creator analytics experiences.
 - Benchmark publishing, consumption, interaction, discovery and recovery
   against Instagram, TikTok, YouTube and X normal creator workflows.
+
+### Media Cloud, DAM and planning
+
+- Benchmark checksum-preserving ingest, rendition/playback, permissions,
+  review, version lineage, telemetry, export and verified deletion against the
+  selected video-hosting and asset-review products.
+- Benchmark idea-to-retrospective planning with the same campaign, assets,
+  dependencies, approvals and outcome evidence against the selected work
+  management products.
 
 ### CutStudio
 
@@ -519,6 +531,14 @@ authorized operator performs the same-input run; no parity claim is inferred.
   capture, native mobile field capture and supervised regional failover.
 - Complete role-scoped realtime meeting AI with visible consent and stop
   behavior.
+
+### Meeting intelligence
+
+- Benchmark consent, speaker attribution, transcript correction, permitted
+  guest context, evidence-linked coaching, disclosed role-scoped AI
+  participation, human override, decisions, revocation and audit evidence.
+- Keep covert recording, impersonation, diagnostic psychoanalysis and ambient
+  cross-role data access outside the product boundary.
 
 ### Communities and learning
 
@@ -537,6 +557,26 @@ authorized operator performs the same-input run; no parity claim is inferred.
 - Benchmark unified-inbox throughput, assignment, intervention, recovery,
   identity continuity and automation authoring against ManyChat, Front,
   Intercom and respond.io.
+
+### Owned publishing and commercial studios
+
+- Benchmark Audience Studio capture, consent, identity, segmentation,
+  sequences, replies, suppression, attribution and portable export.
+- Benchmark DesignStudio, Podcast Studio and creator-site workflows using the
+  same source, brand, accessibility, revision, publication and portability
+  requirements.
+- Benchmark sponsorship, affiliate/referral, booking and ticketing from
+  opportunity through rights, fulfillment, attribution, financial recovery
+  and renewal.
+
+### Trust operations and developer ecosystem
+
+- Exercise tenant isolation, roles, moderation/appeals, privacy requests,
+  secret redaction, rate limits, incident evidence, restore and revocation
+  against the locked production-SaaS standard.
+- Benchmark sandbox onboarding, least-privilege OAuth, APIs/SDKs, signed
+  webhooks, usage evidence, revocation and representative export/import
+  reconciliation against mature application platforms.
 
 ### Connected advantage
 

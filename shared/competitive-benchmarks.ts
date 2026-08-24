@@ -7,9 +7,19 @@ export const benchmarkFamilies = [
   "ugc",
   "relationship_automation",
   "distribution",
+  "media_hosting_dam",
+  "planning_work_management",
   "cut_studio",
   "broadcast_conference",
+  "meeting_intelligence",
+  "audience_email",
+  "design_studio",
+  "podcasting",
+  "creator_site",
+  "commercial_growth",
   "business_analytics",
+  "trust_operations",
+  "developer_ecosystem",
   "connected_creation_loop",
 ] as const;
 
@@ -30,6 +40,15 @@ export const createBenchmarkDefinitionSchema = z.object({
   sourceReferences: z.array(sourceReferenceSchema).min(1).max(40),
 });
 
+export const benchmarkEnvironmentSchema = z.object({
+  protocolVersion: z.string().trim().min(1).max(40),
+  sourceManifestId: z.string().trim().min(3).max(240),
+  deviceClass: z.string().trim().min(2).max(120),
+  networkClass: z.string().trim().min(2).max(120),
+  operatorSkillLevel: z.enum(["novice", "trained", "expert"]),
+  locale: z.string().trim().min(2).max(40),
+});
+
 export const startBenchmarkRunSchema = z
   .object({
     implementation: z.enum(["creativesos", "comparison"]),
@@ -40,7 +59,7 @@ export const startBenchmarkRunSchema = z
       .max(100)
       .nullable()
       .default(null),
-    environment: z.record(z.unknown()).default({}),
+    environment: benchmarkEnvironmentSchema,
   })
   .superRefine((value, ctx) => {
     if (value.implementation === "comparison" && !value.comparisonProduct) {
@@ -67,34 +86,50 @@ const boundedTime = z
   .max(30 * 24 * 60 * 60 * 1_000);
 const score = z.number().min(0).max(5);
 
-export const completeBenchmarkRunSchema = z.object({
-  status: z.enum(["completed", "failed", "invalid"]),
-  activeTimeMs: boundedTime,
-  elapsedTimeMs: boundedTime,
-  applicationCount: boundedCount,
-  exportCount: boundedCount,
-  uploadCount: boundedCount,
-  manualHandoffCount: boundedCount,
-  actionCount: boundedCount,
-  retryCount: boundedCount,
-  failureCount: boundedCount,
-  unrecoverableErrorCount: boundedCount,
-  outputQualityScore: score,
-  safetyScore: score,
-  reliabilityScore: score,
-  accessibilityScore: score,
-  notes: z.string().trim().min(20).max(8_000),
-  evidence: z
-    .array(
-      z.object({
-        kind: z.string().trim().min(1).max(80),
-        uri: z.string().trim().min(1).max(2_000),
-        checksum: z.string().trim().min(8).max(200).optional(),
-      }),
-    )
-    .min(1)
-    .max(100),
+export const requiredBenchmarkEvidenceKinds = [
+  "input_manifest",
+  "action_log",
+  "output_artifact",
+  "run_recording",
+] as const;
+
+const benchmarkEvidenceSchema = z.object({
+  kind: z.enum(requiredBenchmarkEvidenceKinds),
+  uri: z.string().trim().min(1).max(2_000),
+  checksum: z.string().trim().min(8).max(200),
 });
+
+export const completeBenchmarkRunSchema = z
+  .object({
+    status: z.enum(["completed", "failed", "invalid"]),
+    activeTimeMs: boundedTime,
+    elapsedTimeMs: boundedTime,
+    applicationCount: boundedCount,
+    exportCount: boundedCount,
+    uploadCount: boundedCount,
+    manualHandoffCount: boundedCount,
+    actionCount: boundedCount,
+    retryCount: boundedCount,
+    failureCount: boundedCount,
+    unrecoverableErrorCount: boundedCount,
+    outputQualityScore: score,
+    safetyScore: score,
+    reliabilityScore: score,
+    accessibilityScore: score,
+    notes: z.string().trim().min(20).max(8_000),
+    evidence: z.array(benchmarkEvidenceSchema).min(4).max(100),
+  })
+  .superRefine((value, ctx) => {
+    for (const kind of requiredBenchmarkEvidenceKinds) {
+      if (!value.evidence.some((item) => item.kind === kind)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["evidence"],
+          message: `Evidence must include ${kind}`,
+        });
+      }
+    }
+  });
 
 export const assessBenchmarkSchema = z.object({
   creativesOsRunId: z.string().uuid(),
