@@ -102,8 +102,8 @@ do not yet have the locked side-by-side operator evidence required for a
 ### Production closure evidence
 
 - The provider-activation control plane and specialist-substitution parity
-  enforcement are locally qualified: 119 unit/contract files and 455 tests,
-  TypeScript, production build, bundle and Worker gates, a fresh 107-migration database with 218
+  enforcement are locally qualified: 119 unit/contract files and 457 tests,
+  TypeScript, production build, bundle and Worker gates, a fresh 108-migration database with 219
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
   field matrix scheduled 202 executions, with 196 passing and six intentional
@@ -510,6 +510,14 @@ reviewer verdict, and any failed capability forces `parity_failed`. A material
 normal-workflow deficit is mandatory product backlog even when CreativesOS has
 a different integrated purpose. Specialist-edge exclusions must be explicit;
 they cannot silently lower the replacement standard.
+
+Failed capability verdicts now become tenant-scoped, priority-100 remediation
+records and synchronized Production Planner work in the same transaction as
+the immutable assessment. Operators may triage, work and mark the item ready
+for retest, but neither the benchmark surface nor the planner can close it
+manually. Only a later passing locked same-product assessment resolves the
+remediation and its linked work item; a later failure reopens the same lineage
+and increments its failure count.
 
 ### Native social
 

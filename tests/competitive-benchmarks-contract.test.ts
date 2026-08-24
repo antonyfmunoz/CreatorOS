@@ -4,11 +4,13 @@ import {
   benchmarkReductionBps,
   benchmarkEnvironmentSchema,
   benchmarkFamilies,
+  canTransitionBenchmarkRemediation,
   competitiveState,
   completeBenchmarkRunSchema,
   createBenchmarkDefinitionSchema,
   requiredBenchmarkEvidenceKinds,
   startBenchmarkRunSchema,
+  updateBenchmarkRemediationSchema,
 } from "../shared/competitive-benchmarks";
 
 describe("competitive benchmark contract", () => {
@@ -241,5 +243,21 @@ describe("competitive benchmark contract", () => {
         requirementResults: [{ ...base.requirementResults[0], evidenceKinds: [] }],
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps remediation closure behind a passing locked retest", () => {
+    expect(canTransitionBenchmarkRemediation("open", "in_progress")).toBe(true);
+    expect(
+      canTransitionBenchmarkRemediation("in_progress", "ready_for_retest"),
+    ).toBe(true);
+    expect(canTransitionBenchmarkRemediation("ready_for_retest", "resolved")).toBe(false);
+    expect(canTransitionBenchmarkRemediation("resolved", "open")).toBe(false);
+    expect(
+      updateBenchmarkRemediationSchema.safeParse({ status: "ready_for_retest" }).success,
+    ).toBe(true);
+    expect(
+      updateBenchmarkRemediationSchema.safeParse({ status: "resolved" }).success,
+    ).toBe(false);
+    expect(updateBenchmarkRemediationSchema.safeParse({}).success).toBe(false);
   });
 });

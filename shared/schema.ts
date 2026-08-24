@@ -8258,6 +8258,65 @@ export const competitiveBenchmarkAssessments = pgTable(
   }),
 );
 
+export const competitiveBenchmarkRemediations = pgTable(
+  "competitive_benchmark_remediations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    definitionId: uuid("definition_id")
+      .references(() => competitiveBenchmarkDefinitions.id, {
+        onDelete: "restrict",
+      })
+      .notNull(),
+    comparisonProduct: text("comparison_product").notNull(),
+    requirementId: text("requirement_id").notNull(),
+    capability: text("capability").notNull(),
+    acceptanceCriterion: text("acceptance_criterion").notNull(),
+    status: text("status").notNull().default("open"),
+    priority: integer("priority").notNull().default(100),
+    assigneeUserId: integer("assignee_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    dueAt: timestamp("due_at"),
+    operatorNote: text("operator_note").notNull().default(""),
+    lastFailureNote: text("last_failure_note").notNull(),
+    failureCount: integer("failure_count").notNull().default(1),
+    workItemId: uuid("work_item_id").references(() => creativeWorkItems.id, {
+      onDelete: "set null",
+    }),
+    lastFailedAssessmentId: uuid("last_failed_assessment_id")
+      .references(() => competitiveBenchmarkAssessments.id, {
+        onDelete: "restrict",
+      })
+      .notNull(),
+    resolvedByAssessmentId: uuid("resolved_by_assessment_id").references(
+      () => competitiveBenchmarkAssessments.id,
+      { onDelete: "restrict" },
+    ),
+    openedByUserId: integer("opened_by_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    openedAt: timestamp("opened_at").defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    requirementUnique: unique(
+      "competitive_benchmark_remediations_requirement_unique",
+    ).on(
+      table.businessId,
+      table.definitionId,
+      table.comparisonProduct,
+      table.requirementId,
+    ),
+    businessStatusIdx: index(
+      "competitive_benchmark_remediations_business_status_idx",
+    ).on(table.businessId, table.status, table.priority),
+  }),
+);
+
 export const contentModerationStates = pgTable(
   "content_moderation_states",
   {

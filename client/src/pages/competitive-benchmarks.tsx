@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
+  CheckCircle2,
   ExternalLink,
   LockKeyhole,
   Play,
@@ -61,7 +63,103 @@ type Definition = {
     passedCapabilityCount: number;
     failedCapabilityCount: number;
   }>;
+  remediations: Array<{
+    id: string;
+    comparisonProduct: string;
+    requirementId: string;
+    capability: string;
+    acceptanceCriterion: string;
+    status: "open" | "in_progress" | "ready_for_retest" | "resolved";
+    priority: number;
+    dueAt: string | null;
+    operatorNote: string;
+    failureCount: number;
+    lastFailureNote: string;
+    workItemId: string | null;
+    resolvedAt: string | null;
+  }>;
 };
+
+function RemediationPlanForm({
+  remediation,
+}: {
+  remediation: Definition["remediations"][number];
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [priority, setPriority] = useState(String(remediation.priority));
+  const [dueAt, setDueAt] = useState(remediation.dueAt?.slice(0, 10) ?? "");
+  const [operatorNote, setOperatorNote] = useState(remediation.operatorNote);
+  const save = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/benchmarks/remediations/${remediation.id}`, {
+        priority: Number(priority),
+        dueAt: dueAt ? `${dueAt}T23:59:59.000Z` : null,
+        operatorNote,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/benchmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planning/calendar"] });
+      toast({ title: "Remediation plan saved" });
+    },
+    onError: (error) =>
+      toast({
+        title: "Could not save remediation plan",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      }),
+  });
+  return (
+    <details className="mt-3 rounded-lg border border-zinc-800 bg-black/20 p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
+        Plan ownership and timing
+      </summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor={`remediation-priority-${remediation.id}`}>Priority</Label>
+          <Input
+            id={`remediation-priority-${remediation.id}`}
+            aria-label="Remediation priority"
+            type="number"
+            min="0"
+            max="100"
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`remediation-due-${remediation.id}`}>Due date</Label>
+          <Input
+            id={`remediation-due-${remediation.id}`}
+            aria-label="Remediation due date"
+            type="date"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+          />
+        </div>
+      </div>
+      <div className="mt-3 space-y-1">
+        <Label htmlFor={`remediation-note-${remediation.id}`}>Operator note</Label>
+        <Textarea
+          id={`remediation-note-${remediation.id}`}
+          aria-label="Remediation operator note"
+          value={operatorNote}
+          onChange={(event) => setOperatorNote(event.target.value)}
+          placeholder="Owner, next action, dependency, or release target"
+        />
+      </div>
+      <Button
+        className="mt-3"
+        size="sm"
+        variant="outline"
+        disabled={save.isPending || !priority || Number(priority) > 100}
+        onClick={() => save.mutate()}
+      >
+        {save.isPending ? "Saving…" : "Save plan"}
+      </Button>
+    </details>
+  );
+}
 
 function RunCompletionForm({ run }: { run: Run }) {
   const queryClient = useQueryClient();
@@ -306,8 +404,10 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
       (
         await apiRequest(request.method, request.url, request.body ?? {})
       ).json(),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["/api/benchmarks"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/benchmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planning/calendar"] });
+    },
     onError: (error) =>
       toast({
         title: "Benchmark operation failed",
@@ -350,6 +450,18 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
       },
     });
   };
+  const updateRemediation = (
+    id: string,
+    status: "open" | "in_progress" | "ready_for_retest",
+  ) =>
+    mutate.mutate({
+      method: "PATCH",
+      url: `/api/benchmarks/remediations/${id}`,
+      body: { status },
+    });
+  const activeRemediations = definition.remediations.filter(
+    (remediation) => remediation.status !== "resolved",
+  );
   return (
     <Card className="border-zinc-800 bg-zinc-950 text-white">
       <CardHeader>
@@ -406,6 +518,93 @@ function BenchmarkCard({ definition }: { definition: Definition }) {
             );
           })}
         </details>
+        {definition.remediations.length > 0 ? (
+          <section className="rounded-xl border border-zinc-800 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  Mandatory parity remediation
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {activeRemediations.length} active ·{" "}
+                  {definition.remediations.length - activeRemediations.length} resolved by locked retest
+                </p>
+              </div>
+              <a
+                href="/business/planner"
+                className="text-xs font-semibold text-[#1d9bf0] hover:underline"
+              >
+                Open production planner
+              </a>
+            </div>
+            <div className="mt-3 space-y-2">
+              {definition.remediations.map((remediation) => (
+                <article
+                  key={remediation.id}
+                  className={`rounded-lg border p-3 ${
+                    remediation.status === "resolved"
+                      ? "border-emerald-900 bg-emerald-950/20"
+                      : "border-amber-900 bg-amber-950/20"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                        {remediation.status === "resolved" ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-amber-400" />
+                        )}
+                        {remediation.capability}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {remediation.comparisonProduct} · {remediation.status.replaceAll("_", " ")} · priority {remediation.priority} · failed {remediation.failureCount} time{remediation.failureCount === 1 ? "" : "s"}
+                      </p>
+                      <p className="mt-2 text-xs text-zinc-400">
+                        {remediation.acceptanceCriterion}
+                      </p>
+                      <p className="mt-1 text-xs text-amber-200/80">
+                        Latest evidence: {remediation.lastFailureNote}
+                      </p>
+                    </div>
+                    {remediation.status === "open" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={mutate.isPending}
+                        onClick={() => updateRemediation(remediation.id, "in_progress")}
+                      >
+                        Start work
+                      </Button>
+                    ) : remediation.status === "in_progress" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={mutate.isPending}
+                        onClick={() => updateRemediation(remediation.id, "ready_for_retest")}
+                      >
+                        Ready for retest
+                      </Button>
+                    ) : remediation.status === "ready_for_retest" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={mutate.isPending}
+                        onClick={() => updateRemediation(remediation.id, "in_progress")}
+                      >
+                        Resume work
+                      </Button>
+                    ) : null}
+                  </div>
+                  {remediation.status !== "resolved" ? (
+                    <RemediationPlanForm remediation={remediation} />
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <details className="text-sm text-zinc-400">
           <summary className="cursor-pointer font-semibold text-zinc-200">
             Current primary sources
