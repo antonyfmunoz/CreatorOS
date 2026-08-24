@@ -6,13 +6,21 @@ import { createRequire } from "node:module";
 
 const token = process.env.CREATIVESOS_PRODUCTION_SESSION_TOKEN;
 const storageState = process.env.CREATIVESOS_PRODUCTION_STORAGE_STATE;
+const smokeUserEmail = process.env.CREATIVESOS_PRODUCTION_SMOKE_USER_EMAIL;
+const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+const hasDynamicClerkIdentity = Boolean(
+  smokeUserEmail && clerkSecretKey && clerkPublishableKey,
+);
 const mode = process.env.CREATIVESOS_PRODUCTION_SMOKE_MODE ?? "authenticated";
 if (!new Set(["public", "authenticated", "all"]).has(mode)) {
   console.error("CREATIVESOS_PRODUCTION_SMOKE_MODE must be public, authenticated, or all.");
   process.exit(2);
 }
-if (mode !== "public" && !token && !storageState) {
-  console.error("Authenticated production smoke requires CREATIVESOS_PRODUCTION_SESSION_TOKEN or CREATIVESOS_PRODUCTION_STORAGE_STATE.");
+if (mode !== "public" && !token && !storageState && !hasDynamicClerkIdentity) {
+  console.error(
+    "Authenticated production smoke requires a session token, storage state, or the complete short-lived Clerk smoke identity configuration.",
+  );
   process.exit(2);
 }
 if (storageState && !existsSync(storageState)) {

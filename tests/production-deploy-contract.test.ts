@@ -5,6 +5,7 @@ const deploySource = readFileSync(new URL("../scripts/deploy-production.ps1", im
 const migrationSource = readFileSync(new URL("../scripts/migrate-production.mjs", import.meta.url), "utf8");
 const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
+const smokeWorkflowSource = readFileSync(new URL("../.github/workflows/production-smoke.yml", import.meta.url), "utf8");
 const verifyWorkflowSource = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
 const cleanSourceContract = readFileSync(new URL("../scripts/assert-clean-source.mjs", import.meta.url), "utf8");
 const dockerIgnoreSource = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
@@ -101,6 +102,13 @@ describe("production deployment contract", () => {
     expect(workflowSource).toContain("CREATIVESOS_EXPECTED_COMMIT: ${{ github.sha }}");
     expect(workflowSource).toContain("npm run verify:production-smoke:public");
     expect(workflowSource).toContain("post-deploy-public-smoke-evidence");
+  });
+
+  it("mints short-lived Clerk authentication for dedicated production smoke journeys", () => {
+    expect(smokeWorkflowSource).toContain("CREATIVESOS_PRODUCTION_SMOKE_USER_EMAIL: ${{ vars.CREATIVESOS_PRODUCTION_SMOKE_USER_EMAIL }}");
+    expect(smokeWorkflowSource).toContain("CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}");
+    expect(smokeWorkflowSource).toContain("CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}");
+    expect(smokeWorkflowSource).toContain("npm run verify:production-smoke");
   });
 
   it("compiles the synchronized Android shell on the protected Linux workflow", () => {

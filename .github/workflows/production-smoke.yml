@@ -68,8 +68,11 @@ jobs:
     env:
       CREATIVESOS_PRODUCTION_BASE_URL: https://creativesos.net
       CREATIVESOS_PRODUCTION_SESSION_TOKEN: ${{ secrets.CREATIVESOS_PRODUCTION_SESSION_TOKEN }}
+      CREATIVESOS_PRODUCTION_SMOKE_USER_EMAIL: ${{ vars.CREATIVESOS_PRODUCTION_SMOKE_USER_EMAIL }}
       CREATIVESOS_PRODUCTION_SMOKE_MODE: authenticated
       CREATIVESOS_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v7
         with:
