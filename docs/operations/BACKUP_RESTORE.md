@@ -55,7 +55,8 @@ application's production secrets only inside that Fly boundary. The Machine has
 no public service or DNS registration, reads only the newest completed backup
 receipt through an explicit read-only transaction, verifies the private R2
 archive and manifest, restores into a local
-socket-only PostgreSQL cluster, checks the migration ledger, mandatory tables
+socket-only PostgreSQL cluster, transactionally applies repository migrations
+missing from the archive, checks exact release-ledger parity, mandatory tables
 and direct-message referential integrity, emits aggregate RTO evidence, and is
 polled to its terminal state, queried only for Machine-scoped logs and removed
 by exact Machine ID in an always-run cleanup step. GitHub retains only

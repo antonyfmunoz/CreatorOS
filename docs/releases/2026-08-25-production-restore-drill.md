@@ -28,7 +28,9 @@ The drill:
 - downloads the archive and manifest from private R2 inside Fly;
 - verifies durable size and SHA-256 agreement before restore;
 - restores into isolated PostgreSQL with no production connection target;
-- checks the migration ledger, 25 mandatory tables and direct-message
+- transactionally advances the restored migration ledger to the exact current
+  release before validation;
+- checks 26 mandatory tables and direct-message
   referential integrity;
 - measures recovery time; and
 - retains only aggregate, secret-free evidence and logs for 90 days.
