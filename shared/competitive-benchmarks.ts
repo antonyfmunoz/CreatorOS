@@ -126,10 +126,22 @@ export const requiredBenchmarkEvidenceKinds = [
   "run_recording",
 ] as const;
 
-const benchmarkEvidenceSchema = z.object({
-  kind: z.enum(requiredBenchmarkEvidenceKinds),
+export const benchmarkEvidenceKindSchema = z.enum(
+  requiredBenchmarkEvidenceKinds,
+);
+
+export const benchmarkEvidenceSchema = z.object({
+  kind: benchmarkEvidenceKindSchema,
   uri: z.string().trim().min(1).max(2_000),
-  checksum: z.string().trim().min(8).max(200),
+  checksum: z
+    .string()
+    .trim()
+    .regex(/^sha256:[a-f0-9]{64}$/, "Use a complete SHA-256 checksum"),
+});
+
+export const attachBenchmarkEvidenceSchema = z.object({
+  kind: benchmarkEvidenceKindSchema,
+  assetId: z.string().uuid(),
 });
 
 export const completeBenchmarkRunSchema = z
@@ -150,15 +162,18 @@ export const completeBenchmarkRunSchema = z
     reliabilityScore: score,
     accessibilityScore: score,
     notes: z.string().trim().min(20).max(8_000),
-    evidence: z.array(benchmarkEvidenceSchema).min(4).max(100),
+    evidence: z.array(benchmarkEvidenceSchema).length(4),
   })
   .superRefine((value, ctx) => {
     for (const kind of requiredBenchmarkEvidenceKinds) {
-      if (!value.evidence.some((item) => item.kind === kind)) {
+      const matchingEvidence = value.evidence.filter(
+        (item) => item.kind === kind,
+      );
+      if (matchingEvidence.length !== 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["evidence"],
-          message: `Evidence must include ${kind}`,
+          message: `Evidence must include exactly one ${kind}`,
         });
       }
     }

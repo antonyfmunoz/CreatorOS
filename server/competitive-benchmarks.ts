@@ -1,7 +1,14 @@
 import type { Express } from "express";
 import { and, desc, eq, max, ne, sql } from "drizzle-orm";
+import { rateLimit } from "express-rate-limit";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   assessBenchmarkSchema,
+  attachBenchmarkEvidenceSchema,
   benchmarkEnvironmentSchema,
   benchmarkFamilies,
   benchmarkReductionBps,
@@ -14,6 +21,7 @@ import {
   type ParityRequirement,
 } from "@shared/competitive-benchmarks";
 import {
+  assets,
   competitiveBenchmarkAssessments,
   competitiveBenchmarkDefinitions,
   competitiveBenchmarkRemediations,
@@ -23,8 +31,102 @@ import {
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { db } from "./db";
+import {
+  materializePrivateAsset,
+  removeStoredAsset,
+  sealPrivateAssetCopy,
+} from "./asset-storage";
 
 type BenchmarkFamily = (typeof benchmarkFamilies)[number];
+
+const benchmarkAssetUriPattern =
+  /^asset:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+
+async function sha256PrivateAsset(storageKey: string) {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "creativesos-benchmark-"),
+  );
+  const artifactPath = path.join(directory, "artifact");
+  try {
+    await materializePrivateAsset(storageKey, artifactPath);
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(artifactPath)) hash.update(chunk);
+    return hash.digest("hex");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function validateCustodiedEvidence(
+  businessId: string,
+  evidence: Array<{ uri: string; checksum: string }>,
+) {
+  const seenAssetIds = new Set<string>();
+  for (const item of evidence) {
+    const match = benchmarkAssetUriPattern.exec(item.uri);
+    if (item.uri.startsWith("asset://") && !match)
+      return "Benchmark evidence contains an invalid asset URI";
+    if (!match) continue;
+    const assetId = match[1]!.toLowerCase();
+    if (seenAssetIds.has(assetId))
+      return "Each benchmark evidence slot requires a distinct asset";
+    seenAssetIds.add(assetId);
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(
+        and(eq(assets.id, assetId), eq(assets.businessId, businessId)),
+      )
+      .limit(1);
+    if (
+      !asset ||
+      asset.kind !== "download" ||
+      asset.visibility !== "private" ||
+      asset.status !== "ready"
+    )
+      return "Benchmark evidence asset is not ready in this workspace";
+    try {
+      const observedSha256 = await sha256PrivateAsset(asset.storageKey);
+      if (asset.sha256 !== observedSha256)
+        await db
+          .update(assets)
+          .set({ sha256: observedSha256 })
+          .where(eq(assets.id, asset.id));
+      if (item.checksum !== `sha256:${observedSha256}`)
+        return "Benchmark evidence checksum does not match the stored asset";
+      if (!asset.metadata?.benchmarkEvidenceSealedAt) {
+        const sealed = await sealPrivateAssetCopy({
+          storageKey: asset.storageKey,
+          ownerUserId: asset.ownerUserId,
+          kind: asset.kind,
+          filename: asset.originalFilename ?? "benchmark-evidence.bin",
+          mimeType: asset.mimeType ?? "application/octet-stream",
+        });
+        await db
+          .update(assets)
+          .set({
+            storageKey: sealed.storageKey,
+            sizeBytes: sealed.sizeBytes,
+            sha256: observedSha256,
+            metadata: {
+              ...asset.metadata,
+              benchmarkEvidenceSealedAt: new Date().toISOString(),
+              benchmarkEvidenceCustodyVersion: 1,
+            },
+          })
+          .where(eq(assets.id, asset.id));
+        await removeStoredAsset(asset.storageKey, "private").catch(
+          (error) =>
+            console.error("Unable to remove superseded evidence object:", error),
+        );
+      }
+    } catch (error) {
+      console.error("Unable to revalidate benchmark evidence:", error);
+      return "Unable to revalidate benchmark evidence integrity";
+    }
+  }
+  return null;
+}
 
 function benchmarkEnvironmentKey(value: unknown): string | null {
   const parsed = benchmarkEnvironmentSchema.safeParse(value);
@@ -1320,6 +1422,74 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
     return res.status(201).json(run);
   });
 
+  app.post(
+    "/api/benchmarks/runs/:id/evidence",
+    attachUser,
+    rateLimit({
+      windowMs: 60_000,
+      limit: 20,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+    }),
+    async (req, res) => {
+      const parsed = attachBenchmarkEvidenceSchema.safeParse(req.body);
+      if (!parsed.success)
+        return res.status(400).json({
+          message:
+            parsed.error.issues[0]?.message ?? "Invalid benchmark evidence",
+        });
+      const [run] = await db
+        .select()
+        .from(competitiveBenchmarkRuns)
+        .where(eq(competitiveBenchmarkRuns.id, req.params.id))
+        .limit(1);
+      if (!run || !(await userCanManageBusiness(req.dbUser!.id, run.businessId)))
+        return res.status(404).json({ message: "Benchmark run not found" });
+      if (run.status !== "in_progress")
+        return res.status(409).json({ message: "This run is already closed" });
+      const [asset] = await db
+        .select()
+        .from(assets)
+        .where(
+          and(
+            eq(assets.id, parsed.data.assetId),
+            eq(assets.businessId, run.businessId),
+          ),
+        )
+        .limit(1);
+      if (
+        !asset ||
+        asset.kind !== "download" ||
+        asset.visibility !== "private" ||
+        asset.status !== "ready"
+      )
+        return res
+          .status(404)
+          .json({ message: "Ready private evidence asset not found" });
+      try {
+        const sha256 = await sha256PrivateAsset(asset.storageKey);
+        if (asset.sha256 !== sha256)
+          await db
+            .update(assets)
+            .set({ sha256 })
+            .where(eq(assets.id, asset.id));
+        return res.json({
+          kind: parsed.data.kind,
+          uri: `asset://${asset.id}`,
+          checksum: `sha256:${sha256}`,
+          filename: asset.originalFilename,
+          mimeType: asset.mimeType,
+          sizeBytes: asset.sizeBytes,
+        });
+      } catch (error) {
+        console.error("Unable to hash benchmark evidence:", error);
+        return res
+          .status(500)
+          .json({ message: "Unable to verify benchmark evidence integrity" });
+      }
+    },
+  );
+
   app.patch("/api/benchmarks/runs/:id", attachUser, async (req, res) => {
     const parsed = completeBenchmarkRunSchema.safeParse(req.body);
     if (!parsed.success)
@@ -1340,6 +1510,12 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
       return res.status(400).json({
         message: "Elapsed time cannot be less than active operator time",
       });
+    const evidenceError = await validateCustodiedEvidence(
+      run.businessId,
+      parsed.data.evidence,
+    );
+    if (evidenceError)
+      return res.status(409).json({ message: evidenceError });
     const [updated] = await db
       .update(competitiveBenchmarkRuns)
       .set({ ...parsed.data, completedAt: new Date(), updatedAt: new Date() })

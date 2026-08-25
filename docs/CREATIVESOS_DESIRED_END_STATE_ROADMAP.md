@@ -501,7 +501,10 @@ capture are implemented across twenty explicit comparison families. Every
 comparison remains `not_benchmarked` until an authorized operator performs the
 same-input run; no parity claim is inferred. Runs now require identical locked
 source/device/network/operator/locale conditions and hashed input, action-log,
-output and recording artifacts.
+output and recording artifacts. Operators can upload those four artifacts from
+the visible Benchmark Lab workflow into tenant-scoped private storage; the
+server calculates their hashes and revalidates stored bytes before sealing the
+run. Manual external evidence remains possible only with a complete SHA-256.
 
 Each named comparison product now has a versioned specialist-substitution
 contract. Parity cannot be awarded from aggregate scores, speed or a feature

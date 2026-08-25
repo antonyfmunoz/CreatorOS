@@ -152,6 +152,55 @@ export async function removeStoredAsset(storageKey: string, visibility: AssetVis
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
 }
 
+// Direct-upload URLs can remain valid briefly after completion. Sealing copies
+// accepted evidence to a fresh key that has never been exposed through a PUT
+// signature, then callers can atomically move the asset record to that key.
+export async function sealPrivateAssetCopy(input: {
+  storageKey: string;
+  ownerUserId: number;
+  kind: string;
+  filename: string;
+  mimeType: string;
+}) {
+  const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
+  const key = directUploadStorageKey(
+    input.ownerUserId,
+    input.kind,
+    input.filename,
+    "private",
+  );
+  if (provider === "local") {
+    const source = localStoragePath(input.storageKey);
+    const destination = localStoragePath(key);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(source, destination);
+    return { storageKey: key, sizeBytes: (await fs.stat(destination)).size };
+  }
+  if (provider !== "r2") throw new Error("Unsupported asset storage provider");
+  const { client, bucket } = r2BucketFor("private");
+  const source = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: input.storageKey }),
+  );
+  if (!source.Body) throw new Error("Private asset body was unavailable");
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: source.Body,
+      ContentLength: source.ContentLength,
+      ContentType: input.mimeType,
+      CacheControl: "private, no-store",
+      Metadata: {
+        owner: String(input.ownerUserId),
+        kind: input.kind,
+        visibility: "private",
+        custody: "benchmark-sealed",
+      },
+    }),
+  );
+  return { storageKey: key, sizeBytes: source.ContentLength ?? 0 };
+}
+
 export async function persistPrivateBuffer(input: {
   body: Buffer;
   ownerUserId: number;

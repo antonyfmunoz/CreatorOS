@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assessBenchmarkSchema,
+  attachBenchmarkEvidenceSchema,
   benchmarkReductionBps,
   benchmarkEnvironmentSchema,
   benchmarkFamilies,
@@ -110,10 +111,47 @@ describe("competitive benchmark contract", () => {
         evidence: requiredBenchmarkEvidenceKinds.map((kind) => ({
           kind,
           uri: `artifact://benchmark/${kind}`,
-          checksum: `sha256:${kind}`,
+          checksum: `sha256:${"a".repeat(64)}`,
         })),
       }).success,
     ).toBe(true);
+    expect(
+      completeBenchmarkRunSchema.safeParse({
+        status: "completed",
+        activeTimeMs: 60_000,
+        elapsedTimeMs: 90_000,
+        applicationCount: 1,
+        exportCount: 0,
+        uploadCount: 0,
+        manualHandoffCount: 0,
+        actionCount: 20,
+        retryCount: 0,
+        failureCount: 0,
+        unrecoverableErrorCount: 0,
+        outputQualityScore: 5,
+        safetyScore: 5,
+        reliabilityScore: 5,
+        accessibilityScore: 5,
+        notes: "A duplicate evidence kind must never satisfy the locked contract.",
+        evidence: requiredBenchmarkEvidenceKinds.map((kind) => ({
+          kind: kind === "run_recording" ? "output_artifact" : kind,
+          uri: `artifact://benchmark/${kind}`,
+          checksum: `sha256:${"b".repeat(64)}`,
+        })),
+      }).success,
+    ).toBe(false);
+    expect(
+      attachBenchmarkEvidenceSchema.safeParse({
+        kind: "run_recording",
+        assetId: "01234567-89ab-4cde-8fab-0123456789ab",
+      }).success,
+    ).toBe(true);
+    expect(
+      attachBenchmarkEvidenceSchema.safeParse({
+        kind: "unsupported",
+        assetId: "not-an-asset",
+      }).success,
+    ).toBe(false);
   });
 
   it("calculates the two connected-advantage thresholds exactly", () => {
