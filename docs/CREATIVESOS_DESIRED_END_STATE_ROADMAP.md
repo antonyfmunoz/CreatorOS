@@ -810,16 +810,17 @@ closure is now bounded by product, publication or external evidence:
 6. **Complete locally and in protected CI:** the complete
    unit/build/migration/security, recovery, capacity and 202-execution browser
    suite passes for exact merge commit
-   `e0f6409d1a0645d41fe920893e4c164b51ab20d6` without overwriting older
+   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8` without overwriting older
    production truth;
-7. **Release gate complete for this tranche:** protected workflow `32758515220`
+7. **Release gate complete for this tranche:** protected workflow `32895193370`
    deployed immutable clean commit
-   `3fdd0b95b9e8e4243dbe9cfbd8e584c5ae94cf48`, completed a private backup,
-   applied all 106 migrations, preserved the compact topology, and proved exact
-   release identity. Protected all-scope smoke `32760646885` then passed public
-   boundaries and all 16 authenticated production workspaces at mobile and
-   desktop viewports. `/api/release`, `/api/ready` and `/api/health` remain the
-   canonical current identity and readiness boundaries;
+   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8`, completed the protected
+   backup/migration/deploy sequence, applied all 108 migrations, preserved the
+   compact topology, and proved exact release identity. Protected all-scope
+   smoke `32897364892` then passed public boundaries and the authenticated
+   production workspaces at mobile and desktop viewports. `/api/release`,
+   `/api/ready` and `/api/health` remain the canonical current identity and
+   readiness boundaries;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.
