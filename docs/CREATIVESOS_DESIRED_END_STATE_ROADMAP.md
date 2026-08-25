@@ -689,9 +689,12 @@ multi-region rollout and production-volume evidence remain.
   production backup's live-release lineage, size, SHA-256 manifest, archive
   readability and mandatory-table inventory without exporting storage secrets
   into CI. The existing disposable-PostgreSQL restore drill qualifies restore
-  mechanics locally; a dated isolated restore of a real production archive,
-  data-residency choices and production RTO measurement remain evidence or
-  decision gates.
+  mechanics locally. A quarterly and on-demand one-shot recovery Machine now
+  restores the newest real production archive inside the existing private Fly
+  application and region, measures RTO, retains only aggregate evidence, and
+  removes itself on exit. Its first successful production execution remains the
+  release gate; broader data-residency policy and cross-region RTO remain
+  decision or scale gates.
 
 ### Exit gate
 

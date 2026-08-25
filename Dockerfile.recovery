@@ -1,0 +1,10 @@
+FROM postgres:17-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends awscli ca-certificates jq \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/qualify-production-restore.sh /usr/local/bin/qualify-production-restore
+RUN chmod 0755 /usr/local/bin/qualify-production-restore
+
+ENTRYPOINT ["/usr/local/bin/qualify-production-restore"]
