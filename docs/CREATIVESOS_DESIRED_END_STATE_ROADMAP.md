@@ -101,8 +101,24 @@ do not yet have the locked side-by-side operator evidence required for a
 
 ### Production closure evidence
 
+- Protected deployment run
+  [`32895193370`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32895193370)
+  requalified and deployed exact clean `main` commit
+  `54b7e1faac5464fd0a0395beba2e9cc8453b25e8` while preserving the compact Fly
+  topology. Live `/api/release` independently reports that commit, immutable
+  source fingerprint `8beb06d14f5b93dca3a1a34ab71ca8965260318c3f2268fbb4aa227a9f2729a4`,
+  clean source and exact 108/108 migration parity; `/api/ready` reports `ready`
+  with zero release blockers.
+- Protected all-scope production-smoke run
+  [`32897364892`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32897364892)
+  passed both public production boundaries and the non-destructive authenticated
+  workspace journeys against that exact deployed commit.
+- Protected backup qualification run
+  [`32897368705`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32897368705)
+  verified the newest private archive's durable size, hash, readability, required
+  inventory and 73,437-second age against the enforced 108,000-second ceiling.
 - The provider-activation control plane and specialist-substitution parity
-  enforcement are locally qualified: 119 unit/contract files and 457 tests,
+  enforcement are locally qualified: 119 unit/contract files and 458 tests,
   TypeScript, production build, bundle and Worker gates, a fresh 108-migration database with 219
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
@@ -692,12 +708,14 @@ multi-region rollout and production-volume evidence remain.
   mechanics locally. A quarterly and on-demand one-shot recovery Machine now
   restores the newest real production archive inside the existing private Fly
   application and region, measures RTO, retains only aggregate evidence, and
-  removes itself on exit. Run `32889621581` passed against verified live commit
-  `75c25da7f99be118e82f4216db4cdbfa8e51d37f`: it restored a 107-migration
-  archive, transactionally advanced it to exact 108-migration release parity,
-  verified 26 mandatory tables and zero orphan direct messages, measured an
-  18-second RTO and destroyed the exact private Machine. Broader data-residency
-  policy and cross-region RTO remain decision or scale gates.
+  removes itself on exit. Both paths reject an invalid, materially future or
+  more-than-30-hour-old recovery point. Run `32897371297` passed against verified
+  live commit `54b7e1faac5464fd0a0395beba2e9cc8453b25e8`: it restored a
+  73,495-second-old 107-migration archive, transactionally advanced it to exact
+  108-migration release parity, verified 26 mandatory tables and zero orphan
+  direct messages, measured an 18-second RTO and destroyed the exact private
+  Machine. Broader data-residency policy and cross-region RTO remain decision
+  or scale gates.
 
 ### Exit gate
 
@@ -792,16 +810,17 @@ closure is now bounded by product, publication or external evidence:
 6. **Complete locally and in protected CI:** the complete
    unit/build/migration/security, recovery, capacity and 202-execution browser
    suite passes for exact merge commit
-   `e0f6409d1a0645d41fe920893e4c164b51ab20d6` without overwriting older
+   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8` without overwriting older
    production truth;
-7. **Release gate complete for this tranche:** protected workflow `32758515220`
+7. **Release gate complete for this tranche:** protected workflow `32895193370`
    deployed immutable clean commit
-   `3fdd0b95b9e8e4243dbe9cfbd8e584c5ae94cf48`, completed a private backup,
-   applied all 106 migrations, preserved the compact topology, and proved exact
-   release identity. Protected all-scope smoke `32760646885` then passed public
-   boundaries and all 16 authenticated production workspaces at mobile and
-   desktop viewports. `/api/release`, `/api/ready` and `/api/health` remain the
-   canonical current identity and readiness boundaries;
+   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8`, completed the protected
+   backup/migration/deploy sequence, applied all 108 migrations, preserved the
+   compact topology, and proved exact release identity. Protected all-scope
+   smoke `32897364892` then passed public boundaries and the authenticated
+   production workspaces at mobile and desktop viewports. `/api/release`,
+   `/api/ready` and `/api/health` remain the canonical current identity and
+   readiness boundaries;
 8. hand off only the true external gates: provider approval/credentials,
    physical devices/app stores, UMH-side pairing, legal decisions and
    authorized competitor operator runs.
