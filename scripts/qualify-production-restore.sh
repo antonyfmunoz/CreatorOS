@@ -38,9 +38,10 @@ trap cleanup EXIT
 # The source connection is read-only and is used only to discover the newest
 # durable backup receipt. The archive itself is read from private R2 custody.
 backup_json="$(
-  PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' \
-    psql "${DATABASE_URL}" --no-psqlrc -v ON_ERROR_STOP=1 -Atq -c \
-    "select json_build_object(
+  psql "${DATABASE_URL}" --no-psqlrc -v ON_ERROR_STOP=1 -Atq <<'SQL'
+    begin transaction read only;
+    set local statement_timeout = '15s';
+    select json_build_object(
       'backupId', id,
       'dateKey', date_key,
       'completedAt', completed_at,
@@ -54,7 +55,9 @@ backup_json="$(
       and storage_key is not null
       and manifest_storage_key is not null
     order by date_key desc, id desc
-    limit 1"
+    limit 1;
+    commit;
+SQL
 )"
 
 if [[ -z "${backup_json}" ]] || ! jq -e '.backupId and .storageKey and .manifestStorageKey and .sha256 and .sizeBytes' <<<"${backup_json}" >/dev/null; then
