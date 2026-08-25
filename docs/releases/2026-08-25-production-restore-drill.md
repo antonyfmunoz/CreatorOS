@@ -15,6 +15,12 @@ register in internal DNS, uses a socket-only temporary PostgreSQL cluster and is
 polled through its terminal state and removed by exact Machine ID in an
 always-run cleanup step.
 
+The workflow treats the Fly CLI launch result as transport state rather than
+recovery proof: a short-lived one-shot process can stop before `flyctl machine
+run` reports a successful start. The workflow therefore resolves the uniquely
+named Machine even after a nonzero launch result and judges the drill only from
+that Machine's terminal state and scoped recovery evidence.
+
 The drill:
 
 - proves the live release identity before recovery begins;

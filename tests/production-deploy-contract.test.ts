@@ -139,6 +139,8 @@ describe("production deployment contract", () => {
     expect(restoreDrillWorkflowSource).toContain("--skip-dns-registration");
     expect(restoreDrillWorkflowSource).toContain("--restart no");
     expect(restoreDrillWorkflowSource).toContain("--detach");
+    expect(restoreDrillWorkflowSource).toContain('launch_status="${PIPESTATUS[0]}"');
+    expect(restoreDrillWorkflowSource).toContain("for _ in $(seq 1 12)");
     expect(restoreDrillWorkflowSource).toContain("production-restore-machine-id.txt");
     expect(restoreDrillWorkflowSource).toContain("flyctl logs --app creatoros-app --machine");
     expect(restoreDrillWorkflowSource).toContain("flyctl machine destroy --app creatoros-app --force");
