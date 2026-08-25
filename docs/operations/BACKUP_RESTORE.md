@@ -68,6 +68,12 @@ Because Fly can return a nonzero launch status when a one-shot process stops
 quickly, the workflow resolves the run-unique Machine independently of the CLI
 exit code and accepts success only from the Machine-scoped recovery evidence.
 
+Last verified production drill: GitHub Actions run `32889621581` on 2026-08-25.
+It restored backup `a0d53d2d-1fb0-461c-bdea-3b8a60744bfa`, advanced 107 archived
+migrations to exact 108-migration release parity, verified 26 mandatory tables
+and zero orphan direct messages, measured an 18-second RTO, and destroyed
+Machine `876e73b0015278` after evidence collection.
+
 The private bucket's retention period is a product/legal decision because the
 rule deletes backup objects permanently. Do not enable an expiration lifecycle
 until the approved retention period is recorded.
