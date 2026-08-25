@@ -61,6 +61,8 @@ polled to its terminal state, queried only for Machine-scoped logs and removed
 by exact Machine ID in an always-run cleanup step. GitHub retains only
 secret-free evidence and execution logs for 90 days; neither the database dump
 nor credentials leave the ephemeral Machine.
+The temporary restore parent is traversal-only for the local PostgreSQL user;
+the archive and manifest stay readable only by root.
 Because Fly can return a nonzero launch status when a one-shot process stops
 quickly, the workflow resolves the run-unique Machine independently of the CLI
 exit code and accepts success only from the Machine-scoped recovery evidence.

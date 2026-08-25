@@ -36,6 +36,9 @@ The drill:
 The receipt lookup uses an explicit read-only transaction with a transaction-
 local timeout. This enforces the no-write boundary without unsupported startup
 parameters on Neon's pooled production connection.
+The temporary parent directory grants the unprivileged PostgreSQL process only
+the traversal permission needed to reach its owned cluster and socket
+directories; the archive and manifest remain mode `0600`.
 
 ## Qualification boundary
 
