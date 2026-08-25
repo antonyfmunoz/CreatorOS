@@ -685,8 +685,13 @@ multi-region rollout and production-volume evidence remain.
 - Cost attribution and quotas per tenant, creator, asset and delivery minute;
   media and render compute now accept explicit per-minute rates and preserve
   unpriced work as zero rather than inventing cost.
-- Disaster recovery exercises, data residency choices and verified restore
-  objectives.
+- Weekly and on-demand protected qualification now verifies the newest private
+  production backup's live-release lineage, size, SHA-256 manifest, archive
+  readability and mandatory-table inventory without exporting storage secrets
+  into CI. The existing disposable-PostgreSQL restore drill qualifies restore
+  mechanics locally; a dated isolated restore of a real production archive,
+  data-residency choices and production RTO measurement remain evidence or
+  decision gates.
 
 ### Exit gate
 

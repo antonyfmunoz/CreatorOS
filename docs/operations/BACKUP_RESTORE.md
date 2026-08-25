@@ -37,6 +37,17 @@ integrity, then stops and removes the disposable cluster.
 Run a restore drill at least every 90 days and after any material migration or
 storage topology change. A backup is not qualified until a restore drill passes.
 
+The protected `Production backup qualification` GitHub workflow also runs at
+10:17 UTC every Monday, after the scheduled daily backup. It proves the live
+release identity, runs `inspect-production-backup.mjs` inside the deployed Fly
+machine so R2 and database credentials never enter the CI runner, and retains
+the secret-free release and archive evidence for 90 days. Operators can dispatch
+the same workflow with an expected commit after a material release. This proves
+the newest production archive's size, SHA-256 manifest, private custody,
+readability and required-table inventory. It does not replace the isolated
+`pg_restore` drill above; archive inspection and restoration remain separate
+evidence.
+
 The private bucket's retention period is a product/legal decision because the
 rule deletes backup objects permanently. Do not enable an expiration lifecycle
 until the approved retention period is recorded.

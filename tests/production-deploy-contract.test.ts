@@ -6,6 +6,7 @@ const migrationSource = readFileSync(new URL("../scripts/migrate-production.mjs"
 const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
 const smokeWorkflowSource = readFileSync(new URL("../.github/workflows/production-smoke.yml", import.meta.url), "utf8");
+const backupQualificationWorkflowSource = readFileSync(new URL("../.github/workflows/production-backup-qualification.yml", import.meta.url), "utf8");
 const verifyWorkflowSource = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
 const cleanSourceContract = readFileSync(new URL("../scripts/assert-clean-source.mjs", import.meta.url), "utf8");
 const dockerIgnoreSource = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
@@ -109,6 +110,21 @@ describe("production deployment contract", () => {
     expect(smokeWorkflowSource).toContain("CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}");
     expect(smokeWorkflowSource).toContain("CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}");
     expect(smokeWorkflowSource).toContain("npm run verify:production-smoke");
+  });
+
+  it("qualifies the newest private production backup without copying storage credentials into CI", () => {
+    expect(backupQualificationWorkflowSource).toContain("schedule:");
+    expect(backupQualificationWorkflowSource).toContain("workflow_dispatch:");
+    expect(backupQualificationWorkflowSource).toContain("cancel-in-progress: false");
+    expect(backupQualificationWorkflowSource).toContain("name: production");
+    expect(backupQualificationWorkflowSource).toContain("secrets.FLY_API_TOKEN");
+    expect(backupQualificationWorkflowSource).toContain("/api/release");
+    expect(backupQualificationWorkflowSource).toContain("node scripts/inspect-production-backup.mjs");
+    expect(backupQualificationWorkflowSource).toContain("production_backup_verified");
+    expect(backupQualificationWorkflowSource).toContain("retention-days: 90");
+    expect(backupQualificationWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
+    expect(backupQualificationWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
+    expect(backupQualificationWorkflowSource).not.toContain("DATABASE_URL");
   });
 
   it("compiles the synchronized Android shell on the protected Linux workflow", () => {
