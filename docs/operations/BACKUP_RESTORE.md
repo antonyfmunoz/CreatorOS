@@ -48,6 +48,18 @@ readability and required-table inventory. It does not replace the isolated
 `pg_restore` drill above; archive inspection and restoration remain separate
 evidence.
 
+The protected `Production restore drill` workflow runs quarterly and on demand.
+It builds a dedicated PostgreSQL 17 recovery image, launches it as a one-shot
+Machine inside the existing Fly application and `iad` region, and inherits the
+application's production secrets only inside that Fly boundary. The Machine has
+no public service or DNS registration, reads only the newest completed backup
+receipt, verifies the private R2 archive and manifest, restores into a local
+socket-only PostgreSQL cluster, checks the migration ledger, mandatory tables
+and direct-message referential integrity, emits aggregate RTO evidence, and is
+automatically removed when it exits. GitHub retains only secret-free evidence
+and execution logs for 90 days; neither the database dump nor credentials leave
+the ephemeral Machine.
+
 The private bucket's retention period is a product/legal decision because the
 rule deletes backup objects permanently. Do not enable an expiration lifecycle
 until the approved retention period is recorded.

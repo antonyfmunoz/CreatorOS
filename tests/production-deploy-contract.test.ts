@@ -7,6 +7,9 @@ const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "ut
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
 const smokeWorkflowSource = readFileSync(new URL("../.github/workflows/production-smoke.yml", import.meta.url), "utf8");
 const backupQualificationWorkflowSource = readFileSync(new URL("../.github/workflows/production-backup-qualification.yml", import.meta.url), "utf8");
+const restoreDrillWorkflowSource = readFileSync(new URL("../.github/workflows/production-restore-drill.yml", import.meta.url), "utf8");
+const restoreDrillSource = readFileSync(new URL("../scripts/qualify-production-restore.sh", import.meta.url), "utf8");
+const recoveryDockerSource = readFileSync(new URL("../Dockerfile.recovery", import.meta.url), "utf8");
 const verifyWorkflowSource = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
 const cleanSourceContract = readFileSync(new URL("../scripts/assert-clean-source.mjs", import.meta.url), "utf8");
 const dockerIgnoreSource = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
@@ -125,6 +128,28 @@ describe("production deployment contract", () => {
     expect(backupQualificationWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(backupQualificationWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
     expect(backupQualificationWorkflowSource).not.toContain("DATABASE_URL");
+  });
+
+  it("restores the newest production archive only inside an ephemeral private recovery machine", () => {
+    expect(restoreDrillWorkflowSource).toContain("schedule:");
+    expect(restoreDrillWorkflowSource).toContain("workflow_dispatch:");
+    expect(restoreDrillWorkflowSource).toContain("group: creativesos-production");
+    expect(restoreDrillWorkflowSource).toContain("secrets.FLY_API_TOKEN");
+    expect(restoreDrillWorkflowSource).toContain("--region iad");
+    expect(restoreDrillWorkflowSource).toContain("--skip-dns-registration");
+    expect(restoreDrillWorkflowSource).toContain("--restart no");
+    expect(restoreDrillWorkflowSource).toContain("--rm");
+    expect(restoreDrillWorkflowSource).toContain("publicService !== false");
+    expect(restoreDrillWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
+    expect(restoreDrillWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
+    expect(restoreDrillWorkflowSource).not.toContain("DATABASE_URL");
+    expect(restoreDrillSource).toContain("default_transaction_read_only=on");
+    expect(restoreDrillSource).toContain("listen_addresses=''");
+    expect(restoreDrillSource).toContain("pg_restore");
+    expect(restoreDrillSource).toContain("orphan_direct_messages");
+    expect(restoreDrillSource).toContain("CREATIVESOS_RECOVERY_EVIDENCE=");
+    expect(recoveryDockerSource).toContain("FROM postgres:17-bookworm");
+    expect(recoveryDockerSource).toContain('ENTRYPOINT ["/usr/local/bin/qualify-production-restore"]');
   });
 
   it("compiles the synchronized Android shell on the protected Linux workflow", () => {
