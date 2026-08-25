@@ -142,8 +142,16 @@ npm run benchmarks:evidence -- --run-id <run-id> --output-root <evidence-root> `
 ```
 
 The command refuses to overwrite an existing run package and emits the exact
-artifact URIs and SHA-256 checksums accepted by the benchmark ledger. Durable
-production custody of that package remains a separate storage/retention gate.
+artifact URIs and SHA-256 checksums accepted by the benchmark ledger. Benchmark
+Lab can also ingest each artifact directly into private Media Cloud custody,
+calculate its SHA-256 server-side, and bind the resulting `asset://` reference
+to an in-progress run. The server re-materializes and re-hashes every bound
+asset when the run is sealed, rejects duplicate asset reuse, invalid asset
+references, cross-workspace attachment, and any checksum mismatch. Accepted
+bytes are copied to a fresh private key that was never exposed by a signed PUT
+URL before the ledger closes, preventing post-seal overwrite through a still-
+valid upload URL. Retention policy and authorized human comparison remain
+separate operational gates.
 
 Provider-disabled paths can be architecturally complete and fail closed, but
 they cannot be called competitively complete until the authorized live round

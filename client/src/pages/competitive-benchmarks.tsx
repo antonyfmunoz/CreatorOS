@@ -7,7 +7,9 @@ import {
   LockKeyhole,
   Play,
   Scale,
+  ShieldCheck,
   TimerReset,
+  UploadCloud,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -185,13 +187,16 @@ function RunCompletionForm({ run }: { run: Run }) {
     Object.fromEntries(
       requiredBenchmarkEvidenceKinds.map((kind) => [
         kind,
-        { uri: "", checksum: "" },
+        { uri: "", checksum: "", filename: "", verified: false },
       ]),
     ) as Record<
       (typeof requiredBenchmarkEvidenceKinds)[number],
-      { uri: string; checksum: string }
+      { uri: string; checksum: string; filename: string; verified: boolean }
     >,
   );
+  const [uploadingEvidence, setUploadingEvidence] = useState<
+    (typeof requiredBenchmarkEvidenceKinds)[number] | null
+  >(null);
   const mutation = useMutation({
     mutationFn: async () =>
       (
@@ -233,6 +238,117 @@ function RunCompletionForm({ run }: { run: Run }) {
   });
   const update = (key: keyof typeof values, value: string) =>
     setValues((current) => ({ ...current, [key]: value }));
+  const uploadEvidence = async (
+    kind: (typeof requiredBenchmarkEvidenceKinds)[number],
+    file: File,
+  ) => {
+    if (file.size <= 0 || file.size > 500 * 1024 * 1024) {
+      toast({
+        title: "Evidence file is not valid",
+        description: "Choose a non-empty file up to 500 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setUploadingEvidence(kind);
+    let pendingAssetId: string | null = null;
+    let uploadedAssetId: string | null = null;
+    try {
+      const mimeType = file.type || "application/octet-stream";
+      let asset: { id: string };
+      try {
+        const intent = (await (
+          await apiRequest("POST", "/api/assets/upload-intents", {
+            kind: "download",
+            filename: file.name,
+            mimeType,
+            sizeBytes: file.size,
+            visibility: "private",
+            clientMutationId: crypto.randomUUID(),
+          })
+        ).json()) as {
+          asset: { id: string };
+          upload: { uploadUrl: string } | null;
+          alreadyComplete?: boolean;
+        };
+        pendingAssetId = intent.asset.id;
+        if (!intent.alreadyComplete) {
+          if (!intent.upload?.uploadUrl)
+            throw new Error("Direct storage upload was unavailable");
+          const stored = await fetch(intent.upload.uploadUrl, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          });
+          if (!stored.ok)
+            throw new Error("Direct storage upload was unavailable");
+          await apiRequest("POST", `/api/assets/${intent.asset.id}/complete`, {});
+        }
+        asset = intent.asset;
+      } catch (directError) {
+        if (pendingAssetId)
+          await apiRequest("DELETE", `/api/assets/${pendingAssetId}`, {}).catch(
+            () => undefined,
+          );
+        const body = new FormData();
+        body.append("kind", "download");
+        body.append("visibility", "private");
+        body.append("clientMutationId", crypto.randomUUID());
+        body.append("benchmark-evidence", file, file.name);
+        const response = await fetch("/api/assets/upload-proxy", {
+          method: "POST",
+          credentials: "include",
+          body,
+        });
+        if (!response.ok) {
+          const result = (await response.json().catch(() => ({}))) as {
+            message?: string;
+          };
+          throw new Error(
+            result.message ??
+              (directError instanceof Error
+                ? directError.message
+                : "Evidence upload failed"),
+          );
+        }
+        asset = ((await response.json()) as { asset: { id: string } }).asset;
+      }
+      uploadedAssetId = asset.id;
+      const attached = (await (
+        await apiRequest("POST", `/api/benchmarks/runs/${run.id}/evidence`, {
+          kind,
+          assetId: asset.id,
+        })
+      ).json()) as {
+        uri: string;
+        checksum: string;
+        filename: string | null;
+      };
+      setEvidence((current) => ({
+        ...current,
+        [kind]: {
+          uri: attached.uri,
+          checksum: attached.checksum,
+          filename: attached.filename ?? file.name,
+          verified: true,
+        },
+      }));
+      toast({ title: `${kind.replaceAll("_", " ")} verified` });
+    } catch (error) {
+      if (uploadedAssetId)
+        await apiRequest("DELETE", `/api/assets/${uploadedAssetId}`, {}).catch(
+          () => undefined,
+        );
+      toast({
+        title: "Evidence upload failed",
+        description:
+          error instanceof Error ? error.message : "Try this upload again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingEvidence(null);
+    }
+  };
   const scoreFields = [
     ["outputQualityScore", "Output quality"],
     ["safetyScore", "Safety"],
@@ -250,7 +366,10 @@ function RunCompletionForm({ run }: { run: Run }) {
     ["unrecoverableErrorCount", "Unrecoverable errors"],
   ] as const;
   return (
-    <details className="rounded-xl border border-zinc-800 p-3">
+    <details
+      className="rounded-xl border border-zinc-800 p-3"
+      data-testid={`benchmark-run-${run.id}`}
+    >
       <summary className="cursor-pointer text-sm font-semibold text-white">
         Finish{" "}
         {run.implementation === "creativesos"
@@ -310,15 +429,52 @@ function RunCompletionForm({ run }: { run: Run }) {
           Required tamper-evident artifacts
         </p>
         {requiredBenchmarkEvidenceKinds.map((kind) => (
-          <div key={kind} className="grid gap-2 sm:grid-cols-[1fr_0.7fr]">
+          <div key={kind} className="rounded-lg border border-zinc-800 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold capitalize text-zinc-200">
+                  {kind.replaceAll("_", " ")}
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Private custody with a server-calculated SHA-256 checksum
+                </p>
+              </div>
+              {evidence[kind].verified ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {evidence[kind].filename || "Verified"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+                  <UploadCloud className="h-3.5 w-3.5" /> Upload preferred
+                </span>
+              )}
+            </div>
+            <Input
+              aria-label={`Upload ${kind.replaceAll("_", " ")} evidence`}
+              data-testid={`benchmark-evidence-${run.id}-${kind}`}
+              type="file"
+              disabled={uploadingEvidence !== null}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadEvidence(kind, file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_0.7fr]">
             <Label>
-              {kind.replaceAll("_", " ")} URI
+              Evidence URI
               <Input
+                data-testid={`benchmark-evidence-uri-${run.id}-${kind}`}
                 value={evidence[kind].uri}
                 onChange={(event) =>
                   setEvidence((current) => ({
                     ...current,
-                    [kind]: { ...current[kind], uri: event.target.value },
+                    [kind]: {
+                      ...current[kind],
+                      uri: event.target.value,
+                      verified: false,
+                    },
                   }))
                 }
                 placeholder="artifact://…, r2://…, or approved report URL"
@@ -327,6 +483,7 @@ function RunCompletionForm({ run }: { run: Run }) {
             <Label>
               Checksum
               <Input
+                data-testid={`benchmark-evidence-checksum-${run.id}-${kind}`}
                 value={evidence[kind].checksum}
                 onChange={(event) =>
                   setEvidence((current) => ({
@@ -334,12 +491,14 @@ function RunCompletionForm({ run }: { run: Run }) {
                     [kind]: {
                       ...current[kind],
                       checksum: event.target.value,
+                      verified: false,
                     },
                   }))
                 }
                 placeholder="sha256:…"
               />
             </Label>
+            </div>
           </div>
         ))}
       </div>

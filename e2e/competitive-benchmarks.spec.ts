@@ -1,5 +1,12 @@
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 
+const evidenceKinds = [
+  "input_manifest",
+  "action_log",
+  "output_artifact",
+  "run_recording",
+] as const;
+
 async function ok(response: APIResponse) {
   expect(
     response.ok(),
@@ -29,22 +36,22 @@ const completedRun = (overrides: Record<string, unknown>) => ({
     {
       kind: "input_manifest",
       uri: "artifact://benchmark/input",
-      checksum: "sha256:input",
+      checksum: `sha256:${"1".repeat(64)}`,
     },
     {
       kind: "action_log",
       uri: "artifact://benchmark/actions",
-      checksum: "sha256:actions",
+      checksum: `sha256:${"2".repeat(64)}`,
     },
     {
       kind: "output_artifact",
       uri: "artifact://benchmark/output",
-      checksum: "sha256:output",
+      checksum: `sha256:${"3".repeat(64)}`,
     },
     {
       kind: "run_recording",
       uri: "artifact://benchmark/recording",
-      checksum: "sha256:recording",
+      checksum: `sha256:${"4".repeat(64)}`,
     },
   ],
   ...overrides,
@@ -52,7 +59,7 @@ const completedRun = (overrides: Record<string, unknown>) => ({
 
 test("locked equal-input runs preserve evidence and calculate connected advantage", async ({
   page,
-}) => {
+}, testInfo) => {
   const lockedEnvironment = {
     protocolVersion: "1",
     sourceManifestId: "manifest:native-social-fixture-v1",
@@ -134,15 +141,99 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
     ).status(),
   ).toBe(400);
 
+  await page.goto("/business/benchmarks");
+  const nativeRunForm = page.getByTestId(`benchmark-run-${nativeRun.id}`);
+  await expect(nativeRunForm).toBeVisible();
+  await nativeRunForm.locator("summary").click();
+  const nativeEvidence: Array<{
+    kind: (typeof evidenceKinds)[number];
+    uri: string;
+    checksum: string;
+  }> = [];
+  for (const [index, kind] of evidenceKinds.entries()) {
+    await nativeRunForm
+      .getByTestId(`benchmark-evidence-${nativeRun.id}-${kind}`)
+      .setInputFiles({
+        name: `${kind}.json`,
+        mimeType: "application/json",
+        buffer: Buffer.from(
+          JSON.stringify({ runId: nativeRun.id, kind, sequence: index + 1 }),
+        ),
+      });
+    const uriInput = nativeRunForm.getByTestId(
+      `benchmark-evidence-uri-${nativeRun.id}-${kind}`,
+    );
+    const checksumInput = nativeRunForm.getByTestId(
+      `benchmark-evidence-checksum-${nativeRun.id}-${kind}`,
+    );
+    await expect(uriInput).toHaveValue(/^asset:\/\/[0-9a-f-]{36}$/);
+    await expect(checksumInput).toHaveValue(/^sha256:[a-f0-9]{64}$/);
+    nativeEvidence.push({
+      kind,
+      uri: await uriInput.inputValue(),
+      checksum: await checksumInput.inputValue(),
+    });
+  }
+
+  const otherTenantUserId = testInfo.project.name === "mobile-chromium" ? "2" : "1";
+  const crossTenantAttach = await page.request.post(
+    `/api/benchmarks/runs/${nativeRun.id}/evidence`,
+    {
+      headers: { "x-creativesos-demo-user": otherTenantUserId },
+      data: {
+        kind: "input_manifest",
+        assetId: nativeEvidence[0]!.uri.replace("asset://", ""),
+      },
+    },
+  );
+  expect(crossTenantAttach.status()).toBe(404);
+
+  const tamperedEvidence = nativeEvidence.map((item, index) =>
+    index === 0 ? { ...item, checksum: `sha256:${"0".repeat(64)}` } : item,
+  );
+  const tamperedCompletion = await page.request.patch(
+    `/api/benchmarks/runs/${nativeRun.id}`,
+    {
+      data: completedRun({
+        activeTimeMs: 600_000,
+        elapsedTimeMs: 720_000,
+        manualHandoffCount: 1,
+        evidence: tamperedEvidence,
+      }),
+    },
+  );
+  expect(tamperedCompletion.status()).toBe(409);
+  expect(await tamperedCompletion.json()).toMatchObject({
+    message: "Benchmark evidence checksum does not match the stored asset",
+  });
+
   await ok(
     await page.request.patch(`/api/benchmarks/runs/${nativeRun.id}`, {
       data: completedRun({
         activeTimeMs: 600_000,
         elapsedTimeMs: 720_000,
         manualHandoffCount: 1,
+        evidence: nativeEvidence,
       }),
     }),
   );
+  const sealedAssetsResponse = await page.request.get("/api/assets");
+  await ok(sealedAssetsResponse);
+  const sealedAssets = (await sealedAssetsResponse.json()) as Array<{
+    id: string;
+    sha256: string | null;
+    metadata: Record<string, unknown>;
+  }>;
+  for (const item of nativeEvidence) {
+    const assetId = item.uri.replace("asset://", "");
+    expect(sealedAssets.find((asset) => asset.id === assetId)).toMatchObject({
+      sha256: item.checksum.replace("sha256:", ""),
+      metadata: {
+        benchmarkEvidenceCustodyVersion: 1,
+        benchmarkEvidenceSealedAt: expect.any(String),
+      },
+    });
+  }
   await ok(
     await page.request.patch(`/api/benchmarks/runs/${comparisonRun.id}`, {
       data: completedRun({
@@ -251,7 +342,9 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
     .getByLabel("Remediation operator note")
     .fill("Product owner will close the measured parity deficit before the September release train.");
   await remediationSection.getByRole("button", { name: "Save plan" }).click();
-  await expect(page.getByText("Remediation plan saved")).toBeVisible();
+  await expect(
+    page.getByText("Remediation plan saved", { exact: true }),
+  ).toBeVisible();
   const plannedListResponse = await page.request.get("/api/benchmarks");
   await ok(plannedListResponse);
   const plannedSocial = (await plannedListResponse.json()).find(
