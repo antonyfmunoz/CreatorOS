@@ -60,6 +60,9 @@ polled to its terminal state, queried only for Machine-scoped logs and removed
 by exact Machine ID in an always-run cleanup step. GitHub retains only
 secret-free evidence and execution logs for 90 days; neither the database dump
 nor credentials leave the ephemeral Machine.
+Because Fly can return a nonzero launch status when a one-shot process stops
+quickly, the workflow resolves the run-unique Machine independently of the CLI
+exit code and accepts success only from the Machine-scoped recovery evidence.
 
 The private bucket's retention period is a product/legal decision because the
 rule deletes backup objects permanently. Do not enable an expiration lifecycle

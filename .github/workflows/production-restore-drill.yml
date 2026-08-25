@@ -58,6 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          set +e
           flyctl machine run . \
             --app creatoros-app \
             --name "${RECOVERY_MACHINE_NAME}" \
@@ -72,10 +73,20 @@ jobs:
             --skip-dns-registration \
             --metadata purpose=production-restore-drill \
             --detach 2>&1 | tee production-restore-launch.log
+          launch_status="${PIPESTATUS[0]}"
+          set -e
+          printf 'flyctl machine run exit status: %s\n' "${launch_status}" >> production-restore-launch.log
 
-          machine_id="$(flyctl machine list --app creatoros-app --json | jq -r --arg name "${RECOVERY_MACHINE_NAME}" '.[] | select(.name == $name) | .id' | head -n 1)"
+          machine_id=""
+          for _ in $(seq 1 12); do
+            machine_id="$(flyctl machine list --app creatoros-app --json | jq -r --arg name "${RECOVERY_MACHINE_NAME}" '.[] | select(.name == $name) | .id' | head -n 1)"
+            if [[ -n "${machine_id}" ]]; then
+              break
+            fi
+            sleep 5
+          done
           if [[ -z "${machine_id}" ]]; then
-            echo "The recovery Machine could not be resolved after launch" >&2
+            echo "The recovery Machine could not be resolved after launch (flyctl exit ${launch_status})" >&2
             exit 1
           fi
           printf '%s\n' "${machine_id}" > production-restore-machine-id.txt
