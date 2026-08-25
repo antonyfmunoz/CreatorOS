@@ -42,11 +42,24 @@ The temporary parent directory grants the unprivileged PostgreSQL process only
 the traversal permission needed to reach its owned cluster and socket
 directories; the archive and manifest remain mode `0600`.
 
+## Production evidence
+
+GitHub Actions run
+[`32889621581`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32889621581)
+passed on 2026-08-25 against verified live commit
+`75c25da7f99be118e82f4216db4cdbfa8e51d37f`. It restored private backup
+`a0d53d2d-1fb0-461c-bdea-3b8a60744bfa` (1,136,997 bytes), matched both the
+receipt and manifest hashes, advanced the archive from 107 to the release's
+exact 108 migrations by applying one pending migration, verified latest
+migration `1787601600000`, 26 mandatory tables and zero orphan direct messages,
+and measured an 18-second RTO. Recovery Machine `876e73b0015278` had no public
+service and was explicitly destroyed after evidence collection.
+
 ## Qualification boundary
 
 Shell syntax, workflow security contracts, the complete code/build suite and
-source-secret scan must pass before merge. The Fly remote builder and first
-ephemeral production execution are the authoritative image and real-archive
+source-secret scan pass. The Fly remote builder and the dated ephemeral
+production execution above are the authoritative image and real-archive
 qualification because Docker Desktop is not active in the local environment.
 
 The drill does not prove cross-region recovery, paid regional loss, a production

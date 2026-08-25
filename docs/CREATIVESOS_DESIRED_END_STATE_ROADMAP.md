@@ -692,9 +692,12 @@ multi-region rollout and production-volume evidence remain.
   mechanics locally. A quarterly and on-demand one-shot recovery Machine now
   restores the newest real production archive inside the existing private Fly
   application and region, measures RTO, retains only aggregate evidence, and
-  removes itself on exit. Its first successful production execution remains the
-  release gate; broader data-residency policy and cross-region RTO remain
-  decision or scale gates.
+  removes itself on exit. Run `32889621581` passed against verified live commit
+  `75c25da7f99be118e82f4216db4cdbfa8e51d37f`: it restored a 107-migration
+  archive, transactionally advanced it to exact 108-migration release parity,
+  verified 26 mandatory tables and zero orphan direct messages, measured an
+  18-second RTO and destroyed the exact private Machine. Broader data-residency
+  policy and cross-region RTO remain decision or scale gates.
 
 ### Exit gate
 

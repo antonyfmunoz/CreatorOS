@@ -34,8 +34,8 @@ The workflow:
 ## Evidence boundary
 
 This workflow proves that the newest real production archive is privately held,
-checksum-consistent and readable. The existing disposable PostgreSQL drill
-proves the restore mechanism. A dated restore of a real production archive into
-an isolated recovery database, measured production RTO, paid regional failure
-and representative production volume remain separate recovery or scale
-evidence; this release does not claim them.
+checksum-consistent and readable. The later protected production restore run
+`32889621581` restored the same archive in an isolated private Machine, applied
+its one pending migration to reach exact live-release parity, measured an
+18-second RTO and destroyed the Machine. Paid regional failure and
+representative production volume remain separate scale evidence.
