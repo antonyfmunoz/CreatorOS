@@ -9,10 +9,11 @@ the newest real production backup without moving the archive or its credentials
 into GitHub Actions.
 
 The protected workflow builds a dedicated PostgreSQL 17 recovery image and
-launches it as a one-shot Machine inside the existing `creatoros-app` Fly
+launches it as a named one-shot Machine inside the existing `creatoros-app` Fly
 application and `iad` region. The Machine has no public service, does not
 register in internal DNS, uses a socket-only temporary PostgreSQL cluster and is
-automatically removed when it exits.
+polled through its terminal state and removed by exact Machine ID in an
+always-run cleanup step.
 
 The drill:
 

@@ -138,12 +138,17 @@ describe("production deployment contract", () => {
     expect(restoreDrillWorkflowSource).toContain("--region iad");
     expect(restoreDrillWorkflowSource).toContain("--skip-dns-registration");
     expect(restoreDrillWorkflowSource).toContain("--restart no");
-    expect(restoreDrillWorkflowSource).toContain("--rm");
+    expect(restoreDrillWorkflowSource).toContain("--detach");
+    expect(restoreDrillWorkflowSource).toContain("production-restore-machine-id.txt");
+    expect(restoreDrillWorkflowSource).toContain("flyctl logs --app creatoros-app --machine");
+    expect(restoreDrillWorkflowSource).toContain("flyctl machine destroy --app creatoros-app --force");
+    expect(restoreDrillWorkflowSource).toContain("if: always()");
     expect(restoreDrillWorkflowSource).toContain("publicService !== false");
     expect(restoreDrillWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(restoreDrillWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
     expect(restoreDrillWorkflowSource).not.toContain("DATABASE_URL");
     expect(restoreDrillSource).toContain("default_transaction_read_only=on");
+    expect(restoreDrillSource).not.toContain("\r");
     expect(restoreDrillSource).toContain("listen_addresses=''");
     expect(restoreDrillSource).toContain("pg_restore");
     expect(restoreDrillSource).toContain("orphan_direct_messages");
