@@ -53,7 +53,8 @@ It builds a dedicated PostgreSQL 17 recovery image, launches it as a one-shot
 Machine inside the existing Fly application and `iad` region, and inherits the
 application's production secrets only inside that Fly boundary. The Machine has
 no public service or DNS registration, reads only the newest completed backup
-receipt, verifies the private R2 archive and manifest, restores into a local
+receipt through an explicit read-only transaction, verifies the private R2
+archive and manifest, restores into a local
 socket-only PostgreSQL cluster, checks the migration ledger, mandatory tables
 and direct-message referential integrity, emits aggregate RTO evidence, and is
 polled to its terminal state, queried only for Machine-scoped logs and removed

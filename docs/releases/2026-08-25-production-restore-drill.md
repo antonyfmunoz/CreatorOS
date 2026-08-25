@@ -33,6 +33,10 @@ The drill:
 - measures recovery time; and
 - retains only aggregate, secret-free evidence and logs for 90 days.
 
+The receipt lookup uses an explicit read-only transaction with a transaction-
+local timeout. This enforces the no-write boundary without unsupported startup
+parameters on Neon's pooled production connection.
+
 ## Qualification boundary
 
 Shell syntax, workflow security contracts, the complete code/build suite and

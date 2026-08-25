@@ -149,7 +149,9 @@ describe("production deployment contract", () => {
     expect(restoreDrillWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(restoreDrillWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
     expect(restoreDrillWorkflowSource).not.toContain("DATABASE_URL");
-    expect(restoreDrillSource).toContain("default_transaction_read_only=on");
+    expect(restoreDrillSource).toContain("begin transaction read only;");
+    expect(restoreDrillSource).toContain("set local statement_timeout = '15s';");
+    expect(restoreDrillSource).not.toContain("PGOPTIONS=");
     expect(restoreDrillSource).not.toContain("\r");
     expect(restoreDrillSource).toContain("listen_addresses=''");
     expect(restoreDrillSource).toContain("pg_restore");
