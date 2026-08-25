@@ -46,15 +46,16 @@ directories; the archive and manifest remain mode `0600`.
 ## Production evidence
 
 GitHub Actions run
-[`32889621581`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32889621581)
+[`32897371297`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32897371297)
 passed on 2026-08-25 against verified live commit
-`75c25da7f99be118e82f4216db4cdbfa8e51d37f`. It restored private backup
+`54b7e1faac5464fd0a0395beba2e9cc8453b25e8`. It restored private backup
 `a0d53d2d-1fb0-461c-bdea-3b8a60744bfa` (1,136,997 bytes), matched both the
-receipt and manifest hashes, advanced the archive from 107 to the release's
-exact 108 migrations by applying one pending migration, verified latest
-migration `1787601600000`, 26 mandatory tables and zero orphan direct messages,
-and measured an 18-second RTO. Recovery Machine `876e73b0015278` had no public
-service and was explicitly destroyed after evidence collection.
+receipt and manifest hashes, proved the backup was 73,495 seconds old against
+the enforced 108,000-second ceiling, advanced the archive from 107 to the
+release's exact 108 migrations by applying one pending migration, verified
+latest migration `1787601600000`, 26 mandatory tables and zero orphan direct
+messages, and measured an 18-second RTO. Recovery Machine `84ed239ae571d8` had
+no public service and was explicitly destroyed after evidence collection.
 
 ## Qualification boundary
 
