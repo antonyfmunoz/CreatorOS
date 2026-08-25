@@ -5,6 +5,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/qualify-production-restore.sh /usr/local/bin/qualify-production-restore
+COPY migrations /opt/creativesos/migrations
 RUN chmod 0755 /usr/local/bin/qualify-production-restore
 
 ENTRYPOINT ["/usr/local/bin/qualify-production-restore"]

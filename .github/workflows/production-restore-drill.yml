@@ -134,10 +134,11 @@ jobs:
           import fs from "node:fs";
 
           const evidence = JSON.parse(process.env.EVIDENCE_LINE ?? "");
+          const release = JSON.parse(fs.readFileSync("production-release-evidence.json", "utf8"));
           if (evidence.status !== "production_restore_verified" || evidence.hashMatches !== true || evidence.manifestMatches !== true || evidence.privateSource !== true || evidence.isolatedRestore !== true || evidence.publicService !== false || evidence.orphanDirectMessages !== 0) {
             throw new Error("Production restore evidence was incomplete or invalid");
           }
-          if (!Number.isInteger(evidence.migrationCount) || evidence.migrationCount < 1 || !Number.isInteger(evidence.requiredTableCount) || evidence.requiredTableCount < 1 || !Number.isInteger(evidence.rtoSeconds) || evidence.rtoSeconds < 0) {
+          if (!Number.isInteger(evidence.archiveMigrationCount) || !Number.isInteger(evidence.migrationsApplied) || evidence.migrationsApplied !== evidence.migrationCount - evidence.archiveMigrationCount || evidence.migrationCount !== release.migrations?.expected?.count || evidence.latestMigration !== release.migrations?.expected?.latest || !Number.isInteger(evidence.requiredTableCount) || evidence.requiredTableCount < 1 || !Number.isInteger(evidence.rtoSeconds) || evidence.rtoSeconds < 0) {
             throw new Error("Production restore evidence did not contain usable recovery measurements");
           }
           fs.writeFileSync("production-restore-evidence.json", `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });

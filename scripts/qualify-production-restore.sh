@@ -23,7 +23,13 @@ manifest_path="${recovery_root}/manifest.json"
 cluster_path="${recovery_root}/postgres"
 socket_path="${recovery_root}/socket"
 postgres_log="${cluster_path}/postgres.log"
+migrations_root="/opt/creativesos/migrations"
 server_started=false
+
+if [[ ! -f "${migrations_root}/meta/_journal.json" ]]; then
+  echo "Recovery image does not contain the migration journal" >&2
+  exit 1
+fi
 
 cleanup() {
   if [[ "${server_started}" == "true" ]]; then
@@ -115,6 +121,41 @@ createdb -h "${socket_path}" -U postgres creativesos_restore
 pg_restore -h "${socket_path}" -U postgres -d creativesos_restore \
   --no-owner --no-acl --exit-on-error "${dump_path}"
 
+archive_migration_count="$(psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -Atq -c 'select count(*) from drizzle.__drizzle_migrations')"
+expected_migration_count="$(jq -r '.entries | length' "${migrations_root}/meta/_journal.json")"
+expected_latest_migration="$(jq -r '.entries[-1].when' "${migrations_root}/meta/_journal.json")"
+migration_batch="${recovery_root}/pending-migrations.sql"
+declare -A applied_migrations=()
+while IFS= read -r applied_migration; do
+  if [[ -n "${applied_migration}" ]]; then
+    applied_migrations["${applied_migration}"]=1
+  fi
+done < <(psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -Atq -c 'select created_at from drizzle.__drizzle_migrations')
+
+migrations_applied=0
+{
+  printf '\\set ON_ERROR_STOP on\n'
+  printf 'begin;\n'
+  printf 'select pg_advisory_xact_lock(84231859);\n'
+  while IFS=$'\t' read -r migration_tag migration_timestamp; do
+    if [[ -n "${applied_migrations[$migration_timestamp]:-}" ]]; then
+      continue
+    fi
+    migration_file="${migrations_root}/${migration_tag}.sql"
+    if [[ ! -f "${migration_file}" ]]; then
+      echo "Recovery image is missing migration ${migration_tag}" >&2
+      exit 1
+    fi
+    migration_hash="$(sha256sum "${migration_file}" | awk '{print $1}')"
+    cat "${migration_file}"
+    printf '\ninsert into drizzle.__drizzle_migrations (hash, created_at) values (\047%s\047, %s);\n' "${migration_hash}" "${migration_timestamp}"
+    migrations_applied="$((migrations_applied + 1))"
+  done < <(jq -r '.entries[] | [.tag, (.when | tostring)] | @tsv' "${migrations_root}/meta/_journal.json")
+  printf 'commit;\n'
+} > "${migration_batch}"
+chmod 0600 "${migration_batch}"
+psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -v ON_ERROR_STOP=1 -q -f "${migration_batch}"
+
 required_tables=(
   users businesses posts products communities orders automation_definitions
   relationships account_privacy_requests production_backups
@@ -123,7 +164,7 @@ required_tables=(
   broadcast_studio_collaborators broadcast_brand_kits
   broadcast_template_catalog broadcast_destinations broadcast_sessions
   broadcast_session_tracks broadcast_audience_messages data_import_jobs
-  data_import_records
+  data_import_records competitive_benchmark_remediations
 )
 quoted_tables="$(printf "'%s'," "${required_tables[@]}")"
 quoted_tables="${quoted_tables%,}"
@@ -137,6 +178,11 @@ if [[ "${required_table_count}" != "${#required_tables[@]}" ]]; then
 fi
 
 migration_count="$(psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -Atq -c 'select count(*) from drizzle.__drizzle_migrations')"
+latest_migration="$(psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -Atq -c 'select max(created_at) from drizzle.__drizzle_migrations')"
+if [[ "${migration_count}" != "${expected_migration_count}" ]] || [[ "${latest_migration}" != "${expected_latest_migration}" ]]; then
+  echo "Recovered migration ledger does not match the current release" >&2
+  exit 1
+fi
 orphan_direct_messages="$(
   psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -Atq -c \
     'select count(*) from direct_messages dm left join conversations c on c.id = dm.conversation_id where c.id is null'
@@ -156,10 +202,13 @@ evidence="$(
     --arg dateKey "${date_key}" \
     --arg completedAt "${completed_at}" \
     --argjson sizeBytes "${actual_size}" \
+    --argjson archiveMigrationCount "${archive_migration_count}" \
+    --argjson migrationsApplied "${migrations_applied}" \
     --argjson migrationCount "${migration_count}" \
+    --argjson latestMigration "${latest_migration}" \
     --argjson requiredTableCount "${required_table_count}" \
     --argjson orphanDirectMessages "${orphan_direct_messages}" \
     --argjson rtoSeconds "${rto_seconds}" \
-    '{schemaVersion:$schemaVersion,status:$status,backupId:$backupId,dateKey:$dateKey,completedAt:$completedAt,sizeBytes:$sizeBytes,hashMatches:true,manifestMatches:true,privateSource:true,isolatedRestore:true,publicService:false,migrationCount:$migrationCount,requiredTableCount:$requiredTableCount,orphanDirectMessages:$orphanDirectMessages,rtoSeconds:$rtoSeconds}'
+    '{schemaVersion:$schemaVersion,status:$status,backupId:$backupId,dateKey:$dateKey,completedAt:$completedAt,sizeBytes:$sizeBytes,hashMatches:true,manifestMatches:true,privateSource:true,isolatedRestore:true,publicService:false,archiveMigrationCount:$archiveMigrationCount,migrationsApplied:$migrationsApplied,migrationCount:$migrationCount,latestMigration:$latestMigration,requiredTableCount:$requiredTableCount,orphanDirectMessages:$orphanDirectMessages,rtoSeconds:$rtoSeconds}'
 )"
 printf 'CREATIVESOS_RECOVERY_EVIDENCE=%s\n' "${evidence}"

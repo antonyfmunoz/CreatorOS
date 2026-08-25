@@ -146,6 +146,7 @@ describe("production deployment contract", () => {
     expect(restoreDrillWorkflowSource).toContain("flyctl machine destroy --app creatoros-app --force");
     expect(restoreDrillWorkflowSource).toContain("if: always()");
     expect(restoreDrillWorkflowSource).toContain("publicService !== false");
+    expect(restoreDrillWorkflowSource).toContain("evidence.migrationCount !== release.migrations?.expected?.count");
     expect(restoreDrillWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(restoreDrillWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
     expect(restoreDrillWorkflowSource).not.toContain("DATABASE_URL");
@@ -157,9 +158,12 @@ describe("production deployment contract", () => {
     expect(restoreDrillSource).toContain('postgres_log="${cluster_path}/postgres.log"');
     expect(restoreDrillSource).toContain("listen_addresses=''");
     expect(restoreDrillSource).toContain("pg_restore");
+    expect(restoreDrillSource).toContain("pending-migrations.sql");
+    expect(restoreDrillSource).toContain("competitive_benchmark_remediations");
     expect(restoreDrillSource).toContain("orphan_direct_messages");
     expect(restoreDrillSource).toContain("CREATIVESOS_RECOVERY_EVIDENCE=");
     expect(recoveryDockerSource).toContain("FROM postgres:17-bookworm");
+    expect(recoveryDockerSource).toContain("COPY migrations /opt/creativesos/migrations");
     expect(recoveryDockerSource).toContain('ENTRYPOINT ["/usr/local/bin/qualify-production-restore"]');
   });
 
