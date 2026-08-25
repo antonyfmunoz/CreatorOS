@@ -118,7 +118,7 @@ do not yet have the locked side-by-side operator evidence required for a
   verified the newest private archive's durable size, hash, readability, required
   inventory and 73,437-second age against the enforced 108,000-second ceiling.
 - The provider-activation control plane and specialist-substitution parity
-  enforcement are locally qualified: 119 unit/contract files and 457 tests,
+  enforcement are locally qualified: 119 unit/contract files and 458 tests,
   TypeScript, production build, bundle and Worker gates, a fresh 108-migration database with 219
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
