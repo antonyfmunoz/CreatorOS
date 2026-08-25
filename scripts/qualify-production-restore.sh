@@ -74,6 +74,28 @@ fi
 backup_id="$(jq -r '.backupId' <<<"${backup_json}")"
 date_key="$(jq -r '.dateKey' <<<"${backup_json}")"
 completed_at="$(jq -r '.completedAt' <<<"${backup_json}")"
+normalized_completed_at="${completed_at}"
+if [[ "${normalized_completed_at}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+$ ]]; then
+  normalized_completed_at="${normalized_completed_at}Z"
+fi
+if ! completed_at_epoch="$(date -u -d "${normalized_completed_at}" +%s)"; then
+  echo "Production backup completion time was invalid" >&2
+  exit 1
+fi
+raw_backup_age_seconds="$((started_at_epoch - completed_at_epoch))"
+if (( raw_backup_age_seconds < -300 )); then
+  echo "Production backup completion time was unexpectedly in the future" >&2
+  exit 1
+fi
+backup_age_seconds="${raw_backup_age_seconds}"
+if (( backup_age_seconds < 0 )); then
+  backup_age_seconds=0
+fi
+max_backup_age_seconds=108000
+if (( backup_age_seconds > max_backup_age_seconds )); then
+  echo "Newest production backup exceeded the recovery-point limit" >&2
+  exit 1
+fi
 storage_key="$(jq -r '.storageKey' <<<"${backup_json}")"
 manifest_storage_key="$(jq -r '.manifestStorageKey' <<<"${backup_json}")"
 expected_size="$(jq -r '.sizeBytes' <<<"${backup_json}")"
@@ -202,6 +224,8 @@ evidence="$(
     --arg dateKey "${date_key}" \
     --arg completedAt "${completed_at}" \
     --argjson sizeBytes "${actual_size}" \
+    --argjson backupAgeSeconds "${backup_age_seconds}" \
+    --argjson maxBackupAgeSeconds "${max_backup_age_seconds}" \
     --argjson archiveMigrationCount "${archive_migration_count}" \
     --argjson migrationsApplied "${migrations_applied}" \
     --argjson migrationCount "${migration_count}" \
@@ -209,6 +233,6 @@ evidence="$(
     --argjson requiredTableCount "${required_table_count}" \
     --argjson orphanDirectMessages "${orphan_direct_messages}" \
     --argjson rtoSeconds "${rto_seconds}" \
-    '{schemaVersion:$schemaVersion,status:$status,backupId:$backupId,dateKey:$dateKey,completedAt:$completedAt,sizeBytes:$sizeBytes,hashMatches:true,manifestMatches:true,privateSource:true,isolatedRestore:true,publicService:false,archiveMigrationCount:$archiveMigrationCount,migrationsApplied:$migrationsApplied,migrationCount:$migrationCount,latestMigration:$latestMigration,requiredTableCount:$requiredTableCount,orphanDirectMessages:$orphanDirectMessages,rtoSeconds:$rtoSeconds}'
+    '{schemaVersion:$schemaVersion,status:$status,backupId:$backupId,dateKey:$dateKey,completedAt:$completedAt,sizeBytes:$sizeBytes,backupAgeSeconds:$backupAgeSeconds,maxBackupAgeSeconds:$maxBackupAgeSeconds,hashMatches:true,manifestMatches:true,privateSource:true,isolatedRestore:true,publicService:false,archiveMigrationCount:$archiveMigrationCount,migrationsApplied:$migrationsApplied,migrationCount:$migrationCount,latestMigration:$latestMigration,requiredTableCount:$requiredTableCount,orphanDirectMessages:$orphanDirectMessages,rtoSeconds:$rtoSeconds}'
 )"
 printf 'CREATIVESOS_RECOVERY_EVIDENCE=%s\n' "${evidence}"

@@ -47,6 +47,8 @@ the newest production archive's size, SHA-256 manifest, private custody,
 readability and required-table inventory. It does not replace the isolated
 `pg_restore` drill above; archive inspection and restoration remain separate
 evidence.
+Both qualification paths fail closed when the newest completed archive is more
+than 30 hours old, matching the published recovery-point alert threshold.
 
 The protected `Production restore drill` workflow runs quarterly and on demand.
 It builds a dedicated PostgreSQL 17 recovery image, launches it as a one-shot

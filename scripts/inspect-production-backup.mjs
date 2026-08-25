@@ -33,6 +33,15 @@ try {
   if (!backup || backup.status !== "completed" || !backup.storage_key || !backup.manifest_storage_key) {
     throw new Error("No completed production backup with durable object keys was found");
   }
+  const completedAtMs = new Date(backup.completed_at).getTime();
+  if (!Number.isFinite(completedAtMs)) throw new Error("Production backup completion time was invalid");
+  const rawBackupAgeSeconds = Math.floor((Date.now() - completedAtMs) / 1000);
+  if (rawBackupAgeSeconds < -300) throw new Error("Production backup completion time was unexpectedly in the future");
+  const backupAgeSeconds = Math.max(0, rawBackupAgeSeconds);
+  const maxBackupAgeSeconds = 30 * 60 * 60;
+  if (backupAgeSeconds > maxBackupAgeSeconds) {
+    throw new Error(`Newest production backup exceeded the ${maxBackupAgeSeconds}-second recovery-point limit`);
+  }
 
   const client = new S3Client({
     region: "auto",
@@ -72,6 +81,8 @@ try {
     backupId: backup.id,
     dateKey: backup.date_key,
     completedAt: backup.completed_at,
+    backupAgeSeconds,
+    maxBackupAgeSeconds,
     sizeBytes: file.size,
     sizeMatches,
     hashMatches,
