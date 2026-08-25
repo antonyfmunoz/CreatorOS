@@ -56,9 +56,10 @@ no public service or DNS registration, reads only the newest completed backup
 receipt, verifies the private R2 archive and manifest, restores into a local
 socket-only PostgreSQL cluster, checks the migration ledger, mandatory tables
 and direct-message referential integrity, emits aggregate RTO evidence, and is
-automatically removed when it exits. GitHub retains only secret-free evidence
-and execution logs for 90 days; neither the database dump nor credentials leave
-the ephemeral Machine.
+polled to its terminal state, queried only for Machine-scoped logs and removed
+by exact Machine ID in an always-run cleanup step. GitHub retains only
+secret-free evidence and execution logs for 90 days; neither the database dump
+nor credentials leave the ephemeral Machine.
 
 The private bucket's retention period is a product/legal decision because the
 rule deletes backup objects permanently. Do not enable an expiration lifecycle

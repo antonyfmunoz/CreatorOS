@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This script must remain LF-only because it is the recovery image entrypoint.
 set -euo pipefail
 
 required=(

@@ -28,6 +28,7 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       CREATIVESOS_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      RECOVERY_MACHINE_NAME: creativesos-restore-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,6 +60,7 @@ jobs:
           set -euo pipefail
           flyctl machine run . \
             --app creatoros-app \
+            --name "${RECOVERY_MACHINE_NAME}" \
             --dockerfile Dockerfile.recovery \
             --region iad \
             --vm-size shared-cpu-1x \
@@ -69,8 +71,50 @@ jobs:
             --autostop=off \
             --skip-dns-registration \
             --metadata purpose=production-restore-drill \
-            --rm 2>&1 | tee production-restore-run.log
-          evidence_line="$(grep -o 'CREATIVESOS_RECOVERY_EVIDENCE=.*' production-restore-run.log | tail -n 1)"
+            --detach 2>&1 | tee production-restore-launch.log
+
+          machine_id="$(flyctl machine list --app creatoros-app --json | jq -r --arg name "${RECOVERY_MACHINE_NAME}" '.[] | select(.name == $name) | .id' | head -n 1)"
+          if [[ -z "${machine_id}" ]]; then
+            echo "The recovery Machine could not be resolved after launch" >&2
+            exit 1
+          fi
+          printf '%s\n' "${machine_id}" > production-restore-machine-id.txt
+
+          stopped=false
+          for _ in $(seq 1 180); do
+            state="$(flyctl machine list --app creatoros-app --json | jq -r --arg id "${machine_id}" '.[] | select(.id == $id) | .state' | head -n 1)"
+            case "${state}" in
+              stopped)
+                stopped=true
+                break
+                ;;
+              created|starting|started|stopping)
+                sleep 5
+                ;;
+              destroyed|destroying|"")
+                echo "The recovery Machine disappeared before evidence collection" >&2
+                exit 1
+                ;;
+              *)
+                echo "Unexpected recovery Machine state: ${state}" >&2
+                exit 1
+                ;;
+            esac
+          done
+          if [[ "${stopped}" != "true" ]]; then
+            echo "The recovery Machine exceeded the bounded completion window" >&2
+            exit 1
+          fi
+
+          evidence_line=""
+          for _ in $(seq 1 10); do
+            flyctl logs --app creatoros-app --machine "${machine_id}" --no-tail > production-restore-machine.log 2>&1 || true
+            evidence_line="$(grep -o 'CREATIVESOS_RECOVERY_EVIDENCE={.*}' production-restore-machine.log | tail -n 1 || true)"
+            if [[ -n "${evidence_line}" ]]; then
+              break
+            fi
+            sleep 3
+          done
           if [[ -z "$evidence_line" ]]; then
             echo "The ephemeral recovery machine did not emit qualification evidence" >&2
             exit 1
@@ -87,6 +131,21 @@ jobs:
           }
           fs.writeFileSync("production-restore-evidence.json", `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
           NODE
+      - name: Remove the exact recovery Machine
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          machine_id=""
+          if [[ -f production-restore-machine-id.txt ]]; then
+            machine_id="$(cat production-restore-machine-id.txt)"
+          fi
+          if [[ -z "${machine_id}" ]]; then
+            machine_id="$(flyctl machine list --app creatoros-app --json | jq -r --arg name "${RECOVERY_MACHINE_NAME}" '.[] | select(.name == $name) | .id' | head -n 1)"
+          fi
+          if [[ -n "${machine_id}" ]]; then
+            flyctl machine destroy --app creatoros-app --force "${machine_id}"
+          fi
       - name: Retain secret-free recovery evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -95,6 +154,8 @@ jobs:
           path: |
             production-release-evidence.json
             production-restore-evidence.json
-            production-restore-run.log
+            production-restore-launch.log
+            production-restore-machine.log
+            production-restore-machine-id.txt
           if-no-files-found: warn
           retention-days: 90
