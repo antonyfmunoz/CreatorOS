@@ -22,7 +22,7 @@ dump_path="${recovery_root}/production.dump"
 manifest_path="${recovery_root}/manifest.json"
 cluster_path="${recovery_root}/postgres"
 socket_path="${recovery_root}/socket"
-postgres_log="${recovery_root}/postgres.log"
+postgres_log="${cluster_path}/postgres.log"
 server_started=false
 
 cleanup() {
