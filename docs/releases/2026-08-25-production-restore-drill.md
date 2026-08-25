@@ -27,6 +27,7 @@ The drill:
 - reads only the newest completed production backup receipt;
 - downloads the archive and manifest from private R2 inside Fly;
 - verifies durable size and SHA-256 agreement before restore;
+- rejects a newest archive older than the 30-hour recovery-point threshold;
 - restores into isolated PostgreSQL with no production connection target;
 - transactionally advances the restored migration ledger to the exact current
   release before validation;

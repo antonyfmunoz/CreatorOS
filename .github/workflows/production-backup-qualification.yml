@@ -64,7 +64,7 @@ jobs:
           if (evidence.status !== "production_backup_verified" || evidence.sizeMatches !== true || evidence.hashMatches !== true || evidence.archiveReadable !== true || evidence.privateBucket !== true) {
             throw new Error("Production backup evidence was incomplete or invalid");
           }
-          if (!Number.isInteger(evidence.requiredArchiveTables) || evidence.requiredArchiveTables < 1 || !Number.isFinite(evidence.sizeBytes) || evidence.sizeBytes < 1) {
+          if (!Number.isInteger(evidence.requiredArchiveTables) || evidence.requiredArchiveTables < 1 || !Number.isFinite(evidence.sizeBytes) || evidence.sizeBytes < 1 || !Number.isInteger(evidence.backupAgeSeconds) || evidence.backupAgeSeconds < 0 || evidence.backupAgeSeconds > 108000 || evidence.maxBackupAgeSeconds !== 108000) {
             throw new Error("Production backup evidence did not describe a usable archive");
           }
           fs.writeFileSync("production-backup-evidence.json", `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });

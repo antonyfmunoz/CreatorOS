@@ -124,6 +124,7 @@ describe("production deployment contract", () => {
     expect(backupQualificationWorkflowSource).toContain("/api/release");
     expect(backupQualificationWorkflowSource).toContain("node scripts/inspect-production-backup.mjs");
     expect(backupQualificationWorkflowSource).toContain("production_backup_verified");
+    expect(backupQualificationWorkflowSource).toContain("evidence.backupAgeSeconds > 108000");
     expect(backupQualificationWorkflowSource).toContain("retention-days: 90");
     expect(backupQualificationWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(backupQualificationWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
@@ -147,6 +148,7 @@ describe("production deployment contract", () => {
     expect(restoreDrillWorkflowSource).toContain("if: always()");
     expect(restoreDrillWorkflowSource).toContain("publicService !== false");
     expect(restoreDrillWorkflowSource).toContain("evidence.migrationCount !== release.migrations?.expected?.count");
+    expect(restoreDrillWorkflowSource).toContain("evidence.backupAgeSeconds > 108000");
     expect(restoreDrillWorkflowSource).not.toContain("R2_ACCESS_KEY_ID");
     expect(restoreDrillWorkflowSource).not.toContain("R2_SECRET_ACCESS_KEY");
     expect(restoreDrillWorkflowSource).not.toContain("DATABASE_URL");
@@ -159,6 +161,7 @@ describe("production deployment contract", () => {
     expect(restoreDrillSource).toContain("listen_addresses=''");
     expect(restoreDrillSource).toContain("pg_restore");
     expect(restoreDrillSource).toContain("pending-migrations.sql");
+    expect(restoreDrillSource).toContain("max_backup_age_seconds=108000");
     expect(restoreDrillSource).toContain("competitive_benchmark_remediations");
     expect(restoreDrillSource).toContain("orphan_direct_messages");
     expect(restoreDrillSource).toContain("CREATIVESOS_RECOVERY_EVIDENCE=");
