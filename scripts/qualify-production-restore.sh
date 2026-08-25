@@ -103,6 +103,7 @@ if [[ "${manifest_schema}" != "creativesos.backup-manifest.v2" ]] \
 fi
 
 mkdir -p "${cluster_path}" "${socket_path}"
+chmod 0711 "${recovery_root}"
 chown -R postgres:postgres "${cluster_path}" "${socket_path}"
 gosu postgres initdb -D "${cluster_path}" -A trust --no-locale --encoding=UTF8 >/dev/null
 gosu postgres pg_ctl -D "${cluster_path}" -l "${postgres_log}" \

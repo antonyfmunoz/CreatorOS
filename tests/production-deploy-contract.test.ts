@@ -153,6 +153,7 @@ describe("production deployment contract", () => {
     expect(restoreDrillSource).toContain("set local statement_timeout = '15s';");
     expect(restoreDrillSource).not.toContain("PGOPTIONS=");
     expect(restoreDrillSource).not.toContain("\r");
+    expect(restoreDrillSource).toContain('chmod 0711 "${recovery_root}"');
     expect(restoreDrillSource).toContain("listen_addresses=''");
     expect(restoreDrillSource).toContain("pg_restore");
     expect(restoreDrillSource).toContain("orphan_direct_messages");
