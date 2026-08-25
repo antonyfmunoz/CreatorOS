@@ -1,20 +1,24 @@
 import type { Express } from "express";
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq, max, ne, sql } from "drizzle-orm";
 import {
   assessBenchmarkSchema,
   benchmarkEnvironmentSchema,
   benchmarkFamilies,
   benchmarkReductionBps,
+  canTransitionBenchmarkRemediation,
   competitiveState,
   completeBenchmarkRunSchema,
   createBenchmarkDefinitionSchema,
   startBenchmarkRunSchema,
+  updateBenchmarkRemediationSchema,
   type ParityRequirement,
 } from "@shared/competitive-benchmarks";
 import {
   competitiveBenchmarkAssessments,
   competitiveBenchmarkDefinitions,
+  competitiveBenchmarkRemediations,
   competitiveBenchmarkRuns,
+  creativeWorkItems,
 } from "@shared/schema";
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
@@ -1165,7 +1169,7 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
   app.get("/api/benchmarks", attachUser, async (req, res) => {
     const business = await ensureDefaultBusiness(req.dbUser!);
     await seedBenchmarkLibrary(req.dbUser!.id, business.id);
-    const [definitions, runs, assessments] = await Promise.all([
+    const [definitions, runs, assessments, remediations] = await Promise.all([
       db
         .select()
         .from(competitiveBenchmarkDefinitions)
@@ -1184,6 +1188,14 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
         .from(competitiveBenchmarkAssessments)
         .where(eq(competitiveBenchmarkAssessments.businessId, business.id))
         .orderBy(desc(competitiveBenchmarkAssessments.assessedAt)),
+      db
+        .select()
+        .from(competitiveBenchmarkRemediations)
+        .where(eq(competitiveBenchmarkRemediations.businessId, business.id))
+        .orderBy(
+          desc(competitiveBenchmarkRemediations.priority),
+          desc(competitiveBenchmarkRemediations.updatedAt),
+        ),
     ]);
     const latestDefinitions = definitions.filter(
       (definition, index) =>
@@ -1195,6 +1207,9 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
         runs: runs.filter((run) => run.definitionId === definition.id),
         assessments: assessments.filter(
           (assessment) => assessment.definitionId === definition.id,
+        ),
+        remediations: remediations.filter(
+          (remediation) => remediation.definitionId === definition.id,
         ),
         competitiveState:
           assessments.find(
@@ -1453,25 +1468,223 @@ export function registerCompetitiveBenchmarkRoutes(app: Express) {
       handoffReductionBps,
       nativeUnrecoverableErrors: native.unrecoverableErrorCount!,
     });
-    const [assessment] = await db
-      .insert(competitiveBenchmarkAssessments)
-      .values({
-        definitionId: definition.id,
-        businessId: definition.businessId,
-        creativesOsRunId: native.id,
-        comparisonRunId: comparison.id,
-        state,
-        qualityComparable: parsed.data.qualityComparable,
-        activeTimeReductionBps,
-        handoffReductionBps,
-        reviewerUserId: req.dbUser!.id,
-        reviewerNote: parsed.data.reviewerNote,
-        requirementResults: parsed.data.requirementResults,
-        requiredCapabilityCount: requiredCapabilities.length,
-        passedCapabilityCount,
-        failedCapabilityCount,
-      })
-      .returning();
+    const assessment = await db.transaction(async (tx) => {
+      const [createdAssessment] = await tx
+        .insert(competitiveBenchmarkAssessments)
+        .values({
+          definitionId: definition.id,
+          businessId: definition.businessId,
+          creativesOsRunId: native.id,
+          comparisonRunId: comparison.id,
+          state,
+          qualityComparable: parsed.data.qualityComparable,
+          activeTimeReductionBps,
+          handoffReductionBps,
+          reviewerUserId: req.dbUser!.id,
+          reviewerNote: parsed.data.reviewerNote,
+          requirementResults: parsed.data.requirementResults,
+          requiredCapabilityCount: requiredCapabilities.length,
+          passedCapabilityCount,
+          failedCapabilityCount,
+        })
+        .returning();
+      const requirementById = new Map(
+        requiredCapabilities.map((requirement) => [requirement.id, requirement]),
+      );
+      for (const result of parsed.data.requirementResults) {
+        const requirement = requirementById.get(result.requirementId)!;
+        if (result.status === "failed") {
+          const [remediation] = await tx
+            .insert(competitiveBenchmarkRemediations)
+            .values({
+              businessId: definition.businessId,
+              definitionId: definition.id,
+              comparisonProduct: comparison.comparisonProduct!,
+              requirementId: requirement.id,
+              capability: requirement.capability,
+              acceptanceCriterion: requirement.acceptanceCriterion,
+              status: "open",
+              priority: 100,
+              lastFailureNote: result.note,
+              lastFailedAssessmentId: createdAssessment.id,
+              openedByUserId: req.dbUser!.id,
+            })
+            .onConflictDoUpdate({
+              target: [
+                competitiveBenchmarkRemediations.businessId,
+                competitiveBenchmarkRemediations.definitionId,
+                competitiveBenchmarkRemediations.comparisonProduct,
+                competitiveBenchmarkRemediations.requirementId,
+              ],
+              set: {
+                capability: requirement.capability,
+                acceptanceCriterion: requirement.acceptanceCriterion,
+                status: "open",
+                lastFailureNote: result.note,
+                failureCount: sql`${competitiveBenchmarkRemediations.failureCount} + 1`,
+                lastFailedAssessmentId: createdAssessment.id,
+                resolvedByAssessmentId: null,
+                resolvedAt: null,
+                updatedAt: new Date(),
+              },
+            })
+            .returning();
+          const [workItem] = await tx
+            .insert(creativeWorkItems)
+            .values({
+              businessId: definition.businessId,
+              createdByUserId: req.dbUser!.id,
+              title: `Close ${comparison.comparisonProduct} parity gap: ${requirement.capability}`,
+              description: `${requirement.acceptanceCriterion}\n\nLatest evidence: ${result.note}`,
+              kind: "product_gap",
+              status: "brief",
+              priority: remediation.priority,
+              channel: comparison.comparisonProduct,
+              sourceType: "benchmark_remediation",
+              sourceId: remediation.id,
+              metadata: {
+                benchmarkDefinitionId: definition.id,
+                benchmarkFamily: definition.family,
+                comparisonProduct: comparison.comparisonProduct,
+                requirementId: requirement.id,
+                remediationStatus: "open",
+              },
+            })
+            .onConflictDoUpdate({
+              target: [
+                creativeWorkItems.businessId,
+                creativeWorkItems.sourceType,
+                creativeWorkItems.sourceId,
+              ],
+              targetWhere: sql`${creativeWorkItems.sourceId} is not null`,
+              set: {
+                title: `Close ${comparison.comparisonProduct} parity gap: ${requirement.capability}`,
+                description: `${requirement.acceptanceCriterion}\n\nLatest evidence: ${result.note}`,
+                kind: "product_gap",
+                status: "brief",
+                priority: remediation.priority,
+                channel: comparison.comparisonProduct,
+                completedAt: null,
+                metadata: {
+                  benchmarkDefinitionId: definition.id,
+                  benchmarkFamily: definition.family,
+                  comparisonProduct: comparison.comparisonProduct,
+                  requirementId: requirement.id,
+                  remediationStatus: "open",
+                },
+                updatedAt: new Date(),
+              },
+            })
+            .returning();
+          await tx
+            .update(competitiveBenchmarkRemediations)
+            .set({ workItemId: workItem.id, updatedAt: new Date() })
+            .where(eq(competitiveBenchmarkRemediations.id, remediation.id));
+        } else {
+          const [resolved] = await tx
+            .update(competitiveBenchmarkRemediations)
+            .set({
+              status: "resolved",
+              resolvedByAssessmentId: createdAssessment.id,
+              resolvedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(competitiveBenchmarkRemediations.definitionId, definition.id),
+                eq(
+                  competitiveBenchmarkRemediations.comparisonProduct,
+                  comparison.comparisonProduct!,
+                ),
+                eq(
+                  competitiveBenchmarkRemediations.requirementId,
+                  requirement.id,
+                ),
+                ne(competitiveBenchmarkRemediations.status, "resolved"),
+              ),
+            )
+            .returning();
+          if (resolved?.workItemId) {
+            await tx
+              .update(creativeWorkItems)
+              .set({
+                status: "retrospective",
+                completedAt: new Date(),
+                version: sql`${creativeWorkItems.version} + 1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(creativeWorkItems.id, resolved.workItemId));
+          }
+        }
+      }
+      return createdAssessment;
+    });
     return res.status(201).json(assessment);
+  });
+
+  app.patch("/api/benchmarks/remediations/:id", attachUser, async (req, res) => {
+    const parsed = updateBenchmarkRemediationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.issues[0]?.message ?? "Invalid remediation update",
+      });
+    }
+    const [remediation] = await db
+      .select()
+      .from(competitiveBenchmarkRemediations)
+      .where(eq(competitiveBenchmarkRemediations.id, req.params.id))
+      .limit(1);
+    if (
+      !remediation ||
+      !(await userCanManageBusiness(req.dbUser!.id, remediation.businessId))
+    ) {
+      return res.status(404).json({ message: "Benchmark remediation not found" });
+    }
+    if (
+      parsed.data.status &&
+      !canTransitionBenchmarkRemediation(remediation.status, parsed.data.status)
+    ) {
+      return res.status(409).json({
+        message: "A remediation can close only after a passing locked retest",
+      });
+    }
+    const [updated] = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(competitiveBenchmarkRemediations)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(
+          and(
+            eq(competitiveBenchmarkRemediations.id, remediation.id),
+            eq(competitiveBenchmarkRemediations.status, remediation.status),
+          ),
+        )
+        .returning();
+      if (!row) return [];
+      if (row.workItemId) {
+        const workStatus =
+          row.status === "open"
+            ? "brief"
+            : row.status === "in_progress"
+              ? "production"
+              : "review";
+        await tx
+          .update(creativeWorkItems)
+          .set({
+            status: workStatus,
+            priority: row.priority,
+            assigneeUserId: row.assigneeUserId,
+            dueAt: row.dueAt,
+            completedAt: null,
+            version: sql`${creativeWorkItems.version} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(creativeWorkItems.id, row.workItemId));
+      }
+      return [row];
+    });
+    if (!updated) {
+      return res.status(409).json({ message: "Remediation changed; refresh and retry" });
+    }
+    return res.json(updated);
   });
 }

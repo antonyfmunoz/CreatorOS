@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const creativeWorkKinds = ["content", "campaign", "broadcast", "cut", "ugc", "distribution", "event", "podcast", "design", "newsletter", "site"] as const;
+export const creativeWorkKinds = ["content", "campaign", "broadcast", "cut", "ugc", "distribution", "event", "podcast", "design", "newsletter", "site", "product_gap"] as const;
 export const creativeWorkStatuses = ["idea", "brief", "script", "production", "edit", "review", "scheduled", "published", "retrospective", "blocked", "cancelled"] as const;
 
 export const creativeRecurrenceSchema = z.object({

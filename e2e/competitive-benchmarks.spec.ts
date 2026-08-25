@@ -161,16 +161,19 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
   );
 
   const requirementResults = xRequirements.map(
-    (requirement: { id: string; capability: string }) => ({
+    (requirement: { id: string; capability: string }, index: number) => ({
       requirementId: requirement.id,
-      status: "passed",
+      status: index === 0 ? "failed" : "passed",
       evidenceKinds: [
         "input_manifest",
         "action_log",
         "output_artifact",
         "run_recording",
       ],
-      note: `The locked evidence proves ${requirement.capability} in both compared runs.`,
+      note:
+        index === 0
+          ? `The locked evidence shows a material ${requirement.capability} deficit that requires product remediation.`
+          : `The locked evidence proves ${requirement.capability} in both compared runs.`,
     }),
   );
   const incompleteAssessment = await page.request.post(
@@ -208,12 +211,186 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
   );
   await ok(assessmentResponse);
   expect(await assessmentResponse.json()).toMatchObject({
-    state: "connected_advantage_proven",
+    state: "parity_failed",
     qualityComparable: true,
     requiredCapabilityCount: xRequirements.length,
-    passedCapabilityCount: xRequirements.length,
+    passedCapabilityCount: xRequirements.length - 1,
+    failedCapabilityCount: 1,
+  });
+
+  const failedListResponse = await page.request.get("/api/benchmarks");
+  await ok(failedListResponse);
+  const failedSocial = (await failedListResponse.json()).find(
+    (definition: { family: string }) => definition.family === "native_social",
+  );
+  expect(failedSocial.remediations).toHaveLength(1);
+  expect(failedSocial.remediations[0]).toMatchObject({
+    requirementId: xRequirements[0]!.id,
+    comparisonProduct: "X",
+    status: "open",
+    priority: 100,
+    failureCount: 1,
+  });
+  expect(failedSocial.remediations[0].workItemId).toBeTruthy();
+
+  const manualResolve = await page.request.patch(
+    `/api/benchmarks/remediations/${failedSocial.remediations[0].id}`,
+    { data: { status: "resolved" } },
+  );
+  expect(manualResolve.status()).toBe(400);
+
+  await page.goto("/business/benchmarks");
+  const remediationSection = page
+    .getByText("Mandatory parity remediation")
+    .first()
+    .locator("xpath=ancestor::section");
+  await remediationSection.getByText("Plan ownership and timing").click();
+  await remediationSection.getByLabel("Remediation priority").fill("83");
+  await remediationSection.getByLabel("Remediation due date").fill("2026-09-15");
+  await remediationSection
+    .getByLabel("Remediation operator note")
+    .fill("Product owner will close the measured parity deficit before the September release train.");
+  await remediationSection.getByRole("button", { name: "Save plan" }).click();
+  await expect(page.getByText("Remediation plan saved")).toBeVisible();
+  const plannedListResponse = await page.request.get("/api/benchmarks");
+  await ok(plannedListResponse);
+  const plannedSocial = (await plannedListResponse.json()).find(
+    (definition: { family: string }) => definition.family === "native_social",
+  );
+  expect(plannedSocial.remediations[0]).toMatchObject({
+    priority: 83,
+    operatorNote:
+      "Product owner will close the measured parity deficit before the September release train.",
+  });
+  expect(plannedSocial.remediations[0].dueAt).toContain("2026-09-15");
+
+  await ok(
+    await page.request.patch(
+      `/api/benchmarks/remediations/${failedSocial.remediations[0].id}`,
+      { data: { status: "in_progress" } },
+    ),
+  );
+  await ok(
+    await page.request.patch(
+      `/api/benchmarks/remediations/${failedSocial.remediations[0].id}`,
+      { data: { status: "ready_for_retest" } },
+    ),
+  );
+
+  const planningResponse = await page.request.get("/api/planning/calendar");
+  await ok(planningResponse);
+  expect(await planningResponse.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: failedSocial.remediations[0].workItemId,
+        sourceType: "benchmark_remediation",
+        kind: "product_gap",
+        status: "review",
+      }),
+    ]),
+  );
+  const plannerCloseAttempt = await page.request.post(
+    `/api/planning/items/${failedSocial.remediations[0].workItemId}/status`,
+    { data: { status: "scheduled" } },
+  );
+  expect(plannerCloseAttempt.status()).toBe(409);
+  expect(await plannerCloseAttempt.json()).toMatchObject({
+    message: "A benchmark remediation can close only after a passing locked retest",
+  });
+
+  const retestNativeStart = await page.request.post(
+    `/api/benchmarks/${social.id}/runs`,
+    {
+      data: {
+        implementation: "creativesos",
+        comparisonProduct: null,
+        environment: lockedEnvironment,
+      },
+    },
+  );
+  await ok(retestNativeStart);
+  const retestNative = await retestNativeStart.json();
+  const retestComparisonStart = await page.request.post(
+    `/api/benchmarks/${social.id}/runs`,
+    {
+      data: {
+        implementation: "comparison",
+        comparisonProduct: "X",
+        environment: lockedEnvironment,
+      },
+    },
+  );
+  await ok(retestComparisonStart);
+  const retestComparison = await retestComparisonStart.json();
+  await ok(
+    await page.request.patch(`/api/benchmarks/runs/${retestNative.id}`, {
+      data: completedRun({
+        activeTimeMs: 600_000,
+        elapsedTimeMs: 720_000,
+        manualHandoffCount: 1,
+      }),
+    }),
+  );
+  await ok(
+    await page.request.patch(`/api/benchmarks/runs/${retestComparison.id}`, {
+      data: completedRun({
+        activeTimeMs: 900_000,
+        elapsedTimeMs: 1_200_000,
+        applicationCount: 4,
+        exportCount: 2,
+        uploadCount: 2,
+        manualHandoffCount: 4,
+        outputQualityScore: 5,
+        safetyScore: 5,
+        reliabilityScore: 5,
+        accessibilityScore: 5,
+      }),
+    }),
+  );
+  const retestAssessment = await page.request.post(
+    `/api/benchmarks/${social.id}/assess`,
+    {
+      data: {
+        creativesOsRunId: retestNative.id,
+        comparisonRunId: retestComparison.id,
+        qualityComparable: true,
+        reviewerNote:
+          "The locked retest proves the remediated capability and all other required outcomes are now materially comparable.",
+        requirementResults: requirementResults.map((result) => ({
+          ...result,
+          status: "passed",
+          note: `The locked retest closes ${result.requirementId} with evidence in both runs.`,
+        })),
+      },
+    },
+  );
+  await ok(retestAssessment);
+  const retestAssessmentBody = await retestAssessment.json();
+  expect(retestAssessmentBody).toMatchObject({
+    state: "connected_advantage_proven",
     failedCapabilityCount: 0,
   });
+
+  const resolvedListResponse = await page.request.get("/api/benchmarks");
+  await ok(resolvedListResponse);
+  const resolvedSocial = (await resolvedListResponse.json()).find(
+    (definition: { family: string }) => definition.family === "native_social",
+  );
+  expect(resolvedSocial.remediations[0]).toMatchObject({ status: "resolved" });
+  expect(resolvedSocial.remediations[0].resolvedByAssessmentId).toBe(
+    retestAssessmentBody.id,
+  );
+
+  const resolvedPlanningResponse = await page.request.get("/api/planning/calendar");
+  await ok(resolvedPlanningResponse);
+  expect(await resolvedPlanningResponse.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: failedSocial.remediations[0].workItemId,
+        status: "retrospective",
+      }),
+    ]),
+  );
 
   await page.goto("/business/benchmarks");
   await expect(
@@ -222,6 +399,8 @@ test("locked equal-input runs preserve evidence and calculate connected advantag
   await expect(
     page.getByText("Specialist-substitution parity contract").first(),
   ).toBeVisible();
+  await expect(page.getByText("Mandatory parity remediation").first()).toBeVisible();
+  await expect(page.getByText(/resolved by locked retest/).first()).toBeVisible();
   await expect(
     page
       .locator("div.inline-flex")

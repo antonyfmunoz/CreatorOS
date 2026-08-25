@@ -219,6 +219,7 @@ const requiredTables = [
   "competitive_benchmark_definitions",
   "competitive_benchmark_runs",
   "competitive_benchmark_assessments",
+  "competitive_benchmark_remediations",
   "ugc_sample_shipments",
   "content_moderation_states",
   "discovery_preferences",
@@ -278,6 +279,13 @@ const requiredColumns = {
     "required_capability_count",
     "passed_capability_count",
     "failed_capability_count",
+  ],
+  competitive_benchmark_remediations: [
+    "requirement_id",
+    "status",
+    "work_item_id",
+    "last_failed_assessment_id",
+    "resolved_by_assessment_id",
   ],
 };
 

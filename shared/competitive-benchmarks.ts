@@ -171,6 +171,33 @@ export const requirementAssessmentSchema = z.object({
   note: z.string().trim().min(10).max(1_000),
 });
 
+export const benchmarkRemediationStatuses = [
+  "open",
+  "in_progress",
+  "ready_for_retest",
+  "resolved",
+] as const;
+
+export const updateBenchmarkRemediationSchema = z.object({
+  status: z.enum(["open", "in_progress", "ready_for_retest"]).optional(),
+  priority: z.number().int().min(0).max(100).optional(),
+  assigneeUserId: z.number().int().positive().nullable().optional(),
+  dueAt: z.coerce.date().nullable().optional(),
+  operatorNote: z.string().trim().max(2_000).optional(),
+}).refine((value) => Object.keys(value).length > 0, {
+  message: "Provide at least one remediation update",
+});
+
+export function canTransitionBenchmarkRemediation(from: string, to: string) {
+  const transitions: Record<string, Set<string>> = {
+    open: new Set(["in_progress"]),
+    in_progress: new Set(["open", "ready_for_retest"]),
+    ready_for_retest: new Set(["open", "in_progress"]),
+    resolved: new Set(),
+  };
+  return from === to || (transitions[from]?.has(to) ?? false);
+}
+
 export const assessBenchmarkSchema = z.object({
   creativesOsRunId: z.string().uuid(),
   comparisonRunId: z.string().uuid(),
