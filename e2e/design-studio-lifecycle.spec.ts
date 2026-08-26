@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 test.setTimeout(120_000);
 
+const pixel = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNkYPj/n4GBgYGJAQoAHgQCAfKxWiAAAAAASUVORK5CYII=",
+  "base64",
+);
+
 test("DesignStudio saves, versions, reviews, resizes, exports, and distributes governed graphics", async ({ page }, testInfo) => {
   const stamp = `${testInfo.project.name}-${Date.now()}`;
   const createdResponse = await page.request.post("/api/design", { data: { name: `Launch ${stamp}`, kind: "thumbnail", width: 1280, height: 720, brandKitId: null } }); expect(createdResponse.status()).toBe(201); const project = await createdResponse.json() as { id: string; revision: number; document: { pages: Array<{ id: string; elements: unknown[] }> } };
@@ -19,5 +24,28 @@ test("DesignStudio saves, versions, reviews, resizes, exports, and distributes g
   const reviewed = await page.request.get(`/api/design/${project.id}`); const reviewedPayload = await reviewed.json() as { project: { status: string }; events: Array<{ eventType: string }> }; expect(reviewedPayload.project.status).toBe("approved"); expect(reviewedPayload.events.map((event) => event.eventType)).toEqual(expect.arrayContaining(["design.review.started", "design.review.commented", "design.review.approved"]));
   for (const format of ["svg", "png", "jpeg", "webp"]) { const exported = await page.request.post(`/api/design/${project.id}/export`, { data: { format, pageId: "page-1", visibility: "private", quality: 90, scale: format === "svg" ? 1 : 0.5 } }); expect(exported.status()).toBe(201); const payload = await exported.json(); expect(payload.asset.mimeType).toContain(format === "jpeg" ? "jpeg" : format); if (format === "png") { const distribution = await page.request.post(`/api/design/${project.id}/distribution`, { data: { assetId: payload.asset.id, content: "Launch", platforms: ["creativesos"], scheduledFor: new Date(Date.now() + 60_000).toISOString() } }); expect(distribution.status()).toBe(201); expect((await distribution.json()).assetIds).toContain(payload.asset.id); } }
   expect((await page.request.post(`/api/design/${project.id}/collaborators`, { data: { userId: testInfo.project.name === "mobile-chromium" ? 2 : 1, role: "editor" } })).status()).toBe(201);
+  const sourceName = `design-source-${stamp}.png`;
+  const sourceResponse = await page.request.post("/api/assets/upload-proxy", {
+    multipart: {
+      kind: "photo",
+      visibility: "private",
+      image: { name: sourceName, mimeType: "image/png", buffer: pixel },
+    },
+  });
+  expect(sourceResponse.status()).toBe(201);
+
   await page.goto("/business/design"); await expect(page.getByRole("heading", { name: "DesignStudio" })).toBeVisible(); await expect(page.getByText(`Launch ${stamp}`)).toBeVisible(); await page.getByText(`Launch ${stamp}`).click(); await expect(page.getByLabel("Design canvas")).toBeVisible(); await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+  await page.getByLabel("Media Cloud image").selectOption({ label: sourceName });
+  await expect(page.getByText("Media Cloud image added to the design.")).toBeVisible();
+  await expect(page.getByLabel("Design canvas").locator("image")).toHaveCount(1);
+  await page.getByLabel("Alternative text").fill("Campaign source artwork");
+  await page.getByLabel("Image fit").selectOption("contain");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved with conflict protection.")).toBeVisible();
+  await page.reload();
+  const renderedImage = page.getByLabel("Design canvas").locator("image");
+  await expect(renderedImage).toHaveCount(1);
+  await expect(renderedImage).toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
+  await page.getByRole("button", { name: "Export" }).click();
+  await expect(page.getByText("PNG exported to Media Cloud.")).toBeVisible();
 });
