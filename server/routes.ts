@@ -1904,7 +1904,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(assets)
         .where(eq(assets.id, req.params.id))
         .limit(1);
-      if (!asset || asset.status !== "ready" || asset.visibility !== "private")
+      if (
+        !asset ||
+        asset.status !== "ready" ||
+        !["private", "public"].includes(asset.visibility)
+      )
         return res.status(404).json({ message: "Asset not found" });
       if (asset.ownerUserId !== req.dbUser!.id) {
         const [entitledAccess] = await db

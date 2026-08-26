@@ -33,6 +33,12 @@ test("DesignStudio saves, versions, reviews, resizes, exports, and distributes g
     },
   });
   expect(sourceResponse.status()).toBe(201);
+  const source = (await sourceResponse.json()) as { asset: { id: string } };
+  const streamResponse = await page.request.get(
+    `/api/assets/${source.asset.id}/stream`,
+  );
+  expect(streamResponse.status()).toBe(200);
+  expect(streamResponse.headers()["content-type"]).toContain("image/png");
 
   await page.goto("/business/design"); await expect(page.getByRole("heading", { name: "DesignStudio" })).toBeVisible(); await expect(page.getByText(`Launch ${stamp}`)).toBeVisible(); await page.getByText(`Launch ${stamp}`).click(); await expect(page.getByLabel("Design canvas")).toBeVisible(); await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
   await page.getByLabel("Media Cloud image").selectOption({ label: sourceName });
@@ -45,6 +51,10 @@ test("DesignStudio saves, versions, reviews, resizes, exports, and distributes g
   await page.reload();
   const renderedImage = page.getByLabel("Design canvas").locator("image");
   await expect(renderedImage).toHaveCount(1);
+  await expect(renderedImage).toHaveAttribute(
+    "href",
+    `/api/assets/${source.asset.id}/stream`,
+  );
   await expect(renderedImage).toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
   await page.getByRole("button", { name: "Export" }).click();
   await expect(page.getByText("PNG exported to Media Cloud.")).toBeVisible();

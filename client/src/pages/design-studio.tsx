@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -178,7 +178,6 @@ function StudioEditor({ id }: { id: string }) {
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
-  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const project = detail.data?.project;
   const document = draft ?? project?.document;
   const page = document?.pages[0];
@@ -194,57 +193,6 @@ function StudioEditor({ id }: { id: string }) {
       ),
     [media.data],
   );
-  const imageAssetIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          document?.pages.flatMap((candidate) =>
-            candidate.elements
-              .filter(
-                (
-                  element,
-                ): element is Extract<DesignElement, { type: "image" }> =>
-                  element.type === "image",
-              )
-              .map((element) => element.assetId),
-          ) ?? [],
-        ),
-      ),
-    [document],
-  );
-  useEffect(() => {
-    const missing = imageAssetIds.filter((assetId) => !assetUrls[assetId]);
-    if (!missing.length) return;
-    let active = true;
-    void Promise.all(
-      missing.map(async (assetId) => {
-        const response = await apiRequest(
-          "GET",
-          `/api/assets/${assetId}/access`,
-        );
-        const access = (await response.json()) as { url: string };
-        return [assetId, access.url] as const;
-      }),
-    )
-      .then((entries) => {
-        if (!active) return;
-        setAssetUrls((current) => ({
-          ...current,
-          ...Object.fromEntries(entries),
-        }));
-      })
-      .catch((error) => {
-        if (active)
-          setMessage(
-            error instanceof Error
-              ? `Unable to load a Media Cloud image: ${error.message}`
-              : "Unable to load a Media Cloud image.",
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [imageAssetIds, assetUrls]);
   function mutateElement(update: Partial<DesignElement>) {
     if (!document || !page || !selected) return;
     setDraft({
@@ -275,41 +223,30 @@ function StudioEditor({ id }: { id: string }) {
     });
     setSelectedId(element.id);
   }
-  async function insertImage(assetId: string) {
+  function insertImage(assetId: string) {
     if (!page) return;
-    setBusy("image");
     setMessage("");
-    try {
-      const response = await apiRequest("GET", `/api/assets/${assetId}/access`);
-      const access = (await response.json()) as { url: string };
-      setAssetUrls((current) => ({ ...current, [assetId]: access.url }));
-      const asset = managedImages.find((candidate) => candidate.id === assetId);
-      const width = Math.min(page.width * 0.6, 720);
-      const height = Math.min(page.height * 0.6, 720);
-      add({
-        id: uid("image"),
-        type: "image",
-        assetId,
-        sourceUrl: null,
-        fit: "cover",
-        alt: asset?.originalFilename ?? "Media Cloud image",
-        x: (page.width - width) / 2,
-        y: (page.height - height) / 2,
-        width,
-        height,
-        rotation: 0,
-        opacity: 1,
-        locked: false,
-        zIndex: page.elements.length + 1,
-      });
-      setMessage("Media Cloud image added to the design.");
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Unable to add image",
-      );
-    } finally {
-      setBusy("");
-    }
+    const asset = managedImages.find((candidate) => candidate.id === assetId);
+    if (!asset) return setMessage("That Media Cloud image is unavailable.");
+    const width = Math.min(page.width * 0.6, 720);
+    const height = Math.min(page.height * 0.6, 720);
+    add({
+      id: uid("image"),
+      type: "image",
+      assetId,
+      sourceUrl: null,
+      fit: "cover",
+      alt: asset.originalFilename ?? "Media Cloud image",
+      x: (page.width - width) / 2,
+      y: (page.height - height) / 2,
+      width,
+      height,
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      zIndex: page.elements.length + 1,
+    });
+    setMessage("Media Cloud image added to the design.");
   }
   async function act(key: string, run: () => Promise<unknown>, done: string) {
     setBusy(key);
@@ -500,15 +437,13 @@ function StudioEditor({ id }: { id: string }) {
                 <select
                   aria-label="Media Cloud image"
                   value=""
-                  disabled={busy === "image"}
                   onChange={(event) => {
-                    if (event.target.value)
-                      void insertImage(event.target.value);
+                    if (event.target.value) insertImage(event.target.value);
                   }}
                   className="h-9 w-full appearance-none bg-transparent px-2 pr-7 text-sm outline-none disabled:opacity-50"
                 >
                   <option value="">
-                    {busy === "image" ? "Adding image…" : "Media Cloud image"}
+                    Media Cloud image
                   </option>
                   {managedImages.map((asset) => (
                     <option key={asset.id} value={asset.id}>
@@ -615,12 +550,9 @@ function StudioEditor({ id }: { id: string }) {
                     >
                       {element.text}
                     </text>
-                  ) : element.type === "image" &&
-                    (assetUrls[element.assetId] || element.sourceUrl) ? (
+                  ) : (
                     <image
-                      href={
-                        assetUrls[element.assetId] || element.sourceUrl || ""
-                      }
+                      href={`/api/assets/${encodeURIComponent(element.assetId)}/stream`}
                       x={element.x}
                       y={element.y}
                       width={element.width}
@@ -635,14 +567,6 @@ function StudioEditor({ id }: { id: string }) {
                     >
                       <title>{element.alt || "Design image"}</title>
                     </image>
-                  ) : (
-                    <rect
-                      x={element.x}
-                      y={element.y}
-                      width={element.width}
-                      height={element.height}
-                      fill="#27272a"
-                    />
                   )}
                   {selectedId === element.id && (
                     <rect
