@@ -118,11 +118,48 @@ export const relationshipOutboundActionSchema = z.object({
   actionType: z.enum(relationshipActionTypes),
   idempotencyKey: z.string().trim().min(8).max(500),
   externalThreadId: z.string().trim().min(1).max(1_000),
+  targetExternalMessageId: z.string().trim().min(1).max(1_000).optional(),
+  reaction: z.string().trim().min(1).max(64).optional(),
   body: z.string().max(100_000).default(""),
   bodyFormat: z.enum(["plain", "markdown", "html"]).default("plain"),
   replyToExternalMessageId: z.string().trim().max(1_000).optional(),
   attachments: z.array(relationshipAttachmentSchema).max(20).default([]),
   metadata: z.record(z.string(), z.unknown()).default({}),
+}).superRefine((action, context) => {
+  const targetsExistingMessage = [
+    "message.edit",
+    "message.delete",
+    "message.react",
+    "message.mark_read",
+  ].includes(action.actionType);
+  if (targetsExistingMessage && !action.targetExternalMessageId) {
+    context.addIssue({
+      code: "custom",
+      path: ["targetExternalMessageId"],
+      message: `${action.actionType} requires a target message`,
+    });
+  }
+  if (action.actionType === "message.edit" && !action.body.trim()) {
+    context.addIssue({
+      code: "custom",
+      path: ["body"],
+      message: "message.edit requires replacement text",
+    });
+  }
+  if (action.actionType === "message.react" && !action.reaction) {
+    context.addIssue({
+      code: "custom",
+      path: ["reaction"],
+      message: "message.react requires a reaction",
+    });
+  }
+  if (targetsExistingMessage && action.attachments.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["attachments"],
+      message: `${action.actionType} does not accept attachments`,
+    });
+  }
 });
 
 export type RelationshipOutboundAction = z.infer<typeof relationshipOutboundActionSchema>;

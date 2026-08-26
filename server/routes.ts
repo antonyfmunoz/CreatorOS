@@ -333,6 +333,22 @@ function normalizeClientMutationId(value: unknown) {
     : undefined;
 }
 
+async function syncNativeConversationForParticipantBusinesses(nativeConversationId: number) {
+  const participants = await db
+    .select({ user: users })
+    .from(conversationParticipants)
+    .innerJoin(users, eq(conversationParticipants.userId, users.id))
+    .where(eq(conversationParticipants.conversationId, nativeConversationId));
+  for (const { user } of participants) {
+    const business = await ensureDefaultBusiness(user);
+    await syncLegacyNativeConversation({
+      businessId: business.id,
+      nativeConversationId,
+      currentUserId: user.id,
+    });
+  }
+}
+
 function parseRoomUrl(value: unknown) {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || value.length > 2_000) return undefined;
@@ -10838,12 +10854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.addParticipantToConversation(conversation.id, userId);
           return { conversation, created: true };
         });
-        const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-        await syncLegacyNativeConversation({
-          businessId: currentBusiness.id,
-          nativeConversationId: result.conversation.id,
-          currentUserId: req.dbUser!.id,
-        });
+        await syncNativeConversationForParticipantBusinesses(result.conversation.id);
         return res.status(result.created ? 201 : 200).json(result.conversation);
       }
 
@@ -10858,12 +10869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.addParticipantToConversation(conversation.id, userId);
       }
 
-      const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-      await syncLegacyNativeConversation({
-        businessId: currentBusiness.id,
-        nativeConversationId: conversation.id,
-        currentUserId: req.dbUser!.id,
-      });
+      await syncNativeConversationForParticipantBusinesses(conversation.id);
 
       res.status(201).json(conversation);
     } catch (error) {
@@ -11060,12 +11066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         return { value: created, replayed: false };
       });
-      const currentBusiness = await ensureDefaultBusiness(req.dbUser!);
-      await syncLegacyNativeConversation({
-        businessId: currentBusiness.id,
-        nativeConversationId: conversationId,
-        currentUserId: req.dbUser!.id,
-      });
+      await syncNativeConversationForParticipantBusinesses(conversationId);
       if (!message.replayed) void kickAutomationProcessing();
       res.status(message.replayed ? 200 : 201).json(message.value);
     } catch (error) {
@@ -11107,6 +11108,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isEdited: true,
       });
 
+      await syncNativeConversationForParticipantBusinesses(existing.conversationId);
+
       res.json(updatedMessage);
     } catch (error) {
       console.error("Error updating message:", error);
@@ -11133,6 +11136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(403)
           .json({ message: "You can only delete your own messages" });
       await storage.deleteDirectMessage(messageId);
+      await syncNativeConversationForParticipantBusinesses(existing.conversationId);
       res.status(204).end();
     } catch (error) {
       console.error("Error deleting message:", error);
@@ -11180,6 +11184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.dbUser!.id,
         reaction,
       );
+      await syncNativeConversationForParticipantBusinesses(existing.conversationId);
       res.json(updatedMessage);
     } catch (error) {
       console.error("Error adding reaction:", error);

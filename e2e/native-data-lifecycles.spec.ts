@@ -130,6 +130,16 @@ test("direct and group messaging enforce participants and survive reload", async
   const edited = await api(page, owner, "PATCH", `/api/messages/${message.id}`, { content: `Edited ${marker}` });
   await expectOk(edited);
   expect((await edited.json()).content).toBe(`Edited ${marker}`);
+  const peerHubConversations = await api(page, peer, "GET", "/api/relationship-hub/conversations?status=all");
+  await expectOk(peerHubConversations);
+  const peerHubConversation = (await peerHubConversations.json()).find((item: { nativeConversationId?: number }) => item.nativeConversationId === direct.id);
+  expect(peerHubConversation?.id).toBeTruthy();
+  const peerHubDetail = await api(page, peer, "GET", `/api/relationship-hub/conversations/${peerHubConversation.id}`);
+  await expectOk(peerHubDetail);
+  expect((await peerHubDetail.json()).messages.find((item: { externalMessageId?: string }) => item.externalMessageId === `native:${message.id}`)).toMatchObject({
+    body: `Edited ${marker}`,
+    direction: "inbound",
+  });
   await expectOk(await api(page, peer, "POST", "/api/messages", { conversationId: direct.id, content: `Reply ${marker}`, replyToMessageId: message.id }));
   await expectOk(await api(page, peer, "POST", `/api/messages/${message.id}/reaction`, { reaction: "heart" }));
   expect((await api(page, third, "POST", `/api/messages/${message.id}/reaction`, { reaction: "heart" })).status()).toBe(403);
@@ -163,10 +173,108 @@ test("direct and group messaging enforce participants and survive reload", async
   await expectOk(conversationList);
   expect((await conversationList.json()).some((item: { id: number; name?: string }) => item.id === group.id && item.name?.includes(marker))).toBeTruthy();
 
+  const hubMessageResponse = await api(page, owner, "POST", "/api/messages", { conversationId: direct.id, content: `Hub lifecycle ${marker}` });
+  await expectOk(hubMessageResponse);
+  const hubMessage = await hubMessageResponse.json();
+  await expectOk(await api(page, owner, "POST", "/api/relationship-hub/native/initialize", {}));
+  const hubConversationsResponse = await api(page, owner, "GET", "/api/relationship-hub/conversations?status=all");
+  await expectOk(hubConversationsResponse);
+  const hubConversation = (await hubConversationsResponse.json()).find((item: { nativeConversationId?: number }) => item.nativeConversationId === direct.id);
+  expect(hubConversation?.id).toBeTruthy();
+  const hubDetailResponse = await api(page, owner, "GET", `/api/relationship-hub/conversations/${hubConversation.id}`);
+  await expectOk(hubDetailResponse);
+  const canonicalHubMessage = (await hubDetailResponse.json()).messages.find((item: { externalMessageId?: string }) => item.externalMessageId === `native:${hubMessage.id}`);
+  expect(canonicalHubMessage?.id).toBeTruthy();
+
+  const editKey = `hub-edit-${marker}`;
+  await expectOk(await api(page, owner, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.edit",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+    body: `Hub edited ${marker}`,
+    idempotencyKey: editKey,
+  }));
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/relationship-hub/conversations/${hubConversation.id}`);
+    return (await response.json()).messages.find((item: { id: string }) => item.id === canonicalHubMessage.id)?.body;
+  }).toBe(`Hub edited ${marker}`);
+  expect((await api(page, owner, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.edit",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+    body: `Conflicting edit ${marker}`,
+    idempotencyKey: editKey,
+  })).status()).toBe(409);
+
+  const reactionKey = `hub-react-${marker}`;
+  await expectOk(await api(page, owner, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.react",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+    reaction: "heart",
+    idempotencyKey: reactionKey,
+  }));
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/conversations/${direct.id}/messages`);
+    return (await response.json()).find((item: { id: number }) => item.id === hubMessage.id)?.reactions?.[String(owner)];
+  }).toBe("heart");
+  await expectOk(await api(page, owner, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.mark_read",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+    idempotencyKey: `hub-read-${marker}`,
+  }));
+  expect([403, 404]).toContain((await api(page, third, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.delete",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+  })).status());
+  await expectOk(await api(page, owner, "POST", `/api/relationship-hub/conversations/${hubConversation.id}/actions`, {
+    actionType: "message.delete",
+    targetExternalMessageId: `native:${hubMessage.id}`,
+    idempotencyKey: `hub-delete-${marker}`,
+  }));
+  await expect.poll(async () => {
+    const response = await api(page, owner, "GET", `/api/conversations/${direct.id}/messages`);
+    return (await response.json()).some((item: { id: number }) => item.id === hubMessage.id);
+  }).toBe(false);
+
   await expectOk(await api(page, owner, "DELETE", `/api/messages/${message.id}`));
   const afterDelete = await api(page, owner, "GET", `/api/conversations/${direct.id}/messages`);
   await expectOk(afterDelete);
   expect((await afterDelete.json()).some((item: { id: number }) => item.id === message.id)).toBe(false);
+  await expect.poll(async () => {
+    const response = await api(page, peer, "GET", `/api/relationship-hub/conversations/${peerHubConversation.id}`);
+    return (await response.json()).messages.find((item: { externalMessageId?: string }) => item.externalMessageId === `native:${message.id}`)?.status;
+  }).toBe("deleted");
+});
+
+test("unified inbox controls execute the native message lifecycle", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const { owner, peer } = actors(testInfo);
+  const marker = `${testInfo.project.name}-${Date.now()}`;
+  const directResponse = await api(page, owner, "POST", "/api/conversations", { userIds: [owner, peer], isGroup: false });
+  await expectOk(directResponse);
+  const direct = await directResponse.json();
+  const messageResponse = await api(page, owner, "POST", "/api/messages", { conversationId: direct.id, content: `Inbox UI ${marker}` });
+  await expectOk(messageResponse);
+  const message = await messageResponse.json();
+  await expectOk(await api(page, owner, "POST", "/api/relationship-hub/native/initialize", {}));
+  const hubConversationsResponse = await api(page, owner, "GET", "/api/relationship-hub/conversations?status=all");
+  await expectOk(hubConversationsResponse);
+  const hubConversation = (await hubConversationsResponse.json()).find((item: { nativeConversationId?: number }) => item.nativeConversationId === direct.id);
+  expect(hubConversation?.id).toBeTruthy();
+
+  await page.goto("/messages");
+  await page.getByTestId(`relationship-conversation-${hubConversation.id}`).click();
+  const row = page.getByTestId(`relationship-message-native:${message.id}`);
+  await expect(row.getByText(`Inbox UI ${marker}`, { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "Edit message" }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit message" });
+  await editDialog.getByRole("textbox").fill(`Inbox UI edited ${marker}`);
+  await editDialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(row.getByText(`Inbox UI edited ${marker}`, { exact: true })).toBeVisible();
+
+  await row.getByRole("button", { name: "React with a heart" }).click();
+  await expect(row.getByText("❤️", { exact: true })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await row.getByRole("button", { name: "Delete message" }).click();
+  await expect(row.getByText("Message deleted", { exact: true })).toBeVisible();
 });
 
 test("notification read state and account isolation persist", async ({ page }, testInfo) => {

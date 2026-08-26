@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   businesses,
@@ -9,6 +9,7 @@ import {
   relationshipConversationParticipants,
   relationshipConversations,
   relationshipExternalIdentities,
+  relationshipMessageAttachments,
   relationshipMessages,
   relationships,
   users,
@@ -146,16 +147,28 @@ export async function syncLegacyNativeConversation(input: {
       directMessages.conversationId,
       legacyConversation.id,
     )).orderBy(asc(directMessages.sentAt));
+    const canonicalNativeMessages = await tx.select().from(relationshipMessages).where(and(
+      eq(relationshipMessages.businessId, business.id),
+      eq(relationshipMessages.conversationId, canonicalConversation.id),
+      eq(relationshipMessages.bindingId, binding.id),
+      eq(relationshipMessages.provider, "native"),
+    ));
+    const canonicalByExternalId = new Map(canonicalNativeMessages
+      .filter((message) => message.externalMessageId)
+      .map((message) => [message.externalMessageId!, message]));
+    const legacyExternalIds = new Set<string>();
     for (const legacyMessage of legacyMessages) {
       const senderIdentity = identityByUserId.get(legacyMessage.senderId);
-      await tx.insert(relationshipMessages).values({
+      const externalMessageId = `native:${legacyMessage.id}`;
+      legacyExternalIds.add(externalMessageId);
+      const values = {
         businessId: business.id,
         conversationId: canonicalConversation.id,
         bindingId: binding.id,
         authorUserId: legacyMessage.senderId === input.currentUserId ? input.currentUserId : null,
         authorExternalIdentityId: senderIdentity?.identityId ?? null,
         provider: "native",
-        externalMessageId: `native:${legacyMessage.id}`,
+        externalMessageId,
         direction: legacyMessage.senderId === input.currentUserId ? "outbound" : "inbound",
         authorType: legacyMessage.senderId === input.currentUserId ? "human" : "customer",
         messageType: "text",
@@ -169,10 +182,40 @@ export async function syncLegacyNativeConversation(input: {
           nativeReplyToMessageId: legacyMessage.replyToMessageId,
           reactions: legacyMessage.reactions,
         },
-      }).onConflictDoNothing();
+      };
+      const existingCanonical = canonicalByExternalId.get(externalMessageId);
+      if (existingCanonical) {
+        await tx.update(relationshipMessages).set({
+          authorUserId: values.authorUserId,
+          authorExternalIdentityId: values.authorExternalIdentityId,
+          direction: values.direction,
+          authorType: values.authorType,
+          body: values.body,
+          status: values.status,
+          editedAt: values.editedAt,
+          deletedAt: null,
+          metadata: { ...existingCanonical.metadata, ...values.metadata },
+          updatedAt: new Date(),
+        }).where(eq(relationshipMessages.id, existingCanonical.id));
+      } else {
+        await tx.insert(relationshipMessages).values(values).onConflictDoNothing();
+      }
+    }
+    const removedCanonicalMessages = canonicalNativeMessages.filter((message) =>
+      message.externalMessageId?.startsWith("native:") && !legacyExternalIds.has(message.externalMessageId),
+    );
+    if (removedCanonicalMessages.length) {
+      const removedIds = removedCanonicalMessages.map((message) => message.id);
+      await tx.delete(relationshipMessageAttachments).where(inArray(relationshipMessageAttachments.messageId, removedIds));
+      await tx.update(relationshipMessages).set({
+        body: "",
+        status: "deleted",
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(inArray(relationshipMessages.id, removedIds));
     }
 
-    await tx.update(relationshipConversationBindings).set({ lastSyncedAt: new Date(), updatedAt: new Date() }).where(eq(relationshipConversationBindings.id, binding.id));
+    await tx.update(relationshipConversationBindings).set({ capabilities: connection.capabilities, lastSyncedAt: new Date(), updatedAt: new Date() }).where(eq(relationshipConversationBindings.id, binding.id));
     await tx.update(relationshipConversations).set({ title, relationshipId: primaryRelationshipId, lastMessageAt: legacyMessages.at(-1)?.sentAt ?? legacyConversation.updatedAt, updatedAt: new Date() }).where(eq(relationshipConversations.id, canonicalConversation.id));
     return { conversation: canonicalConversation, binding, messagesSynchronized: legacyMessages.length };
   });

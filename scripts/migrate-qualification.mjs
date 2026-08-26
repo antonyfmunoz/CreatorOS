@@ -69,6 +69,7 @@ const requiredTables = [
   "relationship_provider_events",
   "relationship_delivery_jobs",
   "relationship_native_delivery_receipts",
+  "relationship_native_action_receipts",
   "relationship_agent_authority_policies",
   "relationship_agent_suggestions",
   "relationship_memory_facts",
