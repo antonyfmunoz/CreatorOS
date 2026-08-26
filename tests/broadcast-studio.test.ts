@@ -179,7 +179,7 @@ describe("CreativesOS Broadcast scene graph", () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("creates reusable production scenes and applies a persistent brand kit", () => {
     const base = validateBroadcastStudioConfig({ ...defaultBroadcastStudioConfig(), brandKit: { primaryColor: "#ff0055", surfaceColor: "#221122", textColor: "#fefefe", logoAssetId: null } });

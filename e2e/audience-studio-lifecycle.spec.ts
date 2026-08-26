@@ -8,6 +8,13 @@ test("Audience Studio captures, nurtures, exports, hands off, and honors opt-out
   const form = await created.json() as { id: string; publicId: string };
   expect((await page.request.post(`/api/audience/forms/${form.id}/publish`)).status()).toBe(200);
   const publicForm = await page.request.get(`/api/public/audience/forms/${form.publicId}`); expect(publicForm.status()).toBe(200); expect((await publicForm.json()).fields[0].key).toBe("email");
+  const browserEmail = `browser-${stamp}@example.com`;
+  await page.goto(`/subscribe/${form.publicId}`);
+  await expect(page.getByRole("heading", { name: "Join the owned audience" })).toBeVisible();
+  await page.getByLabel("Email").fill(browserEmail);
+  await page.getByLabel("Role").selectOption("brand");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  await expect(page.getByText("Welcome aboard")).toBeVisible();
   const invalid = await page.request.post(`/api/public/audience/forms/${form.publicId}/submissions`, { data: { email, displayName: "Qualified Subscriber", values: {}, consentGranted: true } }); expect(invalid.status()).toBe(400);
   const submission = await page.request.post(`/api/public/audience/forms/${form.publicId}/submissions`, { data: { email, displayName: "Qualified Subscriber", values: { role: "creator" }, consentGranted: true } }); expect(submission.status()).toBe(201);
 

@@ -368,6 +368,7 @@ export default function OfferEditor() {
             </span>
           </div>
           <select
+            aria-label="Publishing status"
             value={form.status}
             onChange={(event) => update("status", event.target.value)}
             className="mt-3 h-10 w-full rounded-md border border-zinc-700 bg-black px-3 text-sm text-white"
@@ -378,8 +379,9 @@ export default function OfferEditor() {
           </select>
         </section>
         <div>
-          <Label className="text-zinc-300">Title</Label>
+          <Label htmlFor="offer-title" className="text-zinc-300">Title</Label>
           <Input
+            id="offer-title"
             value={form.title}
             onChange={(event) => update("title", event.target.value)}
             className="mt-2 border-zinc-700 bg-zinc-950 text-white"
@@ -387,8 +389,9 @@ export default function OfferEditor() {
           />
         </div>
         <div>
-          <Label className="text-zinc-300">Description</Label>
+          <Label htmlFor="offer-description" className="text-zinc-300">Description</Label>
           <Textarea
+            id="offer-description"
             value={form.description}
             onChange={(event) => update("description", event.target.value)}
             className="mt-2 min-h-36 border-zinc-700 bg-zinc-950 text-white"
@@ -397,8 +400,9 @@ export default function OfferEditor() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-zinc-300">Price (USD)</Label>
+            <Label htmlFor="offer-price" className="text-zinc-300">Price (USD)</Label>
             <Input
+              id="offer-price"
               type="number"
               min="0"
               step="0.01"
@@ -409,8 +413,9 @@ export default function OfferEditor() {
             />
           </div>
           <div>
-            <Label className="text-zinc-300">Offer type</Label>
+            <Label htmlFor="offer-type" className="text-zinc-300">Offer type</Label>
             <select
+              id="offer-type"
               value={form.productType}
               onChange={(event) => {
                 const offer = offerTypes.find((candidate) => candidate.value === event.target.value) ?? offerTypes[0];
@@ -431,20 +436,21 @@ export default function OfferEditor() {
         </div>
         {(form.productType === "community" || form.productType === "membership") && <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-zinc-300">Payment schedule</Label>
-            <select value={form.billingModel} onChange={(event) => update("billingModel", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white">
+            <Label htmlFor="offer-payment-schedule" className="text-zinc-300">Payment schedule</Label>
+            <select id="offer-payment-schedule" value={form.billingModel} onChange={(event) => update("billingModel", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white">
               {form.productType === "community" && <option value="one_time">One-time access</option>}
               <option value="recurring">Recurring membership</option>
             </select>
           </div>
           {form.billingModel === "recurring" && <div>
-            <Label className="text-zinc-300">Billing interval</Label>
-            <select value={form.billingInterval} onChange={(event) => update("billingInterval", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white"><option value="month">Monthly</option><option value="year">Yearly</option></select>
+            <Label htmlFor="offer-billing-interval" className="text-zinc-300">Billing interval</Label>
+            <select id="offer-billing-interval" value={form.billingInterval} onChange={(event) => update("billingInterval", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white"><option value="month">Monthly</option><option value="year">Yearly</option></select>
           </div>}
         </div>}
         <div>
-          <Label className="text-zinc-300">Cover image URL</Label>
+          <Label htmlFor="offer-cover-url" className="text-zinc-300">Cover image URL</Label>
           <Input
+            id="offer-cover-url"
             type="url"
             value={form.imageUrl}
             onChange={(event) => update("imageUrl", event.target.value)}
@@ -454,8 +460,9 @@ export default function OfferEditor() {
         </div>
         {(businessesQuery.data?.length ?? 0) > 1 && (
           <div>
-            <Label className="text-zinc-300">Business</Label>
+            <Label htmlFor="offer-business" className="text-zinc-300">Business</Label>
             <select
+              id="offer-business"
               value={form.businessId}
               onChange={(event) => update("businessId", event.target.value)}
               className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white"
@@ -635,6 +642,7 @@ export default function OfferEditor() {
             </div>
           </div>
           <select
+            aria-label="Revenue destination"
             value={form.payoutMode}
             onChange={(event) => update("payoutMode", event.target.value)}
             className="mt-3 h-10 w-full rounded-md border border-zinc-700 bg-black px-3 text-sm text-white"

@@ -707,6 +707,15 @@ export default function BroadcastStudioPage() {
     try {
       await apiRequest("DELETE", `/api/broadcast/studios/${studio.id}/collaborators/${userId}`);
       await openStudio(studio.id);
+      setStudio((current) => {
+        if (!current || current.id !== studio.id) return current;
+        const next = {
+          ...current,
+          participants: current.participants?.filter((participant) => participant.id !== userId),
+        };
+        studioRef.current = next;
+        return next;
+      });
       await queryClient.invalidateQueries({ queryKey: ["/api/broadcast/studios"] });
       setMessage("Broadcast collaborator removed.");
     } catch (error) {

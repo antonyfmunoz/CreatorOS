@@ -5,6 +5,7 @@ import path from "node:path";
 import type { Express, NextFunction, Request, Response } from "express";
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import sharp from "sharp";
+import { z } from "zod";
 import { createDesignProjectSchema, designDocumentSchema, designExportSchema, designResizeSchema, designReviewCommentSchema, saveDesignSchema, type DesignDocument, type DesignElement } from "@shared/design-studio";
 import { assetLineageEdges, assets, broadcastBrandKits, designCollaborators, designExports, designProjects, designReviewComments, designReviewDecisions, designReviewLinks, designTemplates, designVersions, distributionJobs, users } from "@shared/schema";
 import { attachUser } from "./auth";
@@ -15,6 +16,7 @@ import { assertAssetUsageAllowed, recordAssetUsage } from "./media-cloud";
 
 type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
 const safe = (handler: Handler): Handler => (req, res, next) => { try { Promise.resolve(handler(req, res, next)).catch(next); } catch (error) { next(error); } };
+const uuidSchema = z.string().uuid();
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const appUrl = () => (process.env.PUBLIC_APP_URL ?? "https://creativesos.net").replace(/\/$/, "");
 const escapeXml = (value: unknown) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
@@ -24,6 +26,7 @@ function blankDocument(width: number, height: number, brand?: typeof broadcastBr
 }
 
 async function projectAccess(userId: number, projectId: string, write = false) {
+  if (!uuidSchema.safeParse(projectId).success) return null;
   const [project] = await db.select().from(designProjects).where(eq(designProjects.id, projectId)).limit(1);
   if (!project) return null;
   if (project.ownerUserId === userId || await userCanManageBusiness(userId, project.businessId)) return { project, role: "owner" as const };
