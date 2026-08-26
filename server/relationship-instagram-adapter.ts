@@ -18,6 +18,10 @@ const instagramCapabilities = {
   "comment.receive": true,
   "comment.reply": true,
   "comment.private_reply": true,
+  "media.image": true,
+  "media.video": true,
+  "media.audio": true,
+  "media.voice_note": true,
   "receipt.read": true,
   "outbound.proactive": false,
   "outbound.template_required": false,
@@ -50,6 +54,7 @@ function normalizeMessaging(entryId: string, entryTime: number | undefined, item
   const senderId = stringField(sender?.id);
   const recipientId = stringField(recipient?.id);
   const message = item.message as { mid?: unknown; text?: unknown; is_echo?: unknown; attachments?: Array<{ type?: unknown; payload?: { url?: unknown } }> } | undefined;
+  const postback = item.postback as { mid?: unknown; title?: unknown; payload?: unknown } | undefined;
   const read = item.read as { mid?: unknown; watermark?: unknown } | undefined;
   if (message && message.is_echo !== true && senderId && recipientId) {
     const messageId = stringField(message.mid) ?? `${senderId}:${String(item.timestamp ?? entryTime ?? Date.now())}`;
@@ -68,6 +73,20 @@ function normalizeMessaging(entryId: string, entryTime: number | undefined, item
       thread: { externalThreadId: senderId, kind: "direct", metadata: { instagramAccountId: entryId } },
       message: { externalMessageId: messageId, type: attachments[0]?.type ?? "text", body: stringField(message.text) ?? "", bodyFormat: "plain", attachments, metadata: {} },
       metadata: { automated: false },
+    }];
+  }
+  if (postback && senderId) {
+    const postbackId = stringField(postback.mid) ?? `${senderId}:${String(item.timestamp ?? entryTime ?? Date.now())}:${stringField(postback.payload) ?? "postback"}`;
+    return [{
+      version: "relationship.event.v1",
+      provider: "instagram",
+      externalEventId: `postback:${postbackId}`,
+      eventType: "social.dm.received",
+      occurredAt: timestamp(item.timestamp, entryTime),
+      actor: { providerSubjectId: senderId, verified: false, metadata: {} },
+      thread: { externalThreadId: senderId, kind: "direct", metadata: { instagramAccountId: entryId } },
+      message: { externalMessageId: postbackId, type: "text", body: stringField(postback.title) ?? stringField(postback.payload) ?? "", bodyFormat: "plain", attachments: [], metadata: { postbackPayload: stringField(postback.payload) ?? null } },
+      metadata: { automated: false, source: "postback" },
     }];
   }
   if (read && senderId) {
@@ -119,6 +138,17 @@ function instagramError(response: Response, body: unknown) {
   return error;
 }
 
+function instagramOutboundMessage(action: Parameters<RelationshipChannelAdapter["deliver"]>[0]["action"]) {
+  const attachment = action.attachments[0];
+  if (!attachment) return { text: action.body };
+  if (action.attachments.length > 1) throw Object.assign(new Error("Instagram delivery supports one attachment at a time"), { errorClass: "invalid_content" as const, code: "instagram_attachment_invalid" });
+  const type = attachment.type === "voice_note" ? "audio" : attachment.type;
+  if (!(["image", "video", "audio"] as string[]).includes(type)) throw Object.assign(new Error("Instagram supports image, video, and audio message attachments"), { errorClass: "invalid_content" as const, code: "instagram_attachment_invalid" });
+  const payload = attachment.externalMediaId ? { attachment_id: attachment.externalMediaId } : attachment.sourceUrl ? { url: attachment.sourceUrl } : null;
+  if (!payload) throw Object.assign(new Error("Instagram attachment needs a hosted URL or uploaded attachment ID"), { errorClass: "invalid_content" as const, code: "instagram_attachment_invalid" });
+  return { attachment: { type, payload } };
+}
+
 export const instagramRelationshipAdapter: RelationshipChannelAdapter = {
   provider: "instagram",
   capabilities: instagramCapabilities,
@@ -145,7 +175,6 @@ export const instagramRelationshipAdapter: RelationshipChannelAdapter = {
   },
   async deliver({ action, context }) {
     if (!context.accessToken) throw Object.assign(new Error("Instagram connection needs reauthorization"), { errorClass: "authentication" as const, code: "missing_access_token" });
-    if (action.attachments.length) throw Object.assign(new Error("Instagram media delivery requires the attachment-upload phase"), { errorClass: "invalid_content" as const, code: "instagram_media_upload_required" });
     let url: string;
     let payload: Record<string, unknown>;
     if (action.actionType === "comment.reply") {
@@ -156,7 +185,7 @@ export const instagramRelationshipAdapter: RelationshipChannelAdapter = {
       url = graphUrl(context.providerAccountId, "/messages");
       payload = action.actionType === "comment.private_reply"
         ? { recipient: { comment_id: action.replyToExternalMessageId || action.externalThreadId }, message: { text: action.body } }
-        : { recipient: { id: action.externalThreadId }, messaging_type: "RESPONSE", message: { text: action.body } };
+        : { recipient: { id: action.externalThreadId }, messaging_type: "RESPONSE", message: instagramOutboundMessage(action) };
     }
     const response = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${context.accessToken}`, "content-type": "application/json" }, body: JSON.stringify(payload) });
     const body = await response.json().catch(() => ({})) as { message_id?: string; recipient_id?: string; id?: string };

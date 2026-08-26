@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { and, eq, gt, isNull, lte } from "drizzle-orm";
 import { db } from "./db";
 import { relationshipChannelConnections, socialOAuthStates } from "../shared/schema";
-import { createSocialOAuthState, decryptSocialToken, encryptSocialToken, hashSocialOAuthState } from "./social-oauth";
+import { createSocialOAuthState, decryptSocialToken, encryptSocialToken, hashSocialOAuthState, isSocialTokenEncryptionConfigured } from "./social-oauth";
 import { instagramRelationshipAdapter } from "./relationship-instagram-adapter";
 import { withRelationshipConnectionCapacity } from "./relationship-operations";
 
@@ -38,8 +38,15 @@ export function instagramRelationshipRedirectUri() {
 
 export function instagramRelationshipConfiguration() {
   const webhookVerifyToken = process.env.RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN || process.env.META_WEBHOOK_VERIFY_TOKEN;
+  let publicUrlConfigured = false;
+  try {
+    const url = new URL(process.env.PUBLIC_APP_URL || "");
+    publicUrlConfigured = url.protocol === "https:" || url.hostname === "localhost";
+  } catch {
+    publicUrlConfigured = false;
+  }
   return {
-    configured: Boolean((process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID) && (process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET) && process.env.META_GRAPH_API_VERSION && webhookVerifyToken && process.env.SOCIAL_TOKEN_ENCRYPTION_KEY && process.env.PUBLIC_APP_URL),
+    configured: Boolean((process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID) && (process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET) && /^v\d+\.\d+$/.test(process.env.META_GRAPH_API_VERSION || "") && webhookVerifyToken && isSocialTokenEncryptionConfigured() && publicUrlConfigured),
     requiredScopes: [...instagramRelationshipScopes],
     webhookPath: "/api/relationship-hub/webhooks/instagram",
   };
@@ -90,7 +97,8 @@ export async function completeInstagramRelationshipAuthorization(input: { code: 
   const subscribeUrl = new URL(`${base}/${encodeURIComponent(accountId)}/subscribed_apps`);
   subscribeUrl.searchParams.set("subscribed_fields", "comments,messages,messaging_postbacks,messaging_seen");
   subscribeUrl.searchParams.set("access_token", long.access_token);
-  await jsonResponse(await fetch(subscribeUrl, { method: "POST" }));
+  const subscription = await jsonResponse<{ success?: boolean }>(await fetch(subscribeUrl, { method: "POST" }));
+  if (subscription.success !== true) throw new Error("Meta did not confirm the Instagram webhook subscription");
   const now = new Date();
   const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1_000) : null;
   const values = {

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import { decryptSocialToken } from "./social-oauth";
 import {
@@ -44,6 +44,7 @@ import {
   reserveRelationshipUsage,
 } from "./relationship-operations";
 import { recordRelationshipConsent } from "./relationship-governance";
+import { assertMetaOutboundPolicy } from "./relationship-meta-policy";
 import {
   messagingConsentCommand,
   RELATIONSHIP_COMMENT_CREATED_EVENT,
@@ -330,7 +331,10 @@ async function processStoredProviderEvent(eventId: string) {
             bodyFormat: event.message.bodyFormat,
             status: "received",
             occurredAt: event.occurredAt,
-            metadata: event.message.metadata,
+            metadata: {
+              ...event.message.metadata,
+              providerEventType: event.eventType,
+            },
           })
           .onConflictDoNothing()
           .returning();
@@ -527,7 +531,7 @@ export async function queueRelationshipMessage(input: {
 }) {
   const action = relationshipOutboundActionSchema.parse(input.action);
   const usageKey = `message.outbound:${action.idempotencyKey}`;
-  const countsAsOutbound = ["message.send", "comment.reply"].includes(action.actionType);
+  const countsAsOutbound = ["message.send", "comment.reply", "comment.private_reply"].includes(action.actionType);
   const usageReservation = countsAsOutbound
     ? await reserveRelationshipUsage({
         businessId: input.businessId,
@@ -566,6 +570,18 @@ export async function queueRelationshipMessage(input: {
         ...binding.metadata,
         senderUserId: input.authorUserId,
       },
+    });
+    const [latestInbound] = await tx.select({ occurredAt: relationshipMessages.occurredAt }).from(relationshipMessages).where(and(
+      eq(relationshipMessages.businessId, input.businessId),
+      eq(relationshipMessages.conversationId, input.conversationId),
+      eq(relationshipMessages.bindingId, binding.id),
+      eq(relationshipMessages.direction, "inbound"),
+      isNull(relationshipMessages.deletedAt),
+    )).orderBy(desc(relationshipMessages.occurredAt)).limit(1);
+    assertMetaOutboundPolicy({
+      provider: connection.provider,
+      action: authoritativeAction,
+      latestInboundAt: latestInbound?.occurredAt,
     });
     const requestHash = hashJson(authoritativeAction);
 
@@ -701,6 +717,24 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
   const adapter = requireRelationshipAdapter(connection.provider);
   const action = relationshipOutboundActionSchema.parse(claimed.payload);
   try {
+    const [deliveryBinding] = await db.select({ id: relationshipConversationBindings.id }).from(relationshipConversationBindings).where(and(
+      eq(relationshipConversationBindings.businessId, claimed.businessId),
+      eq(relationshipConversationBindings.conversationId, claimed.conversationId),
+      eq(relationshipConversationBindings.connectionId, claimed.connectionId),
+    )).limit(1);
+    if (!deliveryBinding) throw Object.assign(new Error("Relationship delivery binding is unavailable"), { errorClass: "permanent" as const, code: "missing_delivery_binding" });
+    const [latestInbound] = await db.select({ occurredAt: relationshipMessages.occurredAt }).from(relationshipMessages).where(and(
+      eq(relationshipMessages.businessId, claimed.businessId),
+      eq(relationshipMessages.conversationId, claimed.conversationId),
+      eq(relationshipMessages.bindingId, deliveryBinding.id),
+      eq(relationshipMessages.direction, "inbound"),
+      isNull(relationshipMessages.deletedAt),
+    )).orderBy(desc(relationshipMessages.occurredAt)).limit(1);
+    assertMetaOutboundPolicy({
+      provider: connection.provider,
+      action,
+      latestInboundAt: latestInbound?.occurredAt,
+    });
     const result = await deliverRelationshipAction(adapter, {
       action,
       context: connectionContext(connection),
@@ -778,7 +812,7 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: auditAction, targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status, actionType: action.actionType } });
       return [updatedJob];
     });
-    if (["message.send", "comment.reply"].includes(action.actionType)) {
+    if (["message.send", "comment.reply", "comment.private_reply"].includes(action.actionType)) {
       await finalizeRelationshipUsage({
         businessId: claimed.businessId,
         idempotencyKey: `message.outbound:${action.idempotencyKey}`,
@@ -843,7 +877,7 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       });
       return [updatedJob];
     });
-    if (!retryable && ["message.send", "comment.reply"].includes(action.actionType)) {
+    if (!retryable && ["message.send", "comment.reply", "comment.private_reply"].includes(action.actionType)) {
       await releaseRelationshipUsage({ businessId: claimed.businessId, idempotencyKey: `message.outbound:${action.idempotencyKey}` }).catch(() => undefined);
     }
     return failed;

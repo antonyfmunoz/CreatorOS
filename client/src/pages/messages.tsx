@@ -104,7 +104,7 @@ type ProviderStatus = {
   configuration?: {
     instagram?: { configured: boolean; requiredScopes: string[]; webhookPath: string };
     messenger?: { configured: boolean; requiredScopes: string[]; webhookPath: string };
-    whatsapp?: { configured: boolean; connectionMode: string; webhookPath: string };
+    whatsapp?: { configured: boolean; connectionMode: string; embeddedSignupConfigured?: boolean; webhookPath: string };
     x?: { configured: boolean; requiredScopes: string[]; webhookPathTemplate: string; pollingFallback: boolean };
   };
 };
@@ -134,6 +134,111 @@ type AgentPolicy = { id: string; agentKey: string; role: string; mode: "observe"
 type CommunityRoom = { id: string; communityId: number; title: string; status: string; startsAt: string; provider: string };
 type RelationshipRoomBinding = { id: string; roomId: string; room: CommunityRoom };
 type RelationshipTimeline = { relationshipId: string; items: Array<{ id: string; type: string; occurredAt: string; title: string; body: string; metadata: Record<string, unknown> }> };
+type WhatsAppTemplate = { id: string; name: string; status: string; category: string; language: string; components: Array<Record<string, unknown>> };
+type WhatsAppTemplateSlot = { key: string; label: string; componentType: "header" | "body" | "button"; buttonIndex?: number };
+type WhatsAppEmbeddedSession = { state: string; appId: string; configId: string; graphVersion: string };
+type MetaLoginResponse = { authResponse?: { code?: string }; status?: string };
+
+declare global {
+  interface Window {
+    FB?: {
+      init(input: { appId: string; cookie: boolean; xfbml: boolean; version: string }): void;
+      login(callback: (response: MetaLoginResponse) => void, options: Record<string, unknown>): void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
+
+let metaSdkPromise: Promise<void> | null = null;
+
+function loadMetaSdk(session: WhatsAppEmbeddedSession) {
+  if (window.FB) {
+    window.FB.init({ appId: session.appId, cookie: true, xfbml: false, version: session.graphVersion });
+    return Promise.resolve();
+  }
+  if (metaSdkPromise) return metaSdkPromise;
+  metaSdkPromise = new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      metaSdkPromise = null;
+      reject(new Error("Meta signup could not be loaded"));
+    }, 20_000);
+    window.fbAsyncInit = () => {
+      window.clearTimeout(timeout);
+      window.FB?.init({ appId: session.appId, cookie: true, xfbml: false, version: session.graphVersion });
+      resolve();
+    };
+    const existing = document.getElementById("facebook-jssdk");
+    if (existing) return;
+    const script = document.createElement("script");
+    script.id = "facebook-jssdk";
+    script.async = true;
+    script.defer = true;
+    script.crossOrigin = "anonymous";
+    script.src = "https://connect.facebook.net/en_US/sdk.js";
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      metaSdkPromise = null;
+      reject(new Error("Meta signup could not be loaded"));
+    };
+    document.head.appendChild(script);
+  });
+  return metaSdkPromise;
+}
+
+async function launchWhatsAppEmbeddedSignup(session: WhatsAppEmbeddedSession) {
+  await loadMetaSdk(session);
+  if (!window.FB) throw new Error("Meta signup is unavailable in this browser");
+  return new Promise<{ code: string; wabaId: string; phoneNumberId: string }>((resolve, reject) => {
+    let code = "";
+    let wabaId = "";
+    let phoneNumberId = "";
+    let settled = false;
+    const cleanup = () => {
+      window.removeEventListener("message", listener);
+      window.clearTimeout(timeout);
+    };
+    const finish = () => {
+      if (!code || !wabaId || !phoneNumberId || settled) return;
+      settled = true;
+      cleanup();
+      resolve({ code, wabaId, phoneNumberId });
+    };
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(message));
+    };
+    const listener = (event: MessageEvent) => {
+      if (!["https://www.facebook.com", "https://web.facebook.com"].includes(event.origin)) return;
+      let payload: unknown = event.data;
+      if (typeof payload === "string") {
+        try { payload = JSON.parse(payload); } catch { return; }
+      }
+      if (!payload || typeof payload !== "object") return;
+      const message = payload as { type?: unknown; event?: unknown; data?: { waba_id?: unknown; phone_number_id?: unknown } };
+      if (message.type !== "WA_EMBEDDED_SIGNUP") return;
+      if (message.event === "CANCEL") return fail("WhatsApp signup was canceled before completion");
+      if (message.event !== "FINISH") return;
+      wabaId = typeof message.data?.waba_id === "string" ? message.data.waba_id : "";
+      phoneNumberId = typeof message.data?.phone_number_id === "string" ? message.data.phone_number_id : "";
+      if (!wabaId || !phoneNumberId) return fail("Meta did not return the selected WhatsApp business and phone number");
+      finish();
+    };
+    window.addEventListener("message", listener);
+    const timeout = window.setTimeout(() => fail("WhatsApp signup expired before Meta returned the account details"), 5 * 60_000);
+    window.FB!.login((response) => {
+      code = response.authResponse?.code ?? "";
+      if (!code) return fail("WhatsApp signup was not authorized");
+      finish();
+    }, {
+      config_id: session.configId,
+      response_type: "code",
+      override_default_response_type: true,
+      extras: { setup: {}, sessionInfoVersion: "3" },
+    });
+  });
+}
 
 const voiceConsentText = "I attest that I own this voice or am the person represented by it, I authorize CreativesOS to generate disclosed voice messages using this profile, and I understand that I can revoke this authorization at any time.";
 
@@ -170,6 +275,35 @@ function memoryText(value: unknown) {
   return "Review the linked conversation evidence before accepting this memory.";
 }
 
+function whatsappTemplateSlots(template?: WhatsAppTemplate) {
+  if (!template) return [];
+  const slots: WhatsAppTemplateSlot[] = [];
+  for (const component of template.components) {
+    const type = typeof component.type === "string" ? component.type.toLowerCase() : "";
+    if ((type === "header" || type === "body") && typeof component.text === "string") {
+      const indexes = Array.from(new Set(Array.from(component.text.matchAll(/\{\{(\d+)\}\}/g)).map((match) => Number(match[1])))).sort((a, b) => a - b);
+      for (const index of indexes) slots.push({ key: `${type}:${index}`, label: `${type === "header" ? "Header" : "Body"} value ${index}`, componentType: type });
+    }
+    if (type === "buttons" && Array.isArray(component.buttons)) {
+      component.buttons.forEach((candidate, buttonIndex) => {
+        const button = candidate as Record<string, unknown>;
+        if (typeof button.url === "string" && /\{\{\d+\}\}/.test(button.url)) slots.push({ key: `button:${buttonIndex}`, label: `Button URL value ${buttonIndex + 1}`, componentType: "button", buttonIndex });
+      });
+    }
+  }
+  return slots;
+}
+
+function whatsappTemplateComponents(slots: WhatsAppTemplateSlot[], values: Record<string, string>) {
+  const components: Array<Record<string, unknown>> = [];
+  for (const componentType of ["header", "body"] as const) {
+    const componentSlots = slots.filter((slot) => slot.componentType === componentType);
+    if (componentSlots.length) components.push({ type: componentType, parameters: componentSlots.map((slot) => ({ type: "text", text: values[slot.key]?.trim() })) });
+  }
+  for (const slot of slots.filter((candidate) => candidate.componentType === "button")) components.push({ type: "button", sub_type: "url", index: String(slot.buttonIndex ?? 0), parameters: [{ type: "text", text: values[slot.key]?.trim() }] });
+  return components;
+}
+
 export default function MessagesPage() {
   const [, setLocation] = useLocation();
   const isMobile = useIsMobile();
@@ -189,6 +323,9 @@ export default function MessagesPage() {
   const [whatsappWabaId, setWhatsappWabaId] = useState("");
   const [whatsappAccessToken, setWhatsappAccessToken] = useState("");
   const [whatsappAccountName, setWhatsappAccountName] = useState("");
+  const [whatsappTemplateMode, setWhatsappTemplateMode] = useState(false);
+  const [whatsappTemplateId, setWhatsappTemplateId] = useState("");
+  const [whatsappTemplateValues, setWhatsappTemplateValues] = useState<Record<string, string>>({});
   const [voiceDisplayName, setVoiceDisplayName] = useState("My verified voice");
   const [providerVoiceId, setProviderVoiceId] = useState("");
   const [voiceAttested, setVoiceAttested] = useState(false);
@@ -312,6 +449,25 @@ export default function MessagesPage() {
     enabled: Boolean(selectedId),
     refetchInterval: 3_000,
   });
+  const activeBinding = detail.data?.bindings.find((binding) => binding.status === "active");
+  const whatsappTemplates = useQuery<{ templates: WhatsAppTemplate[] }>({
+    queryKey: [`/api/relationship-hub/connections/${activeBinding?.connectionId}/whatsapp/templates`],
+    enabled: Boolean(activeBinding?.provider === "whatsapp" && activeBinding.connectionId && providers.data?.permissions.canAdminister),
+    staleTime: 60_000,
+  });
+  const selectedWhatsAppTemplate = whatsappTemplates.data?.templates.find((template) => template.id === whatsappTemplateId);
+  const selectedWhatsAppTemplateSlots = useMemo(() => whatsappTemplateSlots(selectedWhatsAppTemplate), [selectedWhatsAppTemplate]);
+  const latestInboundAt = useMemo(() => detail.data?.messages.filter((message) => message.direction === "inbound").reduce<string | null>((latest, message) => !latest || new Date(message.occurredAt) > new Date(latest) ? message.occurredAt : latest, null) ?? null, [detail.data?.messages]);
+  const standardReplyWindowOpen = latestInboundAt ? Date.now() - new Date(latestInboundAt).getTime() <= 24 * 60 * 60_000 : false;
+  const whatsappTemplateReady = Boolean(selectedWhatsAppTemplate && selectedWhatsAppTemplate.status === "APPROVED" && selectedWhatsAppTemplateSlots.every((slot) => whatsappTemplateValues[slot.key]?.trim()));
+  useEffect(() => {
+    if (activeBinding?.provider === "whatsapp" && !standardReplyWindowOpen) setWhatsappTemplateMode(true);
+    if (activeBinding?.provider !== "whatsapp") {
+      setWhatsappTemplateMode(false);
+      setWhatsappTemplateId("");
+      setWhatsappTemplateValues({});
+    }
+  }, [activeBinding?.id, activeBinding?.provider, standardReplyWindowOpen]);
   const relationshipDetail = useQuery<RelationshipDetail>({
     queryKey: [`/api/relationship-hub/relationships/${detail.data?.relationship?.id}`],
     enabled: Boolean(detail.data?.relationship?.id),
@@ -337,10 +493,24 @@ export default function MessagesPage() {
     mutationFn: async () => {
       if (!selectedId) throw new Error("Choose a conversation first");
       if (noteMode) return jsonRequest("POST", `/api/relationship-hub/conversations/${selectedId}/notes`, { body: composer });
+      if (whatsappTemplateMode) {
+        if (!selectedWhatsAppTemplate || !whatsappTemplateReady) throw new Error("Choose an approved WhatsApp template and complete its variables");
+        return jsonRequest("POST", `/api/relationship-hub/conversations/${selectedId}/messages`, {
+          body: "",
+          whatsappTemplate: {
+            name: selectedWhatsAppTemplate.name,
+            languageCode: selectedWhatsAppTemplate.language,
+            components: whatsappTemplateComponents(selectedWhatsAppTemplateSlots, whatsappTemplateValues),
+          },
+        });
+      }
       return jsonRequest("POST", `/api/relationship-hub/conversations/${selectedId}/messages`, { body: composer });
     },
     onSuccess: () => {
       setComposer("");
+      setWhatsappTemplateMode(false);
+      setWhatsappTemplateId("");
+      setWhatsappTemplateValues({});
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations/${selectedId}`] });
       void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations${businessQuery}`] });
       invalidateRelationshipTimeline();
@@ -610,13 +780,26 @@ export default function MessagesPage() {
     onError: (error) => toast({ title: "WhatsApp connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
 
+  const connectWhatsAppEmbedded = useMutation({
+    mutationFn: async () => {
+      const session = await jsonRequest<WhatsAppEmbeddedSession>("POST", "/api/relationship-hub/connections/whatsapp/embedded/session", { businessId: business?.id });
+      const authorized = await launchWhatsAppEmbeddedSignup(session);
+      return jsonRequest("POST", "/api/relationship-hub/connections/whatsapp/embedded/complete", { state: session.state, ...authorized });
+    },
+    onSuccess: () => {
+      setWhatsappOpen(false);
+      void providers.refetch();
+      toast({ title: "WhatsApp connected", description: "The selected business phone is verified, subscribed to webhooks, and ready in the unified inbox." });
+    },
+    onError: (error) => toast({ title: "WhatsApp connection unavailable", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
+  });
+
   if (legacyMode) {
     return <main className="h-dvh bg-black text-white"><MessagePanel onClose={() => { setLegacyMode(false); void conversations.refetch(); }} /></main>;
   }
 
   const activeProviders = providers.data?.connections.filter((connection) => connection.status === "active") ?? [];
   const canAdminister = providers.data?.permissions.canAdminister === true;
-  const activeBinding = detail.data?.bindings.find((binding) => binding.status === "active");
   const ActiveProviderIcon = providerIcons[activeBinding?.provider ?? "native"] ?? MessageCircle;
 
   return (
@@ -722,10 +905,18 @@ export default function MessagesPage() {
           </div>
           <footer className="border-t border-zinc-900 bg-black px-4 py-3 md:px-8">
             <div className="mx-auto max-w-3xl">
-              <div className="mb-2 flex items-center gap-2"><button onClick={() => setNoteMode(false)} className={`rounded-full px-3 py-1 text-[10px] font-bold ${!noteMode ? "bg-zinc-800 text-white" : "text-zinc-600"}`}>Reply</button><button onClick={() => setNoteMode(true)} className={`rounded-full px-3 py-1 text-[10px] font-bold ${noteMode ? "bg-amber-500/15 text-amber-300" : "text-zinc-600"}`}>Internal note</button><span className="ml-auto text-[9px] text-zinc-700">Sending via {activeBinding?.provider ?? "native"}</span></div>
+              <div className="mb-2 flex items-center gap-2"><button onClick={() => setNoteMode(false)} className={`rounded-full px-3 py-1 text-[10px] font-bold ${!noteMode ? "bg-zinc-800 text-white" : "text-zinc-600"}`}>Reply</button><button onClick={() => setNoteMode(true)} className={`rounded-full px-3 py-1 text-[10px] font-bold ${noteMode ? "bg-amber-500/15 text-amber-300" : "text-zinc-600"}`}>Internal note</button>{activeBinding?.provider === "whatsapp" && !noteMode && <button onClick={() => setWhatsappTemplateMode((current) => !current)} disabled={!standardReplyWindowOpen && whatsappTemplateMode} className={`rounded-full px-3 py-1 text-[10px] font-bold ${whatsappTemplateMode ? "bg-emerald-500/15 text-emerald-300" : "text-zinc-600"}`}>{whatsappTemplateMode ? "Approved template" : "Use template"}</button>}<span className="ml-auto text-[9px] text-zinc-700">Sending via {activeBinding?.provider ?? "native"}</span></div>
+              {activeBinding?.provider === "whatsapp" && !noteMode && <div className={`mb-2 rounded-xl border px-3 py-2 text-[10px] ${standardReplyWindowOpen ? "border-emerald-900/60 bg-emerald-950/15 text-emerald-300" : "border-amber-900/60 bg-amber-950/15 text-amber-300"}`}>{standardReplyWindowOpen ? "The 24-hour customer-service window is open. You may reply normally or use an approved template." : "The 24-hour customer-service window is closed. Meta requires an approved template for this message."}</div>}
               <div className={`rounded-2xl border p-2 ${noteMode ? "border-amber-500/30 bg-amber-500/5" : "border-zinc-800 bg-zinc-950"}`}>
-                <Textarea value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (composer.trim()) sendMessage.mutate(); } }} placeholder={noteMode ? "Leave a note for your team…" : "Reply to this conversation…"} className="min-h-16 resize-none border-0 bg-transparent text-sm focus-visible:ring-0" />
-                <div className="flex items-center gap-1"><Button onClick={() => requestAiSuggestions.mutate()} disabled={requestAiSuggestions.isPending} variant="ghost" size="icon" className="text-zinc-500" title={aiStatus.data?.configured ? "Generate governed AI suggestions" : "AI provider setup pending"}><Sparkles className={`h-4 w-4 ${requestAiSuggestions.isPending ? "animate-pulse text-violet-300" : ""}`} /></Button><Button onClick={() => setVoiceOpen(true)} variant="ghost" size="icon" className="text-zinc-500" title="Create a verified voice message"><Mic className="h-4 w-4" /></Button><Button onClick={() => sendMessage.mutate()} disabled={!composer.trim() || sendMessage.isPending} size="sm" className={`ml-auto rounded-full ${noteMode ? "bg-amber-300 text-black hover:bg-amber-200" : "bg-white text-black hover:bg-zinc-200"}`}><Send className="mr-1 h-3.5 w-3.5" />{noteMode ? "Add note" : "Send"}</Button></div>
+                {whatsappTemplateMode && !noteMode ? <div className="space-y-3 p-2">
+                  <select aria-label="Approved WhatsApp template" value={whatsappTemplateId} onChange={(event) => { setWhatsappTemplateId(event.target.value); setWhatsappTemplateValues({}); }} className="h-10 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-white">
+                    <option value="">{whatsappTemplates.isLoading ? "Loading approved templates…" : "Choose an approved template"}</option>
+                    {(whatsappTemplates.data?.templates ?? []).filter((template) => template.status === "APPROVED").map((template) => <option key={template.id} value={template.id}>{template.name} · {template.language} · {template.category.toLowerCase()}</option>)}
+                  </select>
+                  {selectedWhatsAppTemplateSlots.map((slot) => <Input key={slot.key} aria-label={slot.label} value={whatsappTemplateValues[slot.key] ?? ""} onChange={(event) => setWhatsappTemplateValues((current) => ({ ...current, [slot.key]: event.target.value }))} placeholder={slot.label} className="border-zinc-800 bg-black text-xs text-white" />)}
+                  {whatsappTemplates.isError && <p className="text-[10px] text-red-300">Approved templates could not be loaded. Check this channel in Usage &amp; health.</p>}
+                </div> : <Textarea value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (composer.trim()) sendMessage.mutate(); } }} placeholder={noteMode ? "Leave a note for your team…" : "Reply to this conversation…"} className="min-h-16 resize-none border-0 bg-transparent text-sm focus-visible:ring-0" />}
+                <div className="flex items-center gap-1"><Button onClick={() => requestAiSuggestions.mutate()} disabled={requestAiSuggestions.isPending || (whatsappTemplateMode && !noteMode)} variant="ghost" size="icon" className="text-zinc-500" title={aiStatus.data?.configured ? "Generate governed AI suggestions" : "AI provider setup pending"}><Sparkles className={`h-4 w-4 ${requestAiSuggestions.isPending ? "animate-pulse text-violet-300" : ""}`} /></Button><Button onClick={() => setVoiceOpen(true)} disabled={whatsappTemplateMode && !noteMode} variant="ghost" size="icon" className="text-zinc-500" title="Create a verified voice message"><Mic className="h-4 w-4" /></Button><Button onClick={() => sendMessage.mutate()} disabled={(noteMode ? !composer.trim() : whatsappTemplateMode ? !whatsappTemplateReady : !composer.trim()) || sendMessage.isPending} size="sm" className={`ml-auto rounded-full ${noteMode ? "bg-amber-300 text-black hover:bg-amber-200" : "bg-white text-black hover:bg-zinc-200"}`}><Send className="mr-1 h-3.5 w-3.5" />{noteMode ? "Add note" : whatsappTemplateMode ? "Send template" : "Send"}</Button></div>
               </div>
             </div>
           </footer>
@@ -833,14 +1024,18 @@ export default function MessagesPage() {
       </Dialog>
       <Dialog open={whatsappOpen} onOpenChange={(open) => { setWhatsappOpen(open); if (!open) setWhatsappAccessToken(""); }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-lg">
-          <DialogHeader><DialogTitle>Connect WhatsApp Business</DialogTitle><DialogDescription className="text-zinc-500">Use a Meta system-user token with WhatsApp Business Messaging access. The token is encrypted immediately and never returned by the API.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Connect WhatsApp Business</DialogTitle><DialogDescription className="text-zinc-500">Authorize a WhatsApp Business phone through Meta. Credentials are validated, encrypted immediately, and never returned by the API.</DialogDescription></DialogHeader>
           <div className="space-y-4">
+            {providers.data?.configuration?.whatsapp?.embeddedSignupConfigured && <>
+              <Button onClick={() => connectWhatsAppEmbedded.mutate()} disabled={connectWhatsAppEmbedded.isPending} className="w-full bg-white text-black hover:bg-zinc-200">{connectWhatsAppEmbedded.isPending ? "Waiting for Meta…" : "Continue with Meta"}</Button>
+              <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] text-zinc-700"><span className="h-px flex-1 bg-zinc-800" />Manual fallback<span className="h-px flex-1 bg-zinc-800" /></div>
+            </>}
             <label className="block text-xs font-bold text-zinc-400">Phone number ID<Input value={whatsappPhoneNumberId} onChange={(event) => setWhatsappPhoneNumberId(event.target.value)} autoComplete="off" className="mt-2 border-zinc-800 bg-black text-white" /></label>
-            <label className="block text-xs font-bold text-zinc-400">WhatsApp Business Account ID (optional)<Input value={whatsappWabaId} onChange={(event) => setWhatsappWabaId(event.target.value)} autoComplete="off" className="mt-2 border-zinc-800 bg-black text-white" /></label>
+            <label className="block text-xs font-bold text-zinc-400">WhatsApp Business Account ID<Input value={whatsappWabaId} onChange={(event) => setWhatsappWabaId(event.target.value)} autoComplete="off" className="mt-2 border-zinc-800 bg-black text-white" /></label>
             <label className="block text-xs font-bold text-zinc-400">Display name (optional)<Input value={whatsappAccountName} onChange={(event) => setWhatsappAccountName(event.target.value)} className="mt-2 border-zinc-800 bg-black text-white" /></label>
             <label className="block text-xs font-bold text-zinc-400">System-user access token<Input value={whatsappAccessToken} onChange={(event) => setWhatsappAccessToken(event.target.value)} type="password" autoComplete="new-password" className="mt-2 border-zinc-800 bg-black text-white" /></label>
-            <div className="rounded-xl border border-zinc-800 bg-black p-3 text-[11px] leading-5 text-zinc-400">After connection, subscribe the WhatsApp app to the callback shown in the provider operations guide. Replies obey Meta's customer-service window; proactive outreach requires approved templates and is intentionally not automated here.</div>
-            <Button onClick={() => connectWhatsApp.mutate()} disabled={!whatsappPhoneNumberId.trim() || whatsappAccessToken.trim().length < 20 || connectWhatsApp.isPending} className="w-full bg-white text-black hover:bg-zinc-200">{connectWhatsApp.isPending ? "Verifying securely…" : "Verify and connect"}</Button>
+            <div className="rounded-xl border border-zinc-800 bg-black p-3 text-[11px] leading-5 text-zinc-400">CreativesOS validates the token and its required scopes, proves that the phone belongs to this WABA, subscribes the WABA to signed webhooks, and encrypts the token. Free-form replies are blocked outside Meta's 24-hour window; approved templates remain available.</div>
+            <Button onClick={() => connectWhatsApp.mutate()} disabled={!whatsappPhoneNumberId.trim() || !whatsappWabaId.trim() || whatsappAccessToken.trim().length < 20 || connectWhatsApp.isPending} className="w-full bg-white text-black hover:bg-zinc-200">{connectWhatsApp.isPending ? "Validating and subscribing…" : "Verify and connect"}</Button>
           </div>
         </DialogContent>
       </Dialog>
