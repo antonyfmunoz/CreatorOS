@@ -348,9 +348,12 @@ No private-session scraping is an acceptable substitute.
   110 registered route patterns, including parameterized, token, callback and
   privileged destinations with safe qualification values.
 - The final source audit found no product TODO/FIXME/stub markers, permanent
-  disabled controls, empty click handlers, hash-link placeholders or native
-  501 handlers. All 41 literal client navigation destinations map to registered
-  routes. This is source and route evidence, not proof of competitive parity.
+  disabled controls, empty click handlers or hash-link placeholders. The
+  remaining 501 responses are explicit demo-mode mutation guards or the
+  production denial for the demo-access route; none substitutes for an
+  unimplemented production-native capability. All 41 literal client navigation
+  destinations map to registered routes. This is source and route evidence,
+  not proof of competitive parity.
 - Native implementation and current production qualification do not close the
   remaining external evidence: non-YouTube provider activation and round
   trips, an approved irreversible YouTube publication, successful creator
