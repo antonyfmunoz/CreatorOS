@@ -80,6 +80,11 @@ export function getReleaseReadiness(
   const broadcastDestinationSecurity = Boolean(
     environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
   );
+  const youtubeDistribution = Boolean(
+    environment.YOUTUBE_CLIENT_ID &&
+      environment.YOUTUBE_CLIENT_SECRET &&
+      environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
+  );
 
   const blockers: string[] = [];
   if (!clerkProduction)
@@ -112,6 +117,17 @@ export function getReleaseReadiness(
       distributionHandoff: "configured",
       nativeRelationshipAutomation: "configured",
       performanceFeedback: "configured",
+    },
+    distribution: {
+      tokenCustody: broadcastDestinationSecurity
+        ? "configured"
+        : "unconfigured",
+      youtube: youtubeDistribution ? "configured" : "provider_pending",
+      facebook: "provider_pending",
+      instagram: "provider_pending",
+      tiktok: "provider_pending",
+      x: "provider_pending",
+      linkedin: "provider_pending",
     },
     relationshipHub: {
       kernel: "configured",
