@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import type { Express, Request, Response } from "express";
-import { and, desc, eq, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
-  businesses, businessMembers, campaigns, contentDrafts, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
+  broadcastBrandKits, businesses, businessMembers, campaigns, contentDrafts, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
   umhCommandOutcomes, umhCommands, umhNonces, users,
 } from "../shared/schema";
 import {
@@ -19,6 +19,7 @@ import {
   reviseFoundationInstrumentSchema,
   type FoundationInstrumentKind,
 } from "../shared/foundation-instruments";
+import { createDesignProjectSchema, designDocumentSchema, saveDesignSchema } from "../shared/design-studio";
 import { db } from "./db";
 import { attachUser } from "./auth";
 import { userCanAdminBusiness, userCanManageBusiness } from "./businesses";
@@ -38,6 +39,8 @@ const campaignPayloadSchema = z.object({ name: z.string().min(1).max(160), objec
 const postPublishPayloadSchema = z.object({ content: z.string().min(1).max(20_000), mediaType: z.enum(["text", "photo", "audio", "video"]).default("text"), imageUrl: z.string().url().optional(), audioUrl: z.string().url().optional(), videoUrl: z.string().url().optional() });
 const instrumentRevisionPayloadSchema = reviseFoundationInstrumentSchema.extend({ instrumentId: z.string().uuid() });
 const instrumentLifecyclePayloadSchema = foundationCommandSchema.extend({ instrumentId: z.string().uuid() });
+const designCreatePayloadSchema = createDesignProjectSchema.extend({ document: designDocumentSchema });
+const designRevisionPayloadSchema = saveDesignSchema.extend({ projectId: z.string().uuid() });
 
 export async function emitProjectionEvent(input: { aggregateType: string; aggregateId: string | number; eventType: string; actorUserId?: number | null; payload?: Record<string, unknown>; idempotencyKey: string; correlationId?: string | null; traceId?: string | null }, executor: DbExecutor = db) {
   // The disposable demo identity lives in MemStorage and deliberately has no
@@ -152,6 +155,28 @@ async function executeApprovedCommand(command: typeof umhCommands.$inferSelect, 
         await tx.insert(foundationInstrumentEvents).values({ instrumentId: instrument.id, businessId: envelope.businessId, eventType: `instrument.${payload.command}`, fromStatus: instrument.status, toStatus: nextStatus, actorUserId: envelope.delegatedUserId, payload: { note: payload.note, revision: instrument.currentRevision, origin: "umh", commandId: envelope.commandId } });
         await emitProjectionEvent({ aggregateType: "foundation_instrument", aggregateId: instrument.id, eventType: `instrument.${payload.command}`, actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: instrument.kind, revision: instrument.currentRevision, fromStatus: instrument.status, toStatus: nextStatus, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:instrument.${payload.command}`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
         result = { instrumentId: instrument.id, revision: instrument.currentRevision, status: nextStatus };
+      } else if (envelope.commandType === "creativesos.design.create.v1") {
+        const payload = designCreatePayloadSchema.parse(envelope.payload);
+        if (payload.brandKitId) {
+          const [brandKit] = await tx.select({ id: broadcastBrandKits.id }).from(broadcastBrandKits).where(and(eq(broadcastBrandKits.id, payload.brandKitId), eq(broadcastBrandKits.businessId, envelope.businessId))).limit(1);
+          if (!brandKit) throw new Error("Brand kit not found in the delegated business");
+        }
+        const [project] = await tx.insert(designProjects).values({ businessId: envelope.businessId, ownerUserId: envelope.delegatedUserId, name: payload.name, kind: payload.kind, width: payload.width, height: payload.height, brandKitId: payload.brandKitId, document: payload.document }).returning();
+        await tx.insert(designVersions).values({ projectId: project.id, createdByUserId: envelope.delegatedUserId, revision: 1, label: "Initial revision", document: project.document, reviewStatus: "draft" });
+        await tx.insert(designProjectEvents).values({ projectId: project.id, businessId: envelope.businessId, eventType: "design.project.created", actorUserId: envelope.delegatedUserId, revision: 1, payload: { kind: project.kind, width: project.width, height: project.height, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId, automaticRevision: true } });
+        await emitProjectionEvent({ aggregateType: "design_project", aggregateId: project.id, eventType: "design.project.created", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: project.kind, revision: 1, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:design.project.created`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { designProjectId: project.id, revision: 1, status: project.status };
+      } else if (envelope.commandType === "creativesos.design.revise.v1") {
+        const payload = designRevisionPayloadSchema.parse(envelope.payload);
+        const [project] = await tx.select().from(designProjects).where(and(eq(designProjects.id, payload.projectId), eq(designProjects.businessId, envelope.businessId))).limit(1);
+        if (!project) throw new Error("Design project not found in the delegated business");
+        if (project.revision !== payload.revision) throw new Error(`Revision conflict: current revision is ${project.revision}`);
+        const [updated] = await tx.update(designProjects).set({ document: payload.document, revision: sql`${designProjects.revision} + 1`, status: "draft", updatedAt: new Date() }).where(and(eq(designProjects.id, project.id), eq(designProjects.revision, payload.revision))).returning();
+        if (!updated) throw new Error("Revision conflict");
+        await tx.insert(designVersions).values({ projectId: updated.id, createdByUserId: envelope.delegatedUserId, revision: updated.revision, label: `Revision ${updated.revision}`, document: updated.document, reviewStatus: "draft" });
+        await tx.insert(designProjectEvents).values({ projectId: updated.id, businessId: envelope.businessId, eventType: "design.project.revised", actorUserId: envelope.delegatedUserId, revision: updated.revision, payload: { baseRevision: payload.revision, status: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId, automaticRevision: true } });
+        await emitProjectionEvent({ aggregateType: "design_project", aggregateId: updated.id, eventType: "design.project.revised", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, revision: updated.revision, baseRevision: payload.revision, status: updated.status, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:design.project.revised`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { designProjectId: updated.id, revision: updated.revision, status: updated.status };
       } else {
         const payload = postPublishPayloadSchema.parse(envelope.payload);
         const [post] = await tx.insert(posts).values({ userId: envelope.delegatedUserId, content: payload.content, mediaType: payload.mediaType, imageUrl: payload.imageUrl, audioUrl: payload.audioUrl, videoUrl: payload.videoUrl }).returning();

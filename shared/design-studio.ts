@@ -5,7 +5,18 @@ const textElement = baseElement.extend({ type: z.literal("text"), text: z.string
 const shapeElement = baseElement.extend({ type: z.literal("shape"), shape: z.enum(["rectangle", "ellipse", "line"]), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/), stroke: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null), strokeWidth: z.number().min(0).max(100).default(0), radius: z.number().min(0).max(1_000).default(0) });
 const imageElement = baseElement.extend({ type: z.literal("image"), assetId: z.string().uuid(), sourceUrl: z.string().max(2_000).nullable().default(null), fit: z.enum(["cover", "contain", "fill"]).default("cover"), alt: z.string().max(500).default("") });
 export const designElementSchema = z.discriminatedUnion("type", [textElement, shapeElement, imageElement]);
-export const designDocumentSchema = z.object({ version: z.literal(1), pages: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/), name: z.string().min(1).max(120), width: z.number().int().min(64).max(10_000), height: z.number().int().min(64).max(10_000), background: z.string().regex(/^#[0-9a-fA-F]{6}$/), elements: z.array(designElementSchema).max(1_000) }).strict()).min(1).max(100) }).strict();
+export const designDocumentSchema = z.object({ version: z.literal(1), pages: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/), name: z.string().min(1).max(120), width: z.number().int().min(64).max(10_000), height: z.number().int().min(64).max(10_000), background: z.string().regex(/^#[0-9a-fA-F]{6}$/), elements: z.array(designElementSchema).max(1_000) }).strict()).min(1).max(100) }).strict().superRefine((document, context) => {
+  const pageIds = new Set<string>();
+  const elementIds = new Set<string>();
+  document.pages.forEach((page, pageIndex) => {
+    if (pageIds.has(page.id)) context.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate page id: ${page.id}`, path: ["pages", pageIndex, "id"] });
+    pageIds.add(page.id);
+    page.elements.forEach((element, elementIndex) => {
+      if (elementIds.has(element.id)) context.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate element id: ${element.id}`, path: ["pages", pageIndex, "elements", elementIndex, "id"] });
+      elementIds.add(element.id);
+    });
+  });
+});
 export type DesignDocument = z.infer<typeof designDocumentSchema>;
 export type DesignElement = z.infer<typeof designElementSchema>;
 

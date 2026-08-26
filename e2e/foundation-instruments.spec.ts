@@ -177,4 +177,38 @@ test("UMH can control bounded instrument commands while lifecycle authority stay
   const detail = await (await api(page, owner, "GET", `/api/foundation/instruments/${createdBody.payload.instrumentId}`)).json() as { status: string; currentRevision: number };
   expect(detail.status).toBe("in_review");
   expect(detail.currentRevision).toBe(2);
+
+  const designDocument = {
+    version: 1,
+    pages: [{
+      id: "page-1",
+      name: "Page 1",
+      width: 1080,
+      height: 1080,
+      background: "#000000",
+      elements: [{ id: "headline", type: "text", x: 80, y: 80, width: 920, height: 180, rotation: 0, opacity: 1, locked: false, zIndex: 1, text: "One governed canvas", fill: "#ffffff", fontSize: 72, fontFamily: "Arial", fontWeight: "bold", align: "left" }],
+    }],
+  };
+  const designCreated = await sendCommand("creativesos.design.create.v1", {
+    name: "UMH-governed canvas",
+    kind: "social",
+    width: 1080,
+    height: 1080,
+    brandKitId: null,
+    document: designDocument,
+  });
+  expect(designCreated.response.status()).toBe(202);
+  const designCreatedBody = await designCreated.response.json() as { status: string; payload: { designProjectId: string; revision: number } };
+  expect(designCreatedBody).toMatchObject({ status: "completed", payload: { revision: 1 } });
+  const designRevised = await sendCommand("creativesos.design.revise.v1", {
+    projectId: designCreatedBody.payload.designProjectId,
+    revision: 1,
+    document: { ...designDocument, pages: [{ ...designDocument.pages[0], background: "#111111" }] },
+  });
+  expect((await designRevised.response.json() as { status: string }).status).toBe("completed");
+  const designDetail = await (await api(page, owner, "GET", `/api/design/${designCreatedBody.payload.designProjectId}`)).json() as { project: { revision: number }; versions: unknown[]; events: Array<{ eventType: string; evidence: { source: string } }> };
+  expect(designDetail.project.revision).toBe(2);
+  expect(designDetail.versions).toHaveLength(2);
+  expect(designDetail.events.map((event) => event.eventType)).toEqual(expect.arrayContaining(["design.project.created", "design.project.revised"]));
+  expect(designDetail.events.every((event) => event.evidence.source === "umh")).toBe(true);
 });

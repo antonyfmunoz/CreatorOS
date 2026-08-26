@@ -163,6 +163,7 @@ const requiredTables = [
   "podcast_polls",
   "podcast_poll_votes",
   "design_projects",
+  "design_project_events",
   "design_templates",
   "design_versions",
   "design_collaborators",
@@ -321,6 +322,15 @@ const requiredColumns = {
     "database_instrument_id",
     "idempotency_key",
     "values",
+  ],
+  design_project_events: [
+    "project_id",
+    "business_id",
+    "event_type",
+    "actor_user_id",
+    "revision",
+    "payload",
+    "evidence",
   ],
 };
 

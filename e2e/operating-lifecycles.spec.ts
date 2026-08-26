@@ -205,6 +205,11 @@ test("privacy export and reversible deletion scheduling are account-scoped", asy
     creatorStudio: {
       cutStudioAudioTemplates: expect.any(Array),
       broadcastStudioVersions: expect.any(Array),
+      foundationInstruments: expect.any(Array),
+      foundationInstrumentRevisions: expect.any(Array),
+      designProjects: expect.any(Array),
+      designVersions: expect.any(Array),
+      designEvents: expect.any(Array),
     },
     providerActivations: { runs: expect.any(Array), evidence: expect.any(Array) },
   });
