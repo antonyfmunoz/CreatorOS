@@ -39,6 +39,10 @@ test("DesignStudio saves, versions, reviews, resizes, exports, and distributes g
   );
   expect(streamResponse.status()).toBe(200);
   expect(streamResponse.headers()["content-type"]).toContain("image/png");
+  expect(streamResponse.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(streamResponse.headers()["content-security-policy"]).toContain(
+    "sandbox",
+  );
 
   await page.goto("/business/design"); await expect(page.getByRole("heading", { name: "DesignStudio" })).toBeVisible(); await expect(page.getByText(`Launch ${stamp}`)).toBeVisible(); await page.getByText(`Launch ${stamp}`).click(); await expect(page.getByLabel("Design canvas")).toBeVisible(); await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
   await page.getByLabel("Media Cloud image").selectOption({ label: sourceName });

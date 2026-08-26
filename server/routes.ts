@@ -1938,6 +1938,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       await materializePrivateAsset(asset.storageKey, outputPath);
       res.type(asset.mimeType ?? "application/octet-stream");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader(
+        "Content-Security-Policy",
+        "sandbox; default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'unsafe-inline'",
+      );
       res.setHeader(
         "Content-Disposition",
         `inline; filename="${path.basename(outputPath)}"`,
