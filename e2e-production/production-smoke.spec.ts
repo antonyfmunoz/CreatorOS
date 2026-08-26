@@ -65,12 +65,24 @@ test("@authenticated production workspaces render without destructive mutations"
     // not evidence that these newer route/API boundaries survived release.
     "/documents", "/business/design", "/business/planner", "/vision",
   ];
+  const instrumentHeadings = new Map<string, string>([
+    ["/documents", "Creative workspace"],
+    ["/business/design", "DesignStudio"],
+    ["/business/planner", "Production planner"],
+    ["/vision", "Vision Studio"],
+  ]);
   for (const route of routes) {
     await page.goto(route, { waitUntil: "domcontentloaded" });
     await expect(page).not.toHaveURL(/\/auth(?:\/|$)/);
     await expect(page.locator("#main-content")).toBeVisible();
     await expect(page.getByText("Page Not Found", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
+    const instrumentHeading = instrumentHeadings.get(route);
+    if (instrumentHeading) {
+      await expect(
+        page.getByRole("heading", { name: instrumentHeading, exact: true }),
+      ).toBeVisible();
+    }
   }
   expect(failures).toEqual([]);
 });
