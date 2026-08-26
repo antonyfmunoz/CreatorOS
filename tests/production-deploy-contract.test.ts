@@ -107,6 +107,9 @@ describe("production deployment contract", () => {
     expect(workflowSource).toContain("CREATIVESOS_EXPECTED_COMMIT: ${{ github.sha }}");
     expect(workflowSource).toContain("npm run verify:production-smoke:public");
     expect(workflowSource).toContain("post-deploy-public-smoke-evidence");
+    expect(productionSmokeSource).toContain('["/trust", "CreativesOS Trust Center"]');
+    expect(productionSmokeSource).toContain('["/legal/data-deletion", "Account data deletion"]');
+    expect(productionSmokeSource).toContain('["/apps", "CreativesOS Apps"]');
   });
 
   it("mints short-lived Clerk authentication for dedicated production smoke journeys", () => {

@@ -14,6 +14,7 @@ function runtimeFailures(page: Page) {
 }
 
 test("@public immutable production identity, readiness, and auth entry are healthy", async ({ page, request }) => {
+  const failures = runtimeFailures(page);
   const [releaseResponse, healthResponse, readyResponse] = await Promise.all([
     request.get("/api/release"),
     request.get("/api/health"),
@@ -52,6 +53,23 @@ test("@public immutable production identity, readiness, and auth entry are healt
   await expect(page.getByText(/CreativesOS/i).first()).toBeVisible();
   const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);
+
+  const publicSurfaces = new Map<string, string>([
+    ["/auth/register", "Welcome to CreativesOS"],
+    ["/trust", "CreativesOS Trust Center"],
+    ["/legal/data-deletion", "Account data deletion"],
+    ["/legal/community-guidelines", "Community guidelines"],
+    ["/legal/ai-recording", "AI, recording, and synthetic media policy"],
+    ["/apps", "CreativesOS Apps"],
+  ]);
+  for (const [route, heading] of publicSurfaces) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#main-content")).toBeVisible();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText("Page Not Found", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
+  }
+  expect(failures).toEqual([]);
 });
 
 test("@authenticated production workspaces render without destructive mutations", async ({ page }) => {
