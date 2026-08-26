@@ -181,6 +181,7 @@ psql -h "${socket_path}" -U postgres -d creativesos_restore --no-psqlrc -v ON_ER
 required_tables=(
   users businesses posts products communities orders automation_definitions
   relationships account_privacy_requests production_backups
+  relationship_native_action_receipts
   cut_studio_audio_templates cut_studio_jobs media_processing_jobs
   media_worker_nodes broadcast_studios broadcast_studio_versions
   broadcast_studio_collaborators broadcast_brand_kits

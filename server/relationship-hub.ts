@@ -141,7 +141,7 @@ export async function ensureNativeRelationshipConnection(input: {
   userId: number;
   businessName: string;
 }) {
-  const [created] = await db
+  const [connection] = await db
     .insert(relationshipChannelConnections)
     .values({
       businessId: input.businessId,
@@ -155,20 +155,23 @@ export async function ensureNativeRelationshipConnection(input: {
       lastValidatedAt: new Date(),
       metadata: { authority: "creativesos" },
     })
-    .onConflictDoNothing()
+    .onConflictDoUpdate({
+      target: [
+        relationshipChannelConnections.businessId,
+        relationshipChannelConnections.provider,
+        relationshipChannelConnections.providerAccountId,
+      ],
+      set: {
+        status: "active",
+        scopes: ["native:messages"],
+        capabilities: nativeRelationshipCapabilities,
+        lastValidatedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
     .returning();
-  if (created) return created;
-  const [existing] = await db
-    .select()
-    .from(relationshipChannelConnections)
-    .where(and(
-      eq(relationshipChannelConnections.businessId, input.businessId),
-      eq(relationshipChannelConnections.provider, "native"),
-      eq(relationshipChannelConnections.providerAccountId, input.businessId),
-    ))
-    .limit(1);
-  if (!existing) throw new Error("Unable to provision native relationship connection");
-  return existing;
+  if (!connection) throw new Error("Unable to provision native relationship connection");
+  return connection;
 }
 
 async function processStoredProviderEvent(eventId: string) {
@@ -524,14 +527,17 @@ export async function queueRelationshipMessage(input: {
 }) {
   const action = relationshipOutboundActionSchema.parse(input.action);
   const usageKey = `message.outbound:${action.idempotencyKey}`;
-  const usageReservation = await reserveRelationshipUsage({
-    businessId: input.businessId,
-    metric: "message.outbound",
-    sourceType: "delivery_request",
-    sourceId: action.idempotencyKey,
-    idempotencyKey: usageKey,
-    expiresInMs: 30 * 24 * 60 * 60_000,
-  });
+  const countsAsOutbound = ["message.send", "comment.reply"].includes(action.actionType);
+  const usageReservation = countsAsOutbound
+    ? await reserveRelationshipUsage({
+        businessId: input.businessId,
+        metric: "message.outbound",
+        sourceType: "delivery_request",
+        sourceId: action.idempotencyKey,
+        idempotencyKey: usageKey,
+        expiresInMs: 30 * 24 * 60 * 60_000,
+      })
+    : null;
   try {
     const queued = await db.transaction(async (tx) => {
     const [connection] = await tx.select().from(relationshipChannelConnections).where(and(
@@ -574,24 +580,56 @@ export async function queueRelationshipMessage(input: {
     }
 
     const now = new Date();
-    const [message] = await tx.insert(relationshipMessages).values({
-      businessId: input.businessId,
-      conversationId: input.conversationId,
-      bindingId: binding.id,
-      authorUserId: input.authorUserId,
-      provider: connection.provider,
-      direction: "outbound",
-      authorType: input.authorType ?? "human",
-      messageType: authoritativeAction.attachments[0]?.type ?? "text",
-      body: authoritativeAction.body,
-      bodyFormat: authoritativeAction.bodyFormat,
-      status: "queued",
-      syntheticMedia: input.syntheticMedia ?? false,
-      disclosure: input.disclosure ?? null,
-      occurredAt: now,
-      metadata: authoritativeAction.metadata,
-    }).returning();
-    if (authoritativeAction.attachments.length) {
+    const targetsExistingMessage = [
+      "message.edit",
+      "message.delete",
+      "message.react",
+      "message.mark_read",
+    ].includes(authoritativeAction.actionType);
+    let message;
+    if (targetsExistingMessage) {
+      [message] = await tx
+        .select()
+        .from(relationshipMessages)
+        .where(and(
+          eq(relationshipMessages.businessId, input.businessId),
+          eq(relationshipMessages.conversationId, input.conversationId),
+          eq(relationshipMessages.bindingId, binding.id),
+          eq(
+            relationshipMessages.externalMessageId,
+            authoritativeAction.targetExternalMessageId!,
+          ),
+          isNull(relationshipMessages.deletedAt),
+        ))
+        .limit(1);
+      if (!message) throw new Error("Target message is unavailable in this conversation");
+      if (
+        ["message.edit", "message.delete"].includes(authoritativeAction.actionType) &&
+        (message.direction !== "outbound" || message.authorUserId !== input.authorUserId)
+      ) {
+        throw new Error("You can only change your own outbound messages");
+      }
+    } else {
+      [message] = await tx.insert(relationshipMessages).values({
+        businessId: input.businessId,
+        conversationId: input.conversationId,
+        bindingId: binding.id,
+        authorUserId: input.authorUserId,
+        provider: connection.provider,
+        direction: "outbound",
+        authorType: input.authorType ?? "human",
+        messageType: authoritativeAction.attachments[0]?.type ?? "text",
+        body: authoritativeAction.body,
+        bodyFormat: authoritativeAction.bodyFormat,
+        status: "queued",
+        syntheticMedia: input.syntheticMedia ?? false,
+        disclosure: input.disclosure ?? null,
+        occurredAt: now,
+        metadata: authoritativeAction.metadata,
+      }).returning();
+    }
+    if (!message) throw new Error("Relationship message could not be resolved");
+    if (!targetsExistingMessage && authoritativeAction.attachments.length) {
       await tx.insert(relationshipMessageAttachments).values(authoritativeAction.attachments.map((attachment) => ({
         businessId: input.businessId,
         messageId: message.id,
@@ -621,20 +659,20 @@ export async function queueRelationshipMessage(input: {
     await tx.insert(relationshipAuditEvents).values({
       businessId: input.businessId,
       actorUserId: input.authorUserId,
-      action: "message.queued",
+      action: targetsExistingMessage ? `${authoritativeAction.actionType}.queued` : "message.queued",
       targetType: "relationship_message",
       targetId: message.id,
-      metadata: { conversationId: input.conversationId, connectionId: connection.id, provider: connection.provider, authorType: input.authorType ?? "human", syntheticMedia: input.syntheticMedia ?? false },
+      metadata: { conversationId: input.conversationId, connectionId: connection.id, provider: connection.provider, authorType: input.authorType ?? "human", syntheticMedia: input.syntheticMedia ?? false, targetExternalMessageId: authoritativeAction.targetExternalMessageId },
     });
     await tx.update(relationshipConversations).set({ updatedAt: now }).where(eq(relationshipConversations.id, input.conversationId));
       return { duplicate: false, job, message };
     });
-    if (queued.duplicate && !usageReservation.duplicate) {
+    if (queued.duplicate && usageReservation && !usageReservation.duplicate) {
       await releaseRelationshipUsage({ businessId: input.businessId, idempotencyKey: usageKey });
     }
     return queued;
   } catch (error) {
-    if (!usageReservation.duplicate) {
+    if (usageReservation && !usageReservation.duplicate) {
       await releaseRelationshipUsage({ businessId: input.businessId, idempotencyKey: usageKey }).catch(() => undefined);
     }
     throw error;
@@ -679,18 +717,56 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
         completedAt: new Date(),
         updatedAt: new Date(),
       }).where(eq(relationshipDeliveryJobs.id, claimed.id)).returning();
-      await tx.update(relationshipMessages).set({
-        externalMessageId: result.externalMessageId,
-        status: result.status,
-        updatedAt: new Date(),
-      }).where(eq(relationshipMessages.id, claimed.messageId));
+      const completedAt = new Date();
+      let receiptType: string = result.status;
+      let auditAction = "message.delivered";
+      if (action.actionType === "message.edit") {
+        await tx.update(relationshipMessages).set({
+          body: action.body,
+          bodyFormat: action.bodyFormat,
+          editedAt: result.occurredAt,
+          updatedAt: completedAt,
+        }).where(eq(relationshipMessages.id, claimed.messageId));
+        receiptType = "edited";
+        auditAction = "message.edited";
+      } else if (action.actionType === "message.delete") {
+        await tx.delete(relationshipMessageAttachments).where(eq(relationshipMessageAttachments.messageId, claimed.messageId));
+        await tx.update(relationshipMessages).set({
+          body: "",
+          status: "deleted",
+          deletedAt: result.occurredAt,
+          updatedAt: completedAt,
+        }).where(eq(relationshipMessages.id, claimed.messageId));
+        receiptType = "deleted";
+        auditAction = "message.deleted";
+      } else if (action.actionType === "message.react") {
+        const [targetMessage] = await tx.select({ metadata: relationshipMessages.metadata }).from(relationshipMessages).where(eq(relationshipMessages.id, claimed.messageId)).limit(1);
+        await tx.update(relationshipMessages).set({
+          metadata: {
+            ...(targetMessage?.metadata ?? {}),
+            reactions: result.metadata?.reactions ?? targetMessage?.metadata?.reactions ?? {},
+          },
+          updatedAt: completedAt,
+        }).where(eq(relationshipMessages.id, claimed.messageId));
+        receiptType = "reacted";
+        auditAction = "message.reacted";
+      } else if (action.actionType === "message.mark_read") {
+        receiptType = "read";
+        auditAction = "message.read";
+      } else {
+        await tx.update(relationshipMessages).set({
+          externalMessageId: result.externalMessageId,
+          status: result.status,
+          updatedAt: completedAt,
+        }).where(eq(relationshipMessages.id, claimed.messageId));
+      }
       await tx.insert(relationshipMessageReceipts).values({
         businessId: claimed.businessId,
         messageId: claimed.messageId,
-        receiptType: result.status,
+        receiptType,
         providerReceiptId: result.providerRequestId ?? null,
         occurredAt: result.occurredAt,
-        metadata: result.metadata ?? {},
+        metadata: { ...(result.metadata ?? {}), actionType: action.actionType },
       });
       await tx.update(relationshipChannelConnections).set({ status: "active", lastOutboundAt: result.occurredAt, lastErrorCode: null, lastErrorMessage: null, updatedAt: new Date() }).where(eq(relationshipChannelConnections.id, connection.id));
       await tx.update(relationshipOperationalAlerts).set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() }).where(and(
@@ -699,34 +775,37 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
         inArray(relationshipOperationalAlerts.status, ["open", "acknowledged"]),
         sql`${relationshipOperationalAlerts.fingerprint} like ${`delivery:${connection.id}:%`}`,
       ));
-      await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: "message.delivered", targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status } });
+      await tx.insert(relationshipAuditEvents).values({ businessId: claimed.businessId, action: auditAction, targetType: "relationship_message", targetId: claimed.messageId, metadata: { deliveryJobId: claimed.id, connectionId: connection.id, provider: connection.provider, status: result.status, actionType: action.actionType } });
       return [updatedJob];
     });
-    await finalizeRelationshipUsage({
-      businessId: claimed.businessId,
-      idempotencyKey: `message.outbound:${action.idempotencyKey}`,
-      quantity: 1,
-      provider: connection.provider,
-      occurredAt: result.occurredAt,
-      metadata: { deliveryJobId: claimed.id },
-    }).catch(async (error) => {
-      // Jobs created before reservation support still need durable metering.
-      await recordRelationshipUsage({
+    if (["message.send", "comment.reply"].includes(action.actionType)) {
+      await finalizeRelationshipUsage({
         businessId: claimed.businessId,
-        metric: "message.outbound",
+        idempotencyKey: `message.outbound:${action.idempotencyKey}`,
+        quantity: 1,
         provider: connection.provider,
-        sourceType: "delivery_job",
-        sourceId: claimed.id,
-        idempotencyKey: `message.outbound:${claimed.id}`,
         occurredAt: result.occurredAt,
-      }).catch(() => undefined);
-      console.error("Could not finalize outbound relationship usage reservation", { errorType: error instanceof Error ? error.name : typeof error });
-    });
+        metadata: { deliveryJobId: claimed.id },
+      }).catch(async (error) => {
+        // Jobs created before reservation support still need durable metering.
+        await recordRelationshipUsage({
+          businessId: claimed.businessId,
+          metric: "message.outbound",
+          provider: connection.provider,
+          sourceType: "delivery_job",
+          sourceId: claimed.id,
+          idempotencyKey: `message.outbound:${claimed.id}`,
+          occurredAt: result.occurredAt,
+        }).catch(() => undefined);
+        console.error("Could not finalize outbound relationship usage reservation", { errorType: error instanceof Error ? error.name : typeof error });
+      });
+    }
     return completed;
   } catch (error) {
     const classified = adapter.classifyError(error);
     const attemptCount = claimed.attemptCount + 1;
     const retryable = (classified.errorClass === "retryable" || classified.errorClass === "rate_limited") && attemptCount < claimed.maxAttempts;
+    const targetsExistingMessage = ["message.edit", "message.delete", "message.react", "message.mark_read"].includes(action.actionType);
     const [failed] = await db.transaction(async (tx) => {
       const [updatedJob] = await tx.update(relationshipDeliveryJobs).set({
         status: retryable ? "retrying" : "dead_letter",
@@ -739,7 +818,11 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
         errorMessage: sanitizeRelationshipProviderError(error),
         updatedAt: new Date(),
       }).where(eq(relationshipDeliveryJobs.id, claimed.id)).returning();
-      await tx.update(relationshipMessages).set({ status: retryable ? "retrying" : "failed", updatedAt: new Date() }).where(eq(relationshipMessages.id, claimed.messageId));
+      // A failed mutation must not rewrite the delivery state of the message it targets.
+      // The job and audit trail carry mutation failure state independently.
+      if (!targetsExistingMessage) {
+        await tx.update(relationshipMessages).set({ status: retryable ? "retrying" : "failed", updatedAt: new Date() }).where(eq(relationshipMessages.id, claimed.messageId));
+      }
       await tx.update(relationshipChannelConnections).set({
         status: classified.errorClass === "authentication" ? "reauthorization_required" : connection.status,
         lastErrorCode: classified.code ?? classified.errorClass,
@@ -760,7 +843,9 @@ export async function processRelationshipDeliveryJob(jobOrId: RelationshipDelive
       });
       return [updatedJob];
     });
-    if (!retryable) await releaseRelationshipUsage({ businessId: claimed.businessId, idempotencyKey: `message.outbound:${action.idempotencyKey}` }).catch(() => undefined);
+    if (!retryable && ["message.send", "comment.reply"].includes(action.actionType)) {
+      await releaseRelationshipUsage({ businessId: claimed.businessId, idempotencyKey: `message.outbound:${action.idempotencyKey}` }).catch(() => undefined);
+    }
     return failed;
   }
 }

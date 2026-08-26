@@ -175,6 +175,23 @@ const sendMessageSchema = z.object({
   message: "A message needs text or an attachment",
 });
 
+const messageActionSchema = z.object({
+  connectionId: z.string().uuid().optional(),
+  actionType: z.enum(["message.edit", "message.delete", "message.react", "message.mark_read"]),
+  targetExternalMessageId: z.string().trim().min(1).max(1_000),
+  body: z.string().max(100_000).default(""),
+  bodyFormat: z.enum(["plain", "markdown", "html"]).default("plain"),
+  reaction: z.string().trim().min(1).max(64).optional(),
+  idempotencyKey: z.string().trim().min(8).max(500).optional(),
+}).strict().superRefine((input, context) => {
+  if (input.actionType === "message.edit" && !input.body.trim()) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "Replacement text is required" });
+  }
+  if (input.actionType === "message.react" && !input.reaction) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reaction"], message: "A reaction is required" });
+  }
+});
+
 const agentPolicySchema = z.object({
   businessId: businessIdSchema.optional(),
   agentKey: z.string().trim().min(1).max(200),
@@ -247,7 +264,7 @@ function relationshipHubError(res: Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ message: "Invalid Relationship Hub request", issues: error.issues });
   const message = error instanceof Error ? error.message : "Relationship Hub request failed";
   const status = /not found/i.test(message) ? 404
-    : /not authorized|permission|authority|signature/i.test(message) ? 403
+    : /not authorized|permission|authority|signature|only change your own|own outbound|not a participant|outside this conversation/i.test(message) ? 403
       : /not active|not activated|not configured|does not support|idempotency|conflict|enable suggestion|allowance reached/i.test(message) ? 409
         : 500;
   if (status === 500) console.error("Relationship Hub route failed", { errorType: error instanceof Error ? error.name : typeof error });
@@ -1082,6 +1099,38 @@ export function registerRelationshipHubRoutes(app: Express) {
         },
       });
       if (!queued.duplicate) void processRelationshipDeliveryJob(queued.job.id).catch((error) => console.error("Immediate Relationship Hub delivery failed", { errorType: error instanceof Error ? error.name : typeof error }));
+      res.status(202).json(queued);
+    } catch (error) {
+      return relationshipHubError(res, error);
+    }
+  });
+
+  app.post("/api/relationship-hub/conversations/:conversationId/actions", attachUser, async (req, res) => {
+    try {
+      const conversation = await ownedConversation(req.dbUser!.id, req.params.conversationId);
+      const input = messageActionSchema.parse(req.body);
+      const bindings = await db.select().from(relationshipConversationBindings).where(eq(relationshipConversationBindings.conversationId, conversation.id));
+      const binding = input.connectionId ? bindings.find((candidate) => candidate.connectionId === input.connectionId) : bindings.find((candidate) => candidate.status === "active");
+      if (!binding?.connectionId) throw new Error("Conversation has no active channel connection");
+      const queued = await queueRelationshipMessage({
+        businessId: conversation.businessId,
+        conversationId: conversation.id,
+        connectionId: binding.connectionId,
+        authorUserId: req.dbUser!.id,
+        action: {
+          version: "relationship.action.v1",
+          actionType: input.actionType,
+          idempotencyKey: input.idempotencyKey ?? `inbox-action:${conversation.id}:${crypto.randomUUID()}`,
+          externalThreadId: binding.externalThreadId,
+          targetExternalMessageId: input.targetExternalMessageId,
+          reaction: input.reaction,
+          body: input.body,
+          bodyFormat: input.bodyFormat,
+          attachments: [],
+          metadata: {},
+        },
+      });
+      if (!queued.duplicate) void processRelationshipDeliveryJob(queued.job.id).catch((error) => console.error("Immediate Relationship Hub action failed", { errorType: error instanceof Error ? error.name : typeof error }));
       res.status(202).json(queued);
     } catch (error) {
       return relationshipHubError(res, error);

@@ -1110,6 +1110,41 @@ export const relationshipNativeDeliveryReceipts = pgTable(
   }),
 );
 
+// Durable mutation receipts keep native edits, deletes, reactions and read
+// cursors idempotent across worker crashes. The target is nullable because a
+// successful delete intentionally removes the legacy direct-message row while
+// the receipt and canonical audit evidence must remain.
+export const relationshipNativeActionReceipts = pgTable(
+  "relationship_native_action_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    actionType: text("action_type").notNull(),
+    requestHash: text("request_hash").notNull(),
+    targetDirectMessageId: integer("target_direct_message_id").references(
+      () => directMessages.id,
+      { onDelete: "set null" },
+    ),
+    result: json("result")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessKeyUnique: unique(
+      "relationship_native_action_receipts_business_key_unique",
+    ).on(table.businessId, table.idempotencyKey),
+    targetIdx: index("relationship_native_action_receipts_target_idx").on(
+      table.businessId,
+      table.targetDirectMessageId,
+    ),
+  }),
+);
+
 export const relationshipSyncCursors = pgTable(
   "relationship_sync_cursors",
   {
@@ -10108,6 +10143,8 @@ export type RelationshipDeliveryJob =
   typeof relationshipDeliveryJobs.$inferSelect;
 export type RelationshipNativeDeliveryReceipt =
   typeof relationshipNativeDeliveryReceipts.$inferSelect;
+export type RelationshipNativeActionReceipt =
+  typeof relationshipNativeActionReceipts.$inferSelect;
 export type RelationshipAgentAuthorityPolicy =
   typeof relationshipAgentAuthorityPolicies.$inferSelect;
 export type RelationshipMemoryFact =

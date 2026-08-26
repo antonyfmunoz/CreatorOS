@@ -16,11 +16,14 @@ import {
   MessageCircle,
   Mic,
   MoreHorizontal,
+  Pencil,
   Plus,
   Search,
   Send,
   ShieldCheck,
+  SmilePlus,
   Sparkles,
+  Trash2,
   UserRound,
   Users,
   Video,
@@ -66,9 +69,11 @@ type Binding = {
   provider: string;
   externalThreadId: string;
   status: string;
+  capabilities?: Record<string, boolean>;
 };
 type Message = {
   id: string;
+  authorUserId?: number | null;
   direction: "inbound" | "outbound";
   authorType: string;
   provider: string;
@@ -77,6 +82,10 @@ type Message = {
   messageType: string;
   syntheticMedia: boolean;
   disclosure?: string | null;
+  externalMessageId?: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  metadata?: Record<string, unknown>;
   occurredAt: string;
   attachments?: Array<{ id: string; attachmentType: string; sourceUrl?: string | null; mimeType?: string | null; durationMs?: number | null }>;
 };
@@ -166,6 +175,7 @@ export default function MessagesPage() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const initializedBusiness = useRef<string | null>(null);
+  const markedRead = useRef(new Set<string>());
   const [legacyMode, setLegacyMode] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectionDismissed, setSelectionDismissed] = useState(false);
@@ -200,6 +210,8 @@ export default function MessagesPage() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editBody, setEditBody] = useState("");
 
   const businesses = useQuery<Business[]>({ queryKey: ["/api/businesses"] });
   const currentUser = useQuery<CurrentUser>({ queryKey: ["/api/user"] });
@@ -335,6 +347,46 @@ export default function MessagesPage() {
     },
     onError: (error) => toast({ title: "Message not sent", description: error instanceof Error ? error.message : "Try again", variant: "destructive" }),
   });
+
+  const mutateMessage = useMutation({
+    mutationFn: (input: {
+      actionType: "message.edit" | "message.delete" | "message.react" | "message.mark_read";
+      targetExternalMessageId: string;
+      body?: string;
+      reaction?: string;
+      idempotencyKey?: string;
+    }) => {
+      if (!selectedId) throw new Error("Choose a conversation first");
+      return jsonRequest("POST", `/api/relationship-hub/conversations/${selectedId}/actions`, input);
+    },
+    onSuccess: (_result, input) => {
+      if (input.actionType === "message.edit") {
+        setEditingMessage(null);
+        setEditBody("");
+      }
+      void queryClient.invalidateQueries({ queryKey: [`/api/relationship-hub/conversations/${selectedId}`] });
+      invalidateRelationshipTimeline();
+    },
+    onError: (error, input) => {
+      if (input.actionType === "message.mark_read") return;
+      toast({ title: "Message action failed", description: error instanceof Error ? error.message : "Try again", variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    const binding = detail.data?.bindings.find((candidate) => candidate.status === "active");
+    if (!selectedId || binding?.capabilities?.["message.mark_read"] !== true) return;
+    const target = [...(detail.data?.messages ?? [])].reverse().find((message) => message.direction === "inbound" && message.externalMessageId && !message.deletedAt);
+    if (!target?.externalMessageId) return;
+    const key = `inbox-read:${selectedId}:${target.externalMessageId}:${currentUser.data?.id ?? "unknown"}`;
+    if (markedRead.current.has(key)) return;
+    markedRead.current.add(key);
+    mutateMessage.mutate({
+      actionType: "message.mark_read",
+      targetExternalMessageId: target.externalMessageId,
+      idempotencyKey: key,
+    });
+  }, [currentUser.data?.id, detail.data?.bindings, detail.data?.messages, selectedId]);
 
   const updateConversation = useMutation({
     mutationFn: (body: Record<string, unknown>) => jsonRequest("PATCH", `/api/relationship-hub/conversations/${selectedId}`, body),
@@ -620,7 +672,7 @@ export default function MessagesPage() {
         </header>
         <div className="flex-1 overflow-y-auto">
           {conversations.isLoading || initializeNative.isPending ? <div className="p-8 text-center text-sm text-zinc-600">Loading the unified inbox…</div> : filteredConversations.length ? filteredConversations.map((conversation) => (
-            <button key={conversation.id} onClick={() => { setSelectionDismissed(false); setSelectedId(conversation.id); }} className={`flex w-full gap-3 border-b border-zinc-950 px-4 py-4 text-left transition ${selectedId === conversation.id ? "bg-zinc-950" : "hover:bg-zinc-950/60"}`}>
+            <button key={conversation.id} data-testid={`relationship-conversation-${conversation.id}`} onClick={() => { setSelectionDismissed(false); setSelectedId(conversation.id); }} className={`flex w-full gap-3 border-b border-zinc-950 px-4 py-4 text-left transition ${selectedId === conversation.id ? "bg-zinc-950" : "hover:bg-zinc-950/60"}`}>
               <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1d9bf0] to-violet-500 text-xs font-black">{conversation.relationship?.avatarUrl ? <img src={conversation.relationship.avatarUrl} alt="" className="h-full w-full object-cover" /> : initials(conversation.relationship?.displayName ?? conversation.title)}</div>
               <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-bold">{conversation.relationship?.displayName ?? conversation.title}</p><span className="ml-auto text-[10px] text-zinc-700">{relativeTime(conversation.lastMessageAt ?? conversation.updatedAt)}</span></div><p className="mt-1 truncate text-xs text-zinc-500">{conversation.relationship?.aiSummary || `${conversation.queue === "unassigned" ? "Unassigned" : "Conversation"} · ${conversation.status}`}</p><div className="mt-2 flex items-center gap-1.5"><span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[9px] font-bold capitalize text-zinc-500">{conversation.priority}</span>{conversation.aiMode !== "observe" && <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[9px] font-bold text-violet-300">AI {conversation.aiMode}</span>}</div></div>
             </button>
@@ -638,17 +690,32 @@ export default function MessagesPage() {
           </header>
           <div className="flex-1 overflow-y-auto px-4 py-5 md:px-8" tabIndex={0} aria-label="Conversation messages">
             <div className="mx-auto max-w-3xl space-y-4">
-              {detail.data.messages.map((message) => (
-                <div key={message.id} className={`flex ${message.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-5 ${message.direction === "outbound" ? "rounded-br-md bg-[#1d9bf0] text-black" : "rounded-bl-md bg-zinc-900 text-zinc-100"}`}>
-                    {message.syntheticMedia && <div className="mb-2 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide opacity-70"><Sparkles className="h-3 w-3" />AI-generated voice</div>}
-                    <p className="whitespace-pre-wrap">{message.body}</p>
-                    {message.attachments?.filter((attachment) => ["audio", "voice_note"].includes(attachment.attachmentType) && attachment.sourceUrl).map((attachment) => <audio key={attachment.id} controls preload="metadata" src={attachment.sourceUrl!} className="mt-2 h-10 w-full max-w-64" />)}
-                    {message.disclosure && <p className="mt-2 text-[9px] opacity-60">{message.disclosure}</p>}
-                    <div className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] ${message.direction === "outbound" ? "text-black/80" : "text-zinc-600"}`}><span>{new Date(message.occurredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>{message.direction === "outbound" && <CheckCheck className="h-3 w-3" />}</div>
+              {detail.data.messages.map((message) => {
+                const capabilities = activeBinding?.capabilities ?? {};
+                const canChange = message.direction === "outbound" && message.authorUserId === currentUser.data?.id && Boolean(message.externalMessageId) && !message.deletedAt;
+                const reactions = message.metadata?.reactions && typeof message.metadata.reactions === "object"
+                  ? Object.values(message.metadata.reactions as Record<string, unknown>).filter((value): value is string => typeof value === "string")
+                  : [];
+                return (
+                  <div key={message.id} data-testid={`relationship-message-${message.externalMessageId ?? message.id}`} className={`group flex ${message.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                    <div className="max-w-[82%]">
+                      <div className={`rounded-2xl px-4 py-3 text-sm leading-5 ${message.direction === "outbound" ? "rounded-br-md bg-[#1d9bf0] text-black" : "rounded-bl-md bg-zinc-900 text-zinc-100"}`}>
+                        {message.syntheticMedia && <div className="mb-2 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide opacity-70"><Sparkles className="h-3 w-3" />AI-generated voice</div>}
+                        {message.deletedAt ? <p className="italic opacity-60">Message deleted</p> : <p className="whitespace-pre-wrap">{message.body}</p>}
+                        {!message.deletedAt && message.attachments?.filter((attachment) => ["audio", "voice_note"].includes(attachment.attachmentType) && attachment.sourceUrl).map((attachment) => <audio key={attachment.id} controls preload="metadata" src={attachment.sourceUrl!} className="mt-2 h-10 w-full max-w-64" />)}
+                        {message.disclosure && <p className="mt-2 text-[9px] opacity-60">{message.disclosure}</p>}
+                        {reactions.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{reactions.map((reaction, index) => <span key={`${reaction}:${index}`} className="rounded-full bg-black/15 px-2 py-0.5 text-xs">{reaction}</span>)}</div>}
+                        <div className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] ${message.direction === "outbound" ? "text-black/80" : "text-zinc-600"}`}><span>{new Date(message.occurredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>{message.editedAt && <span>· edited</span>}{message.direction === "outbound" && !message.deletedAt && <CheckCheck className="h-3 w-3" />}</div>
+                      </div>
+                      {!message.deletedAt && message.externalMessageId && <div className={`mt-1 flex gap-1 opacity-70 transition group-hover:opacity-100 ${message.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                        {capabilities["message.react"] === true && <button aria-label="React with a heart" title="React" disabled={mutateMessage.isPending} onClick={() => mutateMessage.mutate({ actionType: "message.react", targetExternalMessageId: message.externalMessageId!, reaction: "❤️" })} className="rounded-full p-1.5 text-zinc-600 hover:bg-zinc-900 hover:text-white"><SmilePlus className="h-3.5 w-3.5" /></button>}
+                        {canChange && capabilities["message.edit"] === true && <button aria-label="Edit message" title="Edit message" disabled={mutateMessage.isPending} onClick={() => { setEditingMessage(message); setEditBody(message.body); }} className="rounded-full p-1.5 text-zinc-600 hover:bg-zinc-900 hover:text-white"><Pencil className="h-3.5 w-3.5" /></button>}
+                        {canChange && capabilities["message.delete"] === true && <button aria-label="Delete message" title="Delete message" disabled={mutateMessage.isPending} onClick={() => { if (window.confirm("Delete this message for everyone in this conversation?")) mutateMessage.mutate({ actionType: "message.delete", targetExternalMessageId: message.externalMessageId! }); }} className="rounded-full p-1.5 text-zinc-600 hover:bg-red-950 hover:text-red-300"><Trash2 className="h-3.5 w-3.5" /></button>}
+                      </div>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {detail.data.notes.map((note) => <div key={note.id} className="mx-auto max-w-lg rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-100"><p className="font-bold text-amber-400">Internal note</p><p className="mt-1 leading-5">{note.body}</p></div>)}
               {!detail.data.messages.length && <div className="py-20 text-center text-sm text-zinc-700">This conversation has no messages yet.</div>}
             </div>
@@ -665,7 +732,7 @@ export default function MessagesPage() {
         </> : selectedId ? <div className="grid flex-1 place-items-center text-sm text-zinc-700">Loading conversation…</div> : <div className="grid flex-1 place-items-center"><div className="text-center"><MessageCircle className="mx-auto h-10 w-10 text-zinc-800" /><p className="mt-4 text-sm font-bold text-zinc-500">Choose a conversation</p></div></div>}
       </section>
 
-      {detail.data && <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-zinc-900 bg-[#050505] p-5 xl:block">
+      {detail.data && <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-zinc-900 bg-[#050505] p-5 2xl:block">
         <div className="text-center"><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-[#1d9bf0] to-violet-500 text-lg font-black">{initials(detail.data.relationship?.displayName ?? detail.data.title)}</div><p className="mt-3 font-black">{detail.data.relationship?.displayName ?? detail.data.title}</p><p className="mt-1 text-xs capitalize text-zinc-600">{detail.data.relationship?.lifecycleStage ?? "Contact"}</p></div>
         <div className="mt-6 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-zinc-950 p-2"><p className="text-sm font-black">{detail.data.messages.length}</p><p className="text-[9px] text-zinc-600">Messages</p></div><div className="rounded-xl bg-zinc-950 p-2"><p className="text-sm font-black">{detail.data.bindings.length}</p><p className="text-[9px] text-zinc-600">Channels</p></div><div className="rounded-xl bg-zinc-950 p-2"><p className="text-sm font-black">{detail.data.suggestions.length}</p><p className="text-[9px] text-zinc-600">Insights</p></div></div>
         <div className="mt-6"><div className="flex items-center"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">AI relationship brief</p><Sparkles className="ml-auto h-3.5 w-3.5 text-violet-400" /></div><p className="mt-3 text-xs leading-5 text-zinc-400">{detail.data.relationship?.aiSummary || "AI will build an evidence-linked brief as this relationship develops. Inferences remain reviewable and never become hidden facts."}</p></div>
@@ -682,6 +749,14 @@ export default function MessagesPage() {
         <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Channels</p><div className="mt-3 space-y-2">{detail.data.bindings.map((binding) => { const Icon = providerIcons[binding.provider] ?? MessageCircle; return <div key={binding.id} className="flex items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2"><Icon className="h-4 w-4 text-zinc-500" /><span className="text-xs capitalize">{binding.provider}</span><span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" /></div>; })}</div></div>
         <div className="mt-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-700">Conversation controls</p><div className="mt-3 space-y-2"><button onClick={() => updateConversation.mutate({ assignedToUserId: detail.data.assignedToUserId === currentUser.data?.id ? null : currentUser.data?.id, queue: detail.data.assignedToUserId === currentUser.data?.id ? "unassigned" : "mine" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><UserRound className="mr-2 h-4 w-4 text-[#1d9bf0]" />{detail.data.assignedToUserId === currentUser.data?.id ? "Unassign from me" : "Assign to me"}</button><button onClick={() => updateConversation.mutate({ aiMode: detail.data.aiMode === "observe" ? "suggest" : "observe" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><Bot className="mr-2 h-4 w-4 text-violet-300" />AI mode: <span className="ml-1 capitalize text-zinc-400">{detail.data.aiMode}</span><ChevronDown className="ml-auto h-3.5 w-3.5 text-zinc-700" /></button><button onClick={() => updateConversation.mutate({ status: "snoozed", snoozedUntil: new Date(Date.now() + 24 * 60 * 60_000).toISOString() })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><Clock3 className="mr-2 h-4 w-4 text-zinc-500" />Snooze 24 hours</button><button onClick={() => updateConversation.mutate({ status: detail.data.status === "closed" ? "open" : "closed" })} className="flex w-full items-center rounded-xl bg-zinc-950 px-3 py-2.5 text-left text-xs"><CheckCheck className="mr-2 h-4 w-4 text-emerald-400" />{detail.data.status === "closed" ? "Reopen conversation" : "Close conversation"}</button></div></div>
       </aside>}
+
+      <Dialog open={Boolean(editingMessage)} onOpenChange={(open) => { if (!open) { setEditingMessage(null); setEditBody(""); } }}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-lg">
+          <DialogHeader><DialogTitle>Edit message</DialogTitle><DialogDescription className="text-zinc-500">Update your native message everywhere this conversation is shown.</DialogDescription></DialogHeader>
+          <Textarea autoFocus value={editBody} onChange={(event) => setEditBody(event.target.value)} className="min-h-32 border-zinc-800 bg-black" />
+          <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => { setEditingMessage(null); setEditBody(""); }}>Cancel</Button><Button disabled={!editBody.trim() || mutateMessage.isPending || !editingMessage?.externalMessageId} onClick={() => editingMessage?.externalMessageId && mutateMessage.mutate({ actionType: "message.edit", targetExternalMessageId: editingMessage.externalMessageId, body: editBody })} className="bg-white text-black hover:bg-zinc-200">Save changes</Button></div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={operationsOpen} onOpenChange={setOperationsOpen}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-white sm:max-w-xl">

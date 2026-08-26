@@ -6,6 +6,7 @@ const migrationFiles = [
   "0054_relationship_hub_foundation.sql",
   "0055_relationship_native_delivery_idempotency.sql",
   "0056_relationship_audit_events.sql",
+  "0108_native_relationship_actions.sql",
 ];
 
 const allowedNewTables = new Set([
@@ -26,6 +27,7 @@ const allowedNewTables = new Set([
   "relationship_message_receipts",
   "relationship_messages",
   "relationship_native_delivery_receipts",
+  "relationship_native_action_receipts",
   "relationship_notes",
   "relationship_provider_events",
   "relationship_sync_cursors",
