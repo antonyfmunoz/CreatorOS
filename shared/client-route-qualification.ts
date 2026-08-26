@@ -41,6 +41,7 @@ export const protectedClientRoutes = [
   "/cut-studio",
   "/cut-studio/workspace/:id",
   "/broadcast",
+  "/vision",
   "/broadcast/control/:id",
   "/broadcast/audience/:id",
   "/business",

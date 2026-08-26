@@ -15,15 +15,15 @@ async function expectOk(response: APIResponse) {
   expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy();
 }
 
-function generateFixtures(testInfo: TestInfo) {
+function generateFixtures(testInfo: TestInfo, options: { broll?: boolean; music?: boolean } = {}) {
   const directory = testInfo.outputPath("cut-studio-fixtures");
   mkdirSync(directory, { recursive: true });
   const primary = `${directory}/primary.mp4`;
   const broll = `${directory}/broll.mp4`;
   const music = `${directory}/music.mp3`;
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=3", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", primary]);
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x1d9bf0:size=320x180:rate=24:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", broll]);
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2", "-c:a", "libmp3lame", music]);
+  if (options.broll !== false) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x1d9bf0:size=320x180:rate=24:duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", broll]);
+  if (options.music !== false) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2", "-c:a", "libmp3lame", music]);
   return { primary, broll, music };
 }
 
@@ -360,10 +360,10 @@ test("CutStudio reuses a private business audio mix across projects", async ({ p
   // leave the shared runner CPU-bound even though every product assertion is
   // healthy. Keep the assertions strict while allowing the real-media setup
   // its measured worst-case envelope.
-  test.setTimeout(150_000);
+  test.setTimeout(300_000);
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
-  const fixture = generateFixtures(testInfo);
+  const fixture = generateFixtures(testInfo, { broll: false });
   const primary = await uploadPrivate(page, owner, fixture.primary, "template-primary.mp4", "video/mp4", "video");
   const music = await uploadPrivate(page, owner, fixture.music, "template-music.mp3", "audio/mpeg", "audio");
   const createProject = async (name: string) => {
