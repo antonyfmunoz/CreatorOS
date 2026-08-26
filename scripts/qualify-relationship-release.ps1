@@ -7,6 +7,7 @@ $qualificationLog = Join-Path $qualificationPath "postgres.log"
 $qualificationPort = Get-Random -Minimum 55432 -Maximum 55999
 $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
+$priorNodeOptions = $env:NODE_OPTIONS
 $postgresStarted = $false
 
 if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-pg-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -14,6 +15,9 @@ if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-pg-qualification-", [
 }
 
 New-Item -ItemType Directory -Path $qualificationPath | Out-Null
+$qualificationShim = Join-Path $qualificationRoot "$qualificationName-node-os-user-info-shim.cjs"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "node-os-user-info-shim.cjs") -Destination $qualificationShim
+$env:NODE_OPTIONS = "--require=$qualificationShim"
 
 try {
   & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
@@ -49,6 +53,8 @@ try {
   }
   $env:DATABASE_URL = $priorDatabaseUrl
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
+  $env:NODE_OPTIONS = $priorNodeOptions
+  if (Test-Path -LiteralPath $qualificationShim) { Remove-Item -LiteralPath $qualificationShim -Force }
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-pg-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {

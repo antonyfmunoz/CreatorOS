@@ -59,7 +59,7 @@ export default function SearchPage() {
         </Button>
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <Input aria-label="Search creators, offers, or tags" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onBlur={() => rememberSearch(query)} placeholder="Search creators, drops, or tags" className="h-10 rounded-full border-0 bg-zinc-900 pl-9 pr-10 text-white shadow-none placeholder:text-zinc-500" />
+          <Input type="search" aria-label="Search creators, offers, or tags" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onBlur={() => rememberSearch(query)} placeholder="Search creators, drops, or tags" className="h-10 rounded-full border-0 bg-zinc-900 pl-9 pr-10 text-white shadow-none placeholder:text-zinc-500" />
           {query && <button type="button" aria-label="Clear search" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-500 hover:bg-zinc-800 hover:text-white"><X className="h-4 w-4" /></button>}
         </div>
       </header>

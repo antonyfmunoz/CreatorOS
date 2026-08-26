@@ -682,36 +682,36 @@ const Profile = () => {
       )}
 
       <Dialog open={isShareProfileOpen} onOpenChange={setIsShareProfileOpen}>
-        <DialogContent className="bottom-0 top-auto max-w-[720px] translate-y-0 gap-0 rounded-t-3xl border-zinc-800 bg-white p-0 text-black data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full sm:rounded-t-3xl">
-          <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-zinc-300" />
+        <DialogContent className="bottom-0 top-auto max-w-[720px] translate-y-0 gap-0 rounded-t-[28px] border-zinc-800 bg-[#111111] p-0 text-white shadow-2xl shadow-black data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full sm:rounded-t-[28px]">
+          <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-zinc-700" />
           <DialogHeader className="px-5 pb-4 pt-5 text-left">
-            <DialogTitle className="text-base font-bold text-black">Share to…</DialogTitle>
+            <DialogTitle className="text-3xl font-bold tracking-tight text-white">Share to…</DialogTitle>
             <DialogDescription className="sr-only">Share your public CreativesOS profile.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-4 gap-3 border-b border-zinc-200 px-5 pb-5">
+          <div className="grid grid-cols-4 gap-3 px-5 pb-7 pt-2">
             {[
-              { label: "Messages", icon: MessageSquare, action: () => void openShareTarget("messages"), tone: "bg-emerald-100 text-emerald-700" },
-              { label: "WhatsApp", icon: Send, action: () => void openShareTarget("whatsapp"), tone: "bg-emerald-100 text-emerald-700" },
-              { label: "Instagram", icon: Camera, action: () => void openShareTarget("instagram"), tone: "bg-pink-100 text-pink-700" },
-              { label: "X", icon: AtSign, action: () => void openShareTarget("x"), tone: "bg-zinc-900 text-white" },
-            ].map(({ label, icon: Icon, action, tone }) => (
-              <button key={label} type="button" onClick={action} className="flex flex-col items-center gap-2 rounded-xl py-1 text-xs font-semibold text-zinc-700 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400" aria-label={`Share with ${label}`}>
-                <span className={`flex h-12 w-12 items-center justify-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
+              { label: "Messages", icon: MessageSquare, action: () => void openShareTarget("messages") },
+              { label: "WhatsApp", icon: Send, action: () => void openShareTarget("whatsapp") },
+              { label: "Instagram", icon: Camera, action: () => void openShareTarget("instagram") },
+              { label: "X", icon: AtSign, action: () => void openShareTarget("x") },
+            ].map(({ label, icon: Icon, action }) => (
+              <button key={label} type="button" onClick={action} className="flex min-w-0 flex-col items-center gap-3 rounded-xl py-1 text-xs font-medium text-zinc-400 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white" aria-label={`Share with ${label}`}>
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-white"><Icon className="h-7 w-7" /></span>
                 {label}
               </button>
             ))}
           </div>
-          <div className="p-3">
-            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><Copy className="h-4 w-4" /></span>
-              Copy link
+          <div className="space-y-2 px-5 pb-8">
+            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); }} className="flex min-h-16 w-full items-center gap-4 rounded-xl px-2 text-left text-lg font-medium transition-colors hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900"><Copy className="h-5 w-5" /></span>
+              Copy Link
             </button>
-            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); setLocation("/messages"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><Send className="h-4 w-4" /></span>
+            <button type="button" onClick={() => { void copyProfileLink(); setIsShareProfileOpen(false); setLocation("/messages"); }} className="flex min-h-16 w-full items-center gap-4 rounded-xl px-2 text-left text-lg font-medium transition-colors hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900"><Send className="h-5 w-5" /></span>
               Send in DM
             </button>
-            <button type="button" onClick={() => void shareProfileWithSystemSheet()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition-colors hover:bg-zinc-100">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100"><MoreHorizontal className="h-4 w-4" /></span>
+            <button type="button" onClick={() => void shareProfileWithSystemSheet()} className="flex min-h-16 w-full items-center gap-4 rounded-xl px-2 text-left text-lg font-medium transition-colors hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900"><MoreHorizontal className="h-5 w-5" /></span>
               Share to…
             </button>
           </div>

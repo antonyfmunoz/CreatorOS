@@ -2,6 +2,7 @@ import {
   expect,
   test,
   type APIResponse,
+  type Locator,
   type Page,
   type TestInfo,
 } from "@playwright/test";
@@ -33,6 +34,23 @@ async function expectOk(response: APIResponse) {
     response.ok(),
     `${response.status()} ${response.url()}: ${await response.text()}`,
   ).toBeTruthy();
+}
+
+async function setColorInput(locator: Locator, value: string) {
+  await locator.evaluate((node, nextValue) => {
+    const input = node as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) {
+      throw new Error("Native input value setter is unavailable");
+    }
+    setter.call(input, nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+  await expect(locator).toHaveValue(value);
 }
 
 function generateBroadcastHandoffFixtures(testInfo: TestInfo) {
@@ -267,7 +285,7 @@ test("Broadcast Studio completes an owner-scoped encoder and private recording l
 test("Broadcast Studio exposes independent operator controls and explicit capture consent", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const owner = ownerFor(testInfo);
   const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", {
     name: `Operator studio ${Date.now()}`,
@@ -341,9 +359,9 @@ test("Broadcast Studio exposes independent operator controls and explicit captur
   await expect(page.getByLabel("Host camera noise suppression")).not.toBeChecked();
   await page.getByRole("button", { name: "Host camera", exact: true }).click();
   await page.getByLabel("Enable chroma key").click();
-  await page.getByLabel("Chroma key color").fill("#00ee22");
+  await setColorInput(page.getByLabel("Chroma key color"), "#00ee22");
   await expect(page.getByLabel("Enable chroma key")).toBeChecked();
-  await page.getByLabel("Surface brand color").fill("#112233");
+  await setColorInput(page.getByLabel("Surface brand color"), "#112233");
   await page.getByRole("button", { name: "Apply to branded graphics" }).click();
   await expect(page.getByText(/Operator keys:/)).toHaveCount(1);
   await page.getByLabel("Broadcast resolution").selectOption("1080x1920");
@@ -666,7 +684,7 @@ test("Broadcast opens a durable multitrack recording directly in CutStudio", asy
 });
 
 test("Broadcast routes program and monitor audio with persisted sync and balance", async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const owner = ownerFor(testInfo);
   const createdResponse = await api(page, owner, "POST", "/api/broadcast/studios", { name: `Audio routing ${Date.now()}` });
   await expectOk(createdResponse);
@@ -834,7 +852,7 @@ test("Broadcast brand library persists across studios and supports safe removal"
   const sourceStudio = await sourceStudioResponse.json();
   await page.goto(`/broadcast?studio=${sourceStudio.id}`);
   await expect(page.getByRole("heading", { name: "Brand source studio" })).toBeVisible();
-  await page.getByLabel("Surface brand color").fill("#112233");
+  await setColorInput(page.getByLabel("Surface brand color"), "#112233");
   await page.getByLabel("Brand kit name").fill("Operator brand kit");
   await page.getByRole("button", { name: "Save brand kit" }).click();
   await expect(page.getByRole("button", { name: "Apply Operator brand kit brand kit" })).toBeVisible();

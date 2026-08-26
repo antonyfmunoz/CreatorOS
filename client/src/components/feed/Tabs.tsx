@@ -11,6 +11,8 @@ export function Tabs({ activeTab, onChange }: TabsProps) {
   return (
     <div className="flex w-full border-b border-zinc-800 bg-black">
       <button
+        type="button"
+        aria-pressed={activeTab === "forYou"}
         onClick={() => onChange("forYou")}
         className={cn(
           "flex-1 py-3 text-sm font-medium text-center transition-colors relative",
@@ -25,6 +27,8 @@ export function Tabs({ activeTab, onChange }: TabsProps) {
         )}
       </button>
       <button
+        type="button"
+        aria-pressed={activeTab === "following"}
         onClick={() => onChange("following")}
         className={cn(
           "flex-1 py-3 text-sm font-medium text-center transition-colors relative",

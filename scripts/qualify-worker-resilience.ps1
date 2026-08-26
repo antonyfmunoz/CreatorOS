@@ -1,15 +1,20 @@
 $ErrorActionPreference = "Stop"
 
 $qualificationRoot = "C:\tmp"
-$qualificationPath = Join-Path $qualificationRoot "creativesos-worker-resilience-$([guid]::NewGuid().ToString('N'))"
+$qualificationName = "creativesos-worker-resilience-$([guid]::NewGuid().ToString('N'))"
+$qualificationPath = Join-Path $qualificationRoot $qualificationName
 $databaseLog = Join-Path $qualificationPath "postgres.log"
 $databasePort = Get-Random -Minimum 59000 -Maximum 59499
 $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
+$priorNodeOptions = $env:NODE_OPTIONS
 $databaseStarted = $false
 
 if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-worker-resilience-", [System.StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to use an unexpected qualification path" }
 New-Item -ItemType Directory -Path $qualificationPath | Out-Null
+$qualificationShim = Join-Path $qualificationRoot "$qualificationName-node-os-user-info-shim.cjs"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "node-os-user-info-shim.cjs") -Destination $qualificationShim
+$env:NODE_OPTIONS = "--require=$qualificationShim"
 
 try {
   & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
@@ -29,6 +34,8 @@ try {
   if ($databaseStarted) { & pg_ctl -D $qualificationPath -m fast -w stop | Out-Null }
   $env:DATABASE_URL = $priorDatabaseUrl
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
+  $env:NODE_OPTIONS = $priorNodeOptions
+  if (Test-Path -LiteralPath $qualificationShim) { Remove-Item -LiteralPath $qualificationShim -Force }
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-worker-resilience-", [System.StringComparison]::OrdinalIgnoreCase)) { Remove-Item -LiteralPath $resolvedPath -Recurse -Force }

@@ -22,6 +22,7 @@ $priorLoadTestConcurrency = $env:LOAD_TEST_CONCURRENCY
 $priorSoakTestDurationSeconds = $env:SOAK_TEST_DURATION_SECONDS
 $priorSoakTestConcurrency = $env:SOAK_TEST_CONCURRENCY
 $priorSoakTestMinimumRequests = $env:SOAK_TEST_MINIMUM_REQUESTS
+$priorNodeOptions = $env:NODE_OPTIONS
 $databaseStarted = $false
 $applicationProcess = $null
 
@@ -30,6 +31,9 @@ if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-capacity-qualificatio
 }
 
 New-Item -ItemType Directory -Path $qualificationPath | Out-Null
+$qualificationShim = Join-Path $qualificationRoot "$qualificationName-node-os-user-info-shim.cjs"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "node-os-user-info-shim.cjs") -Destination $qualificationShim
+$env:NODE_OPTIONS = "--require=$qualificationShim"
 
 try {
   & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
@@ -117,6 +121,8 @@ try {
   $env:SOAK_TEST_DURATION_SECONDS = $priorSoakTestDurationSeconds
   $env:SOAK_TEST_CONCURRENCY = $priorSoakTestConcurrency
   $env:SOAK_TEST_MINIMUM_REQUESTS = $priorSoakTestMinimumRequests
+  $env:NODE_OPTIONS = $priorNodeOptions
+  if (Test-Path -LiteralPath $qualificationShim) { Remove-Item -LiteralPath $qualificationShim -Force }
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-capacity-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {

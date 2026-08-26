@@ -12,6 +12,7 @@ $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
 $priorQualificationMode = $env:CREATOROS_QUALIFICATION_MODE
 $priorUploadDirectory = $env:CREATOROS_UPLOAD_DIR
 $priorStorageProvider = $env:ASSET_STORAGE_PROVIDER
+$priorNodeOptions = $env:NODE_OPTIONS
 $postgresStarted = $false
 
 if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-media-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -19,6 +20,9 @@ if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-media-qualification-"
 }
 
 New-Item -ItemType Directory -Path $qualificationPath | Out-Null
+$qualificationShim = Join-Path $qualificationRoot "$qualificationName-node-os-user-info-shim.cjs"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "node-os-user-info-shim.cjs") -Destination $qualificationShim
+$env:NODE_OPTIONS = "--require=$qualificationShim"
 
 try {
   & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
@@ -60,6 +64,8 @@ try {
   $env:CREATOROS_QUALIFICATION_MODE = $priorQualificationMode
   $env:CREATOROS_UPLOAD_DIR = $priorUploadDirectory
   $env:ASSET_STORAGE_PROVIDER = $priorStorageProvider
+  $env:NODE_OPTIONS = $priorNodeOptions
+  if (Test-Path -LiteralPath $qualificationShim) { Remove-Item -LiteralPath $qualificationShim -Force }
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith("C:\tmp\creativesos-media-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {

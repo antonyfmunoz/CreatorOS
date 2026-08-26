@@ -1,32 +1,55 @@
 param(
   [string[]]$PlaywrightArgs = @(),
   [string]$Grep = "",
-  [switch]$PreflightWorkerResilience
+  [switch]$PreflightWorkerResilience,
+  [string]$QualificationRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$qualificationRoot = "C:\tmp"
+$qualificationRoot = if ($QualificationRoot) {
+  $QualificationRoot
+} elseif ($env:CREATIVESOS_QUALIFICATION_ROOT) {
+  $env:CREATIVESOS_QUALIFICATION_ROOT
+} else {
+  "C:\tmp"
+}
+New-Item -ItemType Directory -Path $qualificationRoot -Force | Out-Null
+$qualificationRoot = (Resolve-Path -LiteralPath $qualificationRoot).Path.TrimEnd("\")
 $qualificationName = "creativesos-browser-qualification-$([guid]::NewGuid().ToString('N'))"
 $qualificationPath = Join-Path $qualificationRoot $qualificationName
+$qualificationPrefix = "$qualificationRoot\creativesos-browser-qualification-"
+$databasePath = Join-Path $qualificationPath "postgres"
+$runtimeTempPath = Join-Path $qualificationPath "runtime-temp"
 $qualificationLog = Join-Path $qualificationPath "postgres.log"
 $qualificationPort = Get-Random -Minimum 56000 -Maximum 56999
 $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
 $priorUploadDirectory = $env:CREATOROS_UPLOAD_DIR
 $priorViteCacheDirectory = $env:CREATOROS_VITE_CACHE_DIR
+$priorNodeOptions = $env:NODE_OPTIONS
+$priorTemp = $env:TEMP
+$priorTmp = $env:TMP
+$priorTmpDir = $env:TMPDIR
 $postgresStarted = $false
 
-if (-not $qualificationPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
+if (-not $qualificationPath.StartsWith($qualificationPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unexpected qualification path"
 }
 
 New-Item -ItemType Directory -Path $qualificationPath | Out-Null
+New-Item -ItemType Directory -Path $runtimeTempPath | Out-Null
+$qualificationShim = Join-Path $qualificationRoot "$qualificationName-node-os-user-info-shim.cjs"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "node-os-user-info-shim.cjs") -Destination $qualificationShim
+$env:NODE_OPTIONS = "--require=$qualificationShim"
+$env:TEMP = $runtimeTempPath
+$env:TMP = $runtimeTempPath
+$env:TMPDIR = $runtimeTempPath
 
 try {
-  & initdb -D $qualificationPath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
+  & initdb -D $databasePath -A trust -U postgres --no-locale --encoding=UTF8 | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Failed to initialize the disposable browser database" }
-  & pg_ctl -D $qualificationPath -l $qualificationLog -o "-p $qualificationPort -h 127.0.0.1" -w start
+  & pg_ctl -D $databasePath -l $qualificationLog -o "-p $qualificationPort -h 127.0.0.1" -w start
   if ($LASTEXITCODE -ne 0) {
     if (Test-Path -LiteralPath $qualificationLog) {
       Write-Error "Disposable browser database log:`n$(Get-Content -LiteralPath $qualificationLog -Raw)"
@@ -54,14 +77,19 @@ try {
   & npx.cmd playwright test @playwrightArguments
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification failed" }
 } finally {
-  if ($postgresStarted) { & pg_ctl -D $qualificationPath -m fast -w stop }
+  if ($postgresStarted) { & pg_ctl -D $databasePath -m fast -w stop }
   $env:DATABASE_URL = $priorDatabaseUrl
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
   $env:CREATOROS_UPLOAD_DIR = $priorUploadDirectory
   $env:CREATOROS_VITE_CACHE_DIR = $priorViteCacheDirectory
+  $env:NODE_OPTIONS = $priorNodeOptions
+  $env:TEMP = $priorTemp
+  $env:TMP = $priorTmp
+  $env:TMPDIR = $priorTmpDir
+  if (Test-Path -LiteralPath $qualificationShim) { Remove-Item -LiteralPath $qualificationShim -Force }
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
-    if ($resolvedPath.StartsWith("C:\tmp\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($resolvedPath.StartsWith($qualificationPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
       Remove-Item -LiteralPath $resolvedPath -Recurse -Force
     }
   }
