@@ -25,7 +25,24 @@ test("@public immutable production identity, readiness, and auth entry are healt
   const release = await releaseResponse.json();
   const ready = await readyResponse.json();
   expect(release).toMatchObject({ status: "verified", build: { sourceDirty: false, identityVerified: true }, migrations: { parity: true } });
-  expect(ready).toMatchObject({ status: "ready", release: { status: "release_ready", blockers: [] } });
+  expect(ready).toMatchObject({
+    status: "ready",
+    release: {
+      status: "release_ready",
+      blockers: [],
+      distribution: {
+        tokenCustody: "configured",
+        youtube: "configured",
+        facebook: "provider_pending",
+        instagram: "provider_pending",
+        tiktok: "provider_pending",
+        x: "provider_pending",
+        linkedin: "provider_pending",
+      },
+      relationshipHub: { aiCopilot: "configured" },
+      communityRooms: { liveMedia: "configured" },
+    },
+  });
   const expectedCommit = process.env.CREATIVESOS_EXPECTED_COMMIT?.toLowerCase();
   if (expectedCommit) expect(release.build.sourceCommit).toBe(expectedCommit);
 
@@ -52,4 +69,54 @@ test("@authenticated production workspaces render without destructive mutations"
     await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
   }
   expect(failures).toEqual([]);
+});
+
+test("@authenticated configured providers expose safe preflight state", async ({ page }) => {
+  const [connectionsResponse, aiResponse, relationshipProvidersResponse] =
+    await Promise.all([
+      page.request.get("/api/distribution/connections"),
+      page.request.get("/api/relationship-hub/ai/status"),
+      page.request.get("/api/relationship-hub/providers"),
+    ]);
+
+  expect(connectionsResponse.ok()).toBeTruthy();
+  expect(aiResponse.ok()).toBeTruthy();
+  expect(relationshipProvidersResponse.ok()).toBeTruthy();
+
+  const connections = (await connectionsResponse.json()) as {
+    providers: Array<{
+      id: string;
+      connectionConfigured: boolean;
+      connectionAvailable: boolean;
+      connections: Array<{ id: string; status: string }>;
+    }>;
+  };
+  const youtube = connections.providers.find(
+    (provider) => provider.id === "youtube",
+  );
+  expect(youtube).toMatchObject({
+    connectionConfigured: true,
+    connectionAvailable: true,
+  });
+  expect(
+    connections.providers
+      .filter((provider) => provider.id !== "youtube")
+      .every((provider) => provider.connectionAvailable === false),
+  ).toBe(true);
+
+  expect(await aiResponse.json()).toMatchObject({
+    provider: "openai",
+    configured: true,
+    mode: "draft_only",
+  });
+
+  const relationshipProviders = (await relationshipProvidersResponse.json()) as {
+    configuration: Record<string, { configured: boolean }>;
+  };
+  expect(relationshipProviders.configuration).toMatchObject({
+    instagram: { configured: false },
+    messenger: { configured: false },
+    whatsapp: { configured: false },
+    x: { configured: false },
+  });
 });

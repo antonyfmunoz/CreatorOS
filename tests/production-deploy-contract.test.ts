@@ -6,6 +6,7 @@ const migrationSource = readFileSync(new URL("../scripts/migrate-production.mjs"
 const dockerSource = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const workflowSource = readFileSync(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
 const smokeWorkflowSource = readFileSync(new URL("../.github/workflows/production-smoke.yml", import.meta.url), "utf8");
+const productionSmokeSource = readFileSync(new URL("../e2e-production/production-smoke.spec.ts", import.meta.url), "utf8");
 const backupQualificationWorkflowSource = readFileSync(new URL("../.github/workflows/production-backup-qualification.yml", import.meta.url), "utf8");
 const restoreDrillWorkflowSource = readFileSync(new URL("../.github/workflows/production-restore-drill.yml", import.meta.url), "utf8");
 const restoreDrillSource = readFileSync(new URL("../scripts/qualify-production-restore.sh", import.meta.url), "utf8");
@@ -113,6 +114,14 @@ describe("production deployment contract", () => {
     expect(smokeWorkflowSource).toContain("CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}");
     expect(smokeWorkflowSource).toContain("CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}");
     expect(smokeWorkflowSource).toContain("npm run verify:production-smoke");
+  });
+
+  it("keeps provider preflight non-destructive and secret-safe", () => {
+    expect(productionSmokeSource).toContain('page.request.get("/api/distribution/connections")');
+    expect(productionSmokeSource).toContain('page.request.get("/api/relationship-hub/ai/status")');
+    expect(productionSmokeSource).toContain('page.request.get("/api/relationship-hub/providers")');
+    expect(productionSmokeSource).not.toMatch(/page\.request\.(post|put|patch|delete)\(/);
+    expect(productionSmokeSource).not.toMatch(/accessToken|refreshToken|clientSecret|apiKey/);
   });
 
   it("qualifies the newest private production backup without copying storage credentials into CI", () => {

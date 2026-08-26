@@ -27,6 +27,8 @@ const liveEnvironment = {
   RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN: "webhook-token",
   META_APP_ID: "meta-app",
   META_APP_SECRET: "meta-secret",
+  YOUTUBE_CLIENT_ID: "youtube-client",
+  YOUTUBE_CLIENT_SECRET: "youtube-client-secret",
   SOCIAL_TOKEN_ENCRYPTION_KEY: "encryption-key",
   X_CLIENT_ID: "x-client",
   X_CLIENT_SECRET: "x-client-secret",
@@ -51,6 +53,15 @@ describe("CreativesOS release readiness", () => {
         distributionHandoff: "configured",
         nativeRelationshipAutomation: "configured",
         performanceFeedback: "configured",
+      },
+      distribution: {
+        tokenCustody: "configured",
+        youtube: "configured",
+        facebook: "provider_pending",
+        instagram: "provider_pending",
+        tiktok: "provider_pending",
+        x: "provider_pending",
+        linkedin: "provider_pending",
       },
       relationshipHub: {
         kernel: "configured",
@@ -207,6 +218,15 @@ describe("CreativesOS release readiness", () => {
       distributionHandoff: "configured",
       nativeRelationshipAutomation: "configured",
       performanceFeedback: "configured",
+    });
+    expect(result.distribution).toEqual({
+      tokenCustody: "unconfigured",
+      youtube: "provider_pending",
+      facebook: "provider_pending",
+      instagram: "provider_pending",
+      tiktok: "provider_pending",
+      x: "provider_pending",
+      linkedin: "provider_pending",
     });
     expect(result.relationshipHub).toEqual({
       kernel: "configured",
