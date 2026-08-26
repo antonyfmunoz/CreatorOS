@@ -15,6 +15,9 @@ export const supportedUmhCommandTypes = [
   "creativesos.instrument.lifecycle.v1",
   "creativesos.design.create.v1",
   "creativesos.design.revise.v1",
+  "creativesos.task.create.v1",
+  "creativesos.task.revise.v1",
+  "creativesos.task.transition.v1",
 ] as const;
 
 export type SupportedUmhCommandType = typeof supportedUmhCommandTypes[number];
@@ -215,6 +218,14 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       "design.review.started",
       "design.review.approved",
       "design.review.changes_requested",
+      "task.created",
+      "task.revised",
+      "task.status_changed",
+      "task.dependency_added",
+      "task.approval_requested",
+      "task.approval_decided",
+      "task.variant_created",
+      "task.recovered",
     ],
     delivery: { transport: "signed_https", retry: "exponential_backoff", offline: "durable_outbox" },
     capabilities: [
@@ -226,6 +237,9 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       { id: "instrument.lifecycle", kind: "native", authority: "business_admin", approval: "local_required", consent: "none_required", provider: null, health: "healthy", proof: "local_approval_state_transition_and_event" },
       { id: "design.create", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "typed_canvas_initial_revision_and_durable_event" },
       { id: "design.revise", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "optimistic_canvas_revision_and_durable_event" },
+      { id: "task.create", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "business_scoped_hierarchy_and_durable_event" },
+      { id: "task.revise", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "optimistic_version_and_durable_event" },
+      { id: "task.transition", kind: "native", authority: "business_operator", approval: "none", consent: "workflow_policy", provider: null, health: "healthy", proof: "governed_transition_and_durable_event" },
       { id: "cutstudio.edit", kind: "native", authority: "asset_owner", approval: "none", consent: "none_required", provider: "private_r2", health: "healthy", proof: "revisioned_edl_and_durable_event" },
       { id: "cutstudio.render", kind: "native", authority: "asset_owner", approval: "explicit_distribution_promotion", consent: "none_required", provider: "ffmpeg_private_r2", health: "healthy", proof: "durable_job_private_artifact_and_event" },
       { id: "broadcast.direct", kind: "native", authority: "business_operator", approval: "explicit_go_live", consent: "capture_notice_required_when_guests_are_present", provider: "browser_compositor_ffmpeg", health: "healthy", proof: "revisioned_scene_graph_durable_session_and_health" },

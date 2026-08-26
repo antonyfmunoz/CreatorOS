@@ -13,12 +13,18 @@ export const createCreativeWorkItemSchema = z.object({
   title: z.string().trim().min(1).max(200), description: z.string().trim().max(4_000).default(""),
   kind: z.enum(creativeWorkKinds), status: z.enum(creativeWorkStatuses).default("idea"), priority: z.number().int().min(0).max(100).default(50),
   assigneeUserId: z.number().int().positive().nullable().default(null), channel: z.string().trim().max(80).nullable().default(null),
+  parentWorkItemId: z.string().uuid().nullable().default(null),
   startsAt: z.coerce.date().nullable().default(null), dueAt: z.coerce.date().nullable().default(null), recurrence: z.union([creativeRecurrenceSchema, z.object({}).strict()]).default({}),
   sourceType: z.string().trim().max(80).nullable().default(null), sourceId: z.string().trim().max(180).nullable().default(null), metadata: z.record(z.unknown()).default({}),
 }).superRefine((value, ctx) => { if (value.startsAt && value.dueAt && value.dueAt < value.startsAt) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["dueAt"], message: "Due date cannot precede the start date" }); });
 
 export const updateCreativeWorkItemSchema = z.object({
-  title: z.string().trim().min(1).max(200).optional(), description: z.string().trim().max(4_000).optional(), kind: z.enum(creativeWorkKinds).optional(), priority: z.number().int().min(0).max(100).optional(), assigneeUserId: z.number().int().positive().nullable().optional(), channel: z.string().trim().max(80).nullable().optional(), startsAt: z.coerce.date().nullable().optional(), dueAt: z.coerce.date().nullable().optional(), recurrence: z.record(z.unknown()).optional(), metadata: z.record(z.unknown()).optional(), version: z.number().int().positive(),
+  title: z.string().trim().min(1).max(200).optional(), description: z.string().trim().max(4_000).optional(), kind: z.enum(creativeWorkKinds).optional(), priority: z.number().int().min(0).max(100).optional(), assigneeUserId: z.number().int().positive().nullable().optional(), parentWorkItemId: z.string().uuid().nullable().optional(), channel: z.string().trim().max(80).nullable().optional(), startsAt: z.coerce.date().nullable().optional(), dueAt: z.coerce.date().nullable().optional(), recurrence: z.record(z.unknown()).optional(), metadata: z.record(z.unknown()).optional(), version: z.number().int().positive(),
+});
+
+export const transitionCreativeWorkItemSchema = z.object({
+  status: z.enum(creativeWorkStatuses),
+  version: z.number().int().positive().optional(),
 });
 
 export const createChannelVariantsSchema = z.object({ variants: z.array(z.object({ channel: z.string().trim().min(1).max(80), title: z.string().trim().min(1).max(200).optional(), dueAt: z.coerce.date().nullable().optional() })).min(1).max(20) });

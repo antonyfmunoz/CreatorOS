@@ -4126,6 +4126,10 @@ export const creativeWorkItems = pgTable(
     assigneeUserId: integer("assignee_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    parentWorkItemId: uuid("parent_work_item_id").references(
+      (): AnyPgColumn => creativeWorkItems.id,
+      { onDelete: "set null" },
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     kind: text("kind").notNull().default("content"),
@@ -4158,6 +4162,9 @@ export const creativeWorkItems = pgTable(
     assigneeDueIdx: index("creative_work_items_assignee_due_idx").on(
       table.assigneeUserId,
       table.dueAt,
+    ),
+    parentIdx: index("creative_work_items_parent_idx").on(
+      table.parentWorkItemId,
     ),
     sourceUnique: uniqueIndex("creative_work_items_source_unique")
       .on(table.businessId, table.sourceType, table.sourceId)
@@ -6891,6 +6898,45 @@ export const designVersions = pgTable(
     projectRevisionUnique: unique("design_versions_project_revision_unique").on(
       table.projectId,
       table.revision,
+    ),
+  }),
+);
+
+export const creativeWorkEvents = pgTable(
+  "creative_work_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workItemId: uuid("work_item_id")
+      .references(() => creativeWorkItems.id, { onDelete: "cascade" })
+      .notNull(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    version: integer("version"),
+    payload: json("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    evidence: json("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    itemCreatedIdx: index("creative_work_events_item_created_idx").on(
+      table.workItemId,
+      table.createdAt,
+    ),
+    businessCreatedIdx: index("creative_work_events_business_created_idx").on(
+      table.businessId,
+      table.createdAt,
     ),
   }),
 );
@@ -10186,6 +10232,7 @@ export type CreativeWorkItem = typeof creativeWorkItems.$inferSelect;
 export type CreativeWorkDependency =
   typeof creativeWorkDependencies.$inferSelect;
 export type CreativeWorkApproval = typeof creativeWorkApprovals.$inferSelect;
+export type CreativeWorkEvent = typeof creativeWorkEvents.$inferSelect;
 export type ContentDraft = typeof contentDrafts.$inferSelect;
 export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
 export type CutStudioJob = typeof cutStudioJobs.$inferSelect;

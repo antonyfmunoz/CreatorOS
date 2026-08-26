@@ -101,6 +101,7 @@ export async function buildAccountExport(user: User) {
   const [
     socialContent,
     creatorStudio,
+    planning,
     commerce,
     communities,
     messaging,
@@ -163,6 +164,12 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select comment.* from design_review_comments comment join design_versions version on version.id = comment.version_id join design_projects project on project.id = version.project_id where project.owner_user_id = ${userId} order by comment.created_at`),
       exportRows(sql`select decision.* from design_review_decisions decision join design_versions version on version.id = decision.version_id join design_projects project on project.id = version.project_id where project.owner_user_id = ${userId} order by decision.created_at`),
       exportRows(sql`select design_export.* from design_exports design_export join design_projects project on project.id = design_export.project_id where project.owner_user_id = ${userId} order by design_export.created_at`),
+    ]),
+    Promise.all([
+      exportRows(sql`select * from creative_work_items where created_by_user_id = ${userId} or assignee_user_id = ${userId} order by created_at`),
+      exportRows(sql`select event.* from creative_work_events event join creative_work_items item on item.id = event.work_item_id where item.created_by_user_id = ${userId} or item.assignee_user_id = ${userId} order by event.created_at`),
+      exportRows(sql`select dependency.* from creative_work_dependencies dependency join creative_work_items item on item.id = dependency.work_item_id where item.created_by_user_id = ${userId} or item.assignee_user_id = ${userId} order by dependency.created_at`),
+      exportRows(sql`select approval.* from creative_work_approvals approval join creative_work_items item on item.id = approval.work_item_id where item.created_by_user_id = ${userId} or item.assignee_user_id = ${userId} order by approval.requested_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from purchases where buyer_id = ${userId} order by purchased_at`),
@@ -261,6 +268,9 @@ export async function buildAccountExport(user: User) {
       designTemplates: creatorStudio[34], designCollaborations: creatorStudio[35],
       designReviewLinks: creatorStudio[36], designReviewComments: creatorStudio[37],
       designReviewDecisions: creatorStudio[38], designExports: creatorStudio[39],
+    },
+    planning: {
+      workItems: planning[0], events: planning[1], dependencies: planning[2], approvals: planning[3],
     },
     commerce: {
       purchases: commerce[0], orders: commerce[1], creatorPaymentAccounts: commerce[2],

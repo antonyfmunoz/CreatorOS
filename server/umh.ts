@@ -3,7 +3,7 @@ import type { Express, Request, Response } from "express";
 import { and, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
-  broadcastBrandKits, businesses, businessMembers, campaigns, contentDrafts, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
+  broadcastBrandKits, businesses, businessMembers, campaigns, contentDrafts, creativeWorkApprovals, creativeWorkDependencies, creativeWorkEvents, creativeWorkItems, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
   umhCommandOutcomes, umhCommands, umhNonces, users,
 } from "../shared/schema";
 import {
@@ -20,6 +20,7 @@ import {
   type FoundationInstrumentKind,
 } from "../shared/foundation-instruments";
 import { createDesignProjectSchema, designDocumentSchema, saveDesignSchema } from "../shared/design-studio";
+import { canTransitionCreativeWork, createCreativeWorkItemSchema, transitionCreativeWorkItemSchema, updateCreativeWorkItemSchema } from "../shared/planning";
 import { db } from "./db";
 import { attachUser } from "./auth";
 import { userCanAdminBusiness, userCanManageBusiness } from "./businesses";
@@ -41,6 +42,8 @@ const instrumentRevisionPayloadSchema = reviseFoundationInstrumentSchema.extend(
 const instrumentLifecyclePayloadSchema = foundationCommandSchema.extend({ instrumentId: z.string().uuid() });
 const designCreatePayloadSchema = createDesignProjectSchema.extend({ document: designDocumentSchema });
 const designRevisionPayloadSchema = saveDesignSchema.extend({ projectId: z.string().uuid() });
+const taskRevisionPayloadSchema = updateCreativeWorkItemSchema.extend({ workItemId: z.string().uuid() });
+const taskTransitionPayloadSchema = transitionCreativeWorkItemSchema.extend({ workItemId: z.string().uuid() });
 
 export async function emitProjectionEvent(input: { aggregateType: string; aggregateId: string | number; eventType: string; actorUserId?: number | null; payload?: Record<string, unknown>; idempotencyKey: string; correlationId?: string | null; traceId?: string | null }, executor: DbExecutor = db) {
   // The disposable demo identity lives in MemStorage and deliberately has no
@@ -177,6 +180,54 @@ async function executeApprovedCommand(command: typeof umhCommands.$inferSelect, 
         await tx.insert(designProjectEvents).values({ projectId: updated.id, businessId: envelope.businessId, eventType: "design.project.revised", actorUserId: envelope.delegatedUserId, revision: updated.revision, payload: { baseRevision: payload.revision, status: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId, automaticRevision: true } });
         await emitProjectionEvent({ aggregateType: "design_project", aggregateId: updated.id, eventType: "design.project.revised", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, revision: updated.revision, baseRevision: payload.revision, status: updated.status, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:design.project.revised`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
         result = { designProjectId: updated.id, revision: updated.revision, status: updated.status };
+      } else if (envelope.commandType === "creativesos.task.create.v1") {
+        const payload = createCreativeWorkItemSchema.parse(envelope.payload);
+        if (payload.parentWorkItemId) {
+          const [parent] = await tx.select({ id: creativeWorkItems.id }).from(creativeWorkItems).where(and(eq(creativeWorkItems.id, payload.parentWorkItemId), eq(creativeWorkItems.businessId, envelope.businessId))).limit(1);
+          if (!parent) throw new Error("Parent work item not found in the delegated business");
+        }
+        const [item] = await tx.insert(creativeWorkItems).values({ ...payload, businessId: envelope.businessId, createdByUserId: envelope.delegatedUserId }).returning();
+        await tx.insert(creativeWorkEvents).values({ workItemId: item.id, businessId: envelope.businessId, eventType: "task.created", actorUserId: envelope.delegatedUserId, toStatus: item.status, version: item.version, payload: { kind: item.kind, parentWorkItemId: item.parentWorkItemId, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await emitProjectionEvent({ aggregateType: "creative_work_item", aggregateId: item.id, eventType: "task.created", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: item.kind, status: item.status, version: item.version, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:task.created`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { workItemId: item.id, version: item.version, status: item.status };
+      } else if (envelope.commandType === "creativesos.task.revise.v1") {
+        const payload = taskRevisionPayloadSchema.parse(envelope.payload);
+        const { workItemId, version, ...changes } = payload;
+        const [item] = await tx.select().from(creativeWorkItems).where(and(eq(creativeWorkItems.id, workItemId), eq(creativeWorkItems.businessId, envelope.businessId))).limit(1);
+        if (!item) throw new Error("Work item not found in the delegated business");
+        if (item.version !== version) throw new Error(`Version conflict: current version is ${item.version}`);
+        if (changes.parentWorkItemId) {
+          if (changes.parentWorkItemId === item.id) throw new Error("Work cannot be its own parent");
+          const rows = await tx.select({ id: creativeWorkItems.id, parentId: creativeWorkItems.parentWorkItemId }).from(creativeWorkItems).where(eq(creativeWorkItems.businessId, envelope.businessId));
+          const parents = new Map(rows.map((row) => [row.id, row.parentId]));
+          if (!parents.has(changes.parentWorkItemId)) throw new Error("Parent work item not found in the delegated business");
+          let cursor: string | null | undefined = changes.parentWorkItemId;
+          while (cursor) { if (cursor === item.id) throw new Error("This parent would create a cycle"); cursor = parents.get(cursor); }
+        }
+        const startsAt = changes.startsAt === undefined ? item.startsAt : changes.startsAt; const dueAt = changes.dueAt === undefined ? item.dueAt : changes.dueAt;
+        if (startsAt && dueAt && dueAt < startsAt) throw new Error("Due date cannot precede the start date");
+        const [updated] = await tx.update(creativeWorkItems).set({ ...changes, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, version))).returning();
+        if (!updated) throw new Error("Version conflict");
+        await tx.insert(creativeWorkEvents).values({ workItemId: updated.id, businessId: envelope.businessId, eventType: "task.revised", actorUserId: envelope.delegatedUserId, fromStatus: item.status, toStatus: updated.status, version: updated.version, payload: { baseVersion: version, changedFields: Object.keys(changes), origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await emitProjectionEvent({ aggregateType: "creative_work_item", aggregateId: updated.id, eventType: "task.revised", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, status: updated.status, version: updated.version, baseVersion: version, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:task.revised`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { workItemId: updated.id, version: updated.version, status: updated.status };
+      } else if (envelope.commandType === "creativesos.task.transition.v1") {
+        const payload = taskTransitionPayloadSchema.parse(envelope.payload);
+        const [item] = await tx.select().from(creativeWorkItems).where(and(eq(creativeWorkItems.id, payload.workItemId), eq(creativeWorkItems.businessId, envelope.businessId))).limit(1);
+        if (!item) throw new Error("Work item not found in the delegated business");
+        if (payload.version !== undefined && payload.version !== item.version) throw new Error(`Version conflict: current version is ${item.version}`);
+        if (!canTransitionCreativeWork(item.status, payload.status)) throw new Error(`Cannot move ${item.status} work directly to ${payload.status}`);
+        if (["scheduled", "published"].includes(payload.status)) {
+          const dependencies = await tx.select({ status: creativeWorkItems.status }).from(creativeWorkDependencies).innerJoin(creativeWorkItems, eq(creativeWorkDependencies.dependsOnWorkItemId, creativeWorkItems.id)).where(eq(creativeWorkDependencies.workItemId, item.id));
+          if (dependencies.some((dependency) => !["published", "retrospective"].includes(dependency.status))) throw new Error("Complete dependent work before scheduling or publishing");
+          const [approval] = await tx.select().from(creativeWorkApprovals).where(eq(creativeWorkApprovals.workItemId, item.id)).orderBy(desc(creativeWorkApprovals.requestedAt)).limit(1);
+          if (approval && approval.status !== "approved") throw new Error("Required local approval has not been granted");
+        }
+        const [updated] = await tx.update(creativeWorkItems).set({ status: payload.status, completedAt: ["published", "retrospective", "cancelled"].includes(payload.status) ? new Date() : null, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, item.version), eq(creativeWorkItems.status, item.status))).returning();
+        if (!updated) throw new Error("Version conflict");
+        await tx.insert(creativeWorkEvents).values({ workItemId: updated.id, businessId: envelope.businessId, eventType: "task.status_changed", actorUserId: envelope.delegatedUserId, fromStatus: item.status, toStatus: updated.status, version: updated.version, payload: { fromStatus: item.status, toStatus: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await emitProjectionEvent({ aggregateType: "creative_work_item", aggregateId: updated.id, eventType: "task.status_changed", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, fromStatus: item.status, toStatus: updated.status, version: updated.version, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:task.status_changed`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { workItemId: updated.id, version: updated.version, status: updated.status };
       } else {
         const payload = postPublishPayloadSchema.parse(envelope.payload);
         const [post] = await tx.insert(posts).values({ userId: envelope.delegatedUserId, content: payload.content, mediaType: payload.mediaType, imageUrl: payload.imageUrl, audioUrl: payload.audioUrl, videoUrl: payload.videoUrl }).returning();
