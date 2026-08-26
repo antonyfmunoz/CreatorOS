@@ -73,10 +73,13 @@ describe("CreativesOS UMH federation contract", () => {
     expect(parseInboundUmhCommandEnvelope({ ...canonicalDraftCommand, tenant: { type: "profile", id: canonicalDraftCommand.tenant.id } }, "creativesos-private-pilot").success).toBe(false);
   });
 
-  it("requires local approval only for the externally visible command", () => {
+  it("requires local approval for publication and instrument lifecycle control", () => {
     expect(isApprovalRequired("creativesos.content_draft.create.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.campaign.create.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.post.publish.v1")).toBe(true);
+    expect(isApprovalRequired("creativesos.instrument.create.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.instrument.revise.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.instrument.lifecycle.v1")).toBe(true);
   });
 
   it("advertises only the current real command surface", () => {
@@ -96,6 +99,9 @@ describe("CreativesOS UMH federation contract", () => {
       "creativesos.content_draft.create.v1",
       "creativesos.campaign.create.v1",
       "creativesos.post.publish.v1",
+      "creativesos.instrument.create.v1",
+      "creativesos.instrument.revise.v1",
+      "creativesos.instrument.lifecycle.v1",
     ]);
     expect(manifest.delivery.offline).toBe("durable_outbox");
     expect(manifest.emittedEvents).toEqual(expect.arrayContaining([
@@ -114,7 +120,27 @@ describe("CreativesOS UMH federation contract", () => {
       "community.room.transcription.stopped",
       "community.room.realtime_ai.started",
       "community.room.realtime_ai.stopped",
+      "instrument.created",
+      "instrument.revised",
+      "instrument.publish",
+      "database.record_created_from_form",
     ]));
+    expect(manifest.capabilities.find((capability) => capability.id === "instrument.create")?.proof).toBe("typed_revision_and_durable_event");
+    expect(manifest.capabilities.find((capability) => capability.id === "instrument.lifecycle")?.approval).toBe("local_required");
+  });
+
+  it("accepts bounded instrument commands without granting UMH database ownership", () => {
+    expect(UmhCommandEnvelopeSchema.safeParse({
+      ...validDraftCommand,
+      commandId: "29fcd868-e1c7-4a5a-82a5-ab3d0928ac02",
+      commandType: "creativesos.instrument.create.v1",
+      idempotencyKey: "umh-test-instrument-1",
+      payload: {
+        kind: "document",
+        title: "Campaign brief",
+        content: { format: "markdown", body: "Draft locally." },
+      },
+    }).success).toBe(true);
   });
 
   it("keeps the shared round-trip fixture limited to a private, low-risk draft", () => {

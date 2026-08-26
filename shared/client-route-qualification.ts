@@ -22,6 +22,7 @@ export const publicClientRoutes = [
   "/book/:slug",
   "/events/:id/tickets",
   "/store/:slug",
+  "/f/:id",
   "/apps",
 ] as const;
 
@@ -90,6 +91,12 @@ export const protectedClientRoutes = [
   "/revenue",
   "/contacts",
   "/documents",
+  "/sheets",
+  "/slides",
+  "/tables",
+  "/forms",
+  "/calendar",
+  "/finance",
   "/create-product",
   "/products/:id/edit",
   "/marketplace/product/:id",
@@ -133,6 +140,7 @@ export function materializeClientRoute(pattern: string): string {
     "/business/design/:id",
     "/business/booking/events/:id",
     "/support/:id",
+    "/f/:id",
   ];
 
   return parameterized.replace(

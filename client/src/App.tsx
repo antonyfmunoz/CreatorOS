@@ -37,7 +37,7 @@ const FollowersPage = lazy(() => import("@/pages/followers"));
 const FollowingPage = lazy(() => import("@/pages/following"));
 const RevenuePage = lazy(() => import("@/pages/revenue"));
 const ContactsPage = lazy(() => import("@/pages/contacts"));
-const DocumentsPage = lazy(() => import("@/pages/documents"));
+const FoundationStudioPage = lazy(() => import("@/pages/foundation-studio"));
 const CreateProductPage = lazy(() => import("@/pages/create-product"));
 const ProductDetail = lazy(() => import("@/pages/product-detail"));
 const OfferEditor = lazy(() => import("@/pages/offer-editor"));
@@ -117,6 +117,7 @@ const MarketplaceOperationsPage = lazy(
   () => import("@/pages/marketplace-operations"),
 );
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
+const FoundationPublicFormPage = lazy(() => import("@/pages/foundation-public-form"));
 const SupportCenterPage = lazy(() => import("@/pages/support-center"));
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -299,6 +300,7 @@ function Router() {
       <Route path="/book/:slug" component={BookingPublicPage} />
       <Route path="/events/:id/tickets" component={EventTicketingPage} />
       <Route path="/store/:slug" component={StorefrontPage} />
+      <Route path="/f/:id" component={FoundationPublicFormPage} />
       <Route path="/apps" component={AppsPage} />
       <ProtectedRoute path="/" component={Explore} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
@@ -420,7 +422,13 @@ function Router() {
       />
       <ProtectedRoute path="/revenue" component={RevenuePage} />
       <ProtectedRoute path="/contacts" component={ContactsPage} />
-      <ProtectedRoute path="/documents" component={DocumentsPage} />
+      <ProtectedRoute path="/documents" component={FoundationStudioPage} />
+      <ProtectedRoute path="/sheets" component={FoundationStudioPage} />
+      <ProtectedRoute path="/slides" component={FoundationStudioPage} />
+      <ProtectedRoute path="/tables" component={FoundationStudioPage} />
+      <ProtectedRoute path="/forms" component={FoundationStudioPage} />
+      <ProtectedRoute path="/calendar" component={FoundationStudioPage} />
+      <ProtectedRoute path="/finance" component={FoundationStudioPage} />
       <ProtectedRoute path="/create-product" component={CreateProductPage} />
       <ProtectedRoute path="/products/:id/edit" component={OfferEditor} />
       <ProtectedRoute

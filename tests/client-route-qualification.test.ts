@@ -30,7 +30,7 @@ describe("client route qualification manifest", () => {
     );
 
     expect(new Set(patterns).size).toBe(patterns.length);
-    expect(patterns).toHaveLength(101);
+    expect(patterns).toHaveLength(108);
     expect(paths.every((route) => route.startsWith("/") && !route.includes(":"))).toBe(true);
   });
 });
