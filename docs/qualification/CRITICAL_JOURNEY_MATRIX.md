@@ -32,3 +32,4 @@ workflow, its evidence, or its recovery path.
 4. Browser field tests cover the routes and role transitions above.
 5. No credential, private asset key, raw prompt secret, or private guest brief appears in logs or public responses.
 6. External providers are qualified independently; a deferred provider is clearly labeled and cannot make native data inconsistent.
+7. The generated qualification manifest exactly matches every registered client route, and every materialized route renders on mobile and desktop without an uncaught error, unexpected `5xx`, missing application shell, or router fallback.

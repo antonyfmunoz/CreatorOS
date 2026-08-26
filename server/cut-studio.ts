@@ -260,6 +260,7 @@ async function activeReview(token: string) {
 }
 
 async function ownedProject(userId: number, id: string) {
+  if (!idSchema.safeParse(id).success) return undefined;
   const [project] = await db.select().from(cutStudioProjects)
     .where(and(eq(cutStudioProjects.id, id), eq(cutStudioProjects.ownerUserId, userId)))
     .limit(1);
@@ -267,6 +268,7 @@ async function ownedProject(userId: number, id: string) {
 }
 
 async function workspaceProject(userId: number, id: string) {
+  if (!idSchema.safeParse(id).success) return null;
   const project = await ownedProject(userId, id);
   if (project) return { project, role: "owner" as const };
   const [collaborator] = await db.select().from(cutStudioCollaborators).where(and(eq(cutStudioCollaborators.projectId, id), eq(cutStudioCollaborators.userId, userId))).limit(1);
@@ -283,6 +285,7 @@ async function cutWorkspaceParticipants(project: typeof cutStudioProjects.$infer
 }
 
 async function ownedAsset(userId: number, id: string) {
+  if (!idSchema.safeParse(id).success) return undefined;
   const [asset] = await db.select().from(assets)
     .where(and(eq(assets.id, id), eq(assets.ownerUserId, userId)))
     .limit(1);

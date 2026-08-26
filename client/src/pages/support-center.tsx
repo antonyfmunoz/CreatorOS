@@ -28,7 +28,9 @@ type Detail = {
 export default function SupportCenterPage() {
   const { id } = useParams<{ id?: string }>();
   const [, navigate] = useLocation();
-  const orderId = new URLSearchParams(location.search).get("orderId") ?? "";
+  const [orderId, setOrderId] = useState(
+    () => new URLSearchParams(location.search).get("orderId") ?? "",
+  );
   const operations = useQuery<Operations>({
     queryKey: ["/api/marketplace/operations"],
   });
@@ -185,7 +187,7 @@ export default function SupportCenterPage() {
                 className="mt-4 border-zinc-800 bg-black"
                 placeholder="Paid order ID"
                 value={orderId}
-                readOnly={Boolean(orderId)}
+                onChange={(event) => setOrderId(event.target.value)}
               />
               <select
                 className="mt-2 h-10 w-full rounded-md border border-zinc-800 bg-black px-3 text-sm"

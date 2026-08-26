@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
+import { z } from "zod";
 import {
   and,
   count,
@@ -857,6 +858,8 @@ export function registerBookingTicketingRoutes(base: Express) {
     },
   );
   app.get("/api/public/events/:id/tickets", async (q, s) => {
+    if (!z.string().uuid().safeParse(q.params.id).success)
+      return s.status(404).json({ message: "Event not found" });
     const [e] = await db
       .select()
       .from(events)

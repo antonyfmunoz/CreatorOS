@@ -92,6 +92,9 @@ test("brand and creator complete a native UGC brief, revision, approval, perform
     conversions: 0,
     attributedRevenueCents: 0,
   });
+  await page.goto(`/ugc/creator/${creator}`);
+  await expect(page.getByRole("heading", { name: "Performance UGC creator" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `Portfolio ${marker}` })).toBeVisible();
 
   const briefResponse = await api(
     page,

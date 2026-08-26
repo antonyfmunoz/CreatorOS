@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import type { Express, Request, Response } from "express";
+import type { Express, Request, RequestHandler, Response } from "express";
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -730,7 +730,35 @@ async function launchRuntime(
     .where(eq(broadcastDestinationReceipts.sessionId, session.id));
 }
 
-export function registerBroadcastStudioRoutes(app: Express) {
+export function registerBroadcastStudioRoutes(application: Express) {
+  const wrap = (handler: RequestHandler): RequestHandler => (req, res, next) => {
+    const invalidIdentifier = Object.entries(req.params).some(
+      ([key, value]) =>
+        key === "userId"
+          ? !Number.isInteger(Number(value))
+          : (key === "id" || key.endsWith("Id")) &&
+            !idSchema.safeParse(value).success,
+    );
+    if (invalidIdentifier)
+      return res.status(404).json({ message: "Broadcast resource not found" });
+    try {
+      Promise.resolve(handler(req, res, next)).catch(next);
+    } catch (error) {
+      next(error);
+    }
+  };
+  const app = {
+    get: (path: string, ...handlers: RequestHandler[]) =>
+      application.get(path, ...handlers.map(wrap)),
+    post: (path: string, ...handlers: RequestHandler[]) =>
+      application.post(path, ...handlers.map(wrap)),
+    put: (path: string, ...handlers: RequestHandler[]) =>
+      application.put(path, ...handlers.map(wrap)),
+    patch: (path: string, ...handlers: RequestHandler[]) =>
+      application.patch(path, ...handlers.map(wrap)),
+    delete: (path: string, ...handlers: RequestHandler[]) =>
+      application.delete(path, ...handlers.map(wrap)),
+  };
   app.post("/api/broadcast/capture/claim", rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }), captureDeviceRoute(async (req, res) => {
     noStore(res);
     const parsed = captureNodeClaimSchema.safeParse(req.body ?? {});
