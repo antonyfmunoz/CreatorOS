@@ -118,6 +118,11 @@ describe("production deployment contract", () => {
     expect(productionSmokeSource).toContain('"/business/design"');
     expect(productionSmokeSource).toContain('"/business/planner"');
     expect(productionSmokeSource).toContain('"/vision"');
+    expect(productionSmokeSource).toContain('"/business/audience"');
+    expect(productionSmokeSource).toContain('"/business/operations"');
+    expect(productionSmokeSource).toContain('"/distribution/connections"');
+    expect(productionSmokeSource).toContain('"/library"');
+    expect(productionSmokeSource).toContain('"/finance"');
     expect(productionSmokeSource).toContain(
       '"/api/community-room-providers"',
     );

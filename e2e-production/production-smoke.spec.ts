@@ -57,13 +57,30 @@ test("@public immutable production identity, readiness, and auth entry are healt
 test("@authenticated production workspaces render without destructive mutations", async ({ page }) => {
   const failures = runtimeFailures(page);
   const routes = [
-    "/", "/profile", "/marketplace", "/messages", "/communities", "/create",
-    "/business", "/campaigns", "/ugc", "/earnings", "/distribution",
-    "/automations", "/cut-studio", "/broadcast", "/settings", "/settings/privacy",
+    // Native social, community, commerce, creation, and account workspaces.
+    "/", "/profile", "/marketplace", "/cart", "/orders", "/learn",
+    "/messages", "/communities", "/notifications", "/search", "/saved-posts",
+    "/followers", "/following", "/revenue", "/contacts", "/create",
+    "/create-product", "/create/post", "/create/event", "/new-text-post",
+    "/campaigns", "/ugc", "/earnings", "/distribution",
+    "/distribution/connections", "/automations", "/ai", "/library",
+    "/cut-studio", "/broadcast", "/settings", "/settings/privacy",
+
+    // Standard business-operator workspaces. Privileged administration,
+    // parameterized records, OAuth prompts, and checkout callbacks are tested
+    // in their dedicated lifecycle suites rather than guessed here.
+    "/business", "/business/benchmarks", "/business/analytics",
+    "/business/planner", "/business/developer", "/business/operations",
+    "/business/providers", "/business/audience", "/business/podcasts",
+    "/business/design", "/business/site", "/business/sponsorship",
+    "/business/affiliates", "/business/booking", "/business/marketplace",
+    "/business/approvals", "/business/portability", "/support",
+
     // Projection-local instruments transferred from the UMH cockpit must be
     // exercised independently in production. A healthy legacy workspace is
     // not evidence that these newer route/API boundaries survived release.
-    "/documents", "/business/design", "/business/planner", "/vision",
+    "/documents", "/sheets", "/slides", "/tables", "/forms", "/calendar",
+    "/finance", "/vision",
   ];
   const instrumentHeadings = new Map<string, string>([
     ["/documents", "Creative workspace"],
