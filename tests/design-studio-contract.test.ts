@@ -7,4 +7,8 @@ describe("DesignStudio contract", () => {
   it("accepts a bounded multi-surface design document", () => { expect(designDocumentSchema.parse(document).pages[0].elements[0].locked).toBe(true); });
   it("rejects unsafe colors and oversized documents", () => { expect(designDocumentSchema.safeParse({ ...document, pages: [{ ...document.pages[0], background: "url(javascript:alert(1))" }] }).success).toBe(false); expect(designDocumentSchema.safeParse({ ...document, pages: [{ ...document.pages[0], width: 100_000 }] }).success).toBe(false); });
   it("requires known output families and controlled resize dimensions", () => { expect(createDesignProjectSchema.parse({ name: "Launch", kind: "thumbnail", width: 1280, height: 720, brandKitId: null, document }).kind).toBe("thumbnail"); expect(designResizeSchema.safeParse({ name: "Bad", width: 8, height: 8, mode: "fit" }).success).toBe(false); });
+  it("requires stable unique page and element identities", () => {
+    expect(designDocumentSchema.safeParse({ ...document, pages: [document.pages[0], { ...document.pages[0] }] }).success).toBe(false);
+    expect(designDocumentSchema.safeParse({ ...document, pages: [{ ...document.pages[0], elements: [document.pages[0].elements[0], { ...document.pages[0].elements[0] }] }] }).success).toBe(false);
+  });
 });

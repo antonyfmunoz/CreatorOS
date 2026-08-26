@@ -6895,6 +6895,43 @@ export const designVersions = pgTable(
   }),
 );
 
+export const designProjectEvents = pgTable(
+  "design_project_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .references(() => designProjects.id, { onDelete: "cascade" })
+      .notNull(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    revision: integer("revision"),
+    payload: json("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    evidence: json("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectCreatedIdx: index("design_project_events_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    businessCreatedIdx: index("design_project_events_business_created_idx").on(
+      table.businessId,
+      table.createdAt,
+    ),
+  }),
+);
+
 export const designCollaborators = pgTable(
   "design_collaborators",
   {

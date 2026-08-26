@@ -7,12 +7,13 @@ import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { z } from "zod";
 import { createDesignProjectSchema, designDocumentSchema, designExportSchema, designResizeSchema, designReviewCommentSchema, saveDesignSchema, type DesignDocument, type DesignElement } from "@shared/design-studio";
-import { assetLineageEdges, assets, broadcastBrandKits, designCollaborators, designExports, designProjects, designReviewComments, designReviewDecisions, designReviewLinks, designTemplates, designVersions, distributionJobs, users } from "@shared/schema";
+import { assetLineageEdges, assets, broadcastBrandKits, designCollaborators, designExports, designProjectEvents, designProjects, designReviewComments, designReviewDecisions, designReviewLinks, designTemplates, designVersions, distributionJobs, users } from "@shared/schema";
 import { attachUser } from "./auth";
 import { materializeStoredAsset, persistManagedFile } from "./asset-storage";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { db } from "./db";
 import { assertAssetUsageAllowed, recordAssetUsage } from "./media-cloud";
+import { emitProjectionEvent } from "./umh";
 
 type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
 const safe = (handler: Handler): Handler => (req, res, next) => { try { Promise.resolve(handler(req, res, next)).catch(next); } catch (error) { next(error); } };
@@ -20,6 +21,29 @@ const uuidSchema = z.string().uuid();
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const appUrl = () => (process.env.PUBLIC_APP_URL ?? "https://creativesos.net").replace(/\/$/, "");
 const escapeXml = (value: unknown) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+
+type DesignEventExecutor = Pick<typeof db, "insert">;
+
+async function recordDesignEvent(input: {
+  projectId: string;
+  businessId: string;
+  eventType: string;
+  actorUserId?: number | null;
+  revision?: number | null;
+  payload?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+}, executor: DesignEventExecutor = db) {
+  const [event] = await executor.insert(designProjectEvents).values({
+    projectId: input.projectId,
+    businessId: input.businessId,
+    eventType: input.eventType,
+    actorUserId: input.actorUserId ?? null,
+    revision: input.revision ?? null,
+    payload: input.payload ?? {},
+    evidence: input.evidence ?? {},
+  }).returning();
+  return event;
+}
 
 function blankDocument(width: number, height: number, brand?: typeof broadcastBrandKits.$inferSelect | null): DesignDocument {
   return { version: 1, pages: [{ id: "page-1", name: "Page 1", width, height, background: brand?.surfaceColor ?? "#09090b", elements: [{ id: "headline", type: "text", x: Math.round(width * 0.08), y: Math.round(height * 0.12), width: Math.round(width * 0.84), height: Math.round(height * 0.25), rotation: 0, opacity: 1, locked: false, zIndex: 1, text: "Make the idea impossible to ignore", fill: brand?.textColor ?? "#ffffff", fontSize: Math.max(32, Math.round(width * 0.06)), fontFamily: "Arial", fontWeight: "bold", align: "left" }, { id: "accent", type: "shape", shape: "rectangle", x: Math.round(width * 0.08), y: Math.round(height * 0.72), width: Math.round(width * 0.3), height: Math.max(12, Math.round(height * 0.025)), rotation: 0, opacity: 1, locked: false, zIndex: 0, fill: brand?.primaryColor ?? "#1d9bf0", stroke: null, strokeWidth: 0, radius: 100 }] }] };
@@ -80,18 +104,129 @@ async function renderPage(document: DesignDocument, pageId: string, ownerUserId:
 export function registerDesignStudioRoutes(base: Express) {
   const app = { get: (path: string, ...handlers: Handler[]) => base.get(path, ...handlers.map(safe)), post: (path: string, ...handlers: Handler[]) => base.post(path, ...handlers.map(safe)), patch: (path: string, ...handlers: Handler[]) => base.patch(path, ...handlers.map(safe)) };
   app.get("/api/design", attachUser, async (req, res) => { const [user] = await db.select().from(users).where(eq(users.id, req.dbUser!.id)).limit(1); if (!user) return res.status(401).json({ message: "Account not found" }); const business = await ensureDefaultBusiness(user); const [projects, templates, brandKits] = await Promise.all([db.select().from(designProjects).where(eq(designProjects.businessId, business.id)).orderBy(desc(designProjects.updatedAt)), db.select().from(designTemplates).where(eq(designTemplates.businessId, business.id)).orderBy(desc(designTemplates.updatedAt)), db.select().from(broadcastBrandKits).where(eq(broadcastBrandKits.businessId, business.id)).orderBy(desc(broadcastBrandKits.updatedAt))]); return res.json({ projects, templates, brandKits }); });
-  app.post("/api/design", attachUser, async (req, res) => { const parsed = createDesignProjectSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid design" }); const [user] = await db.select().from(users).where(eq(users.id, req.dbUser!.id)).limit(1); if (!user) return res.status(401).json({ message: "Account not found" }); const business = await ensureDefaultBusiness(user); const brand = parsed.data.brandKitId ? (await db.select().from(broadcastBrandKits).where(and(eq(broadcastBrandKits.id, parsed.data.brandKitId), eq(broadcastBrandKits.businessId, business.id))).limit(1))[0] : null; if (parsed.data.brandKitId && !brand) return res.status(404).json({ message: "Brand kit not found" }); const document = parsed.data.document ?? blankDocument(parsed.data.width, parsed.data.height, brand); const [project] = await db.insert(designProjects).values({ businessId: business.id, ownerUserId: req.dbUser!.id, name: parsed.data.name, kind: parsed.data.kind, width: parsed.data.width, height: parsed.data.height, brandKitId: parsed.data.brandKitId, document }).returning(); return res.status(201).json(project); });
-  app.get("/api/design/:id", attachUser, async (req, res) => { const access = await projectAccess(req.dbUser!.id, req.params.id); if (!access) return res.status(404).json({ message: "Design not found" }); const [versions, collaborators, exports] = await Promise.all([db.select().from(designVersions).where(eq(designVersions.projectId, access.project.id)).orderBy(desc(designVersions.revision)), db.select({ userId: designCollaborators.userId, role: designCollaborators.role, name: users.displayName }).from(designCollaborators).innerJoin(users, eq(designCollaborators.userId, users.id)).where(eq(designCollaborators.projectId, access.project.id)), db.select().from(designExports).where(eq(designExports.projectId, access.project.id)).orderBy(desc(designExports.createdAt))]); return res.json({ project: access.project, role: access.role, versions, collaborators, exports }); });
-  app.patch("/api/design/:id", attachUser, async (req, res) => { const parsed = saveDesignSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid document" }); const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const [updated] = await db.update(designProjects).set({ document: parsed.data.document, revision: sql`${designProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(designProjects.id, access.project.id), eq(designProjects.revision, parsed.data.revision))).returning(); if (!updated) return res.status(409).json({ message: "This design changed elsewhere. Reload before saving." }); return res.json(updated); });
-  app.post("/api/design/:id/versions", attachUser, async (req, res) => { const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 120) : `Version ${access.project.revision}`; const [version] = await db.insert(designVersions).values({ projectId: access.project.id, createdByUserId: req.dbUser!.id, revision: access.project.revision, label, document: access.project.document, reviewStatus: "draft" }).onConflictDoUpdate({ target: [designVersions.projectId, designVersions.revision], set: { label } }).returning(); return res.status(201).json(version); });
-  app.post("/api/design/:id/resize", attachUser, async (req, res) => { const parsed = designResizeSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid resize" }); const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const [variant] = await db.insert(designProjects).values({ businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, kind: access.project.kind, width: parsed.data.width, height: parsed.data.height, brandKitId: access.project.brandKitId, sourceProjectId: access.project.id, document: scaleDocument(access.project.document, parsed.data.width, parsed.data.height, parsed.data.mode) }).returning(); return res.status(201).json(variant); });
+  app.post("/api/design", attachUser, async (req, res) => {
+    const parsed = createDesignProjectSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid design" });
+    const [user] = await db.select().from(users).where(eq(users.id, req.dbUser!.id)).limit(1);
+    if (!user) return res.status(401).json({ message: "Account not found" });
+    const business = await ensureDefaultBusiness(user);
+    const brand = parsed.data.brandKitId ? (await db.select().from(broadcastBrandKits).where(and(eq(broadcastBrandKits.id, parsed.data.brandKitId), eq(broadcastBrandKits.businessId, business.id))).limit(1))[0] : null;
+    if (parsed.data.brandKitId && !brand) return res.status(404).json({ message: "Brand kit not found" });
+    const document = parsed.data.document ?? blankDocument(parsed.data.width, parsed.data.height, brand);
+    const project = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(designProjects).values({ businessId: business.id, ownerUserId: req.dbUser!.id, name: parsed.data.name, kind: parsed.data.kind, width: parsed.data.width, height: parsed.data.height, brandKitId: parsed.data.brandKitId, document }).returning();
+      await tx.insert(designVersions).values({ projectId: created.id, createdByUserId: req.dbUser!.id, revision: 1, label: "Initial revision", document, reviewStatus: "draft" });
+      await recordDesignEvent({ projectId: created.id, businessId: business.id, eventType: "design.project.created", actorUserId: req.dbUser!.id, revision: 1, payload: { kind: created.kind, width: created.width, height: created.height }, evidence: { source: "native", automaticRevision: true } }, tx);
+      await emitProjectionEvent({ aggregateType: "design_project", aggregateId: created.id, eventType: "design.project.created", actorUserId: req.dbUser!.id, payload: { businessId: business.id, kind: created.kind, revision: 1 }, idempotencyKey: `design:${created.id}:created` }, tx);
+      return created;
+    });
+    return res.status(201).json(project);
+  });
+  app.get("/api/design/:id", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Design not found" });
+    const [versions, collaborators, exports, events] = await Promise.all([
+      db.select().from(designVersions).where(eq(designVersions.projectId, access.project.id)).orderBy(desc(designVersions.revision)),
+      db.select({ userId: designCollaborators.userId, role: designCollaborators.role, name: users.displayName }).from(designCollaborators).innerJoin(users, eq(designCollaborators.userId, users.id)).where(eq(designCollaborators.projectId, access.project.id)),
+      db.select().from(designExports).where(eq(designExports.projectId, access.project.id)).orderBy(desc(designExports.createdAt)),
+      db.select().from(designProjectEvents).where(eq(designProjectEvents.projectId, access.project.id)).orderBy(desc(designProjectEvents.createdAt)).limit(200),
+    ]);
+    return res.json({ project: access.project, role: access.role, versions, collaborators, exports, events });
+  });
+  app.patch("/api/design/:id", attachUser, async (req, res) => {
+    const parsed = saveDesignSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid document" });
+    const access = await projectAccess(req.dbUser!.id, req.params.id, true);
+    if (!access) return res.status(404).json({ message: "Design not found" });
+    const updated = await db.transaction(async (tx) => {
+      const [saved] = await tx.update(designProjects).set({ document: parsed.data.document, revision: sql`${designProjects.revision} + 1`, status: "draft", updatedAt: new Date() }).where(and(eq(designProjects.id, access.project.id), eq(designProjects.revision, parsed.data.revision))).returning();
+      if (!saved) return null;
+      await tx.insert(designVersions).values({ projectId: saved.id, createdByUserId: req.dbUser!.id, revision: saved.revision, label: `Revision ${saved.revision}`, document: saved.document, reviewStatus: "draft" });
+      await recordDesignEvent({ projectId: saved.id, businessId: saved.businessId, eventType: "design.project.revised", actorUserId: req.dbUser!.id, revision: saved.revision, payload: { baseRevision: parsed.data.revision, status: saved.status }, evidence: { source: "native", automaticRevision: true } }, tx);
+      await emitProjectionEvent({ aggregateType: "design_project", aggregateId: saved.id, eventType: "design.project.revised", actorUserId: req.dbUser!.id, payload: { businessId: saved.businessId, revision: saved.revision, baseRevision: parsed.data.revision, status: saved.status }, idempotencyKey: `design:${saved.id}:revision:${saved.revision}` }, tx);
+      return saved;
+    });
+    if (!updated) return res.status(409).json({ message: "This design changed elsewhere. Reload before saving." });
+    return res.json(updated);
+  });
+  app.post("/api/design/:id/versions", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id, true);
+    if (!access) return res.status(404).json({ message: "Design not found" });
+    const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 120) : `Version ${access.project.revision}`;
+    const version = await db.transaction(async (tx) => {
+      const [named] = await tx.insert(designVersions).values({ projectId: access.project.id, createdByUserId: req.dbUser!.id, revision: access.project.revision, label, document: access.project.document, reviewStatus: "draft" }).onConflictDoUpdate({ target: [designVersions.projectId, designVersions.revision], set: { label } }).returning();
+      await recordDesignEvent({ projectId: access.project.id, businessId: access.project.businessId, eventType: "design.version.named", actorUserId: req.dbUser!.id, revision: access.project.revision, payload: { label }, evidence: { source: "native" } }, tx);
+      return named;
+    });
+    return res.status(201).json(version);
+  });
+  app.post("/api/design/:id/resize", attachUser, async (req, res) => {
+    const parsed = designResizeSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid resize" });
+    const access = await projectAccess(req.dbUser!.id, req.params.id, true);
+    if (!access) return res.status(404).json({ message: "Design not found" });
+    const document = scaleDocument(access.project.document, parsed.data.width, parsed.data.height, parsed.data.mode);
+    const variant = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(designProjects).values({ businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, kind: access.project.kind, width: parsed.data.width, height: parsed.data.height, brandKitId: access.project.brandKitId, sourceProjectId: access.project.id, document }).returning();
+      await tx.insert(designVersions).values({ projectId: created.id, createdByUserId: req.dbUser!.id, revision: 1, label: "Initial resized revision", document, reviewStatus: "draft" });
+      await recordDesignEvent({ projectId: created.id, businessId: created.businessId, eventType: "design.project.resized", actorUserId: req.dbUser!.id, revision: 1, payload: { sourceProjectId: access.project.id, sourceRevision: access.project.revision, mode: parsed.data.mode, width: created.width, height: created.height }, evidence: { source: "native", automaticRevision: true } }, tx);
+      await emitProjectionEvent({ aggregateType: "design_project", aggregateId: created.id, eventType: "design.project.resized", actorUserId: req.dbUser!.id, payload: { businessId: created.businessId, revision: 1, sourceProjectId: access.project.id, sourceRevision: access.project.revision }, idempotencyKey: `design:${created.id}:resized` }, tx);
+      return created;
+    });
+    return res.status(201).json(variant);
+  });
   app.post("/api/design/:id/templates", attachUser, async (req, res) => { const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 160) : ""; if (!name) return res.status(400).json({ message: "Template name is required" }); const lockedElementIds = access.project.document.pages.flatMap((page) => page.elements.filter((element) => element.locked).map((element) => element.id)); const [template] = await db.insert(designTemplates).values({ businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name, kind: access.project.kind, width: access.project.width, height: access.project.height, document: access.project.document, lockedElementIds }).onConflictDoUpdate({ target: [designTemplates.businessId, designTemplates.name], set: { document: access.project.document, lockedElementIds, updatedAt: new Date() } }).returning(); return res.status(201).json(template); });
   app.post("/api/design/:id/collaborators", attachUser, async (req, res) => { const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access || access.role !== "owner") return res.status(404).json({ message: "Design not found" }); const userId = Number(req.body?.userId); const role = String(req.body?.role ?? ""); if (!Number.isInteger(userId) || !["viewer", "reviewer", "editor"].includes(role)) return res.status(400).json({ message: "Valid collaborator and role are required" }); const [target] = await db.select().from(users).where(eq(users.id, userId)).limit(1); if (!target) return res.status(404).json({ message: "Collaborator not found" }); const [collaborator] = await db.insert(designCollaborators).values({ projectId: access.project.id, userId, role }).onConflictDoUpdate({ target: [designCollaborators.projectId, designCollaborators.userId], set: { role } }).returning(); return res.status(201).json(collaborator); });
   app.post("/api/design/:id/export", attachUser, async (req, res) => { const parsed = designExportSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid export" }); const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const directory = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-design-")); try { const rendered = await renderPage(access.project.document, parsed.data.pageId, access.project.ownerUserId, directory); const extension = parsed.data.format === "jpeg" ? "jpg" : parsed.data.format; const output = path.join(directory, `${access.project.id}-${parsed.data.pageId}.${extension}`); if (parsed.data.format === "svg") await fs.writeFile(output, rendered.svg, "utf8"); else { let pipeline = sharp(Buffer.from(rendered.svg)).resize(Math.round(rendered.page.width * parsed.data.scale), Math.round(rendered.page.height * parsed.data.scale)); if (parsed.data.format === "png") pipeline = pipeline.png(); else if (parsed.data.format === "jpeg") pipeline = pipeline.jpeg({ quality: parsed.data.quality }); else pipeline = pipeline.webp({ quality: parsed.data.quality }); await pipeline.toFile(output); } const stored = await persistManagedFile({ sourcePath: output, ownerUserId: access.project.ownerUserId, kind: "design", filename: `${access.project.name.replace(/[^a-z0-9_-]+/gi, "-")}.${extension}`, mimeType: parsed.data.format === "svg" ? "image/svg+xml" : `image/${parsed.data.format}`, visibility: parsed.data.visibility }); const [asset] = await db.insert(assets).values({ ownerUserId: access.project.ownerUserId, businessId: access.project.businessId, kind: "design", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: stored.publicUrl, mimeType: parsed.data.format === "svg" ? "image/svg+xml" : `image/${parsed.data.format}`, sizeBytes: stored.sizeBytes, visibility: parsed.data.visibility, status: "ready", originalFilename: path.basename(output), metadata: { designProjectId: access.project.id, revision: access.project.revision, pageId: rendered.page.id, width: Math.round(rendered.page.width * parsed.data.scale), height: Math.round(rendered.page.height * parsed.data.scale), provenance: "creativesos_design_studio" } }).returning(); const imageIds = Array.from(new Set(access.project.document.pages.flatMap((page) => page.elements.filter((element): element is Extract<DesignElement, { type: "image" }> => element.type === "image").map((element) => element.assetId)))); for (const parentAssetId of imageIds) { await db.insert(assetLineageEdges).values({ parentAssetId, childAssetId: asset.id, relationship: "design_derivative", createdByUserId: req.dbUser!.id, metadata: { projectId: access.project.id, revision: access.project.revision } }).onConflictDoNothing(); await recordAssetUsage({ assetId: parentAssetId, actorUserId: req.dbUser!.id, surfaceType: "design", surfaceId: access.project.id, useType: "editing" }); } const [exportRow] = await db.insert(designExports).values({ projectId: access.project.id, assetId: asset.id, format: parsed.data.format, pageId: rendered.page.id, width: Math.round(rendered.page.width * parsed.data.scale), height: Math.round(rendered.page.height * parsed.data.scale), createdByUserId: req.dbUser!.id }).returning(); return res.status(201).json({ export: exportRow, asset }); } finally { await fs.rm(directory, { recursive: true, force: true }); } });
   app.post("/api/design/:id/distribution", attachUser, async (req, res) => { const access = await projectAccess(req.dbUser!.id, req.params.id, true); if (!access) return res.status(404).json({ message: "Design not found" }); const assetId = typeof req.body?.assetId === "string" ? req.body.assetId : ""; const [exportRow] = await db.select().from(designExports).where(and(eq(designExports.projectId, access.project.id), eq(designExports.assetId, assetId))).limit(1); if (!exportRow) return res.status(404).json({ message: "Exported design asset not found" }); const scheduledFor = new Date(req.body?.scheduledFor ?? Date.now()); if (Number.isNaN(scheduledFor.getTime())) return res.status(400).json({ message: "Valid schedule required" }); const platforms = Array.isArray(req.body?.platforms) ? req.body.platforms.filter((value: unknown): value is string => typeof value === "string").slice(0, 20) : ["creativesos"]; const [job] = await db.insert(distributionJobs).values({ userId: req.dbUser!.id, content: typeof req.body?.content === "string" ? req.body.content.slice(0, 10_000) : access.project.name, format: "design", platforms, assetIds: [assetId], scheduledFor, status: "scheduled" }).returning(); await recordAssetUsage({ assetId, actorUserId: req.dbUser!.id, surfaceType: "distribution", surfaceId: job.id, useType: "external_distribution" }); return res.status(201).json(job); });
-  app.post("/api/design/versions/:id/review", attachUser, async (req, res) => { const [version] = await db.select().from(designVersions).where(eq(designVersions.id, req.params.id)).limit(1); const access = version ? await projectAccess(req.dbUser!.id, version.projectId, true) : null; if (!version || !access) return res.status(404).json({ message: "Design version not found" }); const token = randomBytes(32).toString("base64url"); const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, Number(req.body?.days ?? 7))) * 24 * 60 * 60_000); const [link] = await db.insert(designReviewLinks).values({ versionId: version.id, tokenHash: hashToken(token), label: typeof req.body?.label === "string" ? req.body.label.slice(0, 120) : "Design review", expiresAt }).returning(); await db.update(designVersions).set({ reviewStatus: "in_review" }).where(eq(designVersions.id, version.id)); await db.update(designProjects).set({ status: "review", updatedAt: new Date() }).where(eq(designProjects.id, version.projectId)); return res.status(201).json({ id: link.id, reviewUrl: `${appUrl()}/design/review/${token}`, expiresAt }); });
+  app.post("/api/design/versions/:id/review", attachUser, async (req, res) => {
+    const [version] = await db.select().from(designVersions).where(eq(designVersions.id, req.params.id)).limit(1);
+    const access = version ? await projectAccess(req.dbUser!.id, version.projectId, true) : null;
+    if (!version || !access) return res.status(404).json({ message: "Design version not found" });
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, Number(req.body?.days ?? 7))) * 24 * 60 * 60_000);
+    const label = typeof req.body?.label === "string" ? req.body.label.slice(0, 120) : "Design review";
+    const link = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(designReviewLinks).values({ versionId: version.id, tokenHash: hashToken(token), label, expiresAt }).returning();
+      await tx.update(designVersions).set({ reviewStatus: "in_review" }).where(eq(designVersions.id, version.id));
+      await tx.update(designProjects).set({ status: "review", updatedAt: new Date() }).where(eq(designProjects.id, version.projectId));
+      await recordDesignEvent({ projectId: access.project.id, businessId: access.project.businessId, eventType: "design.review.started", actorUserId: req.dbUser!.id, revision: version.revision, payload: { versionId: version.id, reviewLinkId: created.id, label, expiresAt: expiresAt.toISOString() }, evidence: { source: "native", tokenHashStoredOnly: true } }, tx);
+      await emitProjectionEvent({ aggregateType: "design_project", aggregateId: access.project.id, eventType: "design.review.started", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, revision: version.revision, versionId: version.id, reviewLinkId: created.id }, idempotencyKey: `design:${access.project.id}:review:${created.id}` }, tx);
+      return created;
+    });
+    return res.status(201).json({ id: link.id, reviewUrl: `${appUrl()}/design/review/${token}`, expiresAt });
+  });
   app.get("/api/design/reviews/:token", async (req, res) => { const review = await activeReview(req.params.token); if (!review) return res.status(404).json({ message: "Review unavailable or expired" }); const [comments, decisions] = await Promise.all([db.select().from(designReviewComments).where(eq(designReviewComments.versionId, review.version.id)).orderBy(asc(designReviewComments.createdAt)), db.select().from(designReviewDecisions).where(eq(designReviewDecisions.versionId, review.version.id)).orderBy(desc(designReviewDecisions.createdAt))]); return res.json({ project: { name: review.project.name, kind: review.project.kind }, version: { id: review.version.id, label: review.version.label, revision: review.version.revision, reviewStatus: review.version.reviewStatus, document: review.version.document }, review: { label: review.link.label, expiresAt: review.link.expiresAt }, comments, decisions }); });
   app.get("/api/design/reviews/:token/preview.svg", async (req, res) => { const review = await activeReview(req.params.token); if (!review) return res.status(404).send("Review unavailable"); const directory = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-design-review-")); try { const pageId = typeof req.query.pageId === "string" ? req.query.pageId : review.version.document.pages[0].id; const rendered = await renderPage(review.version.document, pageId, review.project.ownerUserId, directory); res.type("image/svg+xml"); res.setHeader("Cache-Control", "private, no-store"); return res.send(rendered.svg); } finally { await fs.rm(directory, { recursive: true, force: true }); } });
-  app.post("/api/design/reviews/:token/comments", async (req, res) => { const parsed = designReviewCommentSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid comment" }); const review = await activeReview(req.params.token); if (!review) return res.status(404).json({ message: "Review unavailable or expired" }); if (!review.version.document.pages.some((page) => page.id === parsed.data.pageId)) return res.status(404).json({ message: "Page not found" }); const [comment] = await db.insert(designReviewComments).values({ reviewLinkId: review.link.id, versionId: review.version.id, ...parsed.data }).returning(); return res.status(201).json(comment); });
-  app.post("/api/design/reviews/:token/decision", async (req, res) => { const review = await activeReview(req.params.token); const decision = String(req.body?.decision ?? ""); const reviewerName = typeof req.body?.reviewerName === "string" ? req.body.reviewerName.trim().slice(0, 120) : ""; if (!review) return res.status(404).json({ message: "Review unavailable or expired" }); if (!reviewerName || !["approved", "changes_requested"].includes(decision)) return res.status(400).json({ message: "Reviewer and decision are required" }); const [saved] = await db.insert(designReviewDecisions).values({ reviewLinkId: review.link.id, versionId: review.version.id, reviewerName, decision, note: typeof req.body?.note === "string" ? req.body.note.slice(0, 5_000) : "" }).returning(); await db.update(designVersions).set({ reviewStatus: decision }).where(eq(designVersions.id, review.version.id)); await db.update(designProjects).set({ status: decision === "approved" ? "approved" : "draft", updatedAt: new Date() }).where(eq(designProjects.id, review.project.id)); return res.status(201).json(saved); });
+  app.post("/api/design/reviews/:token/comments", async (req, res) => {
+    const parsed = designReviewCommentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid comment" });
+    const review = await activeReview(req.params.token);
+    if (!review) return res.status(404).json({ message: "Review unavailable or expired" });
+    if (!review.version.document.pages.some((page) => page.id === parsed.data.pageId)) return res.status(404).json({ message: "Page not found" });
+    const comment = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(designReviewComments).values({ reviewLinkId: review.link.id, versionId: review.version.id, ...parsed.data }).returning();
+      await recordDesignEvent({ projectId: review.project.id, businessId: review.project.businessId, eventType: "design.review.commented", revision: review.version.revision, payload: { commentId: created.id, versionId: review.version.id, reviewLinkId: review.link.id, reviewerName: parsed.data.reviewerName, pageId: parsed.data.pageId }, evidence: { source: "public_review_link" } }, tx);
+      return created;
+    });
+    return res.status(201).json(comment);
+  });
+  app.post("/api/design/reviews/:token/decision", async (req, res) => {
+    const review = await activeReview(req.params.token);
+    const decision = String(req.body?.decision ?? "");
+    const reviewerName = typeof req.body?.reviewerName === "string" ? req.body.reviewerName.trim().slice(0, 120) : "";
+    if (!review) return res.status(404).json({ message: "Review unavailable or expired" });
+    if (!reviewerName || !["approved", "changes_requested"].includes(decision)) return res.status(400).json({ message: "Reviewer and decision are required" });
+    const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 5_000) : "";
+    const saved = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(designReviewDecisions).values({ reviewLinkId: review.link.id, versionId: review.version.id, reviewerName, decision, note }).returning();
+      await tx.update(designVersions).set({ reviewStatus: decision }).where(eq(designVersions.id, review.version.id));
+      const status = decision === "approved" ? "approved" : "draft";
+      await tx.update(designProjects).set({ status, updatedAt: new Date() }).where(eq(designProjects.id, review.project.id));
+      await recordDesignEvent({ projectId: review.project.id, businessId: review.project.businessId, eventType: `design.review.${decision}`, revision: review.version.revision, payload: { decisionId: created.id, versionId: review.version.id, reviewLinkId: review.link.id, reviewerName, status }, evidence: { source: "public_review_link", notePresent: Boolean(note) } }, tx);
+      await emitProjectionEvent({ aggregateType: "design_project", aggregateId: review.project.id, eventType: `design.review.${decision}`, payload: { businessId: review.project.businessId, revision: review.version.revision, versionId: review.version.id, status }, idempotencyKey: `design:${review.project.id}:review-decision:${created.id}` }, tx);
+      return created;
+    });
+    return res.status(201).json(saved);
+  });
 }
