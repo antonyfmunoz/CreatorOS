@@ -164,6 +164,11 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select comment.* from design_review_comments comment join design_versions version on version.id = comment.version_id join design_projects project on project.id = version.project_id where project.owner_user_id = ${userId} order by comment.created_at`),
       exportRows(sql`select decision.* from design_review_decisions decision join design_versions version on version.id = decision.version_id join design_projects project on project.id = version.project_id where project.owner_user_id = ${userId} order by decision.created_at`),
       exportRows(sql`select design_export.* from design_exports design_export join design_projects project on project.id = design_export.project_id where project.owner_user_id = ${userId} order by design_export.created_at`),
+      exportRows(sql`select * from vision_presets where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from vision_sessions where owner_user_id = ${userId} order by created_at`),
+      exportRows(sql`select observation.* from vision_observations observation join vision_sessions session on session.id = observation.session_id where session.owner_user_id = ${userId} order by observation.captured_at`),
+      exportRows(sql`select watch.* from vision_watches watch join vision_sessions session on session.id = watch.session_id where session.owner_user_id = ${userId} order by watch.created_at`),
+      exportRows(sql`select event.* from vision_events event join vision_sessions session on session.id = event.session_id where session.owner_user_id = ${userId} order by event.created_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from creative_work_items where created_by_user_id = ${userId} or assignee_user_id = ${userId} order by created_at`),
@@ -270,6 +275,8 @@ export async function buildAccountExport(user: User) {
       designTemplates: creatorStudio[34], designCollaborations: creatorStudio[35],
       designReviewLinks: creatorStudio[36], designReviewComments: creatorStudio[37],
       designReviewDecisions: creatorStudio[38], designExports: creatorStudio[39],
+      visionPresets: creatorStudio[40], visionSessions: creatorStudio[41],
+      visionObservations: creatorStudio[42], visionWatches: creatorStudio[43], visionEvents: creatorStudio[44],
     },
     planning: {
       workItems: planning[0], events: planning[1], dependencies: planning[2], approvals: planning[3],

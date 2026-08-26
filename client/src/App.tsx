@@ -67,6 +67,7 @@ const BroadcastStudioPage = lazy(() => import("@/pages/broadcast-studio"));
 const BroadcastAudiencePage = lazy(() => import("@/pages/broadcast-audience"));
 const BroadcastControlPage = lazy(() => import("@/pages/broadcast-control"));
 const BroadcastFieldPage = lazy(() => import("@/pages/broadcast-field"));
+const VisionStudioPage = lazy(() => import("@/pages/vision-studio"));
 const BusinessDashboard = lazy(() => import("@/pages/business-dashboard"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
 const UgcPage = lazy(() => import("@/pages/ugc"));
@@ -232,6 +233,7 @@ function Router() {
         "studio",
         "cut-studio",
         "broadcast",
+        "vision",
         "distribution",
         "business",
         "campaigns",
@@ -326,6 +328,7 @@ function Router() {
         component={CutStudioWorkspacePage}
       />
       <ProtectedRoute path="/broadcast" component={BroadcastStudioPage} />
+      <ProtectedRoute path="/vision" component={VisionStudioPage} />
       <ProtectedRoute
         path="/broadcast/control/:id"
         component={BroadcastControlPage}

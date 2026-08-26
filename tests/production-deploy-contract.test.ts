@@ -107,6 +107,9 @@ describe("production deployment contract", () => {
     expect(workflowSource).toContain("CREATIVESOS_EXPECTED_COMMIT: ${{ github.sha }}");
     expect(workflowSource).toContain("npm run verify:production-smoke:public");
     expect(workflowSource).toContain("post-deploy-public-smoke-evidence");
+    expect(productionSmokeSource).toContain('["/trust", "CreativesOS Trust Center"]');
+    expect(productionSmokeSource).toContain('["/legal/data-deletion", "Account data deletion"]');
+    expect(productionSmokeSource).toContain('["/apps", "CreativesOS Apps"]');
   });
 
   it("mints short-lived Clerk authentication for dedicated production smoke journeys", () => {
@@ -114,6 +117,18 @@ describe("production deployment contract", () => {
     expect(smokeWorkflowSource).toContain("CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}");
     expect(smokeWorkflowSource).toContain("CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}");
     expect(smokeWorkflowSource).toContain("npm run verify:production-smoke");
+    expect(productionSmokeSource).toContain('"/documents"');
+    expect(productionSmokeSource).toContain('"/business/design"');
+    expect(productionSmokeSource).toContain('"/business/planner"');
+    expect(productionSmokeSource).toContain('"/vision"');
+    expect(productionSmokeSource).toContain('"/business/audience"');
+    expect(productionSmokeSource).toContain('"/business/operations"');
+    expect(productionSmokeSource).toContain('"/distribution/connections"');
+    expect(productionSmokeSource).toContain('"/library"');
+    expect(productionSmokeSource).toContain('"/finance"');
+    expect(productionSmokeSource).toContain(
+      '"/api/community-room-providers"',
+    );
   });
 
   it("keeps provider preflight non-destructive and secret-safe", () => {

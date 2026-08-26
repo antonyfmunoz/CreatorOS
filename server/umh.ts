@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   broadcastBrandKits, businesses, businessMembers, campaigns, channels, communityMemberships, communityRoomEvents, communityRooms, contentDrafts, creativeWorkApprovals, creativeWorkDependencies, creativeWorkEvents, creativeWorkItems, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
-  umhCommandOutcomes, umhCommands, umhNonces, users,
+  umhCommandOutcomes, umhCommands, umhNonces, users, visionEvents, visionSessions, visionWatches,
 } from "../shared/schema";
 import {
   getCreativesOsCapabilityManifest, isApprovalRequired, type SupportedUmhCommandType,
@@ -21,6 +21,7 @@ import {
 } from "../shared/foundation-instruments";
 import { createDesignProjectSchema, designDocumentSchema, saveDesignSchema } from "../shared/design-studio";
 import { canTransitionCreativeWork, createCreativeWorkItemSchema, transitionCreativeWorkItemSchema, updateCreativeWorkItemSchema } from "../shared/planning";
+import { visionUmhCreateSessionSchema, visionUmhStopSessionSchema } from "../shared/vision";
 import { db } from "./db";
 import { attachUser } from "./auth";
 import { userCanAdminBusiness, userCanManageBusiness } from "./businesses";
@@ -259,6 +260,31 @@ async function executeApprovedCommand(command: typeof umhCommands.$inferSelect, 
         await tx.insert(communityRoomEvents).values({ roomId: updated.id, communityId: updated.communityId, eventType, actorUserId: envelope.delegatedUserId, payload: { provider: updated.provider, fromStatus: room.status, toStatus: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
         await emitProjectionEvent({ aggregateType: "community_room", aggregateId: updated.id, eventType, actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, communityId: updated.communityId, provider: updated.provider, fromStatus: room.status, toStatus: updated.status, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:${eventType}`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
         result = { roomId: updated.id, communityId: updated.communityId, status: updated.status };
+      } else if (envelope.commandType === "creativesos.vision.session.create.v1") {
+        const payload = visionUmhCreateSessionSchema.parse(envelope.payload);
+        const [session] = await tx.insert(visionSessions).values({
+          businessId: envelope.businessId,
+          ownerUserId: envelope.delegatedUserId,
+          title: payload.title,
+          source: payload.source,
+          quality: payload.quality,
+          // UMH may prepare a capture session, but only a local operator action
+          // can acknowledge the visible notice and activate browser hardware.
+          captureNoticeAcknowledgedAt: null,
+        }).returning();
+        await tx.insert(visionEvents).values({ sessionId: session.id, businessId: envelope.businessId, eventType: "vision.session.created", actorUserId: envelope.delegatedUserId, version: session.version, payload: { source: session.source, quality: session.quality, origin: "umh", localStartRequired: true }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId, captureNoticeAcknowledged: false, rawFramesPersisted: false } });
+        await emitProjectionEvent({ aggregateType: "vision_session", aggregateId: session.id, eventType: "vision.session.created", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, source: session.source, quality: session.quality, origin: "umh", localStartRequired: true }, idempotencyKey: `umh:${envelope.commandId}:vision.session.created`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { visionSessionId: session.id, status: session.status, localStartRequired: true };
+      } else if (envelope.commandType === "creativesos.vision.session.stop.v1") {
+        const payload = visionUmhStopSessionSchema.parse(envelope.payload);
+        const [session] = await tx.select().from(visionSessions).where(and(eq(visionSessions.id, payload.sessionId), eq(visionSessions.businessId, envelope.businessId))).limit(1);
+        if (!session) throw new Error("Vision session not found in the delegated business");
+        if (session.status === "archived") throw new Error("Archived Vision sessions cannot be controlled");
+        const [updated] = await tx.update(visionSessions).set({ status: "stopped", stoppedAt: new Date(), followTarget: null, lastInteractionAt: new Date(), version: sql`${visionSessions.version} + 1`, updatedAt: new Date() }).where(eq(visionSessions.id, session.id)).returning();
+        await tx.update(visionWatches).set({ status: "stopped", stoppedAt: new Date() }).where(and(eq(visionWatches.sessionId, session.id), eq(visionWatches.status, "active")));
+        await tx.insert(visionEvents).values({ sessionId: updated.id, businessId: envelope.businessId, eventType: "vision.session.stopped", actorUserId: envelope.delegatedUserId, version: updated.version, payload: { reason: payload.reason, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId, safeStopOnly: true } });
+        await emitProjectionEvent({ aggregateType: "vision_session", aggregateId: updated.id, eventType: "vision.session.stopped", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, reason: payload.reason, origin: "umh", version: updated.version }, idempotencyKey: `umh:${envelope.commandId}:vision.session.stopped`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { visionSessionId: updated.id, status: updated.status, version: updated.version };
       } else {
         const payload = postPublishPayloadSchema.parse(envelope.payload);
         const [post] = await tx.insert(posts).values({ userId: envelope.delegatedUserId, content: payload.content, mediaType: payload.mediaType, imageUrl: payload.imageUrl, audioUrl: payload.audioUrl, videoUrl: payload.videoUrl }).returning();

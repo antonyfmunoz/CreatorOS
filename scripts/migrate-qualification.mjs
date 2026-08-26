@@ -239,6 +239,11 @@ const requiredTables = [
   "foundation_instrument_revisions",
   "foundation_instrument_events",
   "foundation_form_submissions",
+  "vision_presets",
+  "vision_sessions",
+  "vision_observations",
+  "vision_watches",
+  "vision_events",
 ];
 
 const requiredColumns = {
@@ -353,6 +358,11 @@ const requiredColumns = {
   community_room_notes: ["kind"],
   community_room_events: ["room_id", "community_id", "event_type", "actor_user_id", "subject_user_id", "payload", "evidence"],
   community_room_guest_invites: ["room_id", "invited_by_user_id", "guest_user_id", "token_hash", "status", "membership_granted", "expires_at", "accepted_at", "admitted_at", "revoked_at"],
+  vision_presets: ["business_id", "owner_user_id", "source", "quality", "settings", "version", "archived_at"],
+  vision_sessions: ["business_id", "owner_user_id", "source", "quality", "status", "active_preset_id", "follow_target", "capture_notice_acknowledged_at", "last_interaction_at", "last_frame_at", "version"],
+  vision_observations: ["session_id", "frame_id", "kind", "confidence", "source", "operator_confirmed", "metrics", "captured_at", "expires_at"],
+  vision_watches: ["session_id", "target", "condition", "status", "expires_at", "stopped_at"],
+  vision_events: ["session_id", "business_id", "event_type", "actor_user_id", "version", "payload", "evidence", "created_at"],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
