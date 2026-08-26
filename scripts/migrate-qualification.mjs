@@ -138,6 +138,8 @@ const requiredTables = [
   "creative_work_dependencies",
   "creative_work_approvals",
   "creative_work_events",
+  "community_room_events",
+  "community_room_guest_invites",
   "audience_profiles",
   "audience_segments",
   "audience_segment_memberships",
@@ -348,6 +350,9 @@ const requiredColumns = {
     "payload",
     "evidence",
   ],
+  community_room_notes: ["kind"],
+  community_room_events: ["room_id", "community_id", "event_type", "actor_user_id", "subject_user_id", "payload", "evidence"],
+  community_room_guest_invites: ["room_id", "invited_by_user_id", "guest_user_id", "token_hash", "status", "membership_granted", "expires_at", "accepted_at", "admitted_at", "revoked_at"],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));

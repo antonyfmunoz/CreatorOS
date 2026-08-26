@@ -199,6 +199,8 @@ export async function buildAccountExport(user: User) {
       exportRows(sql`select * from community_room_notes where author_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from community_room_action_items where created_by_user_id = ${userId} or assignee_user_id = ${userId} order by created_at`),
       exportRows(sql`select * from community_room_consents where user_id = ${userId} order by created_at`),
+      exportRows(sql`select * from community_room_events where actor_user_id = ${userId} or subject_user_id = ${userId} order by created_at`),
+      exportRows(sql`select id, room_id, invited_by_user_id, guest_user_id, label, email, status, membership_granted, expires_at, accepted_at, admitted_at, revoked_at, created_at, updated_at from community_room_guest_invites where invited_by_user_id = ${userId} or guest_user_id = ${userId} order by created_at`),
     ]),
     Promise.all([
       exportRows(sql`select * from conversation_participants where user_id = ${userId} order by joined_at`),
@@ -283,6 +285,7 @@ export async function buildAccountExport(user: User) {
       messageLikes: communities[3], polls: communities[4], pollVotes: communities[5],
       events: communities[6], eventAttendance: communities[7], roomsHosted: communities[8],
       roomAttendance: communities[9], roomNotes: communities[10], roomActions: communities[11], roomConsents: communities[12],
+      roomEvents: communities[13], roomGuestInvites: communities[14],
     },
     messaging: { conversationMemberships: messaging[0], sentMessages: messaging[1], notifications: messaging[2] },
     organizations: {

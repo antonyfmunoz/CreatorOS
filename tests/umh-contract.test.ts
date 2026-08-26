@@ -85,6 +85,8 @@ describe("CreativesOS UMH federation contract", () => {
     expect(isApprovalRequired("creativesos.task.create.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.task.revise.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.task.transition.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.room.schedule.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.room.transition.v1")).toBe(false);
   });
 
   it("advertises only the current real command surface", () => {
@@ -112,6 +114,8 @@ describe("CreativesOS UMH federation contract", () => {
       "creativesos.task.create.v1",
       "creativesos.task.revise.v1",
       "creativesos.task.transition.v1",
+      "creativesos.room.schedule.v1",
+      "creativesos.room.transition.v1",
     ]);
     expect(manifest.delivery.offline).toBe("durable_outbox");
     expect(manifest.emittedEvents).toEqual(expect.arrayContaining([
@@ -124,6 +128,8 @@ describe("CreativesOS UMH federation contract", () => {
       "community.room.live",
       "community.room.ended",
       "community.room.canceled",
+      "community.room.guest_admitted",
+      "community.room.decision_recorded",
       "community.room.recording.started",
       "community.room.recording.stop_requested",
       "community.room.transcription.started",
@@ -147,6 +153,8 @@ describe("CreativesOS UMH federation contract", () => {
     expect(manifest.capabilities.find((capability) => capability.id === "design.revise")?.proof).toBe("optimistic_canvas_revision_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "task.create")?.proof).toBe("business_scoped_hierarchy_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "task.transition")?.proof).toBe("governed_transition_and_durable_event");
+    expect(manifest.capabilities.find((capability) => capability.id === "community.room.transition")?.proof).toBe("governed_status_transition_and_local_room_event");
+    expect(manifest.capabilities.find((capability) => capability.id === "community.room.guest_admission")?.approval).toBe("explicit_host_admission");
   });
 
   it("accepts bounded instrument commands without granting UMH database ownership", () => {

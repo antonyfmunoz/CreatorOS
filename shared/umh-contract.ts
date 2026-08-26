@@ -18,6 +18,8 @@ export const supportedUmhCommandTypes = [
   "creativesos.task.create.v1",
   "creativesos.task.revise.v1",
   "creativesos.task.transition.v1",
+  "creativesos.room.schedule.v1",
+  "creativesos.room.transition.v1",
 ] as const;
 
 export type SupportedUmhCommandType = typeof supportedUmhCommandTypes[number];
@@ -180,6 +182,15 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       "community.room.live",
       "community.room.ended",
       "community.room.canceled",
+      "community.room.guest_invited",
+      "community.room.guest_accepted",
+      "community.room.guest_admitted",
+      "community.room.guest_revoked",
+      "community.room.guest_invite_expired",
+      "community.room.decision_recorded",
+      "community.room.summary_recorded",
+      "community.room.action_created",
+      "community.room.action_completed",
       "community.room.recording.started",
       "community.room.recording.stop_requested",
       "community.room.transcription.started",
@@ -246,6 +257,8 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       { id: "broadcast.record", kind: "native", authority: "business_operator", approval: "explicit_record", consent: "recording_consent_required_when_guests_are_present", provider: "browser_compositor_private_r2", health: "healthy", proof: "private_recording_lineage_and_event" },
       { id: "broadcast.stream", kind: "provider", authority: "business_operator", approval: "explicit_go_live", consent: "platform_terms_and_capture_notice", provider: "rtmp_rtmps_srt_destination", health: "destination_required", proof: "encrypted_destination_durable_session_and_health" },
       { id: "community.room.schedule", kind: "native", authority: "community_manager", approval: "none", consent: "none_required", provider: "manual_link_or_configured_provider", health: "local_only", proof: "local_room_event" },
+      { id: "community.room.transition", kind: "native", authority: "community_manager", approval: "none", consent: "live_media_must_be_stopped_locally", provider: "manual_link_or_configured_provider", health: "local_only", proof: "governed_status_transition_and_local_room_event" },
+      { id: "community.room.guest_admission", kind: "native", authority: "community_manager", approval: "explicit_host_admission", consent: "guest_claims_expiring_invitation", provider: null, health: "healthy", proof: "hashed_token_membership_grant_and_durable_room_event" },
       { id: "community.room.recording", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_recording_consent", provider: "livekit_egress_to_private_r2", health: "healthy", proof: "production_verified_durable_recording_lineage_and_private_object" },
       { id: "community.room.transcription", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_transcription_consent", provider: "livekit_agent", health: "agent_runtime_required", proof: "signed_final_segment_ingress" },
       { id: "community.room.ai_participant", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_ai_analysis_consent", provider: "livekit_agent", health: "agent_runtime_required", proof: "role_profile_and_durable_dispatch_session" },

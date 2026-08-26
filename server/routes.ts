@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { createHash, randomBytes } from "node:crypto";
 import { createProductionBackup } from "./production-backup";
 import { z } from "zod";
 import { storage } from "./storage";
@@ -38,6 +39,8 @@ import {
   communityRoomAiProfiles,
   communityRoomAttendees,
   communityRoomConsents,
+  communityRoomEvents,
+  communityRoomGuestInvites,
   communityRoomInsights,
   communityRoomIntelligencePolicies,
   communityRoomNotes,
@@ -7787,6 +7790,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
   };
 
+  type RoomEventExecutor = Pick<typeof db, "insert">;
+  const recordRoomEvent = async (
+    executor: RoomEventExecutor,
+    room: typeof communityRooms.$inferSelect,
+    input: {
+      eventType: string;
+      actorUserId: number | null;
+      subjectUserId?: number | null;
+      payload?: Record<string, unknown>;
+      evidence?: Record<string, unknown>;
+      idempotencyKey: string;
+    },
+  ) => {
+    await executor.insert(communityRoomEvents).values({
+      roomId: room.id,
+      communityId: room.communityId,
+      eventType: input.eventType,
+      actorUserId: input.actorUserId,
+      subjectUserId: input.subjectUserId ?? null,
+      payload: input.payload ?? {},
+      evidence: input.evidence ?? { source: "native" },
+    });
+    await emitProjectionEvent({
+      aggregateType: "community_room",
+      aggregateId: room.id,
+      eventType: input.eventType,
+      actorUserId: input.actorUserId,
+      payload: { communityId: room.communityId, ...(input.payload ?? {}) },
+      idempotencyKey: input.idempotencyKey,
+    }, executor);
+  };
+
   const roomIntelligencePolicy = async (roomId: string) => {
     const [policy] = await db
       .select()
@@ -8155,34 +8190,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .status(400)
             .json({ message: "The selected channel is not in this community" });
       }
-      const [room] = await db
-        .insert(communityRooms)
-        .values({
-          communityId,
-          channelId,
-          hostUserId: req.dbUser!.id,
-          title,
-          description,
-          startsAt,
-          provider,
-          joinUrl,
-        })
-        .returning();
-      void emitProjectionEvent({
-        aggregateType: "community_room",
-        aggregateId: room.id,
-        eventType: "community.room.scheduled",
-        actorUserId: req.dbUser!.id,
-        payload: {
-          communityId,
-          provider,
-          startsAt: room.startsAt.toISOString(),
-          recordingConsentRequired: room.recordingConsentRequired,
-        },
-        idempotencyKey: `community.room.scheduled:${room.id}`,
-      }).catch((error) =>
-        console.error("Failed to enqueue community room projection:", error),
-      );
+      const room = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(communityRooms)
+          .values({ communityId, channelId, hostUserId: req.dbUser!.id, title, description, startsAt, provider, joinUrl })
+          .returning();
+        await recordRoomEvent(tx, created, {
+          eventType: "community.room.scheduled",
+          actorUserId: req.dbUser!.id,
+          payload: { provider, startsAt: created.startsAt.toISOString(), recordingConsentRequired: created.recordingConsentRequired },
+          idempotencyKey: `community.room.scheduled:${created.id}`,
+        });
+        return created;
+      });
       res.status(201).json(room);
     } catch {
       res.status(500).json({ message: "Could not schedule community room" });
@@ -8194,6 +8214,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!access.ok)
       return res.status(access.status).json({ message: access.message });
     res.json({ ...access.room, canManage: access.canManage });
+  });
+
+  app.get("/api/community-rooms/:id/events", attachUser, async (req, res) => {
+    const access = await roomAccess(req.params.id, req.dbUser!.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!access.canManage) return res.status(403).json({ message: "Only room managers can view the audit trail" });
+    res.json(await db.select().from(communityRoomEvents).where(eq(communityRoomEvents.roomId, access.room.id)).orderBy(desc(communityRoomEvents.createdAt)).limit(1_000));
+  });
+
+  app.get("/api/community-rooms/:id/guest-invites", attachUser, async (req, res) => {
+    const access = await roomAccess(req.params.id, req.dbUser!.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!access.canManage) return res.status(403).json({ message: "Only room managers can view guest invitations" });
+    await db.transaction(async (tx) => {
+      const expired = await tx.update(communityRoomGuestInvites).set({ status: "expired", updatedAt: new Date() }).where(and(eq(communityRoomGuestInvites.roomId, access.room.id), inArray(communityRoomGuestInvites.status, ["invited", "accepted"]), lt(communityRoomGuestInvites.expiresAt, new Date()))).returning({ id: communityRoomGuestInvites.id, guestUserId: communityRoomGuestInvites.guestUserId });
+      for (const invite of expired) await recordRoomEvent(tx, access.room, { eventType: "community.room.guest_invite_expired", actorUserId: req.dbUser!.id, subjectUserId: invite.guestUserId, payload: { inviteId: invite.id }, idempotencyKey: `community.room.guest_invite_expired:${invite.id}` });
+    });
+    res.json(await db.select({ id: communityRoomGuestInvites.id, roomId: communityRoomGuestInvites.roomId, invitedByUserId: communityRoomGuestInvites.invitedByUserId, guestUserId: communityRoomGuestInvites.guestUserId, label: communityRoomGuestInvites.label, email: communityRoomGuestInvites.email, status: communityRoomGuestInvites.status, membershipGranted: communityRoomGuestInvites.membershipGranted, expiresAt: communityRoomGuestInvites.expiresAt, acceptedAt: communityRoomGuestInvites.acceptedAt, admittedAt: communityRoomGuestInvites.admittedAt, revokedAt: communityRoomGuestInvites.revokedAt, createdAt: communityRoomGuestInvites.createdAt, updatedAt: communityRoomGuestInvites.updatedAt }).from(communityRoomGuestInvites).where(eq(communityRoomGuestInvites.roomId, access.room.id)).orderBy(desc(communityRoomGuestInvites.createdAt)));
+  });
+
+  app.post("/api/community-rooms/:id/guest-invites", attachUser, async (req, res) => {
+    const access = await roomAccess(req.params.id, req.dbUser!.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!access.canManage) return res.status(403).json({ message: "Only room managers can invite guests" });
+    if (!["scheduled", "live"].includes(access.room.status)) return res.status(409).json({ message: "Guests cannot be invited to a closed room" });
+    const label = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+    const email = typeof req.body?.email === "string" && req.body.email.trim() ? req.body.email.trim().toLowerCase() : null;
+    const expiresInHours = Number.isInteger(req.body?.expiresInHours) ? Math.min(720, Math.max(1, req.body.expiresInHours)) : 168;
+    if (!label || label.length > 160 || (email !== null && !z.string().email().safeParse(email).success)) return res.status(400).json({ message: "Provide a valid guest name and optional email" });
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60_000);
+    const invite = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(communityRoomGuestInvites).values({ roomId: access.room.id, invitedByUserId: req.dbUser!.id, label, email, tokenHash, expiresAt }).returning();
+      await recordRoomEvent(tx, access.room, { eventType: "community.room.guest_invited", actorUserId: req.dbUser!.id, payload: { inviteId: created.id, expiresAt: created.expiresAt.toISOString() }, idempotencyKey: `community.room.guest_invited:${created.id}` });
+      return created;
+    });
+    const baseUrl = (process.env.PUBLIC_APP_URL ?? "https://creativesos.net").replace(/\/$/, "");
+    res.status(201).json({ id: invite.id, roomId: invite.roomId, label: invite.label, email: invite.email, status: invite.status, expiresAt: invite.expiresAt, inviteUrl: `${baseUrl}/room-invites/${token}` });
+  });
+
+  app.post("/api/community-room-guest-invites/:token/accept", attachUser, async (req, res) => {
+    const tokenHash = createHash("sha256").update(req.params.token).digest("hex");
+    const [invite] = await db.select().from(communityRoomGuestInvites).where(eq(communityRoomGuestInvites.tokenHash, tokenHash)).limit(1);
+    if (!invite) return res.status(404).json({ message: "Invitation not found" });
+    if (invite.expiresAt <= new Date()) {
+      const expired = await db.transaction(async (tx) => {
+        const [updated] = await tx.update(communityRoomGuestInvites).set({ status: "expired", updatedAt: new Date() }).where(and(eq(communityRoomGuestInvites.id, invite.id), inArray(communityRoomGuestInvites.status, ["invited", "accepted"]))).returning();
+        if (updated) {
+          const [expiredRoom] = await tx.select().from(communityRooms).where(eq(communityRooms.id, invite.roomId)).limit(1);
+          if (expiredRoom) await recordRoomEvent(tx, expiredRoom, { eventType: "community.room.guest_invite_expired", actorUserId: req.dbUser!.id, subjectUserId: invite.guestUserId, payload: { inviteId: invite.id }, idempotencyKey: `community.room.guest_invite_expired:${invite.id}` });
+        }
+        return updated;
+      });
+      return res.status(410).json({ message: expired ? "This invitation expired" : "This invitation is no longer active" });
+    }
+    if (["revoked", "expired"].includes(invite.status)) return res.status(410).json({ message: "This invitation is no longer active" });
+    const signedInEmail = req.dbUser!.authEmail?.trim().toLowerCase() ?? null;
+    if (invite.email && invite.email !== signedInEmail) return res.status(403).json({ message: "Sign in with the email address invited by the host" });
+    if (invite.guestUserId && invite.guestUserId !== req.dbUser!.id) return res.status(409).json({ message: "This invitation was accepted by another account" });
+    const [room] = await db.select().from(communityRooms).where(eq(communityRooms.id, invite.roomId)).limit(1);
+    if (!room || ["ended", "canceled"].includes(room.status)) return res.status(410).json({ message: "This room is closed" });
+    const accepted = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(communityRoomGuestInvites).set({ guestUserId: req.dbUser!.id, status: invite.status === "admitted" ? "admitted" : "accepted", acceptedAt: invite.acceptedAt ?? new Date(), updatedAt: new Date() }).where(and(eq(communityRoomGuestInvites.id, invite.id), inArray(communityRoomGuestInvites.status, ["invited", "accepted", "admitted"]))).returning();
+      if (invite.status === "invited") await recordRoomEvent(tx, room, { eventType: "community.room.guest_accepted", actorUserId: req.dbUser!.id, subjectUserId: req.dbUser!.id, payload: { inviteId: invite.id }, idempotencyKey: `community.room.guest_accepted:${invite.id}` });
+      return updated;
+    });
+    res.json({ id: accepted.id, roomId: accepted.roomId, communityId: room.communityId, label: accepted.label, status: accepted.status, admittedAt: accepted.admittedAt });
+  });
+
+  app.post("/api/community-rooms/:id/guest-invites/:inviteId/admit", attachUser, async (req, res) => {
+    const access = await roomAccess(req.params.id, req.dbUser!.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!access.canManage) return res.status(403).json({ message: "Only room managers can admit guests" });
+    const [invite] = await db.select().from(communityRoomGuestInvites).where(and(eq(communityRoomGuestInvites.id, req.params.inviteId), eq(communityRoomGuestInvites.roomId, access.room.id))).limit(1);
+    if (!invite?.guestUserId || invite.status !== "accepted") return res.status(409).json({ message: "The guest must accept an active invitation first" });
+    if (invite.expiresAt <= new Date()) return res.status(410).json({ message: "This invitation expired" });
+    const [existingMembership] = await db.select().from(communityMemberships).where(and(eq(communityMemberships.communityId, access.room.communityId), eq(communityMemberships.userId, invite.guestUserId))).limit(1);
+    if (existingMembership && ["banned", "suspended"].includes(existingMembership.status)) return res.status(409).json({ message: "Resolve the guest's community moderation status before admission" });
+    const admitted = await db.transaction(async (tx) => {
+      if (!existingMembership) await tx.insert(communityMemberships).values({ communityId: access.room.communityId, userId: invite.guestUserId!, role: "member", status: "active", onboardingCompletedAt: new Date() });
+      const [updated] = await tx.update(communityRoomGuestInvites).set({ status: "admitted", membershipGranted: !existingMembership, admittedAt: new Date(), updatedAt: new Date() }).where(and(eq(communityRoomGuestInvites.id, invite.id), eq(communityRoomGuestInvites.status, "accepted"))).returning();
+      if (!updated) throw new Error("Guest admission changed before it completed");
+      await recordRoomEvent(tx, access.room, { eventType: "community.room.guest_admitted", actorUserId: req.dbUser!.id, subjectUserId: invite.guestUserId, payload: { inviteId: invite.id }, idempotencyKey: `community.room.guest_admitted:${invite.id}` });
+      return updated;
+    });
+    res.json({ id: admitted.id, roomId: admitted.roomId, guestUserId: admitted.guestUserId, status: admitted.status, admittedAt: admitted.admittedAt });
+  });
+
+  app.post("/api/community-rooms/:id/guest-invites/:inviteId/revoke", attachUser, async (req, res) => {
+    const access = await roomAccess(req.params.id, req.dbUser!.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!access.canManage) return res.status(403).json({ message: "Only room managers can revoke guest access" });
+    const [invite] = await db.select().from(communityRoomGuestInvites).where(and(eq(communityRoomGuestInvites.id, req.params.inviteId), eq(communityRoomGuestInvites.roomId, access.room.id))).limit(1);
+    if (!invite || ["revoked", "expired"].includes(invite.status)) return res.status(404).json({ message: "Active guest invitation not found" });
+    const revoked = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(communityRoomGuestInvites).set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() }).where(eq(communityRoomGuestInvites.id, invite.id)).returning();
+      if (invite.membershipGranted && invite.guestUserId) {
+        const [otherAdmission] = await tx.select({ id: communityRoomGuestInvites.id }).from(communityRoomGuestInvites).innerJoin(communityRooms, eq(communityRooms.id, communityRoomGuestInvites.roomId)).where(and(eq(communityRooms.communityId, access.room.communityId), eq(communityRoomGuestInvites.guestUserId, invite.guestUserId), eq(communityRoomGuestInvites.status, "admitted"), ne(communityRoomGuestInvites.id, invite.id))).limit(1);
+        if (otherAdmission) await tx.update(communityRoomGuestInvites).set({ membershipGranted: true, updatedAt: new Date() }).where(eq(communityRoomGuestInvites.id, otherAdmission.id));
+        else await tx.delete(communityMemberships).where(and(eq(communityMemberships.communityId, access.room.communityId), eq(communityMemberships.userId, invite.guestUserId), eq(communityMemberships.role, "member"), eq(communityMemberships.status, "active")));
+      }
+      await recordRoomEvent(tx, access.room, { eventType: "community.room.guest_revoked", actorUserId: req.dbUser!.id, subjectUserId: invite.guestUserId, payload: { inviteId: invite.id }, idempotencyKey: `community.room.guest_revoked:${invite.id}` });
+      return updated;
+    });
+    res.json({ id: revoked.id, roomId: revoked.roomId, status: revoked.status, revokedAt: revoked.revokedAt });
   });
 
   app.get("/api/community-rooms/:id/media", attachUser, async (req, res) => {
@@ -9654,8 +9780,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res
           .status(409)
           .json({ message: "RSVP is closed for this room" });
-      const [attendance] = await db
-        .insert(communityRoomAttendees)
+      const attendance = await db.transaction(async (tx) => {
+        const [updatedAttendance] = await tx.insert(communityRoomAttendees)
         .values({
           roomId: access.room.id,
           userId: req.dbUser!.id,
@@ -9674,6 +9800,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         })
         .returning();
+        await recordRoomEvent(tx, access.room, { eventType: "community.room.rsvp_changed", actorUserId: req.dbUser!.id, subjectUserId: req.dbUser!.id, payload: { status }, idempotencyKey: `community.room.rsvp_changed:${access.room.id}:${req.dbUser!.id}:${updatedAttendance.updatedAt.toISOString()}` });
+        return updatedAttendance;
+      });
       res.json(attendance);
     } catch {
       res.status(500).json({ message: "Could not save room RSVP" });
@@ -9697,8 +9826,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .status(409)
             .json({ message: "You can check in once this room is live" });
         const now = new Date();
-        const [attendance] = await db
-          .insert(communityRoomAttendees)
+        const attendance = await db.transaction(async (tx) => {
+          const [checkedIn] = await tx.insert(communityRoomAttendees)
           .values({
             roomId: access.room.id,
             userId: req.dbUser!.id,
@@ -9714,6 +9843,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             set: { status: "going", checkedInAt: now, updatedAt: now },
           })
           .returning();
+          await recordRoomEvent(tx, access.room, { eventType: "community.room.checked_in", actorUserId: req.dbUser!.id, subjectUserId: req.dbUser!.id, payload: { checkedInAt: now.toISOString() }, idempotencyKey: `community.room.checked_in:${access.room.id}:${req.dbUser!.id}` });
+          return checkedIn;
+        });
         await awardCommunityPoints({
           communityId: access.room.communityId,
           userId: req.dbUser!.id,
@@ -9832,9 +9964,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
-      const [room] = await db
-        .update(communityRooms)
-        .set({
+      const room = await db.transaction(async (tx) => {
+        const [updatedRoom] = await tx.update(communityRooms).set({
           title,
           description,
           startsAt,
@@ -9855,35 +9986,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? false
               : access.room.aiAssistanceEnabled,
           updatedAt: new Date(),
-        })
-        .where(eq(communityRooms.id, access.room.id))
-        .returning();
-      if (room.status !== access.room.status)
-        void emitProjectionEvent({
-          aggregateType: "community_room",
-          aggregateId: room.id,
-          eventType: `community.room.${room.status}`,
-          actorUserId: req.dbUser!.id,
-          payload: { communityId: room.communityId, provider: room.provider },
-          idempotencyKey: `community.room.${room.status}:${room.id}`,
-        }).catch((error) =>
-          console.error("Failed to enqueue community room projection:", error),
-        );
-      else if (detailsChanged)
-        void emitProjectionEvent({
-          aggregateType: "community_room",
-          aggregateId: room.id,
-          eventType: "community.room.updated",
-          actorUserId: req.dbUser!.id,
-          payload: {
-            communityId: room.communityId,
-            provider: room.provider,
-            startsAt: room.startsAt.toISOString(),
-          },
-          idempotencyKey: `community.room.updated:${room.id}:${room.updatedAt.toISOString()}`,
-        }).catch((error) =>
-          console.error("Failed to enqueue community room update:", error),
-        );
+        }).where(eq(communityRooms.id, access.room.id)).returning();
+        if (updatedRoom.status !== access.room.status) await recordRoomEvent(tx, updatedRoom, { eventType: `community.room.${updatedRoom.status}`, actorUserId: req.dbUser!.id, payload: { provider: updatedRoom.provider, fromStatus: access.room.status, toStatus: updatedRoom.status }, idempotencyKey: `community.room.${updatedRoom.status}:${updatedRoom.id}` });
+        else if (detailsChanged) await recordRoomEvent(tx, updatedRoom, { eventType: "community.room.updated", actorUserId: req.dbUser!.id, payload: { provider: updatedRoom.provider, startsAt: updatedRoom.startsAt.toISOString() }, idempotencyKey: `community.room.updated:${updatedRoom.id}:${updatedRoom.updatedAt.toISOString()}` });
+        return updatedRoom;
+      });
       res.json(room);
     } catch {
       res.status(500).json({ message: "Could not update community room" });
@@ -9903,6 +10010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           authorDisplayName: users.displayName,
           authorUsername: users.username,
           content: communityRoomNotes.content,
+          kind: communityRoomNotes.kind,
           visibility: communityRoomNotes.visibility,
           createdAt: communityRoomNotes.createdAt,
           updatedAt: communityRoomNotes.updatedAt,
@@ -9925,18 +10033,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Your community access is currently read-only" });
       const content =
         typeof req.body?.content === "string" ? req.body.content.trim() : "";
+      const kind = typeof req.body?.kind === "string" ? req.body.kind : "note";
       if (!content || content.length > 20_000)
         return res
           .status(400)
           .json({ message: "A note must be between 1 and 20,000 characters" });
-      const [note] = await db
-        .insert(communityRoomNotes)
-        .values({
-          roomId: access.room.id,
-          authorUserId: req.dbUser!.id,
-          content,
-        })
-        .returning();
+      if (!["note", "decision", "summary"].includes(kind)) return res.status(400).json({ message: "Choose note, decision, or summary" });
+      const note = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(communityRoomNotes).values({ roomId: access.room.id, authorUserId: req.dbUser!.id, content, kind }).returning();
+        await recordRoomEvent(tx, access.room, { eventType: `community.room.${kind}_recorded`, actorUserId: req.dbUser!.id, payload: { noteId: created.id, kind }, idempotencyKey: `community.room.${kind}_recorded:${created.id}` });
+        return created;
+      });
       res.status(201).json(note);
     } catch {
       res.status(500).json({ message: "Could not save room note" });
@@ -10028,16 +10135,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: "Assign this follow-up to an active community member",
             });
         }
-        const [actionItem] = await db
-          .insert(communityRoomActionItems)
-          .values({
-            roomId: access.room.id,
-            createdByUserId: req.dbUser!.id,
-            assigneeUserId,
-            body,
-            dueAt,
-          })
-          .returning();
+        const actionItem = await db.transaction(async (tx) => {
+          const [created] = await tx.insert(communityRoomActionItems).values({ roomId: access.room.id, createdByUserId: req.dbUser!.id, assigneeUserId, body, dueAt }).returning();
+          await recordRoomEvent(tx, access.room, { eventType: "community.room.action_created", actorUserId: req.dbUser!.id, subjectUserId: assigneeUserId, payload: { actionItemId: created.id, dueAt: created.dueAt?.toISOString() ?? null }, idempotencyKey: `community.room.action_created:${created.id}` });
+          return created;
+        });
         res.status(201).json(actionItem);
       } catch {
         res.status(500).json({ message: "Could not save action item" });
@@ -10081,14 +10183,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res
             .status(400)
             .json({ message: "Specify whether the action item is complete" });
-        const [updated] = await db
-          .update(communityRoomActionItems)
-          .set({
+        const updated = await db.transaction(async (tx) => {
+          const [nextItem] = await tx.update(communityRoomActionItems).set({
             completedAt: req.body.completed ? new Date() : null,
             updatedAt: new Date(),
-          })
-          .where(eq(communityRoomActionItems.id, item.id))
-          .returning();
+          }).where(eq(communityRoomActionItems.id, item.id)).returning();
+          await recordRoomEvent(tx, access.room, { eventType: req.body.completed ? "community.room.action_completed" : "community.room.action_reopened", actorUserId: req.dbUser!.id, subjectUserId: nextItem.assigneeUserId, payload: { actionItemId: nextItem.id }, idempotencyKey: `community.room.action:${nextItem.id}:${nextItem.updatedAt.toISOString()}` });
+          return nextItem;
+        });
         res.json(updated);
       } catch {
         res.status(500).json({ message: "Could not update action item" });

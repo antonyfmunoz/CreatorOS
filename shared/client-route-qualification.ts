@@ -76,6 +76,7 @@ export const protectedClientRoutes = [
   "/settings",
   "/settings/privacy",
   "/communities/:communityId/rooms/:roomId",
+  "/room-invites/:token",
   "/communities/:id",
   "/communities",
   "/profile",

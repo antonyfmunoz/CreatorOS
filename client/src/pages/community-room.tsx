@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { RoomIntelligencePanel } from "@/components/community/RoomIntelligencePanel";
 import { RoomMediaPanel } from "@/components/community/RoomMediaPanel";
 import { RoomWorkspacePanel } from "@/components/community/RoomWorkspacePanel";
+import { RoomGuestPanel } from "@/components/community/RoomGuestPanel";
 import { apiRequest } from "@/lib/queryClient";
 
 const CommunityLiveSession = lazy(() => import("@/components/community/CommunityLiveSession"));
@@ -167,6 +168,7 @@ export default function CommunityRoomPage() {
               roomDescription={room.description}
               roomStartsAt={room.startsAt}
             />
+            <RoomGuestPanel roomId={room.id} canManage={room.canManage} />
             <RoomMediaPanel roomId={room.id} />
             <RoomIntelligencePanel roomId={room.id} roomStatus={room.status} />
           </>
