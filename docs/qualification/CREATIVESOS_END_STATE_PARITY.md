@@ -1,5 +1,7 @@
 # CreativesOS desired end-state parity ledger
 
+Last reconciled: 2026-08-26
+
 The dependency-ordered implementation program is maintained in
 [`CREATIVESOS_DESIRED_END_STATE_ROADMAP.md`](../CREATIVESOS_DESIRED_END_STATE_ROADMAP.md).
 This ledger remains the qualification state of each implemented capability;
@@ -84,6 +86,9 @@ Only after direct substitution parity passes may the connected workflow earn a
 | Role-scoped meeting AI | Explicit role admission, bounded guest context, reviewable suggestions, stop budgets, live AI participation | `verified_complete` (native governance); `provider_pending` (live AI participant) | Mobile and desktop field journeys prove manager-only policy, member/moderator boundaries, audience-scoped AI roles, explicit consent, bounded guest briefs, pre-live policy freeze and fail-closed native-room activation. The realtime agent/model round trip remains a provider gate. |
 | Learning | Course creation, entitlement, lesson progress, assessment, completion and unlock rules | `verified_complete` | Owner/learner curriculum, answer redaction, failed/passed assessment, progress, denial and community unlock pass on both qualification actors |
 | Business workspace | Campaigns, offers, courses, contacts, documents, revenue and performance | `verified_complete` | Campaign, deliverable, metric, draft, contact and document create/edit/read lifecycles plus cross-tenant denial pass |
+| Foundation Studio | Documents, sheets, slides, tables, forms, calendar and finance as standalone local instruments with projection-safe control | `verified_complete` (native and authenticated production smoke) | Tenant-scoped persistence, revision/lifecycle events, privacy handling and bounded UMH commands pass locally. PR 73 released exact commit `c70dd1247ff23749776a6203cac6fdd76b0ac694`; the current 110-route census and 58-workspace production smoke retain all seven instrument boundaries. |
+| Production tasks and planning | Durable tasks, dependencies, assignment, status transitions, connected remediation work and projection-side coordination | `verified_complete` (native and authenticated production smoke) | PR 75 released exact commit `719aa836afc82fc2789cdec61a499ae18b3700fc`; mobile/desktop planning journeys and the current production planner smoke pass. External calendar/task-provider synchronization remains a provider concern rather than a native-state gap. |
+| Vision Studio | Explicit camera/screen capture, ephemeral frames, grounded observations, expiring watches, private snapshots, consent, audit and UMH projection control | `verified_complete` (provider-independent web runtime and authenticated production smoke); `device_pending` (physical-device endurance) | Mobile/desktop Vision journeys prove capture permission, camera/screen state, observation/watch expiry, manager-only private snapshots, stop behavior, privacy export and projection commands. Exact commit `fc04815b16a6c4c4ada893e52ca0821f3e17e5aa` passed protected deploy `32964130485` and independent all-scope smoke `32966336188`. Physical-device camera/screen endurance and optional model-assisted interpretation remain separate device/provider gates. |
 | Distribution | Provider-neutral drafts, scheduling/queueing, attempts, retry/cancel, immutable delivery evidence | `verified_complete` (native); YouTube adapter `configured`; remaining external channels `provider_pending` | Native scheduling, cancellation, retry and exactly-once receipts pass; live readiness proves encrypted token custody plus the YouTube OAuth credential pair are configured, and authenticated production preflight proves the YouTube adapter is available without exposing credentials. Mixed jobs remain honestly `needs_connection`; an actual YouTube publication is irreversible and still requires user approval, while every other external channel still needs credentials and its own live round trip. |
 | Relationship Hub | Canonical unified inbox, native DM bridge, full message lifecycle, CRM timeline, consent, assignment, tasks, notes, tags and merge review | `verified_complete` (native) | Native direct/group UI reload, send/edit/delete/reaction/read actions, durable idempotent mutation receipts, tenant isolation, every CRM operation, quotas, retention and privacy context pass; external channel adapters remain provider gates |
 | ManyChat-style automation | Comment/DM keyword triggers, matching modes, cooldown, opt-out, approval, retry and receipts | `verified_complete` (native) | UI authoring/activation/execution/activity and native comment/DM triggers, public reply, cooldown/idempotency, opt-out, approval, retry and receipts pass |
@@ -95,7 +100,7 @@ Only after direct substitution parity passes may the connected workflow earn a
 | Moderation and safety | Reports, scoped queue, membership/content enforcement, audit and recovery | `verified_complete` (native) | Self-report rejection, creator denial, reporter submission, administrator queue/review and member moderation lifecycle pass |
 | Privacy and retention | Complete bounded export, deletion, retention expiry, consent and private-media cleanup | `verified_complete` (native) | Scoped export, reversible scheduling, ownership preflight, local erasure, shared-message redaction, identity tombstone and durable evidence pass |
 | Shared creator platform | Media Cloud, DAM, planning, analytics/attribution, audience/notification, discovery and rights/trust foundations | `verified_complete` (native and authenticated production smoke) | Isolated contracts, migrations and two-viewport lifecycle journeys exist for every family. Protected all-scope smoke `32897364892` traversed the production workspaces on mobile and desktop against exact deployed commit `54b7e1faac5464fd0a0395beba2e9cc8453b25e8`; provider-scale packaging, delivery and production-volume evidence remain separate. |
-| Owned publishing suite | Audience, Podcast, Design and Creator Site studios | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop persisted lifecycle evidence passes; external delivery/directories/domains and authorized operator comparisons remain. |
+| Owned publishing suite | Audience, Podcast, Design and Creator Site studios | `verified_complete` (native and authenticated production smoke); `not_benchmarked` (competitive) | Mobile/desktop persisted lifecycle evidence passes. DesignStudio now selects governed Media Cloud images through authorized same-origin streams, persists asset IDs rather than ephemeral URLs, supports cover/contain/fill plus alternative text, and preserves canonical rendered-from lineage. Exact commit `df36cfcda8baef40c148b3a5ecfb5bbde41aff05` passed protected deploy `32966557573` and all-scope smoke `32968690800`; external delivery/directories/domains and authorized operator comparisons remain. |
 | Commercial suite | Sponsorship, affiliate/referral, booking/ticketing and marketplace operations | `verified_complete` (local native); `not_benchmarked` (competitive) | Tenant-safe lifecycle evidence passes; funded settlement, tax/legal activation and authorized operator comparisons remain. |
 | Community engagement | Guided onboarding, required questions, evidence-based points, level ladder, badges and leaderboard | `verified_complete` (local native); `not_benchmarked` (competitive) | Mobile/desktop member and manager journeys pass, including rolling-window anti-spam behavior; Skool/Discord/Circle comparison remains. |
 | Developer platform | Scoped APIs, OpenAPI, opaque pagination, key custody, delegated OAuth, typed SDKs, sandbox tenants, reviewed app marketplace, signed webhooks, retry/dead letter and distributed rate limits | `verified_complete` (native and authenticated production smoke) | Mobile/desktop authorization, cross-tenant denial, atomic code exchange and refresh rotation, SSRF rejection, signed delivery, app review, sandbox expiry/revocation and database-backed limit evidence pass. Protected all-scope smoke traverses the production developer workspace; public registry publication and independently controlled third-party adoption remain release evidence. |
@@ -322,3 +327,36 @@ publishing provider; restored model quota; cloned voice; realtime transcription 
 AI workers; and paired UMH configuration. TikTok and LinkedIn messaging remain
 unsupported unless an official approved API exposes the required capability.
 No private-session scraping is an acceptable substitute.
+
+## 2026-08-26 current production reconciliation
+
+- Foundation Studio, governed Canvas revisions, Production Planner tasks,
+  consent-aware Conference rooms, Vision Studio and DesignStudio Media Cloud
+  selection were released sequentially through PRs 73–78. Each slice passed
+  its own isolated contracts, full repository verification, migration replay,
+  Android/iOS compilation and mobile/desktop browser matrix before merge.
+- Current production serves exact clean commit
+  `df36cfcda8baef40c148b3a5ecfb5bbde41aff05`. Protected deployment
+  [`32966557573`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32966557573)
+  passed the backup/migration/deploy/identity sequence with all 114 migrations
+  and the compact topology preserved.
+- Independent all-scope smoke
+  [`32968690800`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32968690800)
+  passed the exact public identity/readiness boundary, seven safe public
+  surfaces, 58 authenticated workspaces and three read-only provider
+  preflights. The local four-shard census separately renders every one of the
+  110 registered route patterns, including parameterized, token, callback and
+  privileged destinations with safe qualification values.
+- The final source audit found no product TODO/FIXME/stub markers, permanent
+  disabled controls, empty click handlers, hash-link placeholders or native
+  501 handlers. All 41 literal client navigation destinations map to registered
+  routes. This is source and route evidence, not proof of competitive parity.
+- Native implementation and current production qualification do not close the
+  remaining external evidence: non-YouTube provider activation and round
+  trips, an approved irreversible YouTube publication, successful creator
+  payout after the sandbox bank is repaired, live inference/transcription/
+  cloned-voice workers, signed physical-device and push delivery, UMH-side
+  pairing, counsel-approved policy publication, production multi-identity
+  exercises, competitive operator benchmarks and regional/volume endurance.
+  Those states remain `provider_pending`, `device_pending`, `umh_pending`,
+  `decision_pending` or `not_benchmarked` as applicable.

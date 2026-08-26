@@ -1,6 +1,6 @@
 # CreativesOS desired-end-state roadmap
 
-Last reconciled: 2026-08-15
+Last reconciled: 2026-08-26
 
 ## Purpose
 
@@ -77,6 +77,18 @@ lineage across the entire creator lifecycle.
 - Audience, Podcast, Design, Creator Site, Sponsorship, Affiliate, Booking,
   Ticketing and marketplace-operations studios with isolated mobile/desktop
   lifecycle evidence.
+- Foundation Studio instruments for documents, sheets, slides, tables, forms,
+  calendar and finance, with tenant-scoped persistence, revisions, lifecycle
+  events, privacy handling and projection-side UMH commands.
+- Governed canvas/design revisions, Production Planner tasks and dependencies,
+  consent-aware community conference rooms, guest invitations and role-scoped
+  meeting policy, each qualified across mobile and desktop journeys.
+- Vision Studio for explicit camera/screen capture, ephemeral frames, grounded
+  observations, expiring watches, private opt-in snapshots, presets, audit,
+  privacy export and bounded projection-side UMH control.
+- DesignStudio-to-Media-Cloud image selection using authorized same-origin
+  streams, cover/contain/fill rendering, alternative text, durable asset IDs
+  and canonical derivative lineage.
 - Community onboarding and evidence-based gamification, native social safety,
   seller/sample logistics, and a repeatable competitive benchmark evidence
   register whose claims remain honestly `not_benchmarked` until run.
@@ -100,6 +112,35 @@ do not yet have the locked side-by-side operator evidence required for a
 `parity_met` or `connected_advantage_proven` claim.
 
 ### Production closure evidence
+
+- The current production baseline is exact clean commit
+  `df36cfcda8baef40c148b3a5ecfb5bbde41aff05`. Protected deployment
+  [`32966557573`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32966557573)
+  repeated the complete verification and browser matrix, created the required
+  private backup receipt, preserved the compact Fly topology, applied and
+  proved all 114 migrations, deployed, and verified the serving source
+  identity through the expanded public application boundary.
+- Independent all-scope production smoke
+  [`32968690800`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32968690800)
+  passed against that exact commit: seven safe public surfaces, 58
+  authenticated workspaces and three read-only provider preflights completed
+  without an auth redirect, application failure, server error or release
+  identity mismatch. The local four-shard census separately renders all 110
+  registered public and protected route patterns.
+- The immediately preceding Vision release was independently qualified as
+  exact commit `fc04815b16a6c4c4ada893e52ca0821f3e17e5aa` by protected deploy
+  [`32964130485`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32964130485)
+  and all-scope production smoke
+  [`32966336188`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32966336188).
+- Foundation, governed Canvas, Tasks and Conference were released in order by
+  PRs 73–76. Their exact merge commits are `c70dd1247ff23749776a6203cac6fdd76b0ac694`,
+  `a9ef69f50f496bf2cd04c6f9352d89deb8bd7df5`,
+  `719aa836afc82fc2789cdec61a499ae18b3700fc` and
+  `b8cdd586f0627cbcfa5d2566a9ac93ffcdd0aafe`; the final Conference baseline
+  passed protected deploy
+  [`32959438034`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32959438034)
+  and independent all-scope smoke
+  [`32961718311`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32961718311).
 
 - Protected deployment run
   [`32921856656`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32921856656)
@@ -811,18 +852,18 @@ closure is now bounded by product, publication or external evidence:
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
 6. **Complete locally and in protected CI:** the complete
-   unit/build/migration/security, recovery, capacity and 204-execution browser
-   suite passes for exact merge commit
-   `4b1a08111c799f1ea68d498b895071af77e6fd44`; protected CI run
-   `32920796628` and CodeQL run `32920796682` both pass without overwriting
-   older production truth;
-7. **Release gate complete for this tranche:** protected workflow `32921856656`
-   deployed immutable clean commit
-   `4b1a08111c799f1ea68d498b895071af77e6fd44`, completed the protected
-   backup/migration/deploy sequence, applied all 109 migrations, preserved the
+   unit/build/migration/security, recovery, capacity and browser suite passes
+   for Vision PR head `5aef7a9986c66a3df11f6be62b6b28eec096e72d`
+   in Verify run `32962618225`, and for the final-base DesignStudio PR head
+   `acab750f4d833adeb4e680b35aabc42c93af164d` in Verify run
+   `32964166774`; both associated CodeQL runs pass;
+7. **Release gate complete for this tranche:** protected workflow
+   `32966557573` deployed immutable clean commit
+   `df36cfcda8baef40c148b3a5ecfb5bbde41aff05`, completed the protected
+   backup/migration/deploy sequence, applied all 114 migrations, preserved the
    compact topology, and proved exact release identity. Protected all-scope
-   smoke `32922955104` then passed public boundaries, authenticated production
-   workspaces and read-only provider preflight at mobile and desktop viewports. `/api/release`,
+   smoke `32968690800` then passed public boundaries, 58 authenticated
+   production workspaces and read-only provider preflight. `/api/release`,
    `/api/ready` and `/api/health` remain the canonical current identity and
    readiness boundaries;
 8. hand off only the true external gates: provider approval/credentials,
