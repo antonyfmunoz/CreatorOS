@@ -7015,6 +7015,178 @@ export const creativeWorkEvents = pgTable(
   }),
 );
 
+// Vision is the projection-local perception and capture instrument. Raw camera
+// frames remain ephemeral by default; durable rows contain operator intent,
+// grounded metadata, expiring watches, and an immutable control ledger.
+export const visionPresets = pgTable(
+  "vision_presets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    label: text("label").notNull(),
+    description: text("description").notNull().default(""),
+    source: text("source").notNull().default("camera"),
+    quality: text("quality").notNull().default("balanced"),
+    settings: json("settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    version: integer("version").notNull().default(1),
+    archivedAt: timestamp("archived_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessLabelUnique: uniqueIndex("vision_presets_business_label_active_unique")
+      .on(table.businessId, table.label)
+      .where(sql`${table.archivedAt} is null`),
+    ownerUpdatedIdx: index("vision_presets_owner_updated_idx").on(
+      table.ownerUserId,
+      table.updatedAt,
+    ),
+  }),
+);
+
+export const visionSessions = pgTable(
+  "vision_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    title: text("title").notNull(),
+    source: text("source").notNull().default("camera"),
+    quality: text("quality").notNull().default("balanced"),
+    status: text("status").notNull().default("ready"),
+    activePresetId: uuid("active_preset_id").references(() => visionPresets.id, {
+      onDelete: "set null",
+    }),
+    followTarget: text("follow_target"),
+    captureNoticeAcknowledgedAt: timestamp("capture_notice_acknowledged_at"),
+    startedAt: timestamp("started_at"),
+    stoppedAt: timestamp("stopped_at"),
+    lastInteractionAt: timestamp("last_interaction_at").defaultNow().notNull(),
+    lastFrameAt: timestamp("last_frame_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessUpdatedIdx: index("vision_sessions_business_updated_idx").on(
+      table.businessId,
+      table.updatedAt,
+    ),
+    ownerStatusIdx: index("vision_sessions_owner_status_idx").on(
+      table.ownerUserId,
+      table.status,
+    ),
+  }),
+);
+
+export const visionObservations = pgTable(
+  "vision_observations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .references(() => visionSessions.id, { onDelete: "cascade" })
+      .notNull(),
+    frameId: text("frame_id").notNull(),
+    kind: text("kind").notNull(),
+    label: text("label"),
+    summary: text("summary").notNull().default(""),
+    confidence: doublePrecision("confidence").notNull().default(1),
+    source: text("source").notNull(),
+    operatorConfirmed: boolean("operator_confirmed").notNull().default(false),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    metrics: json("metrics")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    capturedAt: timestamp("captured_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    sessionCapturedIdx: index("vision_observations_session_captured_idx").on(
+      table.sessionId,
+      table.capturedAt,
+    ),
+    frameUnique: unique("vision_observations_session_frame_kind_unique").on(
+      table.sessionId,
+      table.frameId,
+      table.kind,
+    ),
+  }),
+);
+
+export const visionWatches = pgTable(
+  "vision_watches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .references(() => visionSessions.id, { onDelete: "cascade" })
+      .notNull(),
+    target: text("target").notNull(),
+    condition: text("condition").notNull().default("moved"),
+    status: text("status").notNull().default("active"),
+    expiresAt: timestamp("expires_at").notNull(),
+    stoppedAt: timestamp("stopped_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionStatusIdx: index("vision_watches_session_status_idx").on(
+      table.sessionId,
+      table.status,
+      table.expiresAt,
+    ),
+  }),
+);
+
+export const visionEvents = pgTable(
+  "vision_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .references(() => visionSessions.id, { onDelete: "cascade" })
+      .notNull(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version"),
+    payload: json("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    evidence: json("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionCreatedIdx: index("vision_events_session_created_idx").on(
+      table.sessionId,
+      table.createdAt,
+    ),
+    businessCreatedIdx: index("vision_events_business_created_idx").on(
+      table.businessId,
+      table.createdAt,
+    ),
+  }),
+);
+
 export const designProjectEvents = pgTable(
   "design_project_events",
   {

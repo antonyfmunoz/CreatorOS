@@ -119,6 +119,7 @@ import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
 import { registerCutStudioRoutes } from "./cut-studio";
 import { registerBroadcastStudioRoutes } from "./broadcast-studio";
+import { registerVisionRoutes } from "./vision";
 import { registerUgcRoutes } from "./ugc";
 import {
   assetRightsAllowUse,
@@ -740,6 +741,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "broadcast_sessions",
       "broadcast_audience_messages",
       "broadcast_template_catalog",
+      "vision_presets",
+      "vision_sessions",
+      "vision_observations",
+      "vision_watches",
+      "vision_events",
       "ugc_creator_profiles",
       "ugc_portfolio_items",
       "ugc_opportunities",
@@ -835,6 +841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAccountPrivacyRoutes(app);
   registerCutStudioRoutes(app);
   registerBroadcastStudioRoutes(app);
+  registerVisionRoutes(app);
   registerUgcRoutes(app);
   registerMediaCloudRoutes(app);
   registerAnalyticsRoutes(app);

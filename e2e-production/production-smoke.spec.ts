@@ -14,6 +14,7 @@ function runtimeFailures(page: Page) {
 }
 
 test("@public immutable production identity, readiness, and auth entry are healthy", async ({ page, request }) => {
+  const failures = runtimeFailures(page);
   const [releaseResponse, healthResponse, readyResponse] = await Promise.all([
     request.get("/api/release"),
     request.get("/api/health"),
@@ -52,21 +53,71 @@ test("@public immutable production identity, readiness, and auth entry are healt
   await expect(page.getByText(/CreativesOS/i).first()).toBeVisible();
   const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);
+
+  const publicSurfaces = new Map<string, string>([
+    ["/auth/register", "Welcome to CreativesOS"],
+    ["/trust", "CreativesOS Trust Center"],
+    ["/legal/data-deletion", "Account data deletion"],
+    ["/legal/community-guidelines", "Community guidelines"],
+    ["/legal/ai-recording", "AI, recording, and synthetic media policy"],
+    ["/apps", "CreativesOS Apps"],
+  ]);
+  for (const [route, heading] of publicSurfaces) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#main-content")).toBeVisible();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText("Page Not Found", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
+  }
+  expect(failures).toEqual([]);
 });
 
 test("@authenticated production workspaces render without destructive mutations", async ({ page }) => {
   const failures = runtimeFailures(page);
   const routes = [
-    "/", "/profile", "/marketplace", "/messages", "/communities", "/create",
-    "/business", "/campaigns", "/ugc", "/earnings", "/distribution",
-    "/automations", "/cut-studio", "/broadcast", "/settings", "/settings/privacy",
+    // Native social, community, commerce, creation, and account workspaces.
+    "/", "/profile", "/marketplace", "/cart", "/orders", "/learn",
+    "/messages", "/communities", "/notifications", "/search", "/saved-posts",
+    "/followers", "/following", "/revenue", "/contacts", "/create",
+    "/create-product", "/create/post", "/create/event", "/new-text-post",
+    "/campaigns", "/ugc", "/earnings", "/distribution",
+    "/distribution/connections", "/automations", "/ai", "/library",
+    "/cut-studio", "/broadcast", "/settings", "/settings/privacy",
+
+    // Standard business-operator workspaces. Privileged administration,
+    // parameterized records, OAuth prompts, and checkout callbacks are tested
+    // in their dedicated lifecycle suites rather than guessed here.
+    "/business", "/business/benchmarks", "/business/analytics",
+    "/business/planner", "/business/developer", "/business/operations",
+    "/business/providers", "/business/audience", "/business/podcasts",
+    "/business/design", "/business/site", "/business/sponsorship",
+    "/business/affiliates", "/business/booking", "/business/marketplace",
+    "/business/approvals", "/business/portability", "/support",
+
+    // Projection-local instruments transferred from the UMH cockpit must be
+    // exercised independently in production. A healthy legacy workspace is
+    // not evidence that these newer route/API boundaries survived release.
+    "/documents", "/sheets", "/slides", "/tables", "/forms", "/calendar",
+    "/finance", "/vision",
   ];
+  const instrumentHeadings = new Map<string, string>([
+    ["/documents", "Creative workspace"],
+    ["/business/design", "DesignStudio"],
+    ["/business/planner", "Production planner"],
+    ["/vision", "Vision Studio"],
+  ]);
   for (const route of routes) {
     await page.goto(route, { waitUntil: "domcontentloaded" });
     await expect(page).not.toHaveURL(/\/auth(?:\/|$)/);
     await expect(page.locator("#main-content")).toBeVisible();
     await expect(page.getByText("Page Not Found", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Updating CreativesOS" })).toHaveCount(0);
+    const instrumentHeading = instrumentHeadings.get(route);
+    if (instrumentHeading) {
+      await expect(
+        page.getByRole("heading", { name: instrumentHeading, exact: true }),
+      ).toBeVisible();
+    }
   }
   expect(failures).toEqual([]);
 });
@@ -118,5 +169,13 @@ test("@authenticated configured providers expose safe preflight state", async ({
     messenger: { configured: false },
     whatsapp: { configured: false },
     x: { configured: false },
+  });
+
+  const roomProvidersResponse = await page.request.get(
+    "/api/community-room-providers",
+  );
+  expect(roomProvidersResponse.ok()).toBeTruthy();
+  expect(await roomProvidersResponse.json()).toMatchObject({
+    livekit: { configured: true },
   });
 });

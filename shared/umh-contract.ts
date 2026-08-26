@@ -20,6 +20,8 @@ export const supportedUmhCommandTypes = [
   "creativesos.task.transition.v1",
   "creativesos.room.schedule.v1",
   "creativesos.room.transition.v1",
+  "creativesos.vision.session.create.v1",
+  "creativesos.vision.session.stop.v1",
 ] as const;
 
 export type SupportedUmhCommandType = typeof supportedUmhCommandTypes[number];
@@ -237,6 +239,18 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       "task.approval_decided",
       "task.variant_created",
       "task.recovered",
+      "vision.session.created",
+      "vision.session.started",
+      "vision.session.stopped",
+      "vision.session.auto_stopped",
+      "vision.session.archived",
+      "vision.preset.activated",
+      "vision.observation.recorded",
+      "vision.watch.started",
+      "vision.watch.triggered",
+      "vision.watch.stopped",
+      "vision.follow.started",
+      "vision.follow.stopped",
     ],
     delivery: { transport: "signed_https", retry: "exponential_backoff", offline: "durable_outbox" },
     capabilities: [
@@ -262,6 +276,10 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       { id: "community.room.recording", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_recording_consent", provider: "livekit_egress_to_private_r2", health: "healthy", proof: "production_verified_durable_recording_lineage_and_private_object" },
       { id: "community.room.transcription", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_transcription_consent", provider: "livekit_agent", health: "agent_runtime_required", proof: "signed_final_segment_ingress" },
       { id: "community.room.ai_participant", kind: "provider", authority: "room_host_and_participant_consent", approval: "consent_required", consent: "explicit_ai_analysis_consent", provider: "livekit_agent", health: "agent_runtime_required", proof: "role_profile_and_durable_dispatch_session" },
+      { id: "vision.capture", kind: "native", authority: "business_operator", approval: "explicit_local_start", consent: "visible_capture_notice", provider: "browser_media_devices", health: "healthy", proof: "durable_session_grounded_frame_metadata_and_control_ledger" },
+      { id: "vision.perceive", kind: "native", authority: "business_operator", approval: "explicit_observation", consent: "no_biometrics_or_hidden_capture", provider: null, health: "healthy", proof: "frame_id_timestamp_expiry_and_operator_confirmation" },
+      { id: "vision.watch", kind: "native", authority: "business_operator", approval: "explicit_local_start", consent: "visible_capture_notice", provider: "browser_frame_delta", health: "healthy", proof: "ephemeral_pixel_sampling_and_durable_grounded_activity_event" },
+      { id: "vision.analyze", kind: "provider", authority: "business_operator", approval: "operator_initiated_only", consent: "provider_disclosure", provider: "optional_vision_model", health: "provider_not_configured", proof: "grounded_response_or_explicit_unknown" },
     ],
   };
 }

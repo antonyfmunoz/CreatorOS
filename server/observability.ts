@@ -57,11 +57,18 @@ export function requestObservability(req: Request, res: Response, next: NextFunc
 
 export function captureServerException(error: unknown, fields: Record<string, unknown> = {}) {
   const exception = error instanceof Error ? error : new Error(String(error));
+  const cause = exception.cause instanceof Error ? exception.cause : null;
+  const causeCode = cause && "code" in cause && typeof cause.code === "string"
+    ? cause.code
+    : undefined;
   const safeFields = safeValue(fields) as Record<string, unknown>;
   structuredLog("error", "server.exception", {
     ...safeFields,
     errorType: exception.name,
     errorMessage: exception.message,
+    errorCauseType: cause?.name,
+    errorCauseMessage: cause?.message,
+    errorCauseCode: causeCode,
   });
   posthog?.captureException(exception, "creativesos-server", safeFields);
 }

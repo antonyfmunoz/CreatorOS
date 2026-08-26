@@ -87,6 +87,8 @@ describe("CreativesOS UMH federation contract", () => {
     expect(isApprovalRequired("creativesos.task.transition.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.room.schedule.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.room.transition.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.vision.session.create.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.vision.session.stop.v1")).toBe(false);
   });
 
   it("advertises only the current real command surface", () => {
@@ -116,6 +118,8 @@ describe("CreativesOS UMH federation contract", () => {
       "creativesos.task.transition.v1",
       "creativesos.room.schedule.v1",
       "creativesos.room.transition.v1",
+      "creativesos.vision.session.create.v1",
+      "creativesos.vision.session.stop.v1",
     ]);
     expect(manifest.delivery.offline).toBe("durable_outbox");
     expect(manifest.emittedEvents).toEqual(expect.arrayContaining([
@@ -146,6 +150,9 @@ describe("CreativesOS UMH federation contract", () => {
       "task.created",
       "task.revised",
       "task.status_changed",
+      "vision.session.created",
+      "vision.session.stopped",
+      "vision.observation.recorded",
     ]));
     expect(manifest.capabilities.find((capability) => capability.id === "instrument.create")?.proof).toBe("typed_revision_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "instrument.lifecycle")?.approval).toBe("local_required");
