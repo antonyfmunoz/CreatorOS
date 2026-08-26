@@ -60,6 +60,10 @@ test("@authenticated production workspaces render without destructive mutations"
     "/", "/profile", "/marketplace", "/messages", "/communities", "/create",
     "/business", "/campaigns", "/ugc", "/earnings", "/distribution",
     "/automations", "/cut-studio", "/broadcast", "/settings", "/settings/privacy",
+    // Projection-local instruments transferred from the UMH cockpit must be
+    // exercised independently in production. A healthy legacy workspace is
+    // not evidence that these newer route/API boundaries survived release.
+    "/documents", "/business/design", "/business/planner", "/vision",
   ];
   for (const route of routes) {
     await page.goto(route, { waitUntil: "domcontentloaded" });
@@ -118,5 +122,13 @@ test("@authenticated configured providers expose safe preflight state", async ({
     messenger: { configured: false },
     whatsapp: { configured: false },
     x: { configured: false },
+  });
+
+  const roomProvidersResponse = await page.request.get(
+    "/api/community-room-providers",
+  );
+  expect(roomProvidersResponse.ok()).toBeTruthy();
+  expect(await roomProvidersResponse.json()).toMatchObject({
+    livekit: { configured: true },
   });
 });

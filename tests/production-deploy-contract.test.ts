@@ -114,6 +114,13 @@ describe("production deployment contract", () => {
     expect(smokeWorkflowSource).toContain("CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}");
     expect(smokeWorkflowSource).toContain("CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}");
     expect(smokeWorkflowSource).toContain("npm run verify:production-smoke");
+    expect(productionSmokeSource).toContain('"/documents"');
+    expect(productionSmokeSource).toContain('"/business/design"');
+    expect(productionSmokeSource).toContain('"/business/planner"');
+    expect(productionSmokeSource).toContain('"/vision"');
+    expect(productionSmokeSource).toContain(
+      '"/api/community-room-providers"',
+    );
   });
 
   it("keeps provider preflight non-destructive and secret-safe", () => {
