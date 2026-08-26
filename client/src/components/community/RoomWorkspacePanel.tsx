@@ -24,6 +24,7 @@ type RoomNote = {
   authorDisplayName: string;
   authorUsername: string;
   content: string;
+  kind: "note" | "decision" | "summary";
   visibility: string;
   createdAt: string;
 };
@@ -71,6 +72,7 @@ export function RoomWorkspacePanel({
   const notesKey = ["/api/community-rooms", roomId, "notes"];
   const actionsKey = ["/api/community-rooms", roomId, "action-items"];
   const [note, setNote] = useState("");
+  const [noteKind, setNoteKind] = useState<RoomNote["kind"]>("note");
   const [action, setAction] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [assigneeUserId, setAssigneeUserId] = useState("");
@@ -113,9 +115,11 @@ export function RoomWorkspacePanel({
     mutationFn: async () =>
       (await apiRequest("POST", `/api/community-rooms/${roomId}/notes`, {
         content: note.trim(),
+        kind: noteKind,
       })).json() as Promise<RoomNote>,
     onSuccess: () => {
       setNote("");
+      setNoteKind("note");
       queryClient.invalidateQueries({ queryKey: notesKey });
       toast({ title: "Room note saved", description: "Everyone in the room workspace can reference it." });
     },
@@ -218,14 +222,7 @@ export function RoomWorkspacePanel({
             placeholder="Capture a decision, useful context, or a key moment…"
             className="mt-3 min-h-24 resize-y border-zinc-800 bg-zinc-950"
           />
-          <Button
-            size="sm"
-            className="mt-2 rounded-full bg-white text-black hover:bg-zinc-200"
-            disabled={!note.trim() || addNote.isPending}
-            onClick={() => addNote.mutate()}
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> {addNote.isPending ? "Saving…" : "Save note"}
-          </Button>
+          <div className="mt-2 flex items-center gap-2"><select aria-label="Room entry type" value={noteKind} onChange={(event) => setNoteKind(event.target.value as RoomNote["kind"])} className="h-9 rounded-full border border-zinc-800 bg-zinc-950 px-3 text-xs text-zinc-300"><option value="note">Note</option><option value="decision">Decision</option><option value="summary">Summary</option></select><Button size="sm" className="rounded-full bg-white text-black hover:bg-zinc-200" disabled={!note.trim() || addNote.isPending} onClick={() => addNote.mutate()}><Plus className="mr-1.5 h-3.5 w-3.5" /> {addNote.isPending ? "Saving…" : `Save ${noteKind}`}</Button></div>
           {notesError && <p role="alert" className="mt-3 text-xs text-red-300">{notesError}</p>}
           <div className="mt-4 space-y-2">
             {notes.isLoading ? (
@@ -233,6 +230,7 @@ export function RoomWorkspacePanel({
             ) : notes.data?.length ? (
               notes.data.map((item) => (
                 <article key={item.id} className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-3">
+                  <span className="mb-2 inline-flex rounded-full border border-zinc-800 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-400">{item.kind}</span>
                   <p className="whitespace-pre-wrap text-xs leading-5 text-zinc-300">{item.content}</p>
                   <p className="mt-2 text-[10px] uppercase tracking-wide text-zinc-600">
                     {item.authorDisplayName || item.authorUsername} · saved {relativeTime(item.createdAt)}

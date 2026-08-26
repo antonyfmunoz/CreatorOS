@@ -5229,10 +5229,84 @@ export const communityRoomNotes = pgTable("community_room_notes", {
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
   content: text("content").notNull(),
+  kind: text("kind").notNull().default("note"),
   visibility: text("visibility").notNull().default("members"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const communityRoomEvents = pgTable(
+  "community_room_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .references(() => communityRooms.id, { onDelete: "cascade" })
+      .notNull(),
+    communityId: integer("community_id")
+      .references(() => communities.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    subjectUserId: integer("subject_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    payload: json("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    evidence: json("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    roomCreatedIdx: index("community_room_events_room_created_idx").on(
+      table.roomId,
+      table.createdAt,
+    ),
+    communityCreatedIdx: index("community_room_events_community_created_idx").on(
+      table.communityId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const communityRoomGuestInvites = pgTable(
+  "community_room_guest_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .references(() => communityRooms.id, { onDelete: "cascade" })
+      .notNull(),
+    invitedByUserId: integer("invited_by_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    guestUserId: integer("guest_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    label: text("label").notNull(),
+    email: text("email"),
+    tokenHash: text("token_hash").notNull().unique(),
+    status: text("status").notNull().default("invited"),
+    membershipGranted: boolean("membership_granted").notNull().default(false),
+    expiresAt: timestamp("expires_at").notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    admittedAt: timestamp("admitted_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    roomStatusIdx: index("community_room_guest_invites_room_status_idx").on(
+      table.roomId,
+      table.status,
+      table.createdAt,
+    ),
+  }),
+);
 
 export const communityRoomActionItems = pgTable("community_room_action_items", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -10362,6 +10436,8 @@ export type InsertChannel = z.infer<typeof insertChannelSchema>;
 
 export type CommunityRoom = typeof communityRooms.$inferSelect;
 export type CommunityRoomNote = typeof communityRoomNotes.$inferSelect;
+export type CommunityRoomEvent = typeof communityRoomEvents.$inferSelect;
+export type CommunityRoomGuestInvite = typeof communityRoomGuestInvites.$inferSelect;
 export type CommunityRoomActionItem =
   typeof communityRoomActionItems.$inferSelect;
 export type CommunityRoomAttendee = typeof communityRoomAttendees.$inferSelect;

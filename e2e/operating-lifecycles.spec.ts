@@ -284,6 +284,26 @@ test("projection-side UMH ingress enforces signatures, replay protection and loc
   await expectOk(taskDetail);
   expect((await taskDetail.json()).events.map((event: { eventType: string }) => event.eventType)).toEqual(expect.arrayContaining(["task.created", "task.revised", "task.status_changed"]));
 
+  const roomCommunityResponse = await api(page, owner, "POST", "/api/communities", { name: `UMH room ${Date.now()}`, description: "Projection-controlled room", iconColor: "#8b5cf6" });
+  await expectOk(roomCommunityResponse);
+  const roomCommunity = await roomCommunityResponse.json() as { id: number };
+  const roomSchedule = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-room-schedule-${randomUUID()}`, commandType: "creativesos.room.schedule.v1", payload: { communityId: roomCommunity.id, title: `UMH room ${Date.now()}`, description: "Signed projection lifecycle", startsAt: new Date(Date.now() + 60_000).toISOString(), provider: "manual_link", joinUrl: "https://meet.example.com/umh" } };
+  const roomScheduledResponse = await sendCommand(roomSchedule);
+  await expectOk(roomScheduledResponse);
+  const roomScheduled = await roomScheduledResponse.json() as { status: string; payload: { roomId: string; status: string } };
+  expect(roomScheduled).toMatchObject({ status: "completed", payload: { status: "scheduled" } });
+  const roomLive = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-room-live-${randomUUID()}`, commandType: "creativesos.room.transition.v1", payload: { roomId: roomScheduled.payload.roomId, status: "live" } };
+  const roomLiveResponse = await sendCommand(roomLive);
+  await expectOk(roomLiveResponse);
+  expect(await roomLiveResponse.json()).toMatchObject({ status: "completed", payload: { roomId: roomScheduled.payload.roomId, status: "live" } });
+  const roomEnded = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-room-ended-${randomUUID()}`, commandType: "creativesos.room.transition.v1", payload: { roomId: roomScheduled.payload.roomId, status: "ended" } };
+  const roomEndedResponse = await sendCommand(roomEnded);
+  await expectOk(roomEndedResponse);
+  expect(await roomEndedResponse.json()).toMatchObject({ status: "completed", payload: { roomId: roomScheduled.payload.roomId, status: "ended" } });
+  const roomEvents = await api(page, owner, "GET", `/api/community-rooms/${roomScheduled.payload.roomId}/events`);
+  await expectOk(roomEvents);
+  expect((await roomEvents.json() as Array<{ eventType: string }>).map((event) => event.eventType)).toEqual(expect.arrayContaining(["community.room.scheduled", "community.room.live", "community.room.ended"]));
+
   const publish = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-publish-${randomUUID()}`, commandType: "creativesos.post.publish.v1", payload: { content: `Approved UMH post ${Date.now()}`, mediaType: "text" } };
   const proposed = await sendCommand(publish);
   await expectOk(proposed);

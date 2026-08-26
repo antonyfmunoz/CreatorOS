@@ -78,6 +78,7 @@ const EarningsPage = lazy(() => import("@/pages/earnings"));
 const ModerationPage = lazy(() => import("@/pages/moderation"));
 const AdminAppsPage = lazy(() => import("@/pages/admin-apps"));
 const CommunityRoomPage = lazy(() => import("@/pages/community-room"));
+const RoomInvitePage = lazy(() => import("@/pages/room-invite"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
 const PrivacySettingsPage = lazy(() => import("@/pages/privacy-settings"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
@@ -402,6 +403,7 @@ function Router() {
         path="/communities/:communityId/rooms/:roomId"
         component={CommunityRoomPage}
       />
+      <ProtectedRoute path="/room-invites/:token" component={RoomInvitePage} />
       <ProtectedRoute path="/communities/:id" component={Communities} />
       <ProtectedRoute path="/communities" component={Communities} />
       <ProtectedRoute path="/profile" component={Profile} />

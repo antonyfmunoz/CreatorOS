@@ -3,7 +3,7 @@ import type { Express, Request, Response } from "express";
 import { and, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
-  broadcastBrandKits, businesses, businessMembers, campaigns, contentDrafts, creativeWorkApprovals, creativeWorkDependencies, creativeWorkEvents, creativeWorkItems, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
+  broadcastBrandKits, businesses, businessMembers, campaigns, channels, communityMemberships, communityRoomEvents, communityRooms, contentDrafts, creativeWorkApprovals, creativeWorkDependencies, creativeWorkEvents, creativeWorkItems, designProjectEvents, designProjects, designVersions, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
   umhCommandOutcomes, umhCommands, umhNonces, users,
 } from "../shared/schema";
 import {
@@ -44,6 +44,8 @@ const designCreatePayloadSchema = createDesignProjectSchema.extend({ document: d
 const designRevisionPayloadSchema = saveDesignSchema.extend({ projectId: z.string().uuid() });
 const taskRevisionPayloadSchema = updateCreativeWorkItemSchema.extend({ workItemId: z.string().uuid() });
 const taskTransitionPayloadSchema = transitionCreativeWorkItemSchema.extend({ workItemId: z.string().uuid() });
+const roomSchedulePayloadSchema = z.object({ communityId: z.number().int().positive(), channelId: z.number().int().positive().nullable().optional(), title: z.string().trim().min(1).max(160), description: z.string().max(10_000).default(""), startsAt: z.string().datetime(), provider: z.enum(["manual_link", "livekit"]).default("manual_link"), joinUrl: z.string().url().nullable().optional() });
+const roomTransitionPayloadSchema = z.object({ roomId: z.string().uuid(), status: z.enum(["live", "ended", "canceled"]) });
 
 export async function emitProjectionEvent(input: { aggregateType: string; aggregateId: string | number; eventType: string; actorUserId?: number | null; payload?: Record<string, unknown>; idempotencyKey: string; correlationId?: string | null; traceId?: string | null }, executor: DbExecutor = db) {
   // The disposable demo identity lives in MemStorage and deliberately has no
@@ -228,6 +230,35 @@ async function executeApprovedCommand(command: typeof umhCommands.$inferSelect, 
         await tx.insert(creativeWorkEvents).values({ workItemId: updated.id, businessId: envelope.businessId, eventType: "task.status_changed", actorUserId: envelope.delegatedUserId, fromStatus: item.status, toStatus: updated.status, version: updated.version, payload: { fromStatus: item.status, toStatus: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
         await emitProjectionEvent({ aggregateType: "creative_work_item", aggregateId: updated.id, eventType: "task.status_changed", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, fromStatus: item.status, toStatus: updated.status, version: updated.version, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:task.status_changed`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
         result = { workItemId: updated.id, version: updated.version, status: updated.status };
+      } else if (envelope.commandType === "creativesos.room.schedule.v1") {
+        const payload = roomSchedulePayloadSchema.parse(envelope.payload);
+        const [membership] = await tx.select().from(communityMemberships).where(and(eq(communityMemberships.communityId, payload.communityId), eq(communityMemberships.userId, envelope.delegatedUserId), inArray(communityMemberships.role, ["owner", "admin"]), eq(communityMemberships.status, "active"))).limit(1);
+        if (!membership) throw new Error("Delegated user cannot manage the requested community");
+        if (payload.channelId) {
+          const [channel] = await tx.select({ id: channels.id }).from(channels).where(and(eq(channels.id, payload.channelId), eq(channels.communityId, payload.communityId))).limit(1);
+          if (!channel) throw new Error("Channel not found in the delegated community");
+        }
+        const startsAt = new Date(payload.startsAt);
+        const [room] = await tx.insert(communityRooms).values({ communityId: payload.communityId, channelId: payload.channelId ?? null, hostUserId: envelope.delegatedUserId, title: payload.title, description: payload.description, startsAt, provider: payload.provider, joinUrl: payload.joinUrl ?? null }).returning();
+        await tx.insert(communityRoomEvents).values({ roomId: room.id, communityId: room.communityId, eventType: "community.room.scheduled", actorUserId: envelope.delegatedUserId, payload: { provider: room.provider, startsAt: room.startsAt.toISOString(), origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await emitProjectionEvent({ aggregateType: "community_room", aggregateId: room.id, eventType: "community.room.scheduled", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, communityId: room.communityId, provider: room.provider, startsAt: room.startsAt.toISOString(), origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:community.room.scheduled`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { roomId: room.id, communityId: room.communityId, status: room.status };
+      } else if (envelope.commandType === "creativesos.room.transition.v1") {
+        const payload = roomTransitionPayloadSchema.parse(envelope.payload);
+        const [room] = await tx.select().from(communityRooms).where(eq(communityRooms.id, payload.roomId)).limit(1);
+        if (!room) throw new Error("Community room not found");
+        const [membership] = await tx.select().from(communityMemberships).where(and(eq(communityMemberships.communityId, room.communityId), eq(communityMemberships.userId, envelope.delegatedUserId), inArray(communityMemberships.role, ["owner", "admin"]), eq(communityMemberships.status, "active"))).limit(1);
+        if (!membership && room.hostUserId !== envelope.delegatedUserId) throw new Error("Delegated user cannot manage the requested room");
+        if (["ended", "canceled"].includes(room.status)) throw new Error("Closed rooms cannot be reopened");
+        if (room.status === "scheduled" && !["live", "canceled"].includes(payload.status)) throw new Error("Invalid room status transition");
+        if (room.status === "live" && !["ended", "canceled"].includes(payload.status)) throw new Error("Invalid room status transition");
+        if (room.provider === "livekit" && (payload.status === "live" || room.status === "live")) throw new Error("Provider-managed rooms must start or stop locally so media and consent state can be coordinated");
+        const [updated] = await tx.update(communityRooms).set({ status: payload.status, endedAt: payload.status === "ended" ? new Date() : room.endedAt, recordingEnabled: ["ended", "canceled"].includes(payload.status) ? false : room.recordingEnabled, transcriptionEnabled: ["ended", "canceled"].includes(payload.status) ? false : room.transcriptionEnabled, aiAssistanceEnabled: ["ended", "canceled"].includes(payload.status) ? false : room.aiAssistanceEnabled, updatedAt: new Date() }).where(and(eq(communityRooms.id, room.id), eq(communityRooms.status, room.status))).returning();
+        if (!updated) throw new Error("Room status changed before the command completed");
+        const eventType = `community.room.${updated.status}`;
+        await tx.insert(communityRoomEvents).values({ roomId: updated.id, communityId: updated.communityId, eventType, actorUserId: envelope.delegatedUserId, payload: { provider: updated.provider, fromStatus: room.status, toStatus: updated.status, origin: "umh" }, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await emitProjectionEvent({ aggregateType: "community_room", aggregateId: updated.id, eventType, actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, communityId: updated.communityId, provider: updated.provider, fromStatus: room.status, toStatus: updated.status, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:${eventType}`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { roomId: updated.id, communityId: updated.communityId, status: updated.status };
       } else {
         const payload = postPublishPayloadSchema.parse(envelope.payload);
         const [post] = await tx.insert(posts).values({ userId: envelope.delegatedUserId, content: payload.content, mediaType: payload.mediaType, imageUrl: payload.imageUrl, audioUrl: payload.audioUrl, videoUrl: payload.videoUrl }).returning();
