@@ -138,9 +138,9 @@ styling:
 ## Release evidence checklist
 
 - [x] Unit, contract, integration, TypeScript, production build and bundle gates pass locally.
-- [x] The exact release replays all 109 migrations from empty, and protected deployment workflow [`32921856656`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32921856656) applied and independently exposed exact 109/109 production parity for clean commit `4b1a08111c799f1ea68d498b895071af77e6fd44`.
+- [x] The exact release replays all 114 migrations from empty, and protected deployment workflow [`32966557573`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32966557573) applied and independently exposed exact 114/114 production parity for clean commit `df36cfcda8baef40c148b3a5ecfb5bbde41aff05`.
 - [x] Secret scan, dependency audit, backup/restore and local capacity checks pass.
-- [x] The 216-execution isolated PostgreSQL browser matrix covers every provider-independent capability and material local role transition above on mobile and desktop: 210 pass, six are intentionally skipped, and none fail. Its generated manifest exactly matches all 101 registered client routes and field-renders every route while rejecting uncaught errors, unexpected 5xx responses, missing application shells and router fallbacks. It also covers malformed dynamic identifiers, secondary trust/navigation journeys, the native unified-inbox send/edit/delete/reaction/read lifecycle and bidirectional legacy/canonical synchronization.
+- [x] The 262-execution isolated PostgreSQL browser matrix covers every provider-independent capability and material local role transition above on mobile and desktop: 238 pass, 24 viewport-conditional Stitch cases are intentionally skipped, and none fail. All 24 canonical Stitch states execute once on the mobile portrait canvas; its generated manifest exactly matches all 110 registered client routes and field-renders every route while rejecting uncaught errors, unexpected 5xx responses, missing application shells and router fallbacks. It also covers malformed dynamic identifiers, secondary trust/navigation journeys, the native unified-inbox send/edit/delete/reaction/read lifecycle and bidirectional legacy/canonical synchronization.
 - [x] Browser and API lifecycle assertions prove mutations persisted after reload/refetch; controls are not counted as evidence by themselves.
 - [x] Mobile and desktop accessibility sweeps pass for the primary routes currently in the browser matrix; destructive and provider dialogs remain separately gated.
 - [x] All 74 Stitch references are paired with an implemented route/state or an explicit superseding decision.
@@ -348,9 +348,12 @@ No private-session scraping is an acceptable substitute.
   110 registered route patterns, including parameterized, token, callback and
   privileged destinations with safe qualification values.
 - The final source audit found no product TODO/FIXME/stub markers, permanent
-  disabled controls, empty click handlers, hash-link placeholders or native
-  501 handlers. All 41 literal client navigation destinations map to registered
-  routes. This is source and route evidence, not proof of competitive parity.
+  disabled controls, empty click handlers or hash-link placeholders. The
+  remaining 501 responses are explicit demo-mode mutation guards or the
+  production denial for the demo-access route; none substitutes for an
+  unimplemented production-native capability. All 41 literal client navigation
+  destinations map to registered routes. This is source and route evidence,
+  not proof of competitive parity.
 - Native implementation and current production qualification do not close the
   remaining external evidence: non-YouTube provider activation and round
   trips, an approved irreversible YouTube publication, successful creator

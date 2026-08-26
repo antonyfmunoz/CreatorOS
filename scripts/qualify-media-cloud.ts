@@ -49,7 +49,13 @@ try {
     metadata: { qualification: true },
   }).returning();
   await cloud.queueMediaIngestJobs(asset);
-  await processing.processDueMediaJobs(4);
+  // Exercise the same bounded batches as the production worker. A single call
+  // intentionally cannot exceed MEDIA_WORKER_CONCURRENCY, so keep draining
+  // until no due ingest work remains instead of assuming four parallel slots.
+  for (let batch = 0; batch < 8; batch += 1) {
+    const processed = await processing.processDueMediaJobs(4);
+    if (processed === 0) break;
+  }
 
   const [jobs, renditions, refreshed] = await Promise.all([
     db.select().from(schema.mediaProcessingJobs).where(eq(schema.mediaProcessingJobs.assetId, asset.id)),

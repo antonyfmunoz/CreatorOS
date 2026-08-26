@@ -28,7 +28,7 @@ not as separate routes.
 | `edit_bio_refined_button`; `edit_links_refined_button`; `edit_name_stacked_layout`; `edit_profile_refined_header` | `/profile`, Edit profile full-screen sheet | `implemented` | Name, username, bio, avatar and up-to-five validated public links are editable. Public links pass desktop/mobile mutation-and-reload proof; non-owner authorization remains part of the broader role matrix. |
 | `explore_compact_light_theme_mirrored_1`; `explore_compact_light_theme_mirrored_2` | `/`, Explore feed | `superseded` | Feed hierarchy informs the current build; the light palette is superseded by the later dark Stitch states and selected application theme. |
 | `explore_compact_stories_row_1`; `explore_compact_stories_row_2`; `explore_compact_stories_row_3`; `explore_compact_stories_row_4`; `explore_compact_stories_row_5`; `explore_compact_stories_row_6`; `explore_compact_stories_row_7`; `explore_compact_stories_row_8`; `explore_compact_stories_row_9`; `explore_compact_stories_row_10`; `explore_compact_stories_row_11`; `explore_compact_stories_row_12`; `explore_compact_stories_row_13`; `explore_compact_stories_row_14`; `explore_compact_stories_row_15`; `explore_compact_stories_row_16`; `explore_compact_stories_row_17` | `/`, story rail, create/view/reply states | `implemented` | Hidden-scrollbar rail, current-user empty/create affordance, authoritative Stitch media upload, viewer mutations and reload persistence pass on both viewports. |
-| `explore_following_active_final_1`; `explore_following_active_final_2` | `/`, Following feed filter | `implemented` | Selected styling plus follow, content visibility, unfollow, refresh and empty transition pass on both viewports. |
+| `explore_following_active_final_1`; `explore_following_active_final_2` | `/`, story viewer follow state | `implemented` | The full-screen viewer, progress, creator identity, follow action, close control and reply affordance are represented by this Stitch pair. Following-feed selection and its follow, content-visibility, unfollow, refresh and empty transitions remain independently qualified on both viewports. |
 | `generated_screen_1`; `generated_screen_2`; `generated_screen_3`; `generated_screen_4` | `/`, `/marketplace/product/:id`, `/cart`, `/messages` | `implemented` | Canonical feed, stable offer detail, account-backed cart and direct/group messaging routes pass independently on mobile and desktop. |
 | `invite_friends_monochromatic_search_bar` | `/messages`, native/group chat invite flow | `implemented` | Creator search, participant selection, named-group creation and persisted reopen pass on both viewports. |
 | `marketplace_corrected_add_icon`; `marketplace_corrected_navigation` | `/marketplace`, selected category and add/save/cart actions | `implemented` | Corrected route navigation, community category selection, search match and empty-filter state pass desktop/mobile qualification. Account-backed cart/save ownership remains in the broader commerce matrix. |
@@ -49,8 +49,14 @@ until its independent live round trip passes; future visual changes must still
 use only this 74-folder Stitch set unless the product owner replaces it.
 
 The register contains all 74 authoritative Stitch folders exactly once.
-`e2e/stitch-visual-signature.spec.ts` also compares six canonical mobile
-surfaces against their selected Stitch frames using normalized palette,
-luminance, edge-density, colorfulness and pixel-distance bounds. Marketplace
-uses a luminance-inverted derivative of its Stitch source because the light
-palette is explicitly superseded; no non-Stitch image is used as a reference.
+`e2e/stitch-visual-signature.spec.ts` compares 24 canonical provider-independent
+mobile states against selected Stitch frames. The suite covers feed, story
+creation/viewing, Marketplace/product/cart, native messages/group creation,
+profile content/edit/share/tab states, notifications, settings, discovery,
+event creation, and joined-community search/context-menu states using normalized
+palette, luminance, edge-density, colorfulness and pixel-distance bounds.
+Iterative screenshots of the same state are grouped rather than mislabeled as
+independent product surfaces. Marketplace uses a luminance-inverted derivative
+of its Stitch source because the light palette is explicitly superseded; the
+story viewer permits tenant-media hue variation while retaining its structural
+and luminance bounds. No non-Stitch image is used as a reference.

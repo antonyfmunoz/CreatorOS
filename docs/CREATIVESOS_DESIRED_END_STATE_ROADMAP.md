@@ -127,6 +127,15 @@ do not yet have the locked side-by-side operator evidence required for a
   without an auth redirect, application failure, server error or release
   identity mismatch. The local four-shard census separately renders all 110
   registered public and protected route patterns.
+- The current unreleased closure candidate schedules 262 isolated PostgreSQL
+  browser executions on a clean 114-migration database: 238 pass, 24
+  viewport-conditional Stitch cases are intentionally skipped, and none fail.
+  All 24 canonical Stitch states execute once on the mobile portrait canvas;
+  the wider behavioral suite covers mobile and desktop. The same candidate
+  passes unit, type, build, bundle, Worker, secrets, infrastructure, native
+  mobile, relationship, worker-recovery, Media Cloud, backup/restore and
+  capacity gates. This is local evidence until an exact immutable deployment
+  and independent production smoke qualify its source identity.
 - The immediately preceding Vision release was independently qualified as
   exact commit `fc04815b16a6c4c4ada893e52ca0821f3e17e5aa` by protected deploy
   [`32964130485`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32964130485)
