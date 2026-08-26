@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { canTransitionCreativeWork, createChannelVariantsSchema, createCreativeWorkItemSchema, recoverMissedWorkSchema, updateCreativeWorkItemSchema } from "@shared/planning";
+import { canTransitionCreativeWork, createChannelVariantsSchema, createCreativeWorkItemSchema, recoverMissedWorkSchema, transitionCreativeWorkItemSchema, updateCreativeWorkItemSchema } from "@shared/planning";
 import {
   broadcastSessions,
   broadcastStudios,
@@ -8,6 +8,7 @@ import {
   campaigns,
   creativeWorkApprovals,
   creativeWorkDependencies,
+  creativeWorkEvents,
   creativeWorkItems,
   cutStudioJobs,
   cutStudioProjects,
@@ -20,6 +21,39 @@ import {
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { db } from "./db";
+import { emitProjectionEvent } from "./umh";
+
+type PlanningExecutor = Pick<typeof db, "insert">;
+
+async function recordWorkEvent(executor: PlanningExecutor, input: {
+  item: typeof creativeWorkItems.$inferSelect;
+  eventType: string;
+  actorUserId: number | null;
+  fromStatus?: string | null;
+  payload?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  idempotencySuffix?: string;
+}) {
+  await executor.insert(creativeWorkEvents).values({
+    workItemId: input.item.id,
+    businessId: input.item.businessId,
+    eventType: input.eventType,
+    actorUserId: input.actorUserId,
+    fromStatus: input.fromStatus ?? null,
+    toStatus: input.item.status,
+    version: input.item.version,
+    payload: input.payload ?? {},
+    evidence: input.evidence ?? { source: "native" },
+  });
+  await emitProjectionEvent({
+    aggregateType: "creative_work_item",
+    aggregateId: input.item.id,
+    eventType: input.eventType,
+    actorUserId: input.actorUserId,
+    payload: { businessId: input.item.businessId, status: input.item.status, version: input.item.version, ...(input.payload ?? {}) },
+    idempotencyKey: `task:${input.item.id}:${input.idempotencySuffix ?? `${input.eventType}:${input.item.version}`}`,
+  }, executor);
+}
 
 async function ownedItem(userId: number, id: string) { const [item] = await db.select().from(creativeWorkItems).where(eq(creativeWorkItems.id, id)).limit(1); return item && await userCanManageBusiness(userId, item.businessId) ? item : null; }
 
@@ -67,6 +101,18 @@ async function dependencyWouldCycle(businessId: string, itemId: string, dependsO
   return visit(itemId);
 }
 
+async function parentWouldCycle(businessId: string, itemId: string | null, parentId: string) {
+  if (itemId === parentId) return true;
+  const rows = await db.select({ id: creativeWorkItems.id, parentId: creativeWorkItems.parentWorkItemId }).from(creativeWorkItems).where(eq(creativeWorkItems.businessId, businessId));
+  const parents = new Map(rows.map((row) => [row.id, row.parentId]));
+  let cursor: string | null | undefined = parentId;
+  while (cursor) {
+    if (cursor === itemId) return true;
+    cursor = parents.get(cursor);
+  }
+  return false;
+}
+
 function advanceRecurringDate(date: Date | null, frequency: "daily" | "weekly" | "monthly", interval: number, position: number) {
   if (!date) return null;
   const next = new Date(date);
@@ -85,11 +131,29 @@ export function registerPlanningRoutes(app: Express) {
     const now = Date.now(); return res.json(items.map((item) => ({ ...item, dependencies: dependencies.filter((row) => row.workItemId === item.id), approvals: approvals.filter((row) => row.workItemId === item.id), missed: Boolean(item.dueAt && item.dueAt.getTime() < now && !["published", "retrospective", "cancelled"].includes(item.status)) })));
   });
 
+  app.get("/api/planning/items/:id", attachUser, async (req, res) => {
+    const item = await ownedItem(req.dbUser!.id, req.params.id);
+    if (!item) return res.status(404).json({ message: "Work item not found" });
+    const [dependencies, dependents, approvals, events, children] = await Promise.all([
+      db.select().from(creativeWorkDependencies).where(eq(creativeWorkDependencies.workItemId, item.id)),
+      db.select().from(creativeWorkDependencies).where(eq(creativeWorkDependencies.dependsOnWorkItemId, item.id)),
+      db.select().from(creativeWorkApprovals).where(eq(creativeWorkApprovals.workItemId, item.id)).orderBy(desc(creativeWorkApprovals.requestedAt)),
+      db.select().from(creativeWorkEvents).where(eq(creativeWorkEvents.workItemId, item.id)).orderBy(desc(creativeWorkEvents.createdAt)),
+      db.select().from(creativeWorkItems).where(eq(creativeWorkItems.parentWorkItemId, item.id)).orderBy(asc(creativeWorkItems.dueAt)),
+    ]);
+    return res.json({ ...item, dependencies, dependents, approvals, events, children });
+  });
+
   app.post("/api/planning/items", attachUser, async (req, res) => {
     const parsed = createCreativeWorkItemSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid work item" });
     const business = await ensureDefaultBusiness(req.dbUser!);
+    if (parsed.data.parentWorkItemId) {
+      const parent = await ownedItem(req.dbUser!.id, parsed.data.parentWorkItemId);
+      if (!parent || parent.businessId !== business.id) return res.status(400).json({ message: "Parent work must belong to this business" });
+    }
     const result = await db.transaction(async (tx) => {
       const [item] = await tx.insert(creativeWorkItems).values({ ...parsed.data, businessId: business.id, createdByUserId: req.dbUser!.id }).returning();
+      await recordWorkEvent(tx, { item, eventType: "task.created", actorUserId: req.dbUser!.id, payload: { kind: item.kind, parentWorkItemId: item.parentWorkItemId } });
       const recurrence = parsed.data.recurrence;
       const instances = "frequency" in recurrence ? Array.from({ length: recurrence.occurrences - 1 }, (_, index) => ({
         ...parsed.data,
@@ -102,7 +166,8 @@ export function registerPlanningRoutes(app: Express) {
         sourceId: `${item.id}:${index + 2}`,
         metadata: { ...parsed.data.metadata, recurringParentId: item.id, occurrence: index + 2 },
       })) : [];
-      if (instances.length) await tx.insert(creativeWorkItems).values(instances);
+      const createdInstances = instances.length ? await tx.insert(creativeWorkItems).values(instances).returning() : [];
+      for (const occurrence of createdInstances) await recordWorkEvent(tx, { item: occurrence, eventType: "task.created", actorUserId: req.dbUser!.id, payload: { kind: occurrence.kind, recurringParentId: item.id }, idempotencySuffix: "created" });
       return { item, generatedOccurrences: instances.length };
     });
     return res.status(201).json({ ...result.item, generatedOccurrences: result.generatedOccurrences });
@@ -113,27 +178,75 @@ export function registerPlanningRoutes(app: Express) {
     const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
     const startsAt = parsed.data.startsAt === undefined ? item.startsAt : parsed.data.startsAt; const dueAt = parsed.data.dueAt === undefined ? item.dueAt : parsed.data.dueAt;
     if (startsAt && dueAt && dueAt < startsAt) return res.status(400).json({ message: "Due date cannot precede the start date" });
-    const [updated] = await db.update(creativeWorkItems).set({ ...parsed.data, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, parsed.data.version))).returning();
+    if (parsed.data.parentWorkItemId) {
+      const parent = await ownedItem(req.dbUser!.id, parsed.data.parentWorkItemId);
+      if (!parent || parent.businessId !== item.businessId) return res.status(400).json({ message: "Parent work must belong to this business" });
+      if (await parentWouldCycle(item.businessId, item.id, parent.id)) return res.status(409).json({ message: "This parent would create a cycle" });
+    }
+    const updated = await db.transaction(async (tx) => {
+      const [nextItem] = await tx.update(creativeWorkItems).set({ ...parsed.data, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, parsed.data.version))).returning();
+      if (nextItem) await recordWorkEvent(tx, { item: nextItem, eventType: "task.revised", actorUserId: req.dbUser!.id, fromStatus: item.status, payload: { baseVersion: parsed.data.version, changedFields: Object.keys(parsed.data).filter((key) => key !== "version") } });
+      return nextItem;
+    });
     if (!updated) return res.status(409).json({ message: "This work item changed; refresh before saving" }); return res.json(updated);
   });
 
   app.post("/api/planning/items/:id/status", attachUser, async (req, res) => {
-    const status = typeof req.body?.status === "string" ? req.body.status : ""; const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
+    const parsed = transitionCreativeWorkItemSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid status" });
+    const status = parsed.data.status; const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
+    if (parsed.data.version !== undefined && parsed.data.version !== item.version) return res.status(409).json({ message: "This work item changed; refresh before moving it" });
     if (item.sourceType === "benchmark_remediation" && !["brief", "production", "review", "blocked"].includes(status)) return res.status(409).json({ message: "A benchmark remediation can close only after a passing locked retest" });
     if (!canTransitionCreativeWork(item.status, status)) return res.status(409).json({ message: `Cannot move ${item.status} work directly to ${status}` });
     if (["scheduled", "published"].includes(status)) { const deps = await db.select({ state: creativeWorkItems.status }).from(creativeWorkDependencies).innerJoin(creativeWorkItems, eq(creativeWorkDependencies.dependsOnWorkItemId, creativeWorkItems.id)).where(eq(creativeWorkDependencies.workItemId, item.id)); if (deps.some((dep) => !["published", "retrospective"].includes(dep.state))) return res.status(409).json({ message: "Complete dependent work before scheduling or publishing" }); const [latestApproval] = await db.select().from(creativeWorkApprovals).where(eq(creativeWorkApprovals.workItemId, item.id)).orderBy(desc(creativeWorkApprovals.requestedAt)).limit(1); if (latestApproval && latestApproval.status !== "approved") return res.status(409).json({ message: latestApproval.status === "pending" ? "Approval is still pending" : "Requested changes must be resolved and approved" }); }
-    const [updated] = await db.update(creativeWorkItems).set({ status, completedAt: ["published", "retrospective", "cancelled"].includes(status) ? new Date() : null, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.status, item.status))).returning(); return res.json(updated);
+    const updated = await db.transaction(async (tx) => {
+      const [nextItem] = await tx.update(creativeWorkItems).set({ status, completedAt: ["published", "retrospective", "cancelled"].includes(status) ? new Date() : null, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.status, item.status), eq(creativeWorkItems.version, item.version))).returning();
+      if (nextItem) await recordWorkEvent(tx, { item: nextItem, eventType: "task.status_changed", actorUserId: req.dbUser!.id, fromStatus: item.status, payload: { fromStatus: item.status, toStatus: status } });
+      return nextItem;
+    });
+    if (!updated) return res.status(409).json({ message: "This work item changed; refresh before moving it" }); return res.json(updated);
   });
 
-  app.post("/api/planning/items/:id/dependencies", attachUser, async (req, res) => { const item = await ownedItem(req.dbUser!.id, req.params.id); const dependency = typeof req.body?.dependsOnWorkItemId === "string" ? await ownedItem(req.dbUser!.id, req.body.dependsOnWorkItemId) : null; if (!item || !dependency) return res.status(404).json({ message: "Both work items are required" }); if (item.id === dependency.id) return res.status(400).json({ message: "Work cannot depend on itself" }); if (await dependencyWouldCycle(item.businessId, item.id, dependency.id)) return res.status(409).json({ message: "This dependency would create a cycle" }); const [row] = await db.insert(creativeWorkDependencies).values({ workItemId: item.id, dependsOnWorkItemId: dependency.id, createdByUserId: req.dbUser!.id }).onConflictDoNothing().returning(); return res.status(row ? 201 : 200).json(row ?? { status: "already_exists" }); });
+  app.post("/api/planning/items/:id/dependencies", attachUser, async (req, res) => {
+    const item = await ownedItem(req.dbUser!.id, req.params.id); const dependency = typeof req.body?.dependsOnWorkItemId === "string" ? await ownedItem(req.dbUser!.id, req.body.dependsOnWorkItemId) : null;
+    if (!item || !dependency || item.businessId !== dependency.businessId) return res.status(404).json({ message: "Both work items are required in the same business" });
+    if (item.id === dependency.id) return res.status(400).json({ message: "Work cannot depend on itself" });
+    if (await dependencyWouldCycle(item.businessId, item.id, dependency.id)) return res.status(409).json({ message: "This dependency would create a cycle" });
+    const row = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(creativeWorkDependencies).values({ workItemId: item.id, dependsOnWorkItemId: dependency.id, createdByUserId: req.dbUser!.id }).onConflictDoNothing().returning();
+      if (created) await recordWorkEvent(tx, { item, eventType: "task.dependency_added", actorUserId: req.dbUser!.id, payload: { dependsOnWorkItemId: dependency.id }, idempotencySuffix: `dependency:${dependency.id}` });
+      return created;
+    });
+    return res.status(row ? 201 : 200).json(row ?? { status: "already_exists" });
+  });
 
-  app.post("/api/planning/items/:id/approvals", attachUser, async (req, res) => { const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" }); const [approval] = await db.insert(creativeWorkApprovals).values({ workItemId: item.id, requestedByUserId: req.dbUser!.id, reviewerUserId: Number.isInteger(req.body?.reviewerUserId) ? req.body.reviewerUserId : null, note: typeof req.body?.note === "string" ? req.body.note.slice(0, 2_000) : "" }).onConflictDoNothing().returning(); return res.status(approval ? 201 : 200).json(approval ?? { status: "already_pending" }); });
-  app.post("/api/planning/approvals/:id/decide", attachUser, async (req, res) => { const decision = typeof req.body?.status === "string" ? req.body.status : ""; if (!["approved", "changes_requested"].includes(decision)) return res.status(400).json({ message: "Choose approve or request changes" }); const [approval] = await db.select().from(creativeWorkApprovals).where(eq(creativeWorkApprovals.id, req.params.id)).limit(1); const item = approval ? await ownedItem(req.dbUser!.id, approval.workItemId) : null; if (!approval || !item || approval.status !== "pending") return res.status(404).json({ message: "Pending approval not found" }); const [updated] = await db.update(creativeWorkApprovals).set({ status: decision, reviewerUserId: req.dbUser!.id, note: typeof req.body?.note === "string" ? req.body.note.slice(0, 2_000) : approval.note, decidedAt: new Date() }).where(and(eq(creativeWorkApprovals.id, approval.id), eq(creativeWorkApprovals.status, "pending"))).returning(); return res.json(updated); });
+  app.post("/api/planning/items/:id/approvals", attachUser, async (req, res) => {
+    const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
+    const approval = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(creativeWorkApprovals).values({ workItemId: item.id, requestedByUserId: req.dbUser!.id, reviewerUserId: Number.isInteger(req.body?.reviewerUserId) ? req.body.reviewerUserId : null, note: typeof req.body?.note === "string" ? req.body.note.slice(0, 2_000) : "" }).onConflictDoNothing().returning();
+      if (created) await recordWorkEvent(tx, { item, eventType: "task.approval_requested", actorUserId: req.dbUser!.id, payload: { approvalId: created.id, reviewerUserId: created.reviewerUserId }, idempotencySuffix: `approval:${created.id}:requested` });
+      return created;
+    });
+    return res.status(approval ? 201 : 200).json(approval ?? { status: "already_pending" });
+  });
+  app.post("/api/planning/approvals/:id/decide", attachUser, async (req, res) => {
+    const decision = typeof req.body?.status === "string" ? req.body.status : ""; if (!["approved", "changes_requested"].includes(decision)) return res.status(400).json({ message: "Choose approve or request changes" });
+    const [approval] = await db.select().from(creativeWorkApprovals).where(eq(creativeWorkApprovals.id, req.params.id)).limit(1); const item = approval ? await ownedItem(req.dbUser!.id, approval.workItemId) : null; if (!approval || !item || approval.status !== "pending") return res.status(404).json({ message: "Pending approval not found" });
+    const updated = await db.transaction(async (tx) => {
+      const [nextApproval] = await tx.update(creativeWorkApprovals).set({ status: decision, reviewerUserId: req.dbUser!.id, note: typeof req.body?.note === "string" ? req.body.note.slice(0, 2_000) : approval.note, decidedAt: new Date() }).where(and(eq(creativeWorkApprovals.id, approval.id), eq(creativeWorkApprovals.status, "pending"))).returning();
+      if (nextApproval) await recordWorkEvent(tx, { item, eventType: "task.approval_decided", actorUserId: req.dbUser!.id, payload: { approvalId: approval.id, decision }, idempotencySuffix: `approval:${approval.id}:${decision}` });
+      return nextApproval;
+    });
+    if (!updated) return res.status(409).json({ message: "Approval was already decided" }); return res.json(updated);
+  });
 
   app.post("/api/planning/items/:id/variants", attachUser, async (req, res) => {
     const parsed = createChannelVariantsSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid channel variants" });
     const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
-    const variants = await db.insert(creativeWorkItems).values(parsed.data.variants.map((variant) => ({ businessId: item.businessId, createdByUserId: req.dbUser!.id, assigneeUserId: item.assigneeUserId, title: variant.title ?? `${item.title} · ${variant.channel}`, description: item.description, kind: item.kind, status: item.status, priority: item.priority, channel: variant.channel, startsAt: item.startsAt, dueAt: variant.dueAt ?? item.dueAt, sourceType: "channel_variant", sourceId: `${item.id}:${variant.channel.toLowerCase()}`, metadata: { ...item.metadata, variantOfWorkItemId: item.id } }))).onConflictDoNothing().returning();
+    const variants = await db.transaction(async (tx) => {
+      const created = await tx.insert(creativeWorkItems).values(parsed.data.variants.map((variant) => ({ businessId: item.businessId, createdByUserId: req.dbUser!.id, assigneeUserId: item.assigneeUserId, parentWorkItemId: item.id, title: variant.title ?? `${item.title} · ${variant.channel}`, description: item.description, kind: item.kind, status: item.status, priority: item.priority, channel: variant.channel, startsAt: item.startsAt, dueAt: variant.dueAt ?? item.dueAt, sourceType: "channel_variant", sourceId: `${item.id}:${variant.channel.toLowerCase()}`, metadata: { ...item.metadata, variantOfWorkItemId: item.id } }))).onConflictDoNothing().returning();
+      for (const variant of created) await recordWorkEvent(tx, { item: variant, eventType: "task.variant_created", actorUserId: req.dbUser!.id, payload: { parentWorkItemId: item.id, channel: variant.channel }, idempotencySuffix: "created" });
+      return created;
+    });
     return res.status(201).json({ created: variants.length, variants });
   });
 
@@ -142,7 +255,12 @@ export function registerPlanningRoutes(app: Express) {
     const item = await ownedItem(req.dbUser!.id, req.params.id); if (!item) return res.status(404).json({ message: "Work item not found" });
     if (!item.dueAt || item.dueAt.getTime() >= Date.now() || ["published", "retrospective", "cancelled"].includes(item.status)) return res.status(409).json({ message: "Only missed work can be recovered" });
     const recovery = { action: parsed.data.action, note: parsed.data.note, recoveredAt: new Date().toISOString(), previousDueAt: item.dueAt.toISOString() };
-    const [updated] = await db.update(creativeWorkItems).set(parsed.data.action === "cancel" ? { status: "cancelled", completedAt: new Date(), metadata: { ...item.metadata, recovery }, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() } : { dueAt: parsed.data.dueAt, status: item.status === "blocked" ? "review" : item.status, metadata: { ...item.metadata, recovery }, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, item.version))).returning();
+    const updated = await db.transaction(async (tx) => {
+      const [nextItem] = await tx.update(creativeWorkItems).set(parsed.data.action === "cancel" ? { status: "cancelled", completedAt: new Date(), metadata: { ...item.metadata, recovery }, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() } : { dueAt: parsed.data.dueAt, status: item.status === "blocked" ? "review" : item.status, metadata: { ...item.metadata, recovery }, version: sql`${creativeWorkItems.version} + 1`, updatedAt: new Date() }).where(and(eq(creativeWorkItems.id, item.id), eq(creativeWorkItems.version, item.version))).returning();
+      if (nextItem) await recordWorkEvent(tx, { item: nextItem, eventType: "task.recovered", actorUserId: req.dbUser!.id, fromStatus: item.status, payload: recovery });
+      return nextItem;
+    });
+    if (!updated) return res.status(409).json({ message: "This work item changed; refresh before recovering it" });
     return res.json(updated);
   });
 }

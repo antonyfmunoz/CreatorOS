@@ -211,6 +211,12 @@ test("privacy export and reversible deletion scheduling are account-scoped", asy
       designVersions: expect.any(Array),
       designEvents: expect.any(Array),
     },
+    planning: {
+      workItems: expect.any(Array),
+      events: expect.any(Array),
+      dependencies: expect.any(Array),
+      approvals: expect.any(Array),
+    },
     providerActivations: { runs: expect.any(Array), evidence: expect.any(Array) },
   });
   expect(payload).toHaveProperty("privacyRequestId");
@@ -259,6 +265,24 @@ test("projection-side UMH ingress enforces signatures, replay protection and loc
   const replay = await sendCommand(base);
   await expectOk(replay);
   expect((await replay.json()).replayed).toBe(true);
+
+  const taskCreate = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-task-create-${randomUUID()}`, commandType: "creativesos.task.create.v1", payload: { title: `UMH task ${Date.now()}`, kind: "content", status: "idea" } };
+  const taskCreatedResponse = await sendCommand(taskCreate);
+  await expectOk(taskCreatedResponse);
+  const taskCreated = await taskCreatedResponse.json() as { status: string; payload: { workItemId: string; version: number } };
+  expect(taskCreated.status).toBe("completed");
+  const taskRevise = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-task-revise-${randomUUID()}`, commandType: "creativesos.task.revise.v1", payload: { workItemId: taskCreated.payload.workItemId, title: `UMH task revised ${Date.now()}`, version: taskCreated.payload.version } };
+  const taskRevisedResponse = await sendCommand(taskRevise);
+  await expectOk(taskRevisedResponse);
+  const taskRevised = await taskRevisedResponse.json() as { status: string; payload: { workItemId: string; version: number } };
+  expect(taskRevised.status).toBe("completed");
+  const taskTransition = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-task-transition-${randomUUID()}`, commandType: "creativesos.task.transition.v1", payload: { workItemId: taskCreated.payload.workItemId, status: "brief", version: taskRevised.payload.version } };
+  const taskTransitionedResponse = await sendCommand(taskTransition);
+  await expectOk(taskTransitionedResponse);
+  expect((await taskTransitionedResponse.json()).status).toBe("completed");
+  const taskDetail = await api(page, owner, "GET", `/api/planning/items/${taskCreated.payload.workItemId}`);
+  await expectOk(taskDetail);
+  expect((await taskDetail.json()).events.map((event: { eventType: string }) => event.eventType)).toEqual(expect.arrayContaining(["task.created", "task.revised", "task.status_changed"]));
 
   const publish = { ...base, commandId: randomUUID(), idempotencyKey: `qualification-publish-${randomUUID()}`, commandType: "creativesos.post.publish.v1", payload: { content: `Approved UMH post ${Date.now()}`, mediaType: "text" } };
   const proposed = await sendCommand(publish);

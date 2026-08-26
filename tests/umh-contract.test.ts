@@ -82,6 +82,9 @@ describe("CreativesOS UMH federation contract", () => {
     expect(isApprovalRequired("creativesos.instrument.lifecycle.v1")).toBe(true);
     expect(isApprovalRequired("creativesos.design.create.v1")).toBe(false);
     expect(isApprovalRequired("creativesos.design.revise.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.task.create.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.task.revise.v1")).toBe(false);
+    expect(isApprovalRequired("creativesos.task.transition.v1")).toBe(false);
   });
 
   it("advertises only the current real command surface", () => {
@@ -106,6 +109,9 @@ describe("CreativesOS UMH federation contract", () => {
       "creativesos.instrument.lifecycle.v1",
       "creativesos.design.create.v1",
       "creativesos.design.revise.v1",
+      "creativesos.task.create.v1",
+      "creativesos.task.revise.v1",
+      "creativesos.task.transition.v1",
     ]);
     expect(manifest.delivery.offline).toBe("durable_outbox");
     expect(manifest.emittedEvents).toEqual(expect.arrayContaining([
@@ -131,11 +137,16 @@ describe("CreativesOS UMH federation contract", () => {
       "design.project.created",
       "design.project.revised",
       "design.review.approved",
+      "task.created",
+      "task.revised",
+      "task.status_changed",
     ]));
     expect(manifest.capabilities.find((capability) => capability.id === "instrument.create")?.proof).toBe("typed_revision_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "instrument.lifecycle")?.approval).toBe("local_required");
     expect(manifest.capabilities.find((capability) => capability.id === "design.create")?.proof).toBe("typed_canvas_initial_revision_and_durable_event");
     expect(manifest.capabilities.find((capability) => capability.id === "design.revise")?.proof).toBe("optimistic_canvas_revision_and_durable_event");
+    expect(manifest.capabilities.find((capability) => capability.id === "task.create")?.proof).toBe("business_scoped_hierarchy_and_durable_event");
+    expect(manifest.capabilities.find((capability) => capability.id === "task.transition")?.proof).toBe("governed_transition_and_durable_event");
   });
 
   it("accepts bounded instrument commands without granting UMH database ownership", () => {
