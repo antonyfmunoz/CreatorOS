@@ -102,27 +102,30 @@ do not yet have the locked side-by-side operator evidence required for a
 ### Production closure evidence
 
 - Protected deployment run
-  [`32895193370`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32895193370)
+  [`32921856656`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32921856656)
   requalified and deployed exact clean `main` commit
-  `54b7e1faac5464fd0a0395beba2e9cc8453b25e8` while preserving the compact Fly
-  topology. Live `/api/release` independently reports that commit, immutable
-  source fingerprint `8beb06d14f5b93dca3a1a34ab71ca8965260318c3f2268fbb4aa227a9f2729a4`,
-  clean source and exact 108/108 migration parity; `/api/ready` reports `ready`
-  with zero release blockers.
+  `4b1a08111c799f1ea68d498b895071af77e6fd44` while preserving the compact Fly
+  topology. Live `/api/release` independently reports that commit, build ID
+  `20260826T022653Z-0b234f603c08`, clean source and exact 109/109 migration
+  parity; `/api/ready` reports `ready` with zero release blockers, configured
+  encrypted token custody, a configured YouTube adapter, configured
+  Relationship Hub AI and configured LiveKit media.
 - Protected all-scope production-smoke run
-  [`32897364892`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32897364892)
+  [`32922955104`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32922955104)
   passed both public production boundaries and the non-destructive authenticated
-  workspace journeys against that exact deployed commit.
+  workspace journeys against that exact deployed commit. The authenticated
+  preflight read Distribution connections, Relationship Hub AI status and
+  external-adapter availability without mutating data or exposing credentials.
 - Protected backup qualification run
   [`32897368705`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32897368705)
   verified the newest private archive's durable size, hash, readability, required
   inventory and 73,437-second age against the enforced 108,000-second ceiling.
 - The provider-activation control plane and specialist-substitution parity
-  enforcement are locally qualified: 119 unit/contract files and 458 tests,
-  TypeScript, production build, bundle and Worker gates, a fresh 108-migration database with 219
+  enforcement are locally qualified: 119 unit/contract files and 461 tests,
+  TypeScript, production build, bundle and Worker gates, a fresh 109-migration database with 219
   required tables, backup/restore, worker recovery, secrets, dependency,
   infrastructure, mobile and capacity gates all pass. The complete two-viewport
-  field matrix scheduled 202 executions, with 196 passing and six intentional
+  field matrix scheduled 204 executions, with 198 passing and six intentional
   skips and no failures.
 - Protected deployment run
   [`32664016977`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32664016977)
@@ -808,17 +811,18 @@ closure is now bounded by product, publication or external evidence:
    registration and bounded background wake; sustained capture/upload remains
    a physical-device and platform-policy gate;
 6. **Complete locally and in protected CI:** the complete
-   unit/build/migration/security, recovery, capacity and 202-execution browser
+   unit/build/migration/security, recovery, capacity and 204-execution browser
    suite passes for exact merge commit
-   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8` without overwriting older
-   production truth;
-7. **Release gate complete for this tranche:** protected workflow `32895193370`
+   `4b1a08111c799f1ea68d498b895071af77e6fd44`; protected CI run
+   `32920796628` and CodeQL run `32920796682` both pass without overwriting
+   older production truth;
+7. **Release gate complete for this tranche:** protected workflow `32921856656`
    deployed immutable clean commit
-   `54b7e1faac5464fd0a0395beba2e9cc8453b25e8`, completed the protected
-   backup/migration/deploy sequence, applied all 108 migrations, preserved the
+   `4b1a08111c799f1ea68d498b895071af77e6fd44`, completed the protected
+   backup/migration/deploy sequence, applied all 109 migrations, preserved the
    compact topology, and proved exact release identity. Protected all-scope
-   smoke `32897364892` then passed public boundaries and the authenticated
-   production workspaces at mobile and desktop viewports. `/api/release`,
+   smoke `32922955104` then passed public boundaries, authenticated production
+   workspaces and read-only provider preflight at mobile and desktop viewports. `/api/release`,
    `/api/ready` and `/api/health` remain the canonical current identity and
    readiness boundaries;
 8. hand off only the true external gates: provider approval/credentials,
