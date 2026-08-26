@@ -5825,6 +5825,104 @@ export const insertDocumentSchema = createInsertSchema(documents).pick({
   content: true,
 });
 
+// Canonical standalone instrument envelope shared by Docs, Sheets, Slides,
+// Tables, Forms, Calendar, and Finance. Product-specific surfaces bind to this
+// authority rather than defining incompatible lifecycle or revision rules.
+export const foundationInstruments = pgTable(
+  "foundation_instruments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schemaVersion: integer("schema_version").notNull().default(1),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    status: text("status").notNull().default("draft"),
+    currentRevision: integer("current_revision").notNull().default(1),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    authorityScope: text("authority_scope").notNull().default("business"),
+    extension: json("extension").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    businessKindIdx: index("foundation_instruments_business_kind_idx").on(table.businessId, table.kind),
+    businessStatusIdx: index("foundation_instruments_business_status_idx").on(table.businessId, table.status),
+  }),
+);
+
+export const foundationInstrumentRevisions = pgTable(
+  "foundation_instrument_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    instrumentId: uuid("instrument_id")
+      .references(() => foundationInstruments.id, { onDelete: "cascade" })
+      .notNull(),
+    revision: integer("revision").notNull(),
+    title: text("title").notNull(),
+    content: json("content").$type<unknown>().notNull(),
+    actorUserId: integer("actor_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    changeSummary: text("change_summary").notNull(),
+    baseRevision: integer("base_revision"),
+    evidence: json("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    revisionUnique: unique("foundation_instrument_revision_unique").on(table.instrumentId, table.revision),
+    instrumentRevisionIdx: index("foundation_instrument_revision_idx").on(table.instrumentId, table.revision),
+  }),
+);
+
+export const foundationInstrumentEvents = pgTable(
+  "foundation_instrument_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    instrumentId: uuid("instrument_id")
+      .references(() => foundationInstruments.id, { onDelete: "cascade" })
+      .notNull(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    actorUserId: integer("actor_user_id")
+      .references(() => users.id, { onDelete: "restrict" })
+      .notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    instrumentCreatedIdx: index("foundation_instrument_events_created_idx").on(table.instrumentId, table.createdAt),
+  }),
+);
+
+export const foundationFormSubmissions = pgTable(
+  "foundation_form_submissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    formInstrumentId: uuid("form_instrument_id")
+      .references(() => foundationInstruments.id, { onDelete: "cascade" })
+      .notNull(),
+    databaseInstrumentId: uuid("database_instrument_id")
+      .references(() => foundationInstruments.id, { onDelete: "restrict" })
+      .notNull(),
+    submittedByUserId: integer("submitted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    values: json("values").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    formIdempotencyUnique: unique("foundation_form_submission_idempotency_unique").on(table.formInstrumentId, table.idempotencyKey),
+  }),
+);
+
 // Story schema
 export const stories = pgTable("stories", {
   id: serial("id").primaryKey(),
@@ -10211,6 +10309,10 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type FoundationInstrument = typeof foundationInstruments.$inferSelect;
+export type FoundationInstrumentRevision = typeof foundationInstrumentRevisions.$inferSelect;
+export type FoundationInstrumentEvent = typeof foundationInstrumentEvents.$inferSelect;
+export type FoundationFormSubmission = typeof foundationFormSubmissions.$inferSelect;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;

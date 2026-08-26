@@ -3,16 +3,25 @@ import type { Express, Request, Response } from "express";
 import { and, desc, eq, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import {
-  businesses, businessMembers, campaigns, contentDrafts, posts, projectionEvents, umhApprovals, umhAuditRecords,
+  businesses, businessMembers, campaigns, contentDrafts, foundationInstrumentEvents, foundationInstrumentRevisions, foundationInstruments, posts, projectionEvents, umhApprovals, umhAuditRecords,
   umhCommandOutcomes, umhCommands, umhNonces, users,
 } from "../shared/schema";
 import {
   getCreativesOsCapabilityManifest, isApprovalRequired, type SupportedUmhCommandType,
   parseInboundUmhCommandEnvelope, UmhCommandEnvelopeSchema, type UmhCommandEnvelope, type UmhEventEnvelope,
 } from "../shared/umh-contract";
+import {
+  createFoundationInstrumentSchema,
+  foundationCommandSchema,
+  foundationInstrumentStatusSchema,
+  nextFoundationStatus,
+  parseFoundationContent,
+  reviseFoundationInstrumentSchema,
+  type FoundationInstrumentKind,
+} from "../shared/foundation-instruments";
 import { db } from "./db";
 import { attachUser } from "./auth";
-import { userCanManageBusiness } from "./businesses";
+import { userCanAdminBusiness, userCanManageBusiness } from "./businesses";
 import { createUmhSignature, verifyUmhSignature } from "./umh-signing";
 
 export { createUmhSignature, verifyUmhSignature } from "./umh-signing";
@@ -27,6 +36,8 @@ const DELIVERY_BATCH_SIZE = 20;
 const contentDraftPayloadSchema = z.object({ content: z.string().max(20_000).default(""), kind: z.string().min(1).max(48).default("post"), audience: z.string().min(1).max(48).default("public"), scheduledFor: z.string().datetime().optional(), platformVariants: z.record(z.unknown()).default({}) });
 const campaignPayloadSchema = z.object({ name: z.string().min(1).max(160), objective: z.enum(["awareness", "engagement", "traffic", "conversion", "creator_seeding", "community"]).default("awareness"), channel: z.enum(["organic", "paid", "creator_seeding", "owned"]).default("organic"), description: z.string().max(10_000).default(""), budgetCents: z.number().int().min(0).max(100_000_000).default(0), targeting: z.record(z.unknown()).default({}), startsAt: z.string().datetime().optional(), endsAt: z.string().datetime().optional() });
 const postPublishPayloadSchema = z.object({ content: z.string().min(1).max(20_000), mediaType: z.enum(["text", "photo", "audio", "video"]).default("text"), imageUrl: z.string().url().optional(), audioUrl: z.string().url().optional(), videoUrl: z.string().url().optional() });
+const instrumentRevisionPayloadSchema = reviseFoundationInstrumentSchema.extend({ instrumentId: z.string().uuid() });
+const instrumentLifecyclePayloadSchema = foundationCommandSchema.extend({ instrumentId: z.string().uuid() });
 
 export async function emitProjectionEvent(input: { aggregateType: string; aggregateId: string | number; eventType: string; actorUserId?: number | null; payload?: Record<string, unknown>; idempotencyKey: string; correlationId?: string | null; traceId?: string | null }, executor: DbExecutor = db) {
   // The disposable demo identity lives in MemStorage and deliberately has no
@@ -109,6 +120,38 @@ async function executeApprovedCommand(command: typeof umhCommands.$inferSelect, 
         if ((startsAt && Number.isNaN(startsAt.valueOf())) || (endsAt && Number.isNaN(endsAt.valueOf())) || (startsAt && endsAt && endsAt <= startsAt)) throw new Error("Campaign schedule is invalid");
         const [campaign] = await tx.insert(campaigns).values({ businessId: envelope.businessId, ownerUserId: envelope.delegatedUserId, name: payload.name, objective: payload.objective, channel: payload.channel, description: payload.description, budgetCents: payload.budgetCents, targeting: payload.targeting, startsAt, endsAt, status: "draft" }).returning();
         await emitProjectionEvent({ aggregateType: "campaign", aggregateId: campaign.id, eventType: "campaign.created", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, objective: campaign.objective, channel: campaign.channel, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:campaign.created`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx); result = { campaignId: campaign.id };
+      } else if (envelope.commandType === "creativesos.instrument.create.v1") {
+        const payload = createFoundationInstrumentSchema.parse(envelope.payload);
+        const content = parseFoundationContent(payload.kind, payload.content);
+        const [instrument] = await tx.insert(foundationInstruments).values({ businessId: envelope.businessId, kind: payload.kind, title: payload.title, ownerUserId: envelope.delegatedUserId, authorityScope: payload.authorityScope, extension: { ...payload.extension, origin: "umh" } }).returning();
+        await tx.insert(foundationInstrumentRevisions).values({ instrumentId: instrument.id, revision: 1, title: instrument.title, content, actorUserId: envelope.delegatedUserId, changeSummary: "Created by approved UMH command", baseRevision: null, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await tx.insert(foundationInstrumentEvents).values({ instrumentId: instrument.id, businessId: envelope.businessId, eventType: "instrument.created", toStatus: "draft", actorUserId: envelope.delegatedUserId, payload: { kind: instrument.kind, revision: 1, origin: "umh", commandId: envelope.commandId } });
+        await emitProjectionEvent({ aggregateType: "foundation_instrument", aggregateId: instrument.id, eventType: "instrument.created", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: instrument.kind, revision: 1, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:instrument.created`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { instrumentId: instrument.id, revision: 1, status: "draft" };
+      } else if (envelope.commandType === "creativesos.instrument.revise.v1") {
+        const payload = instrumentRevisionPayloadSchema.parse(envelope.payload);
+        const [instrument] = await tx.select().from(foundationInstruments).where(and(eq(foundationInstruments.id, payload.instrumentId), eq(foundationInstruments.businessId, envelope.businessId))).limit(1);
+        if (!instrument) throw new Error("Instrument not found in the delegated business");
+        if (instrument.status === "archived") throw new Error("Restore the instrument before revising it");
+        if (instrument.currentRevision !== payload.baseRevision) throw new Error(`Revision conflict: current revision is ${instrument.currentRevision}`);
+        const content = parseFoundationContent(instrument.kind as FoundationInstrumentKind, payload.content);
+        const nextRevision = instrument.currentRevision + 1;
+        const [updated] = await tx.update(foundationInstruments).set({ title: payload.title ?? instrument.title, currentRevision: nextRevision, status: instrument.status === "approved" || instrument.status === "published" ? "draft" : instrument.status, updatedAt: new Date() }).where(and(eq(foundationInstruments.id, instrument.id), eq(foundationInstruments.currentRevision, payload.baseRevision))).returning();
+        if (!updated) throw new Error("Revision conflict");
+        await tx.insert(foundationInstrumentRevisions).values({ instrumentId: instrument.id, revision: nextRevision, title: updated.title, content, actorUserId: envelope.delegatedUserId, changeSummary: payload.changeSummary, baseRevision: payload.baseRevision, evidence: { source: "umh", commandId: envelope.commandId, traceId: envelope.traceId } });
+        await tx.insert(foundationInstrumentEvents).values({ instrumentId: instrument.id, businessId: envelope.businessId, eventType: "instrument.revised", fromStatus: instrument.status, toStatus: updated.status, actorUserId: envelope.delegatedUserId, payload: { revision: nextRevision, origin: "umh", commandId: envelope.commandId } });
+        await emitProjectionEvent({ aggregateType: "foundation_instrument", aggregateId: instrument.id, eventType: "instrument.revised", actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: instrument.kind, revision: nextRevision, status: updated.status, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:instrument.revised`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { instrumentId: instrument.id, revision: nextRevision, status: updated.status };
+      } else if (envelope.commandType === "creativesos.instrument.lifecycle.v1") {
+        const payload = instrumentLifecyclePayloadSchema.parse(envelope.payload);
+        const [instrument] = await tx.select().from(foundationInstruments).where(and(eq(foundationInstruments.id, payload.instrumentId), eq(foundationInstruments.businessId, envelope.businessId))).limit(1);
+        if (!instrument) throw new Error("Instrument not found in the delegated business");
+        const nextStatus = nextFoundationStatus(foundationInstrumentStatusSchema.parse(instrument.status), payload.command);
+        const [updated] = await tx.update(foundationInstruments).set({ status: nextStatus, updatedAt: new Date(), archivedAt: nextStatus === "archived" ? new Date() : null }).where(and(eq(foundationInstruments.id, instrument.id), eq(foundationInstruments.status, instrument.status))).returning();
+        if (!updated) throw new Error("Lifecycle conflict");
+        await tx.insert(foundationInstrumentEvents).values({ instrumentId: instrument.id, businessId: envelope.businessId, eventType: `instrument.${payload.command}`, fromStatus: instrument.status, toStatus: nextStatus, actorUserId: envelope.delegatedUserId, payload: { note: payload.note, revision: instrument.currentRevision, origin: "umh", commandId: envelope.commandId } });
+        await emitProjectionEvent({ aggregateType: "foundation_instrument", aggregateId: instrument.id, eventType: `instrument.${payload.command}`, actorUserId: envelope.delegatedUserId, payload: { businessId: envelope.businessId, kind: instrument.kind, revision: instrument.currentRevision, fromStatus: instrument.status, toStatus: nextStatus, origin: "umh" }, idempotencyKey: `umh:${envelope.commandId}:instrument.${payload.command}`, correlationId: commandCorrelationId(envelope), traceId: envelope.traceId }, tx);
+        result = { instrumentId: instrument.id, revision: instrument.currentRevision, status: nextStatus };
       } else {
         const payload = postPublishPayloadSchema.parse(envelope.payload);
         const [post] = await tx.insert(posts).values({ userId: envelope.delegatedUserId, content: payload.content, mediaType: payload.mediaType, imageUrl: payload.imageUrl, audioUrl: payload.audioUrl, videoUrl: payload.videoUrl }).returning();
@@ -134,8 +177,11 @@ async function processUmhCommand(envelope: UmhCommandEnvelope) {
   if (!command) { const [conflict] = await db.select().from(umhCommands).where(or(eq(umhCommands.commandId, envelope.commandId), eq(umhCommands.idempotencyKey, envelope.idempotencyKey))).limit(1); return { status: conflict?.status ?? "received", commandId: conflict?.commandId ?? envelope.commandId, replayed: true }; }
   if (!(await userCanManageBusiness(envelope.delegatedUserId, envelope.businessId))) return rejectCommand(command, envelope, "Delegated user cannot manage the requested business");
   if (isApprovalRequired(envelope.commandType)) {
-    await db.transaction(async (tx) => { await tx.update(umhCommands).set({ status: "awaiting_approval", updatedAt: new Date() }).where(eq(umhCommands.id, command.id)); await tx.insert(umhApprovals).values({ commandId: command.id, businessId: envelope.businessId, reason: "External publication requires explicit local approval" }); await outcome(command.id, envelope, "awaiting_approval", "External publication requires explicit local approval", {}, tx); await audit(command.id, envelope, "command.awaiting_approval", "awaiting_approval", {}, tx); });
-    return { status: "awaiting_approval", commandId: command.commandId };
+    const reason = envelope.commandType === "creativesos.instrument.lifecycle.v1"
+      ? "UMH instrument lifecycle control requires explicit local approval"
+      : "External publication requires explicit local approval";
+    await db.transaction(async (tx) => { await tx.update(umhCommands).set({ status: "awaiting_approval", updatedAt: new Date() }).where(eq(umhCommands.id, command.id)); await tx.insert(umhApprovals).values({ commandId: command.id, businessId: envelope.businessId, reason }); await outcome(command.id, envelope, "awaiting_approval", reason, {}, tx); await audit(command.id, envelope, "command.awaiting_approval", "awaiting_approval", {}, tx); });
+    return { status: "awaiting_approval", commandId: command.commandId, detail: reason };
   }
   return { ...(await executeApprovedCommand(command, envelope)), commandId: command.commandId };
 }
@@ -145,7 +191,10 @@ function storedEnvelope(command: typeof umhCommands.$inferSelect): UmhCommandEnv
 async function resolveApproval(commandId: string, approverUserId: number, decision: "approved" | "rejected") {
   const [command] = await db.select().from(umhCommands).where(eq(umhCommands.commandId, commandId)).limit(1);
   if (!command || !command.businessId || !command.delegatedUserId) return { status: 404, body: { message: "UMH command not found" } };
-  if (!(await userCanManageBusiness(approverUserId, command.businessId))) return { status: 403, body: { message: "You do not have access to approve this command" } };
+  const canApprove = command.commandType === "creativesos.instrument.lifecycle.v1"
+    ? await userCanAdminBusiness(approverUserId, command.businessId)
+    : await userCanManageBusiness(approverUserId, command.businessId);
+  if (!canApprove) return { status: 403, body: { message: "You do not have access to approve this command" } };
   const [approval] = await db.select().from(umhApprovals).where(eq(umhApprovals.commandId, command.id)).limit(1);
   if (!approval || approval.status !== "pending") return { status: 409, body: { message: "This approval is no longer pending" } };
   const envelope = storedEnvelope(command);

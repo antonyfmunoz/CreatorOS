@@ -444,7 +444,7 @@ const Profile = () => {
                 <ShoppingBag className="mr-2 h-4 w-4" /> Create Product
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocation("/documents")}>
-                <FileText className="mr-2 h-4 w-4" /> Documents
+                <FileText className="mr-2 h-4 w-4" /> Creative workspace
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLocation("/settings/privacy")}>
                 <ShieldCheck className="mr-2 h-4 w-4" /> Data &amp; privacy

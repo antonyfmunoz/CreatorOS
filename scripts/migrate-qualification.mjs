@@ -231,6 +231,10 @@ const requiredTables = [
   "rights_cases",
   "rights_case_events",
   "repeat_infringer_strikes",
+  "foundation_instruments",
+  "foundation_instrument_revisions",
+  "foundation_instrument_events",
+  "foundation_form_submissions",
 ];
 
 const requiredColumns = {
@@ -287,6 +291,36 @@ const requiredColumns = {
     "work_item_id",
     "last_failed_assessment_id",
     "resolved_by_assessment_id",
+  ],
+  foundation_instruments: [
+    "schema_version",
+    "business_id",
+    "kind",
+    "status",
+    "current_revision",
+    "owner_user_id",
+    "authority_scope",
+  ],
+  foundation_instrument_revisions: [
+    "instrument_id",
+    "revision",
+    "content",
+    "actor_user_id",
+    "base_revision",
+    "evidence",
+  ],
+  foundation_instrument_events: [
+    "instrument_id",
+    "business_id",
+    "event_type",
+    "actor_user_id",
+    "payload",
+  ],
+  foundation_form_submissions: [
+    "form_instrument_id",
+    "database_instrument_id",
+    "idempotency_key",
+    "values",
   ],
 };
 

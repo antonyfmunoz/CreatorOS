@@ -10,6 +10,9 @@ export const supportedUmhCommandTypes = [
   "creativesos.content_draft.create.v1",
   "creativesos.campaign.create.v1",
   "creativesos.post.publish.v1",
+  "creativesos.instrument.create.v1",
+  "creativesos.instrument.revise.v1",
+  "creativesos.instrument.lifecycle.v1",
 ] as const;
 
 export type SupportedUmhCommandType = typeof supportedUmhCommandTypes[number];
@@ -135,7 +138,8 @@ export type UmhEventEnvelope = {
 };
 
 export function isApprovalRequired(commandType: SupportedUmhCommandType) {
-  return commandType === "creativesos.post.publish.v1";
+  return commandType === "creativesos.post.publish.v1"
+    || commandType === "creativesos.instrument.lifecycle.v1";
 }
 
 export function getCreativesOsCapabilityManifest(options: { installationId?: string | null } = {}) {
@@ -193,13 +197,25 @@ export function getCreativesOsCapabilityManifest(options: { installationId?: str
       "post.published",
       "product.created",
     "product.updated",
-    "order.paid",
+      "order.paid",
+      "instrument.created",
+      "instrument.revised",
+      "instrument.request_review",
+      "instrument.approve",
+      "instrument.request_changes",
+      "instrument.publish",
+      "instrument.archive",
+      "instrument.restore",
+      "database.record_created_from_form",
     ],
     delivery: { transport: "signed_https", retry: "exponential_backoff", offline: "durable_outbox" },
     capabilities: [
       { id: "content.draft.create", kind: "projection", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "durable_outcome_and_event" },
       { id: "campaign.create", kind: "projection", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "durable_outcome_and_event" },
       { id: "post.publish", kind: "projection", authority: "author_or_business_policy", approval: "local_required", consent: "publication_policy", provider: null, health: "healthy", proof: "local_approval_and_event" },
+      { id: "instrument.create", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "typed_revision_and_durable_event" },
+      { id: "instrument.revise", kind: "native", authority: "business_operator", approval: "none", consent: "none_required", provider: null, health: "healthy", proof: "optimistic_revision_and_durable_event" },
+      { id: "instrument.lifecycle", kind: "native", authority: "business_admin", approval: "local_required", consent: "none_required", provider: null, health: "healthy", proof: "local_approval_state_transition_and_event" },
       { id: "cutstudio.edit", kind: "native", authority: "asset_owner", approval: "none", consent: "none_required", provider: "private_r2", health: "healthy", proof: "revisioned_edl_and_durable_event" },
       { id: "cutstudio.render", kind: "native", authority: "asset_owner", approval: "explicit_distribution_promotion", consent: "none_required", provider: "ffmpeg_private_r2", health: "healthy", proof: "durable_job_private_artifact_and_event" },
       { id: "broadcast.direct", kind: "native", authority: "business_operator", approval: "explicit_go_live", consent: "capture_notice_required_when_guests_are_present", provider: "browser_compositor_ffmpeg", health: "healthy", proof: "revisioned_scene_graph_durable_session_and_health" },
