@@ -59,3 +59,31 @@ session scraping is not an acceptable activation path.
 - Production readiness and migration parity on every active machine.
 - Provider capability state remains `provider_pending` until the separate live
   qualification above passes.
+
+## 2026-08-25 native message-lifecycle release evidence
+
+- PR [#68](https://github.com/antonyfmunoz/CreatorOS/pull/68) merged the
+  qualified implementation as exact main commit
+  `9d907f6f01181a9fee682902a2dd7376bf63d799`; protected CI run
+  [`32913907325`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32913907325)
+  passed Core, database/durable workflows, both native shells, CodeQL and the
+  full browser matrix.
+- The isolated local matrix and protected exact-release replay each completed
+  204 mobile/desktop executions: 198 passed, six provider/device-dependent
+  cases were intentionally skipped, and none failed. The matrix proves native
+  send, edit, delete, heart reaction, read cursor, replay-safe idempotency,
+  cross-tenant denial and legacy/canonical propagation through API and UI.
+- Protected deployment
+  [`32915023953`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32915023953)
+  preserved the existing Fly topology, deployed the exact clean commit and
+  exposed 109/109 migration parity. Live `/api/release` reports verified build
+  identity `20260826T004321Z-6ddff3321393`; `/api/ready` reports zero blockers.
+- All-scope production smoke
+  [`32916454888`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32916454888)
+  passed two public and three authenticated journeys. Backup qualification
+  [`32916457766`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32916457766)
+  verified the private archive and manifest. Restore drill
+  [`32916459531`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/32916459531)
+  advanced the 108-migration archive to 109, verified 27 required tables and
+  zero orphan direct messages with a 19-second RTO, then destroyed the private
+  recovery Machine.
