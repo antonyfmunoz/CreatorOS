@@ -31,9 +31,11 @@ round trip.
 The following work must remain visibly pending until each live production round
 trip is independently evidenced:
 
-1. Meta app review, Instagram professional messaging/comment permissions,
-   Messenger Page permissions, WhatsApp Business configuration, signed
-   webhooks, and inbound/outbound/receipt/revocation tests.
+1. Meta app review and production credentials; live Instagram professional
+   account, Messenger Page, and WhatsApp Embedded Signup authorization; signed
+   inbound DM/comment/postback webhooks; free-form, media, private-reply, and
+   approved-template sends; delivery/read/status reconciliation; window-policy,
+   token-expiry, revocation, duplicate, rate-limit, and invalid-signature tests.
 2. X API plan and OAuth credentials, Account Activity or reconciliation access,
    inbound/outbound/receipt/token-refresh tests.
 3. ElevenLabs credential and user-owned voice enrollment, generation, private

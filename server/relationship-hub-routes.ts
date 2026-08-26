@@ -77,12 +77,16 @@ import {
 } from "./relationship-x-oauth";
 import {
   completeMessengerRelationshipAuthorization,
+  completeWhatsAppEmbeddedSignup,
   connectWhatsAppRelationshipAccount,
   createMessengerRelationshipAuthorization,
+  createWhatsAppEmbeddedSignupSession,
+  listWhatsAppRelationshipTemplates,
   messengerRelationshipConfiguration,
   metaWebhookChallenge,
   whatsappRelationshipConfiguration,
 } from "./relationship-meta-connections";
+import { whatsappTemplateSchema } from "./relationship-meta-policy";
 import {
   recordRelationshipConsent,
   recordRelationshipConsentSchema,
@@ -171,7 +175,8 @@ const sendMessageSchema = z.object({
     durationMs: z.number().int().nonnegative().max(86_400_000).optional(),
     metadata: z.record(z.string(), z.unknown()).default({}),
   })).max(20).default([]),
-}).refine((input) => input.body.trim() || input.attachments.length, {
+  whatsappTemplate: whatsappTemplateSchema.optional(),
+}).refine((input) => input.body.trim() || input.attachments.length || input.whatsappTemplate, {
   message: "A message needs text or an attachment",
 });
 
@@ -549,13 +554,48 @@ export function registerRelationshipHubRoutes(app: Express) {
 
   app.post("/api/relationship-hub/connections/whatsapp", attachUser, async (req, res) => {
     try {
-      const input = z.object({ businessId: businessIdSchema.optional(), phoneNumberId: z.string().trim().min(1).max(200), wabaId: z.string().trim().min(1).max(200).optional(), accessToken: z.string().trim().min(20).max(4_000), accountName: z.string().trim().min(1).max(200).optional() }).parse(req.body);
+      const input = z.object({ businessId: businessIdSchema.optional(), phoneNumberId: z.string().trim().min(1).max(200), wabaId: z.string().trim().min(1).max(200), accessToken: z.string().trim().min(20).max(4_000), accountName: z.string().trim().min(1).max(200).optional() }).parse(req.body);
       const businessId = await administeredBusiness(req, input.businessId);
       if (!whatsappRelationshipConfiguration().configured) throw new Error("WhatsApp relationship messaging is not configured");
       await assertRelationshipConnectionAvailable(businessId);
       const connection = await connectWhatsAppRelationshipAccount({ ...input, businessId, userId: req.dbUser!.id });
       await auditRelationshipAction({ businessId, actorUserId: req.dbUser!.id, action: "connection.created", targetType: "channel_connection", targetId: connection.id, metadata: { provider: "whatsapp" } });
       res.status(201).json({ id: connection.id, provider: connection.provider, providerAccountName: connection.providerAccountName, status: connection.status });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.post("/api/relationship-hub/connections/whatsapp/embedded/session", attachUser, async (req, res) => {
+    try {
+      const businessId = await administeredBusiness(req, req.body?.businessId);
+      if (!whatsappRelationshipConfiguration().embeddedSignupConfigured) throw new Error("WhatsApp Embedded Signup is not configured");
+      await assertRelationshipConnectionAvailable(businessId);
+      res.json(await createWhatsAppEmbeddedSignupSession({ userId: req.dbUser!.id, businessId }));
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.post("/api/relationship-hub/connections/whatsapp/embedded/complete", attachUser, async (req, res) => {
+    try {
+      const input = z.object({
+        state: z.string().trim().min(20).max(500),
+        code: z.string().trim().min(10).max(4_000),
+        wabaId: z.string().trim().min(1).max(200),
+        phoneNumberId: z.string().trim().min(1).max(200),
+      }).strict().parse(req.body);
+      const connection = await completeWhatsAppEmbeddedSignup({ ...input, userId: req.dbUser!.id });
+      await auditRelationshipAction({ businessId: connection.businessId, actorUserId: req.dbUser!.id, action: "connection.created", targetType: "channel_connection", targetId: connection.id, metadata: { provider: "whatsapp", connectionMode: "embedded_signup" } });
+      res.status(201).json({ id: connection.id, provider: connection.provider, providerAccountName: connection.providerAccountName, status: connection.status });
+    } catch (error) { return relationshipHubError(res, error); }
+  });
+
+  app.get("/api/relationship-hub/connections/:connectionId/whatsapp/templates", attachUser, async (req, res) => {
+    try {
+      const [connection] = await db.select().from(relationshipChannelConnections).where(and(
+        eq(relationshipChannelConnections.id, z.string().uuid().parse(req.params.connectionId)),
+        eq(relationshipChannelConnections.provider, "whatsapp"),
+        inArray(relationshipChannelConnections.status, ["active", "testing"]),
+      )).limit(1);
+      if (!connection || !(await userCanAdminBusiness(req.dbUser!.id, connection.businessId))) throw new Error("WhatsApp connection not found");
+      res.json({ templates: await listWhatsAppRelationshipTemplates(connection) });
     } catch (error) { return relationshipHubError(res, error); }
   });
 
@@ -1095,7 +1135,7 @@ export function registerRelationshipHubRoutes(app: Express) {
           bodyFormat: input.bodyFormat,
           replyToExternalMessageId: input.replyToExternalMessageId,
           attachments: input.attachments,
-          metadata: {},
+          metadata: input.whatsappTemplate ? { whatsappTemplate: input.whatsappTemplate } : {},
         },
       });
       if (!queued.duplicate) void processRelationshipDeliveryJob(queued.job.id).catch((error) => console.error("Immediate Relationship Hub delivery failed", { errorType: error instanceof Error ? error.name : typeof error }));

@@ -17,6 +17,20 @@ describe("Messenger Relationship Hub adapter", () => {
     expect(events[0]).toMatchObject({ provider: "messenger", externalEventId: "message:mid-1", actor: { providerSubjectId: "person-1" }, message: { body: "pricing" } });
   });
 
+  it("normalizes postbacks and delivery receipts", async () => {
+    const events = await messengerRelationshipAdapter.normalizeWebhook({
+      context: baseContext,
+      headers: {},
+      body: { object: "page", entry: [{ id: "account-1", messaging: [
+        { sender: { id: "person-1" }, timestamp: 1_786_000_001_000, postback: { mid: "postback-1", title: "Pricing", payload: "PRICING" } },
+        { sender: { id: "person-1" }, timestamp: 1_786_000_002_000, delivery: { mids: ["out-1"], watermark: 1_786_000_002_000 } },
+      ] }] },
+    });
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ eventType: "social.dm.received", message: { body: "Pricing", metadata: { postbackPayload: "PRICING" } } });
+    expect(events[1]).toMatchObject({ eventType: "message.delivered", receipt: { externalMessageId: "out-1", type: "delivered" } });
+  });
+
   it("delivers text to the page messaging endpoint", async () => {
     process.env.META_GRAPH_API_VERSION = "v25.0"; process.env.META_GRAPH_BASE_URL = "https://meta.test";
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ recipient_id: "person-1", message_id: "out-1" }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -42,6 +56,22 @@ describe("WhatsApp Relationship Hub adapter", () => {
     await whatsappRelationshipAdapter.deliver({ context: baseContext, action: { version: "relationship.action.v1", actionType: "message.send", idempotencyKey: "message-key", externalThreadId: "15551234567", body: "", bodyFormat: "plain", attachments: [{ type: "voice_note", sourceUrl: "https://creativesos.net/audio/1", metadata: {} }], metadata: {} } });
     const init = request.mock.calls[0][1] as RequestInit;
     expect(JSON.parse(String(init.body))).toMatchObject({ messaging_product: "whatsapp", to: "15551234567", type: "audio", audio: { link: "https://creativesos.net/audio/1" } });
+  });
+
+  it("delivers an approved WhatsApp template", async () => {
+    process.env.META_GRAPH_API_VERSION = "v25.0"; process.env.META_GRAPH_BASE_URL = "https://meta.test";
+    const request = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ id: "template-1", name: "order_update", status: "APPROVED", language: "en_US" }] }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ messages: [{ id: "wamid.template" }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    await whatsappRelationshipAdapter.deliver({ context: { ...baseContext, metadata: { wabaId: "waba-1" } }, action: { version: "relationship.action.v1", actionType: "message.send", idempotencyKey: "template-key", externalThreadId: "15551234567", body: "", bodyFormat: "plain", attachments: [], metadata: { whatsappTemplate: { name: "order_update", languageCode: "en_US" } } } });
+    expect(JSON.parse(String((request.mock.calls[1][1] as RequestInit).body))).toMatchObject({ messaging_product: "whatsapp", to: "15551234567", type: "template", template: { name: "order_update", language: { code: "en_US" } } });
+  });
+
+  it("blocks a WhatsApp template that Meta does not report as approved", async () => {
+    process.env.META_GRAPH_API_VERSION = "v25.0"; process.env.META_GRAPH_BASE_URL = "https://meta.test";
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: [{ name: "order_update", status: "PAUSED", language: "en_US" }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    await expect(whatsappRelationshipAdapter.deliver({ context: { ...baseContext, metadata: { wabaId: "waba-1" } }, action: { version: "relationship.action.v1", actionType: "message.send", idempotencyKey: "template-blocked", externalThreadId: "15551234567", body: "", bodyFormat: "plain", attachments: [], metadata: { whatsappTemplate: { name: "order_update", languageCode: "en_US" } } } })).rejects.toMatchObject({ code: "whatsapp_template_not_approved" });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 });
 

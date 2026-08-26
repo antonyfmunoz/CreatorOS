@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { RelationshipAdapterError, RelationshipChannelAdapter } from "./relationship-channel-adapters";
 import type { NormalizedRelationshipEvent, RelationshipOutboundAction } from "./relationship-hub-policy";
+import { whatsappTemplateFromAction, whatsappTemplatePayload } from "./relationship-meta-policy";
 
 function graphVersion() {
   const value = process.env.META_GRAPH_API_VERSION;
@@ -93,6 +94,22 @@ function normalizeMessenger(body: unknown, accountId: string): NormalizedRelatio
           metadata: { automated: false },
         });
       }
+      const postback = item.postback as { mid?: unknown; title?: unknown; payload?: unknown } | undefined;
+      if (senderId && postback) {
+        const postbackId = stringValue(postback.mid) || `${senderId}:${String(item.timestamp ?? entry.time ?? Date.now())}:${stringValue(postback.payload) ?? "postback"}`;
+        events.push({
+          version: "relationship.event.v1", provider: "messenger", externalEventId: `postback:${postbackId}`, eventType: "social.dm.received", occurredAt: occurredAt(item.timestamp ?? entry.time),
+          actor: { providerSubjectId: senderId, verified: false, metadata: {} },
+          thread: { externalThreadId: senderId, kind: "direct", metadata: { pageId: accountId } },
+          message: { externalMessageId: postbackId, type: "text", body: stringValue(postback.title) ?? stringValue(postback.payload) ?? "", bodyFormat: "plain", attachments: [], metadata: { postbackPayload: stringValue(postback.payload) ?? null } },
+          metadata: { automated: false, source: "postback" },
+        });
+      }
+      const delivery = item.delivery as { mids?: unknown[]; watermark?: unknown } | undefined;
+      if (senderId && delivery) {
+        const mids = (delivery.mids ?? []).flatMap((mid) => stringValue(mid) ? [String(mid)] : []);
+        for (const mid of mids) events.push({ version: "relationship.event.v1", provider: "messenger", externalEventId: `delivery:${mid}`, eventType: "message.delivered", occurredAt: occurredAt(item.timestamp ?? entry.time), actor: { providerSubjectId: senderId, verified: false, metadata: {} }, thread: { externalThreadId: senderId, kind: "direct", metadata: { pageId: accountId } }, receipt: { externalMessageId: mid, type: "delivered", metadata: { watermark: delivery.watermark ?? null } }, metadata: {} });
+      }
       const read = item.read as { watermark?: unknown } | undefined;
       if (senderId && read?.watermark) {
         const watermark = String(read.watermark);
@@ -181,6 +198,11 @@ function normalizeWhatsApp(body: unknown, phoneNumberId: string): NormalizedRela
 }
 
 function whatsappMessage(action: RelationshipOutboundAction) {
+  const template = whatsappTemplatePayload(action);
+  if (template) {
+    if (action.attachments.length) throw Object.assign(new Error("WhatsApp template messages cannot include direct attachments"), { errorClass: "invalid_content" as const, code: "whatsapp_template_attachment_invalid" });
+    return template;
+  }
   const attachment = action.attachments[0];
   if (!attachment) return { type: "text", text: { body: action.body } };
   if (action.attachments.length > 1) throw Object.assign(new Error("WhatsApp delivery supports one attachment at a time"), { errorClass: "invalid_content" as const, code: "whatsapp_attachment_invalid" });
@@ -190,6 +212,21 @@ function whatsappMessage(action: RelationshipOutboundAction) {
   return { type, [type]: { ...media, ...(action.body && type !== "audio" ? { caption: action.body } : {}), ...(type === "document" && attachment.filename ? { filename: attachment.filename } : {}) } };
 }
 
+async function assertApprovedWhatsAppTemplate(action: RelationshipOutboundAction, context: Parameters<RelationshipChannelAdapter["deliver"]>[0]["context"]) {
+  const selected = whatsappTemplateFromAction(action);
+  if (!selected) return;
+  if (!context.accessToken) throw Object.assign(new Error("WhatsApp connection needs reauthorization"), { errorClass: "authentication" as const, code: "missing_access_token" });
+  const wabaId = typeof context.metadata.wabaId === "string" ? context.metadata.wabaId : "";
+  if (!wabaId) throw Object.assign(new Error("WhatsApp Business Account ID is unavailable"), { errorClass: "permanent" as const, code: "missing_waba_id" });
+  const url = new URL(graphUrl(wabaId, "/message_templates"));
+  url.searchParams.set("fields", "id,name,status,language");
+  url.searchParams.set("name", selected.name);
+  url.searchParams.set("limit", "100");
+  const response = await metaJson<{ data?: Array<{ name?: string; status?: string; language?: string }> }>(await fetch(url, { headers: { authorization: `Bearer ${context.accessToken}` } }));
+  const approved = (response.data ?? []).some((template) => template.name === selected.name && template.language === selected.languageCode && template.status === "APPROVED");
+  if (!approved) throw Object.assign(new Error("The selected WhatsApp template is not approved for this business account and language"), { errorClass: "policy" as const, code: "whatsapp_template_not_approved" });
+}
+
 export const whatsappRelationshipAdapter: RelationshipChannelAdapter = {
   provider: "whatsapp",
   capabilities: whatsappRelationshipCapabilities,
@@ -197,6 +234,7 @@ export const whatsappRelationshipAdapter: RelationshipChannelAdapter = {
   async normalizeWebhook({ body, context }) { return normalizeWhatsApp(body, context.providerAccountId); },
   async deliver({ action, context }) {
     if (!context.accessToken) throw Object.assign(new Error("WhatsApp connection needs reauthorization"), { errorClass: "authentication" as const, code: "missing_access_token" });
+    await assertApprovedWhatsAppTemplate(action, context);
     const response = await fetch(graphUrl(context.providerAccountId, "/messages"), { method: "POST", headers: { authorization: `Bearer ${context.accessToken}`, "content-type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: action.externalThreadId, ...whatsappMessage(action) }) });
     const body = await metaJson<{ messages?: Array<{ id?: string }> }>(response);
     const messageId = body.messages?.[0]?.id;

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { instagramRelationshipAdapter } from "../server/relationship-instagram-adapter";
 import { instagramRelationshipConfiguration, verifyInstagramWebhookChallenge } from "../server/relationship-instagram-oauth";
 
@@ -14,9 +14,11 @@ afterEach(() => {
   delete process.env.INSTAGRAM_APP_SECRET;
   delete process.env.INSTAGRAM_APP_ID;
   delete process.env.META_GRAPH_API_VERSION;
+  delete process.env.META_INSTAGRAM_GRAPH_BASE_URL;
   delete process.env.RELATIONSHIP_INSTAGRAM_WEBHOOK_VERIFY_TOKEN;
   delete process.env.SOCIAL_TOKEN_ENCRYPTION_KEY;
   delete process.env.PUBLIC_APP_URL;
+  vi.restoreAllMocks();
 });
 
 describe("Instagram Relationship Hub configuration", () => {
@@ -62,5 +64,13 @@ describe("Instagram Relationship Hub adapter", () => {
     const signature = `sha256=${crypto.createHmac("sha256", "test-secret").update(rawBody).digest("hex")}`;
     expect(await instagramRelationshipAdapter.verifyWebhook!({ rawBody, headers: { "x-hub-signature-256": signature }, context })).toBe(true);
     expect(await instagramRelationshipAdapter.verifyWebhook!({ rawBody, headers: { "x-hub-signature-256": "sha256=bad" }, context })).toBe(false);
+  });
+
+  it("delivers hosted audio as an Instagram media message", async () => {
+    process.env.META_GRAPH_API_VERSION = "v25.0";
+    process.env.META_INSTAGRAM_GRAPH_BASE_URL = "https://instagram.test";
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ recipient_id: "person-1", message_id: "out-1" }), { status: 200, headers: { "content-type": "application/json" } }));
+    await instagramRelationshipAdapter.deliver({ context: { ...context, accessToken: "token" }, action: { version: "relationship.action.v1", actionType: "message.send", idempotencyKey: "instagram-audio", externalThreadId: "person-1", body: "", bodyFormat: "plain", attachments: [{ type: "voice_note", sourceUrl: "https://creativesos.net/audio/1", metadata: {} }], metadata: {} } });
+    expect(JSON.parse(String((request.mock.calls[0][1] as RequestInit).body))).toMatchObject({ recipient: { id: "person-1" }, message: { attachment: { type: "audio", payload: { url: "https://creativesos.net/audio/1" } } } });
   });
 });

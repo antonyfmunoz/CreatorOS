@@ -25,6 +25,8 @@ describe("production safety boundaries", () => {
     expect(headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
     expect(headers.get("Content-Security-Policy")).toContain("https://clerk.creativesos.net");
     expect(headers.get("Content-Security-Policy")).toContain("https://accounts.creativesos.net");
+    expect(headers.get("Content-Security-Policy")).toContain("https://connect.facebook.net");
+    expect(headers.get("Content-Security-Policy")).toContain("https://www.facebook.com");
     expect(headers.get("Content-Security-Policy")).not.toContain("script-src 'self' 'unsafe-inline'");
     expect(headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
   });

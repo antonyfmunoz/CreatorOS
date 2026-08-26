@@ -109,12 +109,15 @@ Request only the implemented permissions:
 - `instagram_business_manage_messages`
 - `instagram_business_manage_comments`
 
-Subscribe the connected professional account to `messages`, `messaging_postbacks`,
-`message_reactions`, `comments`, and `live_comments`. Keep the connection in
+CreativesOS subscribes the connected professional account to `messages`,
+`messaging_postbacks`, `messaging_seen`, and `comments` during OAuth and rejects
+the connection unless Meta confirms the subscription. Keep the connection in
 testing until webhook challenge verification, signed inbound DM, outbound reply,
 comment reply, comment-to-DM private reply, receipt reconciliation, token expiry,
 revocation, rate-limit retry, duplicate webhook, and unauthorized-signature
-tests all pass. The adapter does not claim Instagram audio upload support.
+tests all pass. The adapter supports one hosted or previously uploaded image,
+video, or audio attachment per message; a live media round trip is still required
+before production qualification.
 
 ### Facebook Messenger
 
@@ -130,21 +133,36 @@ Configure and subscribe the Page webhook callback:
 
 The app requests `public_profile`, `pages_show_list`, `pages_messaging`, and
 `pages_manage_metadata`, enumerates only Pages on which the user has a relevant
-task, stores each Page token encrypted, and subscribes message/delivery/read
-events. Provider review and a live Page DM round trip remain mandatory.
+task, stores each Page token encrypted, and requires Meta to confirm each Page's
+message/postback/delivery/read subscription. Free-form sends are blocked after
+the rolling 24-hour reply window. Provider review and a live Page DM/media/
+receipt round trip remain mandatory.
 
 ### WhatsApp Business
 
+Set `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION=v25.0`,
+`RELATIONSHIP_META_WEBHOOK_VERIFY_TOKEN`, and `META_WHATSAPP_CONFIG_ID`.
 Configure the WhatsApp product on the Meta app and use this callback:
 
 `https://creativesos.net/api/relationship-hub/webhooks/whatsapp`
 
-The owner connects a phone-number ID with a Meta system-user token through the
-Relationship Hub. The server verifies the phone number, encrypts the token, and
-never returns it. Text and hosted media, including disclosed synthetic audio,
-use the Cloud API. Free-form replies remain constrained to Meta's customer
-service window. Proactive outreach requires approved templates and is not
-silently treated as an ordinary reply.
+The primary connection flow is Meta Embedded Signup. CreativesOS creates a
+short-lived, single-use state, launches the approved Facebook Login for Business
+configuration, accepts signup events only from Meta's exact origins, exchanges
+the authorization code only on the server, and never logs or returns the token.
+The server verifies that the token is valid for this Meta app, has
+`whatsapp_business_messaging` and `whatsapp_business_management`, proves the
+selected phone belongs to the selected WABA, and requires Meta to confirm the
+WABA webhook subscription before activating it. A system-user token flow remains
+available as an administrator-only fallback and passes the same checks.
+
+Text and one hosted or uploaded media item, including disclosed synthetic audio,
+use the Cloud API. Free-form replies are re-checked at queue and delivery time
+against the rolling 24-hour customer-service window. Outside that window the UI
+loads the WABA's approved templates, collects template variables, and the server
+rejects anything other than a validated approved-template request. A live
+Embedded Signup, inbound, free-form, template, media, status, revocation, and
+invalid-signature matrix remains mandatory before production qualification.
 
 ### X
 
