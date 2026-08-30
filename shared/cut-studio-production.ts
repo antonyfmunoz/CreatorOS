@@ -528,6 +528,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
       fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
+      borderRadius: layer.kind === "shape" && typeof layer.style.borderRadius === "number" ? Math.max(0, Math.min(50, layer.style.borderRadius)) : 0,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });

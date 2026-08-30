@@ -109,7 +109,7 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
   return motionPropertyExpression(clip, axis, canvasSize);
 }
 
-function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "opacity", multiplier: number) {
+function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "opacity", multiplier: number, timeVariable = "t") {
   const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : 1;
   const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
     .sort((left, right) => left.at - right.at)
@@ -123,8 +123,8 @@ function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number
     const end = Number((graphic.timelineStart + right.at).toFixed(3));
     const duration = Number((right.at - left.at).toFixed(3));
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5));
-    const progress = `(t-${start})/${duration}`;
-    expression = `if(lt(t\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
+    const progress = `(${timeVariable}-${start})/${duration}`;
+    expression = `if(lt(${timeVariable}\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
   }
   return expression;
 }
@@ -605,37 +605,31 @@ async function renderMultitrack(
       } else audioLabels.push(`[${label}]`);
     }
   }
-  const vectorInputIndexes = new Map<string, number>();
-  const vectorInputPaths: string[] = [];
-  for (const graphic of graphics.filter((item) => item.kind === "path")) {
-    const vectorPath = path.join(temp, `graphic-path-${vectorInputPaths.length}.png`);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}" opacity="${graphic.backgroundOpacity}"/></svg>`;
-    await sharp(Buffer.from(svg)).png().toFile(vectorPath);
-    vectorInputIndexes.set(graphic.id, inputs.length + vectorInputPaths.length);
-    vectorInputPaths.push(vectorPath);
+  const rasterGraphicInputIndexes = new Map<string, number>();
+  const rasterGraphicInputPaths: string[] = [];
+  for (const graphic of graphics.filter((item) => item.kind === "shape" || item.kind === "path")) {
+    const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
+    const element = graphic.kind === "path"
+      ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
+      : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
+    await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).png().toFile(rasterPath);
+    rasterGraphicInputIndexes.set(graphic.id, inputs.length + rasterGraphicInputPaths.length);
+    rasterGraphicInputPaths.push(rasterPath);
   }
   const fontFilter = graphics.some((graphic) => !["shape", "path"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;
-    if (graphic.kind === "shape") {
-      const x = Math.round(graphic.x * size[0]);
-      const y = Math.round(graphic.y * size[1]);
+    if (graphic.kind === "shape" || graphic.kind === "path") {
+      const input = rasterGraphicInputIndexes.get(graphic.id);
+      if (input === undefined) throw new Error("A raster graphic input could not be prepared");
       const width = Math.max(1, Math.round(graphic.width * size[0]));
       const height = Math.max(1, Math.round(graphic.height * size[1]));
-      filters.push(`[${videoLabel}]drawbox=x=${x}:y=${y}:w=${width}:h=${height}:color=${graphic.backgroundColor}@${graphic.backgroundOpacity}:t=fill:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
-      videoLabel = nextLabel;
-      continue;
-    }
-    if (graphic.kind === "path") {
-      const input = vectorInputIndexes.get(graphic.id);
-      if (input === undefined) throw new Error("A vector graphic input could not be prepared");
-      const x = Math.round(graphic.x * size[0]);
-      const y = Math.round(graphic.y * size[1]);
-      const width = Math.max(1, Math.round(graphic.width * size[0]));
-      const height = Math.max(1, Math.round(graphic.height * size[1]));
-      filters.push(`[${input}:v]format=rgba,scale=${width}:${height}[vector${index}]`);
-      filters.push(`[${videoLabel}][vector${index}]overlay=x=${x}:y=${y}:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+      const x = graphicMotionExpression(graphic, "x", size[0]);
+      const y = graphicMotionExpression(graphic, "y", size[1]);
+      const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
+      filters.push(`[${input}:v]format=rgba,scale=${width}:${height},setpts=PTS+${graphic.timelineStart}/TB,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'[rastergraphic${index}]`);
+      filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
       videoLabel = nextLabel;
       continue;
     }
@@ -658,7 +652,7 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), ...vectorInputPaths.flatMap((vectorPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", vectorPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputPaths.flatMap((rasterPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", rasterPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }
