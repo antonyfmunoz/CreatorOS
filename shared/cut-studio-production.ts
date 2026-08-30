@@ -45,6 +45,12 @@ export const cutMotionEffectSchema = z.object({
   kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
   enabled: z.boolean().default(true),
   parameters: scalarRecord.default({}),
+}).superRefine((value, context) => {
+  if (value.kind !== "mask") return;
+  const maskAssetId = value.parameters.maskAssetId;
+  if (typeof maskAssetId !== "string" || !z.string().uuid().safeParse(maskAssetId).success) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters", "maskAssetId"], message: "Mask effects require a private image asset" });
+  }
 });
 
 export const cutLayerTransitionSchema = z.object({
@@ -553,6 +559,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       revealDirection: initialState?.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(initialState.reveal.direction) ? initialState.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null,
       revealProgress: initialState?.reveal?.progress ?? 1,
       revealMaskAssetId: transitionMaskIds[0] ?? null,
+      effects: layer.effects.filter((effect) => effect.enabled).slice(0, 20).map((effect) => ({ kind: effect.kind, parameters: effect.parameters })),
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });

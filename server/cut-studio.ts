@@ -178,6 +178,43 @@ function geometricRevealAlpha(kind: "wipe" | "clock_wipe" | "iris", direction: "
   return `if(lt(X,W*${progress}),alpha(X,Y),0)`;
 }
 
+type RenderGraphic = NonNullable<CutEdl["graphics"]>[number];
+
+function graphicEffect(graphic: RenderGraphic, kind: RenderGraphic["effects"][number]["kind"]) {
+  return graphic.effects.find((effect) => effect.kind === kind);
+}
+
+function effectNumber(effect: ReturnType<typeof graphicEffect>, key: string, fallback: number, minimum: number, maximum: number) {
+  const value = Number(effect?.parameters[key]);
+  return Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : fallback;
+}
+
+function effectColor(effect: ReturnType<typeof graphicEffect>, key: string, fallback: string) {
+  const value = effect?.parameters[key];
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
+async function bakeGraphicGlowAndShadow(graphic: RenderGraphic, inputPath: string, outputPath: string, width: number, height: number) {
+  const shadow = graphicEffect(graphic, "drop_shadow");
+  const glow = graphicEffect(graphic, "glow");
+  if (!shadow && !glow) return inputPath;
+  const shadowBlur = effectNumber(shadow, "blur", 10, 0, 40);
+  const shadowX = effectNumber(shadow, "x", 4, -40, 40);
+  const shadowY = effectNumber(shadow, "y", 6, -40, 40);
+  const shadowColor = effectColor(shadow, "color", "#000000");
+  const glowBlur = effectNumber(glow, "radius", 16, 0, 60);
+  const glowColor = effectColor(glow, "color", "#1d9bf0");
+  const source = (await fs.readFile(inputPath)).toString("base64");
+  const nodes = [
+    shadow ? `<feOffset in="SourceAlpha" dx="${shadowX}" dy="${shadowY}" result="shadowOffset"/><feGaussianBlur in="shadowOffset" stdDeviation="${shadowBlur}" result="shadowBlur"/><feFlood flood-color="${shadowColor}" flood-opacity="0.8" result="shadowColor"/><feComposite in="shadowColor" in2="shadowBlur" operator="in" result="shadow"/>` : "",
+    glow ? `<feGaussianBlur in="SourceAlpha" stdDeviation="${glowBlur}" result="glowBlur"/><feFlood flood-color="${glowColor}" flood-opacity="0.9" result="glowColor"/><feComposite in="glowColor" in2="glowBlur" operator="in" result="glow"/>` : "",
+  ].join("");
+  const merge = `${shadow ? '<feMergeNode in="shadow"/>' : ""}${glow ? '<feMergeNode in="glow"/>' : ""}<feMergeNode in="SourceGraphic"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><defs><filter id="fx" x="0" y="0" width="100%" height="100%">${nodes}<feMerge>${merge}</feMerge></filter></defs><image width="${width}" height="${height}" href="data:image/png;base64,${source}" filter="url(#fx)"/></svg>`;
+  await sharp(Buffer.from(svg)).png().toFile(outputPath);
+  return outputPath;
+}
+
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
   const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
     .sort((left, right) => left.at - right.at)
@@ -529,7 +566,7 @@ async function renderMultitrack(
   temp: string,
   outputPath: string,
 ) {
-  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId)].filter((value): value is string => Boolean(value)))]));
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
   const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
   const inputs = await Promise.all(assetRows.map(async (asset, index) => {
@@ -659,7 +696,14 @@ async function renderMultitrack(
   const titleFontFilter = graphics.some((graphic) => !["shape", "path", "svg"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
-    const baseRasterPath = graphic.revealMaskAssetId ? path.join(temp, `graphic-raster-base-${rasterGraphicInputPaths.length}.png`) : rasterPath;
+    const staticMaskEffect = graphicEffect(graphic, "mask");
+    const staticMaskAssetId = typeof staticMaskEffect?.parameters.maskAssetId === "string" ? staticMaskEffect.parameters.maskAssetId : null;
+    if (graphic.revealMaskAssetId && staticMaskAssetId && graphic.revealMaskAssetId !== staticMaskAssetId) {
+      throw new Error("A graphic may not combine different transition and static masks");
+    }
+    const maskAssetId = graphic.revealMaskAssetId ?? staticMaskAssetId;
+    const needsBakedEffects = Boolean(graphicEffect(graphic, "drop_shadow") || graphicEffect(graphic, "glow"));
+    const baseRasterPath = maskAssetId || needsBakedEffects ? path.join(temp, `graphic-raster-base-${rasterGraphicInputPaths.length}.png`) : rasterPath;
     const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
     const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
     if (graphic.kind === "image") {
@@ -677,12 +721,14 @@ async function renderMultitrack(
       const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
       await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", baseRasterPath], 30_000, jobId);
     }
-    if (graphic.revealMaskAssetId) {
-      const privateMask = inputById.get(graphic.revealMaskAssetId);
+    const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputPaths.length}.png`) : rasterPath;
+    const styledInputPath = needsBakedEffects ? await bakeGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
+    if (maskAssetId) {
+      const privateMask = inputById.get(maskAssetId);
       if (!privateMask?.asset.mimeType?.startsWith("image/")) throw new Error("A custom reveal mask must reference ready private image media");
       const alpha = await sharp(privateMask.url).resize(width, height, { fit: "fill" }).greyscale().raw().toBuffer();
       const mask = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 } } }).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
-      await sharp(baseRasterPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
+      await sharp(styledInputPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
     }
     rasterGraphicInputIndexes.set(graphic.id, inputs.length + rasterGraphicInputPaths.length);
     rasterGraphicInputPaths.push(rasterPath);
@@ -704,6 +750,38 @@ async function renderMultitrack(
     const rasterFilters = animatedScale
       ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
       : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
+    const blurEffect = graphicEffect(graphic, "blur");
+    if (blurEffect) rasterFilters.push(`gblur=sigma=${Number((effectNumber(blurEffect, "radius", 6, 0, 60) / 3).toFixed(3))}:steps=2:planes=15`);
+    const grainEffect = graphicEffect(graphic, "grain");
+    const noiseEffect = graphicEffect(graphic, "noise");
+    if (grainEffect || noiseEffect) {
+      const strength = Math.round(effectNumber(grainEffect ?? noiseEffect, "amount", .5, 0, 80) <= 1 ? effectNumber(grainEffect ?? noiseEffect, "amount", .5, 0, 1) * 24 : effectNumber(grainEffect ?? noiseEffect, "amount", 12, 0, 80));
+      rasterFilters.push(`noise=alls=${strength}:allf=${grainEffect ? "a+p" : "t+u"}`);
+    }
+    const vignetteEffect = graphicEffect(graphic, "vignette");
+    if (vignetteEffect) rasterFilters.push(`vignette=angle=PI/${Number((10 - effectNumber(vignetteEffect, "amount", .5, 0, 1) * 6).toFixed(3))}:eval=frame`);
+    const matrixEffect = graphicEffect(graphic, "color_matrix");
+    if (matrixEffect) {
+      const amount = effectNumber(matrixEffect, "amount", 0, 0, 1);
+      rasterFilters.push(`eq=brightness=${Number((effectNumber(matrixEffect, "brightness", 1, 0, 2) - 1).toFixed(3))}:contrast=${Number((effectNumber(matrixEffect, "contrast", 1, .25, 4) * (1 + amount * .15)).toFixed(3))}:saturation=${Number((effectNumber(matrixEffect, "saturation", 1, 0, 4) * (1 + amount * .3)).toFixed(3))}`);
+    }
+    const chromaEffect = graphicEffect(graphic, "chroma_key");
+    if (chromaEffect) rasterFilters.push(`chromakey=0x${effectColor(chromaEffect, "color", "#00ff00").slice(1)}:${effectNumber(chromaEffect, "similarity", effectNumber(chromaEffect, "amount", .3, .01, 1), .01, 1)}:${effectNumber(chromaEffect, "blend", .08, 0, 1)}`);
+    const displacementEffect = graphicEffect(graphic, "displacement");
+    if (displacementEffect) {
+      const amount = effectNumber(displacementEffect, "amount", .2, 0, 1);
+      rasterFilters.push(`lenscorrection=k1=${Number((amount * .35).toFixed(3))}:k2=${Number((amount * -.12).toFixed(3))}:i=bilinear:fc=black@0`);
+    }
+    const motionBlurEffect = graphicEffect(graphic, "motion_blur");
+    if (motionBlurEffect) {
+      const radius = effectNumber(motionBlurEffect, "radius", effectNumber(motionBlurEffect, "amount", 2, 0, 20), 0, 20);
+      rasterFilters.push(`gblur=sigma=${Number((radius * 1.8).toFixed(3))}:sigmaV=${Number((radius * .3).toFixed(3))}:steps=2:planes=15`);
+    }
+    const lightLeakEffect = graphicEffect(graphic, "light_leak");
+    if (lightLeakEffect) {
+      const amount = effectNumber(lightLeakEffect, "amount", .5, 0, 1);
+      rasterFilters.push(`colorbalance=rs=${Number((amount * .28).toFixed(3))}:gs=${Number((amount * .08).toFixed(3))}:bs=${Number((amount * -.08).toFixed(3))}:rh=${Number((amount * .18).toFixed(3))}:pl=1`);
+    }
     const transformWidth = animatedScale ? maximumAnimatedWidth : width;
     const transformHeight = animatedScale ? maximumAnimatedHeight : height;
     const transform3dPoints = [{ at: 0, rotationX: graphic.rotationX, rotationY: graphic.rotationY, perspective: graphic.perspective }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, rotationX: keyframe.rotationX, rotationY: keyframe.rotationY, perspective: keyframe.perspective }))]
