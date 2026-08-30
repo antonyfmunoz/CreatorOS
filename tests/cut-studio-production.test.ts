@@ -126,6 +126,9 @@ describe("CutStudio programmable production runtime", () => {
         height: .2,
         opacity: .75,
         rotation: 12,
+        rotationX: 10,
+        rotationY: 18,
+        perspective: 800,
         style: { fill: "#1d9bf0", borderRadius: 18 },
         animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }],
       }],
@@ -144,6 +147,9 @@ describe("CutStudio programmable production runtime", () => {
       backgroundOpacity: .75,
       borderRadius: 18,
       rotation: 12,
+      rotationX: 10,
+      rotationY: 18,
+      perspective: 800,
       motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12 })]),
     }]);
   });

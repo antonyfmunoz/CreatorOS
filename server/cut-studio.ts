@@ -146,6 +146,23 @@ function graphicScaleExpression(graphic: NonNullable<CutEdl["graphics"]>[number]
   return expression;
 }
 
+function projectedGraphicCorners(width: number, height: number, rotationX: number, rotationY: number, perspective: number) {
+  const radiansX = rotationX * Math.PI / 180;
+  const radiansY = rotationY * Math.PI / 180;
+  const focalLength = perspective > 0 ? perspective : 1_000_000_000;
+  const centerX = width / 2; const centerY = height / 2;
+  const project = (x: number, y: number) => {
+    const rotatedY = y * Math.cos(radiansX);
+    const depthAfterX = y * Math.sin(radiansX);
+    const rotatedX = x * Math.cos(radiansY) + depthAfterX * Math.sin(radiansY);
+    const depth = -x * Math.sin(radiansY) + depthAfterX * Math.cos(radiansY);
+    const divisor = Math.max(1, focalLength + depth);
+    const factor = focalLength / divisor;
+    return [Number((centerX + rotatedX * factor).toFixed(3)), Number((centerY + rotatedY * factor).toFixed(3))] as const;
+  };
+  return [project(-centerX, -centerY), project(centerX, -centerY), project(-centerX, centerY), project(centerX, centerY)] as const;
+}
+
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
   const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
     .sort((left, right) => left.at - right.at)
@@ -658,6 +675,11 @@ async function renderMultitrack(
     const rasterFilters = animatedScale
       ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
       : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
+    const has3dTransform = Math.abs(graphic.rotationX) > .0001 || Math.abs(graphic.rotationY) > .0001;
+    if (has3dTransform) {
+      const [topLeft, topRight, bottomLeft, bottomRight] = projectedGraphicCorners(animatedScale ? maximumAnimatedWidth : width, animatedScale ? maximumAnimatedHeight : height, graphic.rotationX, graphic.rotationY, graphic.perspective);
+      rasterFilters.push(`perspective=x0=${topLeft[0]}:y0=${topLeft[1]}:x1=${topRight[0]}:y1=${topRight[1]}:x2=${bottomLeft[0]}:y2=${bottomLeft[1]}:x3=${bottomRight[0]}:y3=${bottomRight[1]}:sense=destination:interpolation=cubic`);
+    }
     const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
     const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;

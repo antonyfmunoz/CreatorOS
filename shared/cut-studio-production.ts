@@ -471,7 +471,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   return Array.from(new Set(frames)).map((frame) => {
     const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
     if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
-    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, opacity: evaluated.opacity, easing: "linear" as const };
+    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, opacity: evaluated.opacity, easing: "linear" as const };
   });
 }
 
@@ -530,6 +530,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
       borderRadius: layer.kind === "shape" && typeof layer.style.borderRadius === "number" ? Math.max(0, Math.min(50, layer.style.borderRadius)) : 0,
       rotation: layer.rotation,
+      rotationX: layer.rotationX,
+      rotationY: layer.rotationY,
+      perspective: layer.perspective,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });
