@@ -30,5 +30,6 @@ the browser preview.
 
 ## Remaining boundary
 
-Animated 3D/flip transitions, advanced effects/transitions, sanitized general
-SVG and image/font/Lottie/Rive/Three final rendering remain separate work.
+Sampled blur/brightness/saturation is completed by the subsequent bounded
+filter slice. Animated 3D/flip, geometric masks, remaining effects, sanitized
+general SVG and image/font/Lottie/Rive/Three rendering remain separate work.

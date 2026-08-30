@@ -56,6 +56,18 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Keyframe frame").fill("45");
   await studio.getByLabel("Keyframe value").fill("1.4");
   await studio.getByRole("button", { name: "Add or replace keyframe" }).click();
+  await studio.getByLabel("Keyframe property").selectOption("blur");
+  await studio.getByLabel("Keyframe frame").fill("20");
+  await studio.getByLabel("Keyframe value").fill("3");
+  await studio.getByRole("button", { name: "Add or replace keyframe" }).click();
+  await studio.getByLabel("Keyframe property").selectOption("brightness");
+  await studio.getByLabel("Keyframe frame").fill("20");
+  await studio.getByLabel("Keyframe value").fill("0.9");
+  await studio.getByRole("button", { name: "Add or replace keyframe" }).click();
+  await studio.getByLabel("Keyframe property").selectOption("saturation");
+  await studio.getByLabel("Keyframe frame").fill("20");
+  await studio.getByLabel("Keyframe value").fill("0.7");
+  await studio.getByRole("button", { name: "Add or replace keyframe" }).click();
   await studio.getByLabel("Add layer effect").selectOption("glow");
   await studio.getByLabel("glow amount").fill("20");
   const shapePreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="shape"]');
@@ -118,6 +130,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect({ red: settledPixels[accentOffset], green: settledPixels[accentOffset + 1], blue: settledPixels[accentOffset + 2] }).toMatchObject({ red: expect.any(Number), green: expect.any(Number), blue: expect.any(Number) });
   expect(settledPixels[accentOffset]).toBeGreaterThan(settledPixels[accentOffset + 1] + 60);
   expect(settledPixels[accentOffset]).toBeGreaterThan(settledPixels[accentOffset + 2] + 40);
+  expect(settledPixels[accentOffset]).toBeLessThan(230);
   let accentMinimumX = 1280; let accentMaximumX = -1; let accentMinimumY = 720; let accentMaximumY = -1;
   const accentRowCounts = new Map<number, number>();
   for (let offset = 0; offset + 2 < settledPixels.length; offset += 3) {
@@ -190,7 +203,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
   const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
-  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] }), expect.objectContaining({ property: "blur", keyframes: [expect.objectContaining({ frame: 20, value: 3 })] }), expect.objectContaining({ property: "brightness", keyframes: [expect.objectContaining({ frame: 20, value: .9 })] }), expect.objectContaining({ property: "saturation", keyframes: [expect.objectContaining({ frame: 20, value: .7 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
   const compositionVariants = runtime.compositions.filter((composition: { manifest: { metadata: Record<string, unknown> } }) => composition.manifest.metadata.sourceCompositionId === sourceComposition.id);
   expect(compositionVariants).toHaveLength(3);
   expect(compositionVariants.map((composition: { manifest: { layers: Array<{ id: string; text?: string }> } }) => composition.manifest.layers.find((layer) => layer.id === "hero_title")?.text).sort()).toEqual(["Create once", "Own the audience", "Publish everywhere"]);

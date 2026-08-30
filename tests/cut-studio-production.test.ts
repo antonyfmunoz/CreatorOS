@@ -130,7 +130,7 @@ describe("CutStudio programmable production runtime", () => {
         rotationY: 18,
         perspective: 800,
         style: { fill: "#1d9bf0", borderRadius: 18 },
-        animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }],
+        animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }, { property: "blur" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 30, value: 3 }] }, { property: "brightness" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .9 }] }, { property: "saturation" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .7 }] }],
       }],
     }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.graphics).toMatchObject([{
@@ -150,7 +150,7 @@ describe("CutStudio programmable production runtime", () => {
       rotationX: 10,
       rotationY: 18,
       perspective: 800,
-      motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12 })]),
+      motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12, blur: 3, brightness: .9, saturation: .7 })]),
     }]);
   });
 

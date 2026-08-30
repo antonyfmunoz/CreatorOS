@@ -109,12 +109,12 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
   return motionPropertyExpression(clip, axis, canvasSize);
 }
 
-function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "rotation" | "opacity", multiplier: number, timeVariable = "t") {
-  const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : property === "rotation" ? graphic.rotation : 1;
+function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "rotation" | "opacity" | "blur" | "brightness" | "saturation", multiplier: number, timeVariable = "t", offset = 0) {
+  const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : property === "rotation" ? graphic.rotation : property === "blur" ? graphic.blur : property === "brightness" ? graphic.brightness : property === "saturation" ? graphic.saturation : 1;
   const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
-  const output = (value: number) => Number((value * multiplier).toFixed(5));
+  const output = (value: number) => Number((value * multiplier + offset).toFixed(5));
   if (points.length === 1) return String(output(points[0].value));
   let expression = String(output(points.at(-1)!.value));
   for (let index = points.length - 2; index >= 0; index -= 1) {
@@ -680,6 +680,19 @@ async function renderMultitrack(
       const [topLeft, topRight, bottomLeft, bottomRight] = projectedGraphicCorners(animatedScale ? maximumAnimatedWidth : width, animatedScale ? maximumAnimatedHeight : height, graphic.rotationX, graphic.rotationY, graphic.perspective);
       rasterFilters.push(`perspective=x0=${topLeft[0]}:y0=${topLeft[1]}:x1=${topRight[0]}:y1=${topRight[1]}:x2=${bottomLeft[0]}:y2=${bottomLeft[1]}:x3=${bottomRight[0]}:y3=${bottomRight[1]}:sense=destination:interpolation=cubic`);
     }
+    const filterPoints = [{ at: 0, blur: graphic.blur }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, blur: keyframe.blur }))]
+      .sort((left, right) => left.at - right.at)
+      .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
+    for (let pointIndex = 0; pointIndex < filterPoints.length; pointIndex += 1) {
+      const sigma = Math.min(20, filterPoints[pointIndex].blur);
+      if (sigma <= .01) continue;
+      const start = Number((graphic.timelineStart + filterPoints[pointIndex].at).toFixed(3));
+      const end = Number((graphic.timelineStart + (filterPoints[pointIndex + 1]?.at ?? graphic.duration)).toFixed(3));
+      rasterFilters.push(`gblur=sigma=${Number(sigma.toFixed(3))}:steps=2:planes=15:enable='between(t,${start},${end})'`);
+    }
+    const brightness = graphicMotionExpression(graphic, "brightness", 1, "t", -1);
+    const saturation = graphicMotionExpression(graphic, "saturation", 1);
+    rasterFilters.push(`eq=brightness='${brightness}':saturation='${saturation}':eval=frame`);
     const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
     const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
