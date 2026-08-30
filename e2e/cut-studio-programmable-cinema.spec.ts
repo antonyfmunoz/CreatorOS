@@ -80,6 +80,14 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const pathPreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="path"]');
   await expect(pathPreview.locator("svg")).toBeVisible();
   await expect(pathPreview.locator("path")).toHaveAttribute("d", "M 0 50 L 100 50");
+  await studio.getByLabel("New layer kind").selectOption("svg");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Safe vector logo");
+  await studio.getByLabel("Layer content").fill('<svg viewBox="0 0 100 100"><rect x="5" y="5" width="90" height="90" rx="12" fill="#00ff00"/></svg>');
+  await studio.getByLabel("Layer x").fill("0.05");
+  await studio.getByLabel("Layer y").fill("0.05");
+  const svgPreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="svg"]');
+  await expect(svgPreview.locator("img")).toHaveAttribute("src", /^data:image\/svg\+xml/);
   await studio.getByLabel("Selected layer").selectOption("hero_title");
   await studio.getByLabel("Layer rotation").fill("-8");
   await studio.getByLabel("Keyframe property").selectOption("scale");
@@ -154,6 +162,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(settledPixels[ruleOffset]).toBeGreaterThan(150);
   expect(settledPixels[ruleOffset + 1]).toBeGreaterThan(150);
   expect(settledPixels[ruleOffset + 2]).toBeGreaterThan(150);
+  const svgOffset = ((162 * 1280) + 288) * 3;
+  expect(settledPixels[svgOffset + 1]).toBeGreaterThan(180);
+  expect(settledPixels[svgOffset]).toBeLessThan(60);
+  expect(settledPixels[svgOffset + 2]).toBeLessThan(60);
   const variantBatch = studio.getByLabel("Composition variant batch");
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");

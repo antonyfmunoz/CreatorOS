@@ -10,6 +10,7 @@ import {
   evaluateCompositionFrame,
   resolveCompositionParameters,
 } from "../shared/cut-studio-production";
+import { sanitizeCutStudioSvg } from "../shared/cut-studio-svg";
 
 const sourceAssetId = "00000000-0000-4000-8000-000000000001";
 const sourceLayer = {
@@ -175,6 +176,25 @@ describe("CutStudio programmable production runtime", () => {
     const edl = compileCompositionToEdl(vectorManifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.graphics).toMatchObject([{ id: "rule", kind: "path", text: "M 0 50 L 100 50", textColor: "#ffffff", fillColor: null, strokeWidth: 4, backgroundOpacity: .9 }]);
     expect(() => compileCompositionToEdl({ ...vectorManifest, layers: [sourceLayer, { ...vectorManifest.layers[1], text: "<script>alert(1)</script>" }] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4 }] })).toThrow(/path commands and numbers/i);
+  });
+
+  it("canonicalizes inert SVG graphics for preview and final rendering while rejecting active content", () => {
+    const svg = `<svg viewBox="0 0 100 100"><g transform="translate(5 5)" opacity="0.9"><rect x="0" y="0" width="90" height="90" rx="12" fill="#00ff00"/><path d="M 15 50 L 45 75 L 78 18" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/></g></svg>`;
+    const canonical = sanitizeCutStudioSvg(svg);
+    expect(canonical).toContain('<svg viewBox="0 0 100 100">');
+    expect(canonical).toContain('<g transform="translate(5 5)" opacity="0.9">');
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [sourceLayer, { id: "vector_logo", kind: "svg" as const, name: "Vector logo", from: 0, durationInFrames: 60, text: svg, x: .05, y: .05, width: .35, height: .35 }],
+    }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toMatchObject([{ id: "vector_logo", kind: "svg", text: canonical, x: .05, y: .05, width: .35, height: .35 }]);
+    for (const active of [
+      `<svg viewBox="0 0 10 10"><script>alert(1)</script></svg>`,
+      `<svg viewBox="0 0 10 10"><image href="https://example.com/x.png"/></svg>`,
+      `<svg viewBox="0 0 10 10"><rect width="10" height="10" onclick="alert(1)"/></svg>`,
+      `<svg viewBox="0 0 10 10"><rect width="10" height="10" fill="url(https://example.com/x)"/></svg>`,
+      `<!DOCTYPE svg><svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`,
+    ]) expect(() => sanitizeCutStudioSvg(active)).toThrow(/not allowed|declarations|allowlisted/i);
   });
 
   it("resolves typed parameter bindings into reproducible composition variants", () => {

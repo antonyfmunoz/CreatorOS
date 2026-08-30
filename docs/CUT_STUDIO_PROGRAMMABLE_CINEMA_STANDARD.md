@@ -118,7 +118,7 @@ with either.
 9. **Implemented and locally field-qualified:** validate inline path data
    against an inert command/number grammar, rasterize it through the existing
    Sharp runtime and render the exact stroke into the private artifact;
-   complete its protected release and add general sanitized SVG rendering.
+   complete its protected release.
 10. **Implemented and locally field-qualified:** route shapes and paths through
     one private raster overlay graph, preserve rounded shape geometry and apply
     sampled X/Y/opacity motion in final FFmpeg output; complete its protected
@@ -127,21 +127,26 @@ with either.
     scale and Z-rotation with transparent maximum-footprint padding so motion
     is neither clipped nor position-shifted; complete its protected release
     and add the remaining text/3D transform path.
-12. **Implemented pending qualification:** rasterize normal-user text, caption
+12. **Implemented and locally field-qualified:** rasterize normal-user text, caption
     and lower-third layers with the installed production font and route them
     through the same bounded scale/Z-rotation graph as vector graphics; prove
     final-artifact translation, scale and rotation in mobile and desktop runs.
-13. **Implemented pending qualification:** preserve static X/Y rotation and
+13. **Implemented and locally field-qualified:** preserve static X/Y rotation and
     perspective on safe raster graphics, project their exact 3D quadrilateral
     through FFmpeg and prove non-rectilinear row geometry in the final private
     artifact; animated 3D/flip remains part of advanced transition work.
-14. **Implemented pending qualification:** compile sampled graphic blur into
+14. **Implemented and locally field-qualified:** compile sampled graphic blur into
     bounded time segments and brightness/saturation into frame-evaluated FFmpeg
     expressions; prove the darker/desaturated transformed card in the private
     artifact while retaining motion and perspective evidence.
-15. Activate and qualify at least one approved model adapter and one isolated
+15. **Implemented and locally field-qualified:** accept a bounded SVG subset,
+   reject active elements, events, CSS, entities and external resources through
+   one shared fail-closed sanitizer, and use its canonical output for browser
+   preview, EDL compilation, Sharp rasterization and exact-pixel private MP4
+   evidence; complete its protected release.
+16. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-16. Run the direct substitution benchmark using locked briefs/assets and human
+17. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.
