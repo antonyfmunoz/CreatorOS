@@ -44,7 +44,7 @@ control or worse professional output.
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
 | Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image selection; safe vector/path/SVG, data and 3D browser preview; private image, bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | Font/Lottie/Rive/Three media pickers and native interactive-media playback remain renderer work |
-| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled image/text/shape/path/SVG position, opacity, scale, Z/X/Y rotation, perspective, blur, brightness and saturation compile into the bounded raster/FFmpeg graph | Geometric masks, remaining stylized effects and interactive-media parity remain renderer work |
+| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, directional wipe/iris/clock, private custom-mask and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition, direction, private-mask and effect authoring; sampled image/text/shape/path/SVG position, opacity, scale, Z/X/Y rotation, perspective, blur, brightness, saturation and reveals compile into the bounded raster/FFmpeg graph | Remaining stylized effects and interactive-media parity remain renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
 | Brief | Objective, audience, genre, era, tone, requirements, exclusions, references, aspect, resolution, FPS and pacing | Production field proof |
@@ -154,7 +154,12 @@ with either.
    mutually exclusive sampled perspective segments, and prove an edge-on flip
    frame differs from the settled layer in mobile and desktop private MP4
    exports; complete its protected release.
-18. Activate and qualify at least one approved model adapter and one isolated
+18. **Implemented and locally field-qualified:** compile directional wipe,
+   radial iris and clockwise/counterclockwise clock reveals into bounded alpha
+   segments; apply one authorized private luminance mask across a layer's
+   custom-mask transitions; prove all four spatial results in mobile and
+   desktop private MP4 exports; complete its protected release.
+19. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
 18. Run the direct substitution benchmark using locked briefs/assets and human
