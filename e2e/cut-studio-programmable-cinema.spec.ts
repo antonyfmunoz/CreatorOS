@@ -36,11 +36,24 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("New layer kind").selectOption("shape");
   await studio.getByRole("button", { name: "Add layer" }).click();
   await studio.getByLabel("Layer name").fill("Brand accent");
+  await studio.getByLabel("Layer rotate y").fill("18");
+  await studio.getByLabel("Layer perspective").fill("800");
   await studio.getByLabel("Keyframe property").selectOption("opacity");
   await studio.getByLabel("Keyframe frame").fill("12");
   await studio.getByLabel("Keyframe value").fill("0.75");
   await studio.getByRole("button", { name: "Add or replace keyframe" }).click();
   await studio.getByLabel("Add layer effect").selectOption("glow");
+  await studio.getByLabel("glow amount").fill("20");
+  const shapePreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="shape"]');
+  await expect(shapePreview).toBeVisible();
+  await expect(shapePreview).toHaveCSS("filter", /drop-shadow/);
+  await expect(shapePreview).toHaveCSS("transform", /matrix3d|matrix/);
+  await studio.getByLabel("New layer kind").selectOption("path");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Vector rule");
+  const pathPreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="path"]');
+  await expect(pathPreview.locator("svg")).toBeVisible();
+  await expect(pathPreview.locator("path")).toHaveAttribute("d", "M 0 50 L 100 50");
   await studio.getByRole("button", { name: "Save composition" }).click();
   await expect(studio.getByText("Composition controls saved.")).toBeVisible();
   await studio.getByRole("button", { name: "Apply" }).click();
@@ -83,7 +96,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const runtimeResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
-  expect(runtime).toMatchObject({ compositions: [expect.objectContaining({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Brand accent", kind: "shape", effects: [expect.objectContaining({ kind: "glow" })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] })]) }) })], plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
+  expect(runtime).toMatchObject({ compositions: [expect.objectContaining({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationY: 18, perspective: 800, effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) })], plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
 
   const foreignUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(peer) }, multipart: { kind: "video", visibility: "private", video: { name: "foreign.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
   await expectOk(foreignUpload);

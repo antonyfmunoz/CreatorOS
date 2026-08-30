@@ -342,18 +342,23 @@ function valueAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, property
   return (before.value as number) + ((after.value as number) - (before.value as number)) * progress;
 }
 
-function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, localFrame: number) {
+type CutLayerReveal = { kind: "wipe" | "clock_wipe" | "iris" | "custom_mask"; progress: number; direction?: z.infer<typeof cutLayerTransitionSchema>["direction"] };
+
+function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, localFrame: number): { opacity: number; x: number; y: number; scale: number; rotationY: number; reveal: CutLayerReveal | null } {
   let opacity = 1;
   let x = 0;
   let y = 0;
   let scale = 1;
+  let rotationY = 0;
+  let reveal: CutLayerReveal | null = null;
   const apply = (transition: z.infer<typeof cutLayerTransitionSchema>, progress: number, entering: boolean) => {
     if (transition.kind === "none" || transition.durationInFrames === 0) return;
     const eased = easingProgress(progress, transition.easing);
     const visible = entering ? eased : 1 - eased;
-    if (transition.kind === "fade" || transition.kind === "wipe" || transition.kind === "clock_wipe" || transition.kind === "iris" || transition.kind === "custom_mask") opacity *= visible;
+    if (transition.kind === "fade" || transition.kind === "custom_mask") opacity *= visible;
+    if (["wipe", "clock_wipe", "iris", "custom_mask"].includes(transition.kind)) reveal = { kind: transition.kind as CutLayerReveal["kind"], progress: visible, direction: transition.direction };
     if (transition.kind === "zoom") scale *= .72 + (.28 * visible);
-    if (transition.kind === "flip") scale *= .85 + (.15 * visible);
+    if (transition.kind === "flip") rotationY += (1 - visible) * (transition.direction === "left" || transition.direction === "counterclockwise" ? -90 : 90);
     if (transition.kind === "slide") {
       const offset = (1 - visible) * .24;
       if (transition.direction === "left") x -= offset;
@@ -364,7 +369,7 @@ function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, loc
   };
   if (layer.enter && localFrame < layer.enter.durationInFrames) apply(layer.enter, localFrame / Math.max(1, layer.enter.durationInFrames), true);
   if (layer.exit && localFrame >= layer.durationInFrames - layer.exit.durationInFrames) apply(layer.exit, (localFrame - (layer.durationInFrames - layer.exit.durationInFrames)) / Math.max(1, layer.exit.durationInFrames), false);
-  return { opacity, x, y, scale };
+  return { opacity, x, y, scale, rotationY, reveal };
 }
 
 export function evaluateCompositionFrame(manifestInput: unknown, frame: number) {
@@ -382,8 +387,15 @@ export function evaluateCompositionFrame(manifestInput: unknown, frame: number) 
       y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
       scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
       rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
+      rotationX: layer.rotationX,
+      rotationY: layer.rotationY + transition.rotationY,
+      perspective: layer.perspective,
       opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
       volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
+      blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
+      brightness: Math.max(0, valueAtFrame(layer, "brightness", localFrame, 1)),
+      saturation: Math.max(0, valueAtFrame(layer, "saturation", localFrame, 1)),
+      reveal: transition.reveal,
       effects: layer.effects.filter((effect) => effect.enabled),
     };
   });
