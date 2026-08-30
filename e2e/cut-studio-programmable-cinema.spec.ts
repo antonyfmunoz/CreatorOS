@@ -1,0 +1,86 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
+import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
+
+function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith("mobile") ? 1 : 2; }
+async function request(page: Page, owner: number, method: string, url: string, data?: unknown, headers: Record<string, string> = {}) { return page.request.fetch(url, { method, data, headers: { "x-creativesos-demo-user": String(owner), ...headers } }); }
+async function expectOk(response: APIResponse) { expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy(); }
+
+test("CutStudio persists and enforces the programmable motion and cinematic production lifecycle", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(testInfo);
+  const peer = owner === 1 ? 2 : 1;
+  const peerUsername = peer === 1 ? "owner" : "sarahmitchell";
+  const directory = testInfo.outputPath("programmable-cinema");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/source.mp4`;
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  const upload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "video", visibility: "private", video: { name: "source.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
+  await expectOk(upload);
+  const source = (await upload.json()).asset;
+  const created = await request(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Programmable cinema ${Date.now()}`, duration: 2, mediaKind: "video" });
+  await expectOk(created);
+  const project = await created.json();
+  expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
+
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  const studio = page.getByLabel("CutStudio creative runtime");
+  await expect(studio.getByText("Motion graphics + cinema studio")).toBeVisible();
+  await studio.getByRole("button", { name: "Kinetic" }).click();
+  await expect(studio.getByText(/Motion composition saved/)).toBeVisible();
+  await expect(studio.getByLabel("Deterministic composition preview")).toBeVisible();
+  await studio.getByLabel("Preview frame").fill("30");
+  await expect(studio.getByText(/Frame 31 \/ /)).toBeVisible();
+  await studio.getByLabel("Title").fill("A connected creative system");
+  await studio.getByRole("button", { name: "Save controls" }).click();
+  await expect(studio.getByText("Composition controls saved.")).toBeVisible();
+  await studio.getByRole("button", { name: "Apply" }).click();
+  await expect(studio.getByText(/now on the editable timeline/)).toBeVisible();
+
+  await studio.getByRole("button", { name: /Cinema/ }).click();
+  await studio.getByLabel("Production title").fill("World launch");
+  await studio.getByLabel("Objective").fill("Create a coherent multi-shot launch film");
+  await studio.getByLabel("Audience").fill("Independent creative teams");
+  await studio.getByRole("button", { name: "Save brief" }).click();
+  await expect(studio.getByText("Production brief saved.")).toBeVisible();
+  await studio.getByLabel("Shot name").fill("Hero reveal");
+  await studio.getByLabel("Shot prompt").fill("Slow dolly toward the subject as the creative workspace comes alive");
+  await studio.getByText(/I control the media\/model rights/).click();
+  await studio.getByRole("button", { name: "Add shot" }).click();
+  await expect(studio.getByText("Shot added to the production plan.")).toBeVisible();
+  await studio.getByRole("button", { name: "Generate Hero reveal" }).click();
+  await expect(studio.getByText(/safely staged|Generation submitted/)).toBeVisible();
+  await expect(studio.getByText(/provider pending/)).toBeVisible();
+
+  await studio.getByRole("button", { name: /Flows/ }).click();
+  await studio.getByRole("button", { name: "Starter campaign flow" }).click();
+  await expect(studio.getByText("Reusable generation workflow saved.")).toBeVisible();
+  await expect(studio.getByText("Cinematic campaign pipeline")).toBeVisible();
+  await studio.getByLabel("hero_image prompt").fill("Create a precise launch hero image");
+  await studio.getByRole("button", { name: "Finish stage" }).click();
+  await expect(studio.getByText("video to video")).toBeVisible();
+  await studio.getByRole("button", { name: "Save graph" }).click();
+  await expect(studio.getByText("Workflow graph saved.")).toBeVisible();
+
+  const runtimeResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
+  await expectOk(runtimeResponse);
+  const runtime = await runtimeResponse.json();
+  expect(runtime).toMatchObject({ compositions: [expect.objectContaining({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } })]) }) })], plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video" })]) }) })] });
+
+  const foreignUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(peer) }, multipart: { kind: "video", visibility: "private", video: { name: "foreign.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
+  await expectOk(foreignUpload);
+  const foreignAsset = (await foreignUpload.json()).asset;
+  const foreignGeneration = await request(page, owner, "POST", `/api/cut/projects/${project.id}/shots/${runtime.shots[0].id}/generations`, { ...runtime.jobs[0].request, inputs: [{ slot: "reference_video", assetIds: [foreignAsset.id], required: true }], idempotencyKey: `foreign.${crypto.randomUUID()}` });
+  expect(foreignGeneration.status()).toBe(400);
+  expect(await foreignGeneration.json()).toMatchObject({ message: "Every referenced asset must be a ready private asset in this business" });
+  const foreignWorkflow = structuredClone(runtime.workflows[0].workflow);
+  foreignWorkflow.nodes[0].inputs = [{ slot: "reference_video", assetIds: [foreignAsset.id] }];
+  const foreignWorkflowUpdate = await request(page, owner, "PUT", `/api/cut/projects/${project.id}/generative-workflows/${runtime.workflows[0].id}`, { workflow: foreignWorkflow }, { "If-Match": String(runtime.workflows[0].revision) });
+  expect(foreignWorkflowUpdate.status()).toBe(400);
+
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/collaborators`, { username: peerUsername, role: "reviewer" }));
+  await expectOk(await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`));
+  const reviewerMutation = await request(page, peer, "POST", `/api/cut/projects/${project.id}/generative-workflows`, { workflow: runtime.workflows[0].workflow });
+  expect(reviewerMutation.status()).toBe(403);
+});

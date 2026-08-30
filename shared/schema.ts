@@ -4284,6 +4284,155 @@ export const cutStudioProjects = pgTable(
   }),
 );
 
+// Clean-room programmable compositions and provider-neutral cinematic plans.
+// Source capsules are private assets and are never executed by the web process;
+// execution requires a separately activated isolated runtime.
+export const cutStudioCompositions = pgTable(
+  "cut_studio_compositions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    mode: text("mode").notNull().default("declarative"),
+    manifest: json("manifest").$type<import("./cut-studio-production").CutCompositionManifest>().notNull(),
+    codeCapsule: json("code_capsule").$type<import("./cut-studio-production").CutCodeCapsule | null>(),
+    revision: integer("revision").notNull().default(1),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectUpdatedIdx: index("cut_studio_compositions_project_updated_idx").on(table.projectId, table.updatedAt),
+    businessUpdatedIdx: index("cut_studio_compositions_business_updated_idx").on(table.businessId, table.updatedAt),
+  }),
+);
+
+export const cutStudioProductionPlans = pgTable(
+  "cut_studio_production_plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    brief: json("brief").$type<import("./cut-studio-production").CutProductionBrief>().notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectUnique: unique("cut_studio_production_plans_project_unique").on(table.projectId),
+    businessUpdatedIdx: index("cut_studio_production_plans_business_updated_idx").on(table.businessId, table.updatedAt),
+  }),
+);
+
+export const cutStudioProductionElements = pgTable(
+  "cut_studio_production_elements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id").references(() => cutStudioProductionPlans.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    spec: json("spec").$type<import("./cut-studio-production").CutProductionElementSpec>().notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    planUpdatedIdx: index("cut_studio_production_elements_plan_updated_idx").on(table.planId, table.updatedAt),
+  }),
+);
+
+export const cutStudioShots = pgTable(
+  "cut_studio_shots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id").references(() => cutStudioProductionPlans.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    sequence: integer("sequence").notNull(),
+    spec: json("spec").$type<import("./cut-studio-production").CutShotSpec>().notNull(),
+    selectedVariantId: uuid("selected_variant_id"),
+    revision: integer("revision").notNull().default(1),
+    status: text("status").notNull().default("planned"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    planSequenceUnique: unique("cut_studio_shots_plan_sequence_unique").on(table.planId, table.sequence),
+    planUpdatedIdx: index("cut_studio_shots_plan_updated_idx").on(table.planId, table.updatedAt),
+  }),
+);
+
+export const cutStudioGenerationJobs = pgTable(
+  "cut_studio_generation_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shotId: uuid("shot_id").references(() => cutStudioShots.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    request: json("request").$type<import("./cut-studio-production").CutGenerationRequest>().notNull(),
+    state: text("state").notNull().default("provider_pending"),
+    progress: doublePrecision("progress").notNull().default(0),
+    detail: text("detail").notNull().default("Awaiting an activated model provider"),
+    providerJobId: text("provider_job_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessIdempotencyUnique: unique("cut_studio_generation_jobs_business_idempotency_unique").on(table.businessId, table.idempotencyKey),
+    shotCreatedIdx: index("cut_studio_generation_jobs_shot_created_idx").on(table.shotId, table.createdAt),
+    stateUpdatedIdx: index("cut_studio_generation_jobs_state_updated_idx").on(table.state, table.updatedAt),
+  }),
+);
+
+export const cutStudioGenerativeWorkflows = pgTable(
+  "cut_studio_generative_workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    workflow: json("workflow").$type<import("./cut-studio-production").CutGenerativeWorkflow>().notNull(),
+    revision: integer("revision").notNull().default(1),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectUpdatedIdx: index("cut_studio_generative_workflows_project_updated_idx").on(table.projectId, table.updatedAt),
+    businessUpdatedIdx: index("cut_studio_generative_workflows_business_updated_idx").on(table.businessId, table.updatedAt),
+  }),
+);
+
+export const cutStudioShotVariants = pgTable(
+  "cut_studio_shot_variants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shotId: uuid("shot_id").references(() => cutStudioShots.id, { onDelete: "cascade" }).notNull(),
+    generationJobId: uuid("generation_job_id").references(() => cutStudioGenerationJobs.id, { onDelete: "set null" }),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    seed: integer("seed"),
+    status: text("status").notNull().default("candidate"),
+    provenance: json("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    shotCreatedIdx: index("cut_studio_shot_variants_shot_created_idx").on(table.shotId, table.createdAt),
+  }),
+);
+
 // Portable mix decisions shared by every editor in a business. Templates are
 // deliberately independent from project media and clip timing.
 export const cutStudioAudioTemplates = pgTable(
@@ -10483,6 +10632,13 @@ export type ContentDraft = typeof contentDrafts.$inferSelect;
 export type CutStudioProject = typeof cutStudioProjects.$inferSelect;
 export type CutStudioJob = typeof cutStudioJobs.$inferSelect;
 export type CutStudioProjectMedia = typeof cutStudioProjectMedia.$inferSelect;
+export type CutStudioComposition = typeof cutStudioCompositions.$inferSelect;
+export type CutStudioProductionPlan = typeof cutStudioProductionPlans.$inferSelect;
+export type CutStudioProductionElement = typeof cutStudioProductionElements.$inferSelect;
+export type CutStudioShot = typeof cutStudioShots.$inferSelect;
+export type CutStudioGenerationJob = typeof cutStudioGenerationJobs.$inferSelect;
+export type CutStudioGenerativeWorkflow = typeof cutStudioGenerativeWorkflows.$inferSelect;
+export type CutStudioShotVariant = typeof cutStudioShotVariants.$inferSelect;
 export type CutStudioVersion = typeof cutStudioVersions.$inferSelect;
 export type CutStudioReviewLink = typeof cutStudioReviewLinks.$inferSelect;
 export type CutStudioReviewComment =

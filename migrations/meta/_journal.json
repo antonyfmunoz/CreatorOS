@@ -799,6 +799,13 @@
       "when": 1787706000000,
       "tag": "0113_vision_conformance",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1787709600000,
+      "tag": "0114_cut_studio_programmable_cinema",
+      "breakpoints": true
     }
   ]
 }

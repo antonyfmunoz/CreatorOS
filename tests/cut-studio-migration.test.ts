@@ -6,6 +6,7 @@ const multitrackMigration = readFileSync(new URL("../migrations/0067_cut_studio_
 const reviewMigration = readFileSync(new URL("../migrations/0069_cut_studio_review.sql", import.meta.url), "utf8");
 const collaborationMigration = readFileSync(new URL("../migrations/0071_cut_studio_workspace_collaboration.sql", import.meta.url), "utf8");
 const audioTemplateMigration = readFileSync(new URL("../migrations/0077_cut_studio_audio_templates.sql", import.meta.url), "utf8");
+const programmableCinemaMigration = readFileSync(new URL("../migrations/0114_cut_studio_programmable_cinema.sql", import.meta.url), "utf8");
 
 describe("CutStudio persistence migration", () => {
   it("creates owner-scoped projects and durable jobs", () => {
@@ -47,5 +48,16 @@ describe("CutStudio persistence migration", () => {
     expect(audioTemplateMigration).toContain('cut_studio_audio_templates_business_name_unique');
     expect(audioTemplateMigration).toContain('REFERENCES "public"."businesses"("id") ON DELETE cascade');
     expect(audioTemplateMigration).toContain('REFERENCES "public"."users"("id") ON DELETE cascade');
+  });
+
+  it("adds durable programmable compositions, production continuity, workflows, jobs, and variants", () => {
+    for (const table of ["cut_studio_compositions", "cut_studio_production_plans", "cut_studio_production_elements", "cut_studio_shots", "cut_studio_generation_jobs", "cut_studio_generative_workflows", "cut_studio_shot_variants"]) {
+      expect(programmableCinemaMigration).toContain(`CREATE TABLE IF NOT EXISTS "${table}"`);
+    }
+    expect(programmableCinemaMigration).toContain("cut_studio_generation_jobs_business_idempotency_unique");
+    expect(programmableCinemaMigration).toContain("cut_studio_generation_jobs_state_check");
+    expect(programmableCinemaMigration).toContain("cut_studio_generation_jobs_progress_check");
+    expect(programmableCinemaMigration).toContain("cut_studio_shots_selected_variant_fk");
+    expect(programmableCinemaMigration).toContain('REFERENCES "assets"("id") ON DELETE RESTRICT');
   });
 });

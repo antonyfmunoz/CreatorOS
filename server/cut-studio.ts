@@ -40,6 +40,7 @@ import {
   promotePrivateAsset,
   removeStoredAsset,
 } from "./asset-storage";
+import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -919,6 +920,7 @@ export function registerCutStudioRoutes(app: Express) {
     put: (path: string, ...handlers: RequestHandler[]) => app.put(path, ...handlers.map(wrap)),
     delete: (path: string, ...handlers: RequestHandler[]) => app.delete(path, ...handlers.map(wrap)),
   };
+  registerCutStudioProductionRoutes(cut);
   cut.get("/api/cut/reviews/:token", async (req, res) => {
     noStore(res);
     const review = await activeReview(req.params.token);
