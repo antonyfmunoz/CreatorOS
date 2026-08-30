@@ -813,6 +813,13 @@
       "when": 1787713200000,
       "tag": "0115_cut_studio_image_media",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1787716800000,
+      "tag": "0116_cut_studio_font_media",
+      "breakpoints": true
     }
   ]
 }

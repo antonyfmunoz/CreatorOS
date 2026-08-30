@@ -119,13 +119,18 @@ export const cutCompositionManifestSchema = z.object({
 }).superRefine((value, context) => {
   const parameterKeys = value.parameters.map((item) => item.key);
   const layerIds = value.layers.map((item) => item.id);
+  const fontFamilies = value.fonts.map((item) => item.family);
   if (new Set(parameterKeys).size !== parameterKeys.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters"], message: "Parameter keys must be unique" });
   if (new Set(layerIds).size !== layerIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["layers"], message: "Layer identifiers must be unique" });
+  if (new Set(fontFamilies).size !== fontFamilies.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["fonts"], message: "Font families must be unique" });
   value.layers.forEach((layer, index) => {
     if (layer.from + layer.durationInFrames > value.durationInFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["layers", index], message: "Layer must remain inside the composition" });
     layer.animations.forEach((animation, animationIndex) => animation.keyframes.forEach((keyframe, keyframeIndex) => {
       if (keyframe.frame >= layer.durationInFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["layers", index, "animations", animationIndex, "keyframes", keyframeIndex], message: "Keyframe must remain inside its layer" });
     }));
+    if (typeof layer.style.fontFamily === "string" && !value.fonts.some((font) => font.family === layer.style.fontFamily)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["layers", index, "style", "fontFamily"], message: "A selected font family must exist in the composition font library" });
+    }
   });
 });
 
@@ -529,6 +534,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
+    const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
     return [{
       id: layer.id,
@@ -542,6 +548,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
       height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
+      fontAssetId: selectedFont?.assetId,
+      fontFamily: selectedFont?.family ?? "CreativesOS Sans",
       textColor: typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff",
       backgroundColor: typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000",
       backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,

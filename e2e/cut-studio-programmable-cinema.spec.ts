@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 
 function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith("mobile") ? 1 : 2; }
@@ -16,6 +16,8 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const sourcePath = `${directory}/source.mp4`;
   const imagePath = `${directory}/product-still.png`;
   const maskPath = `${directory}/half-mask.png`;
+  const fontPath = ["C:/Windows/Fonts/times.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"].find(existsSync);
+  expect(fontPath, "A system TTF is required for the private-font render proof").toBeTruthy();
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=magenta:size=200x100", "-frames:v", "1", imagePath]);
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=200x100", "-vf", "drawbox=x=100:y=0:w=100:h=100:color=white:t=fill", "-frames:v", "1", maskPath]);
@@ -33,6 +35,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(maskUpload);
   const maskAsset = (await maskUpload.json()).asset;
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: maskAsset.id, name: "Half mask", duration: 2, mediaKind: "image" }));
+  const fontUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-font", visibility: "private", font: { name: "EditorialSerif.ttf", mimeType: "font/ttf", buffer: readFileSync(fontPath!) } } });
+  await expectOk(fontUpload);
+  const fontAsset = (await fontUpload.json()).asset;
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: fontAsset.id, name: "Editorial Serif", duration: 2, mediaKind: "font" }));
   expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
@@ -153,6 +159,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Layer height").fill("0.2");
   await expect(studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="image"] img')).toBeVisible();
   await studio.getByLabel("Selected layer").selectOption("hero_title");
+  await studio.getByLabel("Layer private font").selectOption(fontAsset.id);
   await studio.getByLabel("Layer rotation").fill("-8");
   await studio.getByLabel("Keyframe property").selectOption("scale");
   await studio.getByLabel("Keyframe frame").fill("45");
@@ -303,7 +310,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
   const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
-  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: expect.arrayContaining([expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) }), expect.objectContaining({ kind: "drop_shadow", parameters: expect.objectContaining({ blur: 8 }) })]), animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] }), expect.objectContaining({ property: "blur", keyframes: [expect.objectContaining({ frame: 20, value: 3 })] }), expect.objectContaining({ property: "brightness", keyframes: [expect.objectContaining({ frame: 20, value: .9 })] }), expect.objectContaining({ property: "saturation", keyframes: [expect.objectContaining({ frame: 20, value: .7 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], fonts: [expect.objectContaining({ assetId: fontAsset.id })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, style: expect.objectContaining({ fontFamily: expect.stringMatching(/^CreativesOS_/) }), animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: expect.arrayContaining([expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) }), expect.objectContaining({ kind: "drop_shadow", parameters: expect.objectContaining({ blur: 8 }) })]), animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] }), expect.objectContaining({ property: "blur", keyframes: [expect.objectContaining({ frame: 20, value: 3 })] }), expect.objectContaining({ property: "brightness", keyframes: [expect.objectContaining({ frame: 20, value: .9 })] }), expect.objectContaining({ property: "saturation", keyframes: [expect.objectContaining({ frame: 20, value: .7 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
   const persistedLayers = sourceComposition.manifest.layers as Array<{ name: string; effects: Array<{ kind: string; parameters: Record<string, unknown> }> }>;
   expect(persistedLayers.find((layer) => layer.name === "Clock wipe accent")?.effects.map((effect) => effect.kind)).toEqual(["grain", "noise", "vignette", "color_matrix", "chroma_key", "displacement", "motion_blur", "light_leak"]);
   expect(persistedLayers.find((layer) => layer.name === "Custom mask accent")?.effects).toEqual([expect.objectContaining({ kind: "mask", parameters: expect.objectContaining({ maskAssetId: maskAsset.id }) })]);

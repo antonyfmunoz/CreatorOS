@@ -69,6 +69,8 @@ export const cutGraphicSchema = z.object({
   x: z.number().finite().min(0).max(0.95).default(0.1),
   y: z.number().finite().min(0).max(0.95).default(0.75),
   fontSize: z.number().int().min(12).max(160).default(48),
+  fontAssetId: z.string().uuid().optional(),
+  fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#000000"),
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),

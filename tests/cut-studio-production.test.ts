@@ -106,6 +106,15 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
   });
 
+  it("requires a declared private font family and compiles its asset into the final graphic", () => {
+    const fontAssetId = "00000000-0000-4000-8000-000000000007";
+    const family = "CreativesOS_00000000000040008000000000000007";
+    const styled = { ...manifest, fonts: [{ family, assetId: fontAssetId, weight: 400 as const, style: "normal" as const }], layers: [sourceLayer, { ...manifest.layers[1], style: { ...manifest.layers[1].style, fontFamily: family } }] };
+    const edl = compileCompositionToEdl(styled, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics?.[0]).toMatchObject({ fontAssetId, fontFamily: family });
+    expect(() => cutCompositionManifestSchema.parse({ ...styled, fonts: [] })).toThrow(/font family must exist/i);
+  });
+
   it("assigns stable primary and overlay tracks when media layers start together", () => {
     const overlayAssetId = "00000000-0000-4000-8000-000000000002";
     const edl = compileCompositionToEdl({

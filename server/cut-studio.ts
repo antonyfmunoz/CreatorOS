@@ -55,8 +55,10 @@ const projectMediaSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
   duration: z.number().finite().positive().max(43_200),
-  mediaKind: z.enum(["video", "audio", "image"]),
+  mediaKind: z.enum(["video", "audio", "image", "font"]),
 });
+
+const cutStudioFontMime = /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i;
 const audioRoutingTemplateInputSchema = z.object({
   businessId: z.string().uuid(),
   name: z.string().trim().min(1).max(80),
@@ -409,7 +411,11 @@ async function projectLuts(project: typeof cutStudioProjects.$inferSelect) {
 }
 
 function escapeFfmpegFilterPath(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  // FFmpeg's filter parser treats a Windows drive colon as syntax even when
+  // Node passes the filter as a single process argument. Forward slashes keep
+  // the path portable and escaping the colon once is the form accepted by
+  // drawtext, subtitles and lut3d on Windows as well as Linux.
+  return value.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
 }
 
 async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect, clips: CutEdl["clips"], temp: string) {
@@ -467,7 +473,14 @@ async function probeMedia(url: string) {
   return { hasVideo: streams.some((stream) => stream.codec_type === "video"), hasAudio: streams.some((stream) => stream.codec_type === "audio") };
 }
 
-async function cutStudioFontFilter() {
+async function cutStudioFontFilter(customFontPath?: string) {
+  if (customFontPath) {
+    const signature = await fs.readFile(customFontPath).then((value) => value.subarray(0, 4));
+    const tag = signature.toString("ascii");
+    const isSfnt = signature.length === 4 && ((signature[0] === 0 && signature[1] === 1 && signature[2] === 0 && signature[3] === 0) || ["OTTO", "true", "typ1"].includes(tag));
+    if (!isSfnt) throw new Error("A custom CutStudio font must be a valid TTF or OTF file");
+    return `fontfile='${escapeFfmpegFilterPath(customFontPath)}':`;
+  }
   const candidates = [
     process.env.CUT_STUDIO_FONT_FILE,
     process.platform === "win32" ? "C:/Windows/Fonts/arialbd.ttf" : "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -566,16 +579,20 @@ async function renderMultitrack(
   temp: string,
   outputPath: string,
 ) {
-  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.fontAssetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
   const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
   const inputs = await Promise.all(assetRows.map(async (asset, index) => {
     const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
     const inputPath = path.join(temp, `source-${index}${extension}`);
     await materializePrivateAsset(asset.storageKey, inputPath);
-    return { asset, url: inputPath, media: await probeMedia(inputPath) };
+    return { asset, url: inputPath, media: asset.kind === "cut-font" ? { hasVideo: false, hasAudio: false } : await probeMedia(inputPath) };
   }));
-  const inputIndex = new Map(inputs.map((input, index) => [input.asset.id, index]));
+  // Font files are renderer resources, not audiovisual demuxer inputs. Keep
+  // them addressable for drawtext while excluding them from the final FFmpeg
+  // input list so every media and generated-raster index remains stable.
+  const mediaInputs = inputs.filter((input) => input.asset.kind !== "cut-font");
+  const inputIndex = new Map(mediaInputs.map((input, index) => [input.asset.id, index]));
   const inputById = new Map(inputs.map((input) => [input.asset.id, input]));
   const settings = new Map(trackSettings.map((track) => [track.track, track]));
   const audioTracks = Array.from(new Set(clips.filter((clip) => (clip.track ?? "v1").startsWith("a")).map((clip) => clip.track ?? "a1")));
@@ -693,7 +710,6 @@ async function renderMultitrack(
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
   const rasterGraphicInputPaths: string[] = [];
-  const titleFontFilter = graphics.some((graphic) => !["shape", "path", "svg"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
     const staticMaskEffect = graphicEffect(graphic, "mask");
@@ -719,6 +735,9 @@ async function renderMultitrack(
       await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
     } else {
       const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
+      const privateFont = graphic.fontAssetId ? inputById.get(graphic.fontAssetId) : undefined;
+      if (graphic.fontAssetId && (!privateFont || privateFont.asset.kind !== "cut-font" || !privateFont.asset.mimeType || !cutStudioFontMime.test(privateFont.asset.mimeType))) throw new Error("A composition font must reference ready private TTF or OTF media");
+      const titleFontFilter = await cutStudioFontFilter(privateFont?.url);
       await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", baseRasterPath], 30_000, jobId);
     }
     const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputPaths.length}.png`) : rasterPath;
@@ -730,7 +749,7 @@ async function renderMultitrack(
       const mask = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 } } }).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
       await sharp(styledInputPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
     }
-    rasterGraphicInputIndexes.set(graphic.id, inputs.length + rasterGraphicInputPaths.length);
+    rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputPaths.length);
     rasterGraphicInputPaths.push(rasterPath);
   }
   for (let index = 0; index < graphics.length; index += 1) {
@@ -854,7 +873,7 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputPaths.flatMap((rasterPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", rasterPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputPaths.flatMap((rasterPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", rasterPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }
@@ -1521,11 +1540,12 @@ export function registerCutStudioRoutes(app: Express) {
   cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
     noStore(res);
     const parsed = projectMediaSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, or image metadata is required" });
+    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, image, or font metadata is required" });
     const project = await ownedProject(req.dbUser!.id, req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
     const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);
-    if (!asset || asset.visibility !== "private" || asset.status !== "ready" || !asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)) return res.status(400).json({ message: "The private media asset is not ready" });
+    const kindMatches = Boolean(asset && (parsed.data.mediaKind === "font" ? asset.kind === "cut-font" && asset.mimeType && cutStudioFontMime.test(asset.mimeType) : asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)));
+    if (!asset || asset.visibility !== "private" || asset.status !== "ready" || !kindMatches) return res.status(400).json({ message: "The private media asset is not ready" });
     const [row] = await db.insert(cutStudioProjectMedia).values({ projectId: project.id, assetId: asset.id, ownerUserId: req.dbUser!.id, name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration }).onConflictDoUpdate({ target: [cutStudioProjectMedia.projectId, cutStudioProjectMedia.assetId], set: { name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: parsed.data.duration } }).returning();
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.media.added", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, assetId: asset.id, mediaKind: parsed.data.mediaKind }, idempotencyKey: `cutstudio:${project.id}:media:${asset.id}` });
     res.status(201).json(row);

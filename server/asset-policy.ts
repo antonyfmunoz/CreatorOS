@@ -18,6 +18,7 @@ const policies: Record<string, { maxBytes: number; mime: (value: string) => bool
   video: { maxBytes: 250 * MEBIBYTE, mime: (value) => /^video\/(mp4|webm|quicktime)$/i.test(value) },
   document: { maxBytes: 100 * MEBIBYTE, mime: (value) => /^(application\/pdf|text\/(plain|markdown|csv))$/i.test(value) },
   "cut-lut": { maxBytes: 8 * MEBIBYTE, mime: (value) => /^(text\/plain|application\/(octet-stream|x-cube))$/i.test(value) },
+  "cut-font": { maxBytes: 12 * MEBIBYTE, mime: (value) => /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(value) },
   download: { maxBytes: 500 * MEBIBYTE, mime: () => true },
 };
 
@@ -42,5 +43,6 @@ export function monthlyAssetQuotaFor(kind: string) {
   if (kind === "video") return { maxBytes: 25 * 1024 * MEBIBYTE, maxAssets: 200 };
   if (kind === "download") return { maxBytes: 50 * 1024 * MEBIBYTE, maxAssets: 500 };
   if (kind === "cut-lut") return { maxBytes: 256 * MEBIBYTE, maxAssets: 500 };
+  if (kind === "cut-font") return { maxBytes: 256 * MEBIBYTE, maxAssets: 200 };
   return { maxBytes: 10 * 1024 * MEBIBYTE, maxAssets: 2_000 };
 }
