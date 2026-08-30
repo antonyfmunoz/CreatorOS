@@ -515,13 +515,14 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape", "path", "svg"].includes(layer.kind) || (!["shape"].includes(layer.kind) && !layer.text)) return [];
+    if (!["text", "caption", "shape", "path", "svg", "image"].includes(layer.kind) || (!["shape", "image"].includes(layer.kind) && !layer.text) || (layer.kind === "image" && !layer.assetId)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : "title" as const,
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : "title" as const,
+      assetId: layer.assetId,
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,

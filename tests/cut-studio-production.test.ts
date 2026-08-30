@@ -197,6 +197,16 @@ describe("CutStudio programmable production runtime", () => {
     ]) expect(() => sanitizeCutStudioSvg(active)).toThrow(/not allowed|declarations|allowlisted/i);
   });
 
+  it("compiles an owned image layer into the raster graphic graph", () => {
+    const imageAssetId = "00000000-0000-4000-8000-000000000003";
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [sourceLayer, { id: "product_still", kind: "image" as const, name: "Product still", from: 0, durationInFrames: 60, assetId: imageAssetId, x: .7, y: .05, width: .2, height: .2 }],
+    }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toMatchObject([{ id: "product_still", kind: "image", assetId: imageAssetId, timelineStart: 0, duration: 2, x: .7, y: .05, width: .2, height: .2 }]);
+    expect(() => compileCompositionToEdl({ ...manifest, layers: [sourceLayer, { id: "missing", kind: "image", name: "Missing", from: 0, durationInFrames: 30 }] }, { version: 3, clips: [{ start: 0, end: 4 }] })).toThrow(/require an asset/i);
+  });
+
   it("resolves typed parameter bindings into reproducible composition variants", () => {
     const parameterized = {
       ...manifest,

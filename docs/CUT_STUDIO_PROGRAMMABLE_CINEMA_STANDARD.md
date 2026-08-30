@@ -144,9 +144,14 @@ with either.
    one shared fail-closed sanitizer, and use its canonical output for browser
    preview, EDL compilation, Sharp rasterization and exact-pixel private MP4
    evidence; complete its protected release.
-16. Activate and qualify at least one approved model adapter and one isolated
+16. **Implemented and locally field-qualified:** admit ready private image media
+   to the project library, select it from image-layer controls, preserve the
+   authorized asset identity in EDL v3, materialize and rasterize it server-side
+   and prove exact image pixels in mobile and desktop private MP4 exports;
+   complete its protected release.
+17. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-17. Run the direct substitution benchmark using locked briefs/assets and human
+18. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.
