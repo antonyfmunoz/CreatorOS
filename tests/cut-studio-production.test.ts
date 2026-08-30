@@ -88,6 +88,10 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
     expect(edl.clips[0].motionKeyframes).toMatchObject([{ at: 0, x: 0 }, { at: 2, x: 1 }]);
     expect(edl.graphics).toMatchObject([{ id: "title", text: "Ship the story", timelineStart: 1 / 3, duration: 2 }]);
+    expect(edl.graphics?.[0].motionKeyframes?.[0]).toMatchObject({ at: 0, opacity: 1 });
+    expect(edl.graphics?.[0].motionKeyframes?.[0].x).toBeCloseTo(.34);
+    expect(edl.graphics?.[0].motionKeyframes?.at(-1)).toMatchObject({ at: 2 - (1 / 30), opacity: 1 });
+    expect(edl.graphics?.[0].motionKeyframes?.at(-1)?.x).toBeCloseTo(.1);
   });
 
   it("resolves typed parameter bindings into reproducible composition variants", () => {

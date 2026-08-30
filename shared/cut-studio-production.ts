@@ -453,6 +453,27 @@ export function evaluateCompositionFrame(manifestInput: unknown, frame: number) 
   });
 }
 
+function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompositionManifest["layers"][number]) {
+  const finalFrame = Math.max(0, layer.durationInFrames - 1);
+  const important = new Set<number>([0, finalFrame]);
+  for (const animation of layer.animations) {
+    if (["x", "y", "scale", "opacity"].includes(animation.property)) {
+      for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
+    }
+  }
+  if (layer.enter) important.add(Math.max(0, Math.min(finalFrame, layer.enter.durationInFrames)));
+  if (layer.exit) important.add(Math.max(0, Math.min(finalFrame, layer.durationInFrames - layer.exit.durationInFrames)));
+  const candidate = Array.from(important).sort((left, right) => left - right);
+  for (let index = 0; candidate.length < 12 && index < 10; index += 1) candidate.push(Math.round(finalFrame * index / 9));
+  const ordered = Array.from(new Set(candidate)).sort((left, right) => left - right);
+  const frames = ordered.length <= 12 ? ordered : Array.from({ length: 12 }, (_, index) => ordered[Math.round(index * (ordered.length - 1) / 11)]);
+  return Array.from(new Set(frames)).map((frame) => {
+    const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
+    if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
+    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, opacity: evaluated.opacity, easing: "linear" as const };
+  });
+}
+
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const fps = manifest.fps;
@@ -499,6 +520,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       textColor: typeof layer.style.color === "string" && color.safeParse(layer.style.color).success ? layer.style.color : "#ffffff",
       backgroundColor: typeof layer.style.backgroundColor === "string" && color.safeParse(layer.style.backgroundColor).success ? layer.style.backgroundColor : "#000000",
       backgroundOpacity: typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
+      motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });
   if (!clips.length) throw new Error("A composition must contain at least one video or audio layer before it can be applied to the timeline");
