@@ -244,6 +244,13 @@ const requiredTables = [
   "vision_observations",
   "vision_watches",
   "vision_events",
+  "cut_studio_compositions",
+  "cut_studio_production_plans",
+  "cut_studio_production_elements",
+  "cut_studio_shots",
+  "cut_studio_generation_jobs",
+  "cut_studio_generative_workflows",
+  "cut_studio_shot_variants",
 ];
 
 const requiredColumns = {
@@ -363,6 +370,13 @@ const requiredColumns = {
   vision_observations: ["session_id", "frame_id", "kind", "confidence", "source", "operator_confirmed", "metrics", "captured_at", "expires_at"],
   vision_watches: ["session_id", "target", "condition", "status", "expires_at", "stopped_at"],
   vision_events: ["session_id", "business_id", "event_type", "actor_user_id", "version", "payload", "evidence", "created_at"],
+  cut_studio_compositions: ["project_id", "business_id", "owner_user_id", "manifest", "revision", "status"],
+  cut_studio_production_plans: ["project_id", "business_id", "owner_user_id", "brief", "revision"],
+  cut_studio_production_elements: ["plan_id", "business_id", "owner_user_id", "spec", "revision"],
+  cut_studio_shots: ["plan_id", "business_id", "owner_user_id", "sequence", "spec", "selected_variant_id", "revision", "status"],
+  cut_studio_generation_jobs: ["shot_id", "business_id", "owner_user_id", "provider", "model", "request", "state", "progress", "idempotency_key", "attempt"],
+  cut_studio_generative_workflows: ["project_id", "business_id", "owner_user_id", "workflow", "revision", "status"],
+  cut_studio_shot_variants: ["shot_id", "generation_job_id", "asset_id", "business_id", "owner_user_id", "provider", "model", "status", "provenance"],
 };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
