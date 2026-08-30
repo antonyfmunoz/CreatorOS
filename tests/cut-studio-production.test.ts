@@ -84,6 +84,15 @@ describe("CutStudio programmable production runtime", () => {
     expect(state.scale).toBe(1);
   });
 
+  it("requires and compiles one private custom reveal mask with sampled opacity", () => {
+    const maskAssetId = "00000000-0000-4000-8000-000000000009";
+    const maskedLayer = { id: "masked", kind: "shape" as const, name: "Masked", from: 0, durationInFrames: 60, x: .2, y: .2, width: .4, height: .4, style: { fill: "#ffffff" }, enter: { kind: "custom_mask" as const, durationInFrames: 20, easing: "linear" as const, maskAssetId } };
+    expect(() => cutCompositionManifestSchema.parse({ ...manifest, layers: [sourceLayer, { ...maskedLayer, enter: { ...maskedLayer.enter, maskAssetId: undefined } }] })).toThrow(/private image asset/i);
+    const edl = compileCompositionToEdl({ ...manifest, layers: [sourceLayer, maskedLayer] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics?.[0]).toMatchObject({ revealKind: "custom_mask", revealMaskAssetId: maskAssetId, revealProgress: 0 });
+    expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 13 / 30, revealKind: "custom_mask", revealMaskAssetId: maskAssetId, revealProgress: .65, opacity: .65 })]));
+  });
+
   it("compiles media motion and graphics into the editable EDL without flattening the source", () => {
     const edl = compileCompositionToEdl(manifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
@@ -130,7 +139,7 @@ describe("CutStudio programmable production runtime", () => {
         rotationX: 10,
         rotationY: 18,
         perspective: 800,
-        enter: { kind: "flip" as const, durationInFrames: 20, easing: "linear" as const, direction: "right" as const },
+        enter: { kind: "iris" as const, durationInFrames: 20, easing: "linear" as const, direction: "in" as const },
         style: { fill: "#1d9bf0", borderRadius: 18 },
         animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }, { property: "blur" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 30, value: 3 }] }, { property: "brightness" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .9 }] }, { property: "saturation" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .7 }] }],
       }],
@@ -154,7 +163,7 @@ describe("CutStudio programmable production runtime", () => {
       perspective: 800,
       motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12, blur: 3, brightness: .9, saturation: .7 })]),
     }]);
-    expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 10 / 30, rotationX: 10, rotationY: 63, perspective: 800 })]));
+    expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 10 / 30, rotationX: 10, rotationY: 18, perspective: 800, revealKind: "iris", revealProgress: .5 })]));
   });
 
   it("compiles an allowlisted vector path and rejects active or unbounded source", () => {

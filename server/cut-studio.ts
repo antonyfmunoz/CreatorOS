@@ -164,6 +164,20 @@ function projectedGraphicCorners(width: number, height: number, rotationX: numbe
   return [project(-centerX, -centerY), project(centerX, -centerY), project(-centerX, centerY), project(centerX, centerY)] as const;
 }
 
+function geometricRevealAlpha(kind: "wipe" | "clock_wipe" | "iris", direction: "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" | null, progressInput: number) {
+  const progress = Number(Math.max(0, Math.min(1, progressInput)).toFixed(5));
+  if (kind === "iris") return `if(lte((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),${progress * progress}*(W*W+H*H)/4),alpha(X,Y),0)`;
+  if (kind === "clock_wipe") {
+    const angle = "mod(atan2(X-W/2,H/2-Y)+2*PI,2*PI)";
+    const threshold = Number((progress * Math.PI * 2).toFixed(5));
+    return direction === "counterclockwise" ? `if(gte(${angle},${Number((Math.PI * 2 - threshold).toFixed(5))}),alpha(X,Y),0)` : `if(lte(${angle},${threshold}),alpha(X,Y),0)`;
+  }
+  if (direction === "right") return `if(gte(X,W*${Number((1 - progress).toFixed(5))}),alpha(X,Y),0)`;
+  if (direction === "up") return `if(gte(Y,H*${Number((1 - progress).toFixed(5))}),alpha(X,Y),0)`;
+  if (direction === "down") return `if(lt(Y,H*${progress}),alpha(X,Y),0)`;
+  return `if(lt(X,W*${progress}),alpha(X,Y),0)`;
+}
+
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
   const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
     .sort((left, right) => left.at - right.at)
@@ -515,7 +529,7 @@ async function renderMultitrack(
   temp: string,
   outputPath: string,
 ) {
-  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => graphic.assetId ? [graphic.assetId] : [])]));
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId)].filter((value): value is string => Boolean(value)))]));
   const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
   const inputs = await Promise.all(assetRows.map(async (asset, index) => {
@@ -645,22 +659,30 @@ async function renderMultitrack(
   const titleFontFilter = graphics.some((graphic) => !["shape", "path", "svg"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
+    const baseRasterPath = graphic.revealMaskAssetId ? path.join(temp, `graphic-raster-base-${rasterGraphicInputPaths.length}.png`) : rasterPath;
     const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
     const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
     if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
-      await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(rasterPath);
+      await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "svg") {
-      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(rasterPath);
+      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
         : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
-      await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).png().toFile(rasterPath);
+      await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
     } else {
       const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
-      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", rasterPath], 30_000, jobId);
+      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", baseRasterPath], 30_000, jobId);
+    }
+    if (graphic.revealMaskAssetId) {
+      const privateMask = inputById.get(graphic.revealMaskAssetId);
+      if (!privateMask?.asset.mimeType?.startsWith("image/")) throw new Error("A custom reveal mask must reference ready private image media");
+      const alpha = await sharp(privateMask.url).resize(width, height, { fit: "fill" }).greyscale().raw().toBuffer();
+      const mask = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 } } }).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
+      await sharp(baseRasterPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
     }
     rasterGraphicInputIndexes.set(graphic.id, inputs.length + rasterGraphicInputPaths.length);
     rasterGraphicInputPaths.push(rasterPath);
@@ -713,6 +735,19 @@ async function renderMultitrack(
     const brightness = graphicMotionExpression(graphic, "brightness", 1, "t", -1);
     const saturation = graphicMotionExpression(graphic, "saturation", 1);
     rasterFilters.push(`eq=brightness='${brightness}':saturation='${saturation}':eval=frame`);
+    const revealPoints = [{ at: 0, kind: graphic.revealKind, direction: graphic.revealDirection, progress: graphic.revealProgress }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, kind: keyframe.revealKind, direction: keyframe.revealDirection, progress: keyframe.revealProgress }))]
+      .sort((left, right) => left.at - right.at)
+      .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
+    for (let pointIndex = 0; pointIndex < revealPoints.length; pointIndex += 1) {
+      const point = revealPoints[pointIndex];
+      if (!point.kind || point.kind === "custom_mask" || point.progress >= .99999) continue;
+      const nextPoint = revealPoints[pointIndex + 1];
+      const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : graphic.duration;
+      const start = Number((graphic.timelineStart + point.at).toFixed(3));
+      const end = Number((graphic.timelineStart + intervalEnd).toFixed(3));
+      const alpha = geometricRevealAlpha(point.kind, point.direction, point.progress);
+      rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}':enable='between(t,${start},${end})'`);
+    }
     const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
     const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;

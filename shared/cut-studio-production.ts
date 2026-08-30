@@ -53,6 +53,8 @@ export const cutLayerTransitionSchema = z.object({
   easing: z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "spring"]).default("ease_in_out"),
   direction: z.enum(["left", "right", "up", "down", "in", "out", "clockwise", "counterclockwise"]).optional(),
   maskAssetId: z.string().uuid().optional(),
+}).superRefine((value, context) => {
+  if (value.kind === "custom_mask" && !value.maskAssetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["maskAssetId"], message: "Custom mask transitions require a private image asset" });
 });
 
 export const cutCompositionLayerSchema = z.object({
@@ -401,7 +403,7 @@ function valueAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, property
   return (before.value as number) + ((after.value as number) - (before.value as number)) * progress;
 }
 
-type CutLayerReveal = { kind: "wipe" | "clock_wipe" | "iris" | "custom_mask"; progress: number; direction?: z.infer<typeof cutLayerTransitionSchema>["direction"] };
+type CutLayerReveal = { kind: "wipe" | "clock_wipe" | "iris" | "custom_mask"; progress: number; direction?: z.infer<typeof cutLayerTransitionSchema>["direction"]; maskAssetId?: string };
 
 function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, localFrame: number): { opacity: number; x: number; y: number; scale: number; rotationY: number; reveal: CutLayerReveal | null } {
   let opacity = 1;
@@ -415,7 +417,7 @@ function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, loc
     const eased = easingProgress(progress, transition.easing);
     const visible = entering ? eased : 1 - eased;
     if (transition.kind === "fade" || transition.kind === "custom_mask") opacity *= visible;
-    if (["wipe", "clock_wipe", "iris", "custom_mask"].includes(transition.kind)) reveal = { kind: transition.kind as CutLayerReveal["kind"], progress: visible, direction: transition.direction };
+    if (["wipe", "clock_wipe", "iris", "custom_mask"].includes(transition.kind)) reveal = { kind: transition.kind as CutLayerReveal["kind"], progress: visible, direction: transition.direction, maskAssetId: transition.maskAssetId };
     if (transition.kind === "zoom") scale *= .72 + (.28 * visible);
     if (transition.kind === "flip") rotationY += (1 - visible) * (transition.direction === "left" || transition.direction === "counterclockwise" ? -90 : 90);
     if (transition.kind === "slide") {
@@ -477,7 +479,8 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   return Array.from(new Set(frames)).map((frame) => {
     const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
     if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
-    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, blur: evaluated.blur, brightness: evaluated.brightness, saturation: evaluated.saturation, opacity: evaluated.opacity, easing: "linear" as const };
+    const revealKind = evaluated.reveal?.kind ?? null;
+    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, blur: evaluated.blur, brightness: evaluated.brightness, saturation: evaluated.saturation, opacity: evaluated.opacity, revealKind, revealDirection: evaluated.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(evaluated.reveal.direction) ? evaluated.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null, revealProgress: evaluated.reveal?.progress ?? 1, revealMaskAssetId: evaluated.reveal?.maskAssetId ?? null, easing: "linear" as const };
   });
 }
 
@@ -519,6 +522,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
+    const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
+    if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
     return [{
       id: layer.id,
       kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : "title" as const,
@@ -544,6 +549,10 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       blur: initialState?.blur ?? 0,
       brightness: initialState?.brightness ?? 1,
       saturation: initialState?.saturation ?? 1,
+      revealKind: initialState?.reveal?.kind ?? null,
+      revealDirection: initialState?.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(initialState.reveal.direction) ? initialState.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null,
+      revealProgress: initialState?.reveal?.progress ?? 1,
+      revealMaskAssetId: transitionMaskIds[0] ?? null,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });
