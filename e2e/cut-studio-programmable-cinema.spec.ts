@@ -100,6 +100,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect({ red: settledPixels[accentOffset], green: settledPixels[accentOffset + 1], blue: settledPixels[accentOffset + 2] }).toMatchObject({ red: expect.any(Number), green: expect.any(Number), blue: expect.any(Number) });
   expect(settledPixels[accentOffset + 2]).toBeGreaterThan(settledPixels[accentOffset + 1] + 20);
   expect(settledPixels[accentOffset + 1]).toBeGreaterThan(settledPixels[accentOffset] + 20);
+  const ruleOffset = ((486 * 1280) + 850) * 3;
+  expect(settledPixels[ruleOffset]).toBeGreaterThan(150);
+  expect(settledPixels[ruleOffset + 1]).toBeGreaterThan(150);
+  expect(settledPixels[ruleOffset + 2]).toBeGreaterThan(150);
   const variantBatch = studio.getByLabel("Composition variant batch");
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");

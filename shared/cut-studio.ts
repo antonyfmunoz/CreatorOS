@@ -53,7 +53,7 @@ export const cutClipSchema = z.object({
 
 export const cutGraphicSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
-  kind: z.enum(["title", "lower_third", "callout", "shape"]).default("title"),
+  kind: z.enum(["title", "lower_third", "callout", "shape", "path"]).default("title"),
   text: z.string().max(240),
   timelineStart: z.number().finite().min(0).max(43_200),
   duration: z.number().finite().min(0.25).max(3_600),
@@ -65,6 +65,8 @@ export const cutGraphicSchema = z.object({
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
   width: z.number().finite().positive().max(1).default(0.25),
   height: z.number().finite().positive().max(1).default(0.25),
+  fillColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+  strokeWidth: z.number().finite().positive().max(20).default(2),
   motionKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(3_600),
     x: z.number().finite().min(-4).max(4),
@@ -73,6 +75,10 @@ export const cutGraphicSchema = z.object({
     opacity: z.number().finite().min(0).max(1),
     easing: z.enum(["linear", "ease_in_out"]).default("linear"),
   })).max(50).optional(),
+}).superRefine((value, context) => {
+  if (value.kind === "path" && (!value.text.trim() || value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
+  }
 });
 
 export const cutMarkerSchema = z.object({
