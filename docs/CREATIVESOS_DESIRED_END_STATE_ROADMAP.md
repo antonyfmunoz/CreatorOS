@@ -612,12 +612,14 @@ and increments its failure count.
 
 - Complete the clean-room programmable composition runtime defined in
   [`CUT_STUDIO_PROGRAMMABLE_CINEMA_STANDARD.md`](./CUT_STUDIO_PROGRAMMABLE_CINEMA_STANDARD.md):
-  visual layer/keyframe/effects authoring, deterministic preview, complete safe
-  render compilation, parameterized variants and an isolated code executor.
+  general visual layer/keyframe/effects authoring and deterministic preview are
+  implemented; complete safe render compilation, parameterized batch variants
+  and an isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
-  visual multi-model workflows, generation lifecycle, variant review and
-  selected-asset handoff into the existing timeline.
+  visual multi-model workflow authoring, generation lifecycle and variant
+  records are implemented; provider execution, production variant review and
+  selected-asset field handoff into the existing timeline remain.
 - Close benchmark-discovered normal-workflow gaps against Premiere, Resolve,
   Descript, CapCut, Remotion and Higgsfield independently; only then measure the
   connected Broadcast/Media Cloud/Distribution advantage.
