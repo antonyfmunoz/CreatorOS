@@ -28,5 +28,6 @@ the final private artifact, completing their bounded 2D transform path.
 
 ## Remaining boundary
 
-Text scale/rotation, 3D transforms, advanced effects/transitions, general SVG
-and Lottie/Rive/Three final rendering remain separate work.
+Text scale/rotation is completed by the subsequent bounded text-raster slice.
+3D transforms, advanced effects/transitions, general SVG and Lottie/Rive/Three
+final rendering remain separate work.

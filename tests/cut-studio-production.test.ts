@@ -31,7 +31,7 @@ const manifest = {
   fps: 30 as const,
   durationInFrames: 120,
   background: "#000000",
-  layers: [sourceLayer, { id: "title", kind: "text" as const, name: "Title", from: 10, durationInFrames: 60, text: "Ship the story", x: .1, y: .7, style: { fontSize: 72, color: "#ffffff" }, enter: { kind: "slide" as const, durationInFrames: 12, easing: "spring" as const, direction: "right" as const } }],
+  layers: [sourceLayer, { id: "title", kind: "text" as const, name: "Title", from: 10, durationInFrames: 60, text: "Ship the story", x: .1, y: .7, rotation: -8, style: { fontSize: 72, color: "#ffffff" }, enter: { kind: "slide" as const, durationInFrames: 12, easing: "spring" as const, direction: "right" as const }, animations: [{ property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 45, value: 1.4 }] }] }],
 };
 
 describe("CutStudio programmable production runtime", () => {
@@ -87,11 +87,12 @@ describe("CutStudio programmable production runtime", () => {
     const edl = compileCompositionToEdl(manifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
     expect(edl.clips[0].motionKeyframes).toMatchObject([{ at: 0, x: 0 }, { at: 2, x: 1 }]);
-    expect(edl.graphics).toMatchObject([{ id: "title", text: "Ship the story", timelineStart: 1 / 3, duration: 2 }]);
+    expect(edl.graphics).toMatchObject([{ id: "title", text: "Ship the story", timelineStart: 1 / 3, duration: 2, rotation: -8 }]);
     expect(edl.graphics?.[0].motionKeyframes?.[0]).toMatchObject({ at: 0, opacity: 1 });
     expect(edl.graphics?.[0].motionKeyframes?.[0].x).toBeCloseTo(.34);
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)).toMatchObject({ at: 2 - (1 / 30), opacity: 1 });
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)?.x).toBeCloseTo(.1);
+    expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
   });
 
   it("assigns stable primary and overlay tracks when media layers start together", () => {
