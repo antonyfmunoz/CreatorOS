@@ -32,6 +32,11 @@ control or worse professional output.
   inform the cinematic workflow: reusable subject/world references, first and
   last frames, camera/lens/focal controls, stacked motion, variants, video
   transformation, pacing, finishing and collaborative production.
+- [lottie-web](https://github.com/airbnb/lottie-web) supplies the browser
+  playback API for self-contained Lottie JSON. CutStudio uses its light SVG
+  renderer behind private authenticated asset access and a stricter native
+  validator that rejects expressions, external or embedded resources, footage,
+  cameras, audio and unbounded documents.
 - [Open Generative AI](https://github.com/Anil-matcha/Open-Generative-AI) is an
   MIT-licensed architecture reference. CutStudio adopts the compatible
   capability-catalog, normalized input-slot and submit/poll/cancel concepts,
@@ -43,7 +48,7 @@ control or worse professional output.
 | System | Native implementation | Current gate |
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
-| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image/font selection; safe vector/path/SVG, data and 3D browser preview; private image and TTF/OTF font media plus bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | Native Lottie/Rive/Three media playback remains renderer work |
+| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image/font/Lottie selection; safe vector/path/SVG, data, bounded 3D and validated private Lottie browser preview; private image and TTF/OTF font media plus bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | The dedicated isolated Lottie final renderer, native Rive playback and imported programmable Three scenes remain renderer work; timeline apply fails closed while a Lottie/Rive layer is present |
 | Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, directional wipe/iris/clock, private custom-mask and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition, direction, private-mask and effect authoring; sampled image/text/shape/path/SVG position, opacity, scale, Z/X/Y rotation, perspective, blur, brightness, saturation and reveals plus shadow, glow, grain, noise, vignette, color-matrix, chroma-key, displacement, motion-blur and light-leak treatments compile into the bounded raster/FFmpeg graph | Interactive-media parity remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
@@ -94,17 +99,23 @@ with either.
    injection denial and persistence pass protected browser qualification.
 3. **Bounded 3D primitives implemented and locally field-qualified:** editable
    cube, pyramid and plane descriptors use one fail-closed schema and the same
-   geometry in browser preview and native final rendering. Complete native
-   Lottie/Rive playback and imported programmable Three-scene execution only
-   after their asset/runtime isolation boundaries are approved.
-4. **Implemented and locally field-qualified:** general layer, timing,
+   geometry in browser preview and native final rendering.
+4. **Private Lottie preview implemented and locally field-qualified:** normal
+   users can upload bounded self-contained JSON, associate it with an owned
+   project and scrub deterministic frames through the expression-free light SVG
+   runtime. Cross-tenant registration, expressions, external/embedded media,
+   unsupported layer runtimes and silent final-render fallback are denied.
+   Complete the dedicated isolated Lottie final renderer, native Rive playback
+   and imported programmable Three-scene execution only after their execution
+   boundaries are approved.
+5. **Implemented and locally field-qualified:** general layer, timing,
    transform, keyframe, transition, effect, node, edge, operation, provider,
    model, position and output authoring; complete its protected release.
-5. **Implemented and locally field-qualified:** validate typed composition
+6. **Implemented and locally field-qualified:** validate typed composition
    parameters, bind them into text/transform/style targets and create an
    idempotent durable batch of up to 20 named variants; complete its protected
    release and final-render evidence.
-6. **Implemented and locally field-qualified:** compile sampled title position
+7. **Implemented and locally field-qualified:** compile sampled title position
    and opacity from the declarative evaluator into final FFmpeg rendering and
    prove translation with pixels from two frames of a private artifact;
    complete its protected release and the remaining advanced properties.

@@ -1,7 +1,9 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
+import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import type { AnimationItem } from "lottie-web";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -69,7 +71,49 @@ function ThreePrimitiveLayer({ layer }: { layer: Layer }) {
   return <img alt={`${String(layer.style.primitive ?? "cube")} primitive`} className="h-full w-full object-contain" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}/>;
 }
 
-function PreviewLayer({ layer, state }: { layer: Layer; state: FrameState }) {
+function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const animation = useRef<AnimationItem | null>(null);
+  const bounds = useRef<{ inPoint: number; outPoint: number } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setError("");
+    animation.current?.destroy(); animation.current = null; bounds.current = null;
+    if (!layer.assetId || !host.current) return () => controller.abort();
+    void (async () => {
+      try {
+        const response = await fetch(`/api/assets/${encodeURIComponent(layer.assetId!)}/stream`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Private Lottie media is unavailable");
+        const validated = validateCutStudioLottie(await response.json() as unknown);
+        const lottie = (await import("lottie-web/build/player/lottie_light")).default;
+        if (!active || !host.current) return;
+        bounds.current = { inPoint: validated.inPoint, outPoint: validated.outPoint };
+        const instance = lottie.loadAnimation({ container: host.current, renderer: "svg", loop: false, autoplay: false, animationData: validated.animationData });
+        animation.current = instance;
+        instance.addEventListener("DOMLoaded", () => {
+          const available = Math.max(1, validated.outPoint - validated.inPoint);
+          const local = Math.max(0, frame - layer.from + layer.sourceStartFrame) % available;
+          instance.goToAndStop(validated.inPoint + local, true);
+        });
+      } catch (caught) {
+        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Lottie preview failed");
+      }
+    })();
+    return () => { active = false; controller.abort(); animation.current?.destroy(); animation.current = null; };
+  }, [layer.assetId]);
+  useEffect(() => {
+    if (!animation.current || !bounds.current) return;
+    const available = Math.max(1, bounds.current.outPoint - bounds.current.inPoint);
+    const local = Math.max(0, frame - layer.from + layer.sourceStartFrame) % available;
+    animation.current.goToAndStop(bounds.current.inPoint + local, true);
+  }, [frame, layer.from, layer.sourceStartFrame]);
+  if (error) return <div className="grid h-full w-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</div>;
+  return <div ref={host} aria-label={`${layer.name} Lottie preview`} className="h-full w-full overflow-hidden"/>;
+}
+
+function PreviewLayer({ layer, state, frame }: { layer: Layer; state: FrameState; frame: number }) {
   const visual = effectStyles(state);
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity,
@@ -83,8 +127,9 @@ function PreviewLayer({ layer, state }: { layer: Layer; state: FrameState }) {
   else if (layer.kind === "video" && layer.assetId) content = <video aria-label={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} muted playsInline preload="metadata" className="h-full w-full object-cover"/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
+  else if (layer.kind === "lottie") content = <LottieLayer layer={layer} frame={frame}/>;
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
-  else if (["lottie", "rive"].includes(layer.kind)) content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]">{layer.kind} runtime</div>;
+  else if (layer.kind === "rive") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]">rive runtime</div>;
   if (!content) return null;
   return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
 }
@@ -93,7 +138,7 @@ export function CutStudioCompositionPreview({ manifest }: { manifest: CutComposi
   const [frame, setFrame] = useState(Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6));
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
   return <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Deterministic composition preview">
-    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
+    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
     <label className="mt-2 block text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => setFrame(Number(event.target.value))}/></label>
   </div>;
 }

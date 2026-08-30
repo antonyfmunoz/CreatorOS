@@ -36,6 +36,8 @@ const storage = multer.diskStorage({
       prefix = 'cut-lut';
     } else if (file.fieldname === 'font') {
       prefix = 'cut-font';
+    } else if (file.fieldname === 'lottie') {
+      prefix = 'cut-lottie';
     } else if (file.fieldname === 'benchmark-evidence') {
       prefix = 'benchmark-evidence';
     } else if (file.fieldname === 'media') {
@@ -111,6 +113,11 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     const isFontMime = /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(file.mimetype);
     if (isSfntExtension && isFontMime) return cb(null, true);
     cb(new Error('Only TTF or OTF font files are allowed!'));
+  } else if (file.fieldname === 'lottie') {
+    const isJson = path.extname(file.originalname).toLowerCase() === '.json';
+    const isJsonMime = /^(application\/(json|lottie\+json)|text\/json)$/i.test(file.mimetype);
+    if (isJson && isJsonMime) return cb(null, true);
+    cb(new Error('Only Lottie JSON files are allowed!'));
   } else if (file.fieldname === 'benchmark-evidence') {
     // Manifests, logs, output artifacts, and run recordings intentionally use
     // different MIME families. Asset policy enforces the bounded private

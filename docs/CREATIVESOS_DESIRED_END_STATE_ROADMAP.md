@@ -622,8 +622,10 @@ and increments its failure count.
   custom-mask transitions, plus the allowlisted stylized-effect stack; private
   TTF/OTF selection and final rendering are implemented. Bounded editable
   cube, pyramid and plane geometry now shares one inert browser/final-render
-  path; native Lottie/Rive playback, imported programmable Three scenes and an
-  isolated code executor remain.
+  path. Private self-contained Lottie JSON now has bounded upload validation,
+  owned-project registration and deterministic expression-free SVG preview;
+  its isolated final renderer, native Rive playback, imported programmable
+  Three scenes and an isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant
