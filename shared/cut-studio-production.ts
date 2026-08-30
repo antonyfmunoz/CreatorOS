@@ -33,7 +33,7 @@ export const cutCompositionKeyframeSchema = z.object({
 });
 
 export const cutCompositionAnimationSchema = z.object({
-  property: z.enum(["x", "y", "scale", "rotation", "opacity", "volume", "blur", "brightness", "saturation"]),
+  property: z.enum(["x", "y", "scale", "rotation", "rotationX", "rotationY", "perspective", "opacity", "volume", "blur", "brightness", "saturation"]),
   keyframes: z.array(cutCompositionKeyframeSchema).min(1).max(200),
 }).superRefine((value, context) => {
   const frames = value.keyframes.map((item) => item.frame);
@@ -446,9 +446,9 @@ export function evaluateCompositionFrame(manifestInput: unknown, frame: number) 
       y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
       scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
       rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
-      rotationX: layer.rotationX,
-      rotationY: layer.rotationY + transition.rotationY,
-      perspective: layer.perspective,
+      rotationX: valueAtFrame(layer, "rotationX", localFrame, layer.rotationX),
+      rotationY: valueAtFrame(layer, "rotationY", localFrame, layer.rotationY) + transition.rotationY,
+      perspective: Math.max(0, valueAtFrame(layer, "perspective", localFrame, layer.perspective)),
       opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
       volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
       blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
@@ -464,7 +464,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   const finalFrame = Math.max(0, layer.durationInFrames - 1);
   const important = new Set<number>([0, finalFrame]);
   for (const animation of layer.animations) {
-    if (["x", "y", "scale", "rotation", "opacity", "blur", "brightness", "saturation"].includes(animation.property)) {
+    if (["x", "y", "scale", "rotation", "rotationX", "rotationY", "perspective", "opacity", "blur", "brightness", "saturation"].includes(animation.property)) {
       for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
     }
   }

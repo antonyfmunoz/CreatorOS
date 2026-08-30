@@ -682,10 +682,23 @@ async function renderMultitrack(
     const rasterFilters = animatedScale
       ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
       : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
-    const has3dTransform = Math.abs(graphic.rotationX) > .0001 || Math.abs(graphic.rotationY) > .0001;
+    const transformWidth = animatedScale ? maximumAnimatedWidth : width;
+    const transformHeight = animatedScale ? maximumAnimatedHeight : height;
+    const transform3dPoints = [{ at: 0, rotationX: graphic.rotationX, rotationY: graphic.rotationY, perspective: graphic.perspective }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, rotationX: keyframe.rotationX, rotationY: keyframe.rotationY, perspective: keyframe.perspective }))]
+      .sort((left, right) => left.at - right.at)
+      .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
+    const has3dTransform = transform3dPoints.some((point) => Math.abs(point.rotationX) > .0001 || Math.abs(point.rotationY) > .0001);
     if (has3dTransform) {
-      const [topLeft, topRight, bottomLeft, bottomRight] = projectedGraphicCorners(animatedScale ? maximumAnimatedWidth : width, animatedScale ? maximumAnimatedHeight : height, graphic.rotationX, graphic.rotationY, graphic.perspective);
-      rasterFilters.push(`perspective=x0=${topLeft[0]}:y0=${topLeft[1]}:x1=${topRight[0]}:y1=${topRight[1]}:x2=${bottomLeft[0]}:y2=${bottomLeft[1]}:x3=${bottomRight[0]}:y3=${bottomRight[1]}:sense=destination:interpolation=cubic`);
+      for (let pointIndex = 0; pointIndex < transform3dPoints.length; pointIndex += 1) {
+        const point = transform3dPoints[pointIndex];
+        const [topLeft, topRight, bottomLeft, bottomRight] = projectedGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective);
+        const nextPoint = transform3dPoints[pointIndex + 1];
+        const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : graphic.duration;
+        const timeline = transform3dPoints.length > 1
+          ? `:enable='between(t,${Number((graphic.timelineStart + point.at).toFixed(3))},${Number((graphic.timelineStart + intervalEnd).toFixed(3))})'`
+          : "";
+        rasterFilters.push(`perspective=x0=${topLeft[0]}:y0=${topLeft[1]}:x1=${topRight[0]}:y1=${topRight[1]}:x2=${bottomLeft[0]}:y2=${bottomLeft[1]}:x3=${bottomRight[0]}:y3=${bottomRight[1]}:sense=destination:interpolation=cubic${timeline}`);
+      }
     }
     const filterPoints = [{ at: 0, blur: graphic.blur }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, blur: keyframe.blur }))]
       .sort((left, right) => left.at - right.at)
