@@ -415,7 +415,9 @@ function escapeFfmpegFilterPath(value: string) {
   // Node passes the filter as a single process argument. Forward slashes keep
   // the path portable and escaping the colon once is the form accepted by
   // drawtext, subtitles and lut3d on Windows as well as Linux.
-  return value.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const normalized = path.resolve(value).split(path.sep).join("/");
+  if (!/^[A-Za-z0-9_./: ()-]+$/.test(normalized)) throw new Error("A CutStudio renderer path contains unsupported characters");
+  return Array.from(normalized, (character) => character === ":" ? "\\:" : character).join("");
 }
 
 async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect, clips: CutEdl["clips"], temp: string) {
