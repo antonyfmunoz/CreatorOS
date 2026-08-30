@@ -42,9 +42,9 @@ control or worse professional output.
 
 | System | Native implementation | Current gate |
 | --- | --- | --- |
-| Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals | Production migration and browser field proof |
-| Layers | Video, audio, image, text, shape, SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings | Advanced layer rendering beyond current EDL subset remains renderer work |
-| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, deterministic entry/exit transitions, bounded effects and a frame scrubber driven by the shared evaluator | Full render of every advanced property remains renderer work |
+| Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals | Schema/routes are production-qualified; expanded authoring UI is locally field-qualified pending its protected release |
+| Layers | Video, audio, image, text, shape, SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls | Advanced layer rendering beyond current EDL subset remains renderer work |
+| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, deterministic entry/exit transitions, bounded effects and a frame scrubber driven by the shared evaluator; normal-user keyframe, transition and effect authoring | Full render of every advanced property remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
 | Brief | Objective, audience, genre, era, tone, requirements, exclusions, references, aspect, resolution, FPS and pacing | Production field proof |
@@ -52,7 +52,7 @@ control or worse professional output.
 | Shot craft | Operation, prompt/negative prompt, duration, format, seed, references, camera body, lens, focal length, aperture, shutter, ISO, stock, three stacked moves, lighting, emotion, grade and audio mode | Production field proof; model execution is external |
 | Safety | Ready private business assets only; explicit media rights; likeness consent for cast; synthetic-media disclosure; tenant authorization | Provider-specific safety and deletion evidence |
 | Model catalog | Explicit allowlist, secret presence, advertised operations and local/cloud routing status | Activate one or more approved adapters |
-| Workflow graph | Versioned nodes, normalized media slots, model/provider selection, prompts, parameters, upstream outputs, coordinates and named outputs; native visual graph, prompt editing and finishing-stage authoring | General node/edge editing and execution worker remain open |
+| Workflow graph | Versioned nodes, normalized media slots, model/provider selection, prompts, parameters, upstream outputs, coordinates and named outputs; visual add/remove/edit/reposition, cycle-safe typed connections, connection removal and named-output authoring | Native authoring is locally field-qualified; execution worker remains external/model work |
 | Job lifecycle | Idempotent durable request, pending/queued/running/done/error/cancelled states, bounded retry, progress and provider receipt fields | Adapter dispatch, polling/webhooks and artifact ingest remain external/model work |
 | Variants | Durable generated variants, provenance, private asset linkage and selected shot | Adapter callback and production selection field proof |
 | Conventional finish | Existing CutStudio timeline, audio, captions, color, multicam, review and distribution path | Existing bounded workflow is locally qualified; new runtime needs its own release evidence |
@@ -88,14 +88,15 @@ with either.
 
 ## Remaining release sequence
 
-1. Apply migration `0114_cut_studio_programmable_cinema.sql` in staging and
-   production.
-2. Qualify owner/editor/reviewer and cross-tenant denial for every new route.
+1. **Completed:** migration `0114_cut_studio_programmable_cinema.sql` is in
+   production on release `613ad52277ad65fe0ec36397ddbc631752f3974a`.
+2. **Completed:** owner/editor/reviewer, cross-tenant denial, private-asset
+   injection denial and persistence pass protected browser qualification.
 3. Extend the shared-evaluator browser scrubber and safe render compiler across
    the full declarative layer/effect set.
-4. Expand the native composition controls and workflow graph from current
-   template/prompt/finishing-node authoring to general node, edge and layer
-   authoring; JSON contracts must never be the required normal-user interface.
+4. **Implemented and locally field-qualified:** general layer, timing,
+   transform, keyframe, transition, effect, node, edge, operation, provider,
+   model, position and output authoring; complete its protected release.
 5. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
