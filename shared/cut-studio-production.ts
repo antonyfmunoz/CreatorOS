@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeCutClips, type CutEdl } from "./cut-studio";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
+import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -98,6 +99,11 @@ export const cutCompositionLayerSchema = z.object({
   if (value.kind === "svg" && value.text) {
     try { sanitizeCutStudioSvg(value.text); } catch (error) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: error instanceof Error ? error.message : "SVG source is invalid" });
+    }
+  }
+  if (value.kind === "three") {
+    try { parseCutThreePrimitiveStyle(value.style); } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["style"], message: error instanceof Error ? error.message : "The 3D primitive descriptor is invalid" });
     }
   }
   if (Object.keys(value.dataBindings).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, path: ["dataBindings"], message: "At most 100 data bindings are allowed" });
@@ -529,16 +535,17 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape", "path", "svg", "image"].includes(layer.kind) || (!["shape", "image"].includes(layer.kind) && !layer.text) || (layer.kind === "image" && !layer.assetId)) return [];
+    if (!["text", "caption", "shape", "path", "svg", "image", "three"].includes(layer.kind) || (!["shape", "image", "three"].includes(layer.kind) && !layer.text) || (layer.kind === "image" && !layer.assetId)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
+    const three = layer.kind === "three" ? parseCutThreePrimitiveStyle(layer.style) : null;
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : "title" as const,
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "three" ? "three" as const : "title" as const,
       assetId: layer.assetId,
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
@@ -550,11 +557,16 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       fontAssetId: selectedFont?.assetId,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",
-      textColor: typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff",
-      backgroundColor: typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000",
+      textColor: three?.edgeColor ?? (typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff"),
+      backgroundColor: three?.color ?? (typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000"),
       backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
       fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
+      primitive: three?.primitive ?? null,
+      secondaryColor: three?.secondaryColor ?? "#0b5f99",
+      edgeColor: three?.edgeColor ?? "#ffffff",
+      wireframe: three?.wireframe ?? false,
+      depth: three?.depth ?? 1,
       borderRadius: layer.kind === "shape" && typeof layer.style.borderRadius === "number" ? Math.max(0, Math.min(50, layer.style.borderRadius)) : 0,
       rotation: layer.rotation,
       rotationX: layer.rotationX,

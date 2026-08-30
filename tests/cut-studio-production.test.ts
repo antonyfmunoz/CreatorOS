@@ -11,6 +11,7 @@ import {
   resolveCompositionParameters,
 } from "../shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "../shared/cut-studio-svg";
+import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "../shared/cut-studio-three";
 
 const sourceAssetId = "00000000-0000-4000-8000-000000000001";
 const sourceLayer = {
@@ -228,6 +229,17 @@ describe("CutStudio programmable production runtime", () => {
     }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.graphics).toMatchObject([{ id: "product_still", kind: "image", assetId: imageAssetId, timelineStart: 0, duration: 2, x: .7, y: .05, width: .2, height: .2 }]);
     expect(() => compileCompositionToEdl({ ...manifest, layers: [sourceLayer, { id: "missing", kind: "image", name: "Missing", from: 0, durationInFrames: 30 }] }, { version: 3, clips: [{ start: 0, end: 4 }] })).toThrow(/require an asset/i);
+  });
+
+  it("compiles bounded editable 3D primitives into browser and final-render geometry", () => {
+    const descriptor = parseCutThreePrimitiveStyle({ primitive: "pyramid", color: "#ffff00", secondaryColor: "#aa8800", edgeColor: "#ffffff", wireframe: false, depth: 1.5 });
+    expect(renderCutThreePrimitiveSvg(descriptor)).toContain('aria-label="pyramid primitive"');
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [sourceLayer, { id: "product_3d", kind: "three" as const, name: "Product primitive", from: 0, durationInFrames: 60, x: .72, y: .32, width: .18, height: .18, rotationX: 12, rotationY: 24, perspective: 800, style: descriptor }],
+    }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toMatchObject([{ id: "product_3d", kind: "three", primitive: "pyramid", backgroundColor: "#ffff00", secondaryColor: "#aa8800", edgeColor: "#ffffff", wireframe: false, depth: 1.5, rotationX: 12, rotationY: 24, perspective: 800 }]);
+    expect(() => cutCompositionManifestSchema.parse({ ...manifest, layers: [sourceLayer, { id: "bad_3d", kind: "three", name: "Bad", from: 0, durationInFrames: 30, style: { primitive: "torus" } }] })).toThrow(/invalid enum|invalid option/i);
   });
 
   it("resolves typed parameter bindings into reproducible composition variants", () => {

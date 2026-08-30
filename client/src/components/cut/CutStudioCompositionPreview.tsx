@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
+import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -60,6 +61,14 @@ function VectorLayer({ layer }: { layer: Layer }) {
   return <img alt="" className="h-full w-full object-contain" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitized)}`}/>;
 }
 
+function ThreePrimitiveLayer({ layer }: { layer: Layer }) {
+  const svg = useMemo(() => {
+    try { return renderCutThreePrimitiveSvg(parseCutThreePrimitiveStyle(layer.style)); } catch { return null; }
+  }, [layer.style]);
+  if (!svg) return <div className="grid h-full w-full place-items-center border border-dashed border-zinc-500 text-[8px] text-zinc-400">Invalid 3D primitive</div>;
+  return <img alt={`${String(layer.style.primitive ?? "cube")} primitive`} className="h-full w-full object-contain" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}/>;
+}
+
 function PreviewLayer({ layer, state }: { layer: Layer; state: FrameState }) {
   const visual = effectStyles(state);
   const style: CSSProperties = {
@@ -73,8 +82,9 @@ function PreviewLayer({ layer, state }: { layer: Layer; state: FrameState }) {
   else if (layer.kind === "image" && layer.assetId) content = <img alt={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} className="h-full w-full object-cover"/>;
   else if (layer.kind === "video" && layer.assetId) content = <video aria-label={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} muted playsInline preload="metadata" className="h-full w-full object-cover"/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
+  else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
-  else if (["lottie", "rive", "three"].includes(layer.kind)) content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]">{layer.kind} runtime</div>;
+  else if (["lottie", "rive"].includes(layer.kind)) content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]">{layer.kind} runtime</div>;
   if (!content) return null;
   return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
 }

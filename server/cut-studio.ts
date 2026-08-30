@@ -7,6 +7,7 @@ import path from "node:path";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
+import { renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { z } from "zod";
 import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
 import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
@@ -730,6 +731,8 @@ async function renderMultitrack(
       await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "svg") {
       await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+    } else if (graphic.kind === "three") {
+      await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
