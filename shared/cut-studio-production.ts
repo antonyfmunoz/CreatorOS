@@ -458,7 +458,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   const finalFrame = Math.max(0, layer.durationInFrames - 1);
   const important = new Set<number>([0, finalFrame]);
   for (const animation of layer.animations) {
-    if (["x", "y", "scale", "rotation", "opacity"].includes(animation.property)) {
+    if (["x", "y", "scale", "rotation", "opacity", "blur", "brightness", "saturation"].includes(animation.property)) {
       for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
     }
   }
@@ -471,7 +471,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   return Array.from(new Set(frames)).map((frame) => {
     const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
     if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
-    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, opacity: evaluated.opacity, easing: "linear" as const };
+    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, blur: evaluated.blur, brightness: evaluated.brightness, saturation: evaluated.saturation, opacity: evaluated.opacity, easing: "linear" as const };
   });
 }
 
@@ -512,6 +512,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     if (!["text", "caption", "shape", "path"].includes(layer.kind) || (!["shape"].includes(layer.kind) && !layer.text)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
+    const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     return [{
       id: layer.id,
       kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : "title" as const,
@@ -533,6 +534,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       rotationX: layer.rotationX,
       rotationY: layer.rotationY,
       perspective: layer.perspective,
+      blur: initialState?.blur ?? 0,
+      brightness: initialState?.brightness ?? 1,
+      saturation: initialState?.saturation ?? 1,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });
