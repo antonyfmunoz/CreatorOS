@@ -458,7 +458,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   const finalFrame = Math.max(0, layer.durationInFrames - 1);
   const important = new Set<number>([0, finalFrame]);
   for (const animation of layer.animations) {
-    if (["x", "y", "scale", "opacity"].includes(animation.property)) {
+    if (["x", "y", "scale", "rotation", "opacity"].includes(animation.property)) {
       for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
     }
   }
@@ -471,7 +471,7 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   return Array.from(new Set(frames)).map((frame) => {
     const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
     if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
-    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, opacity: evaluated.opacity, easing: "linear" as const };
+    return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, opacity: evaluated.opacity, easing: "linear" as const };
   });
 }
 
@@ -529,6 +529,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
       borderRadius: layer.kind === "shape" && typeof layer.style.borderRadius === "number" ? Math.max(0, Math.min(50, layer.style.borderRadius)) : 0,
+      rotation: layer.rotation,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });

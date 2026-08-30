@@ -68,11 +68,13 @@ export const cutGraphicSchema = z.object({
   fillColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
   strokeWidth: z.number().finite().positive().max(20).default(2),
   borderRadius: z.number().finite().min(0).max(50).default(0),
+  rotation: z.number().finite().min(-3_600).max(3_600).default(0),
   motionKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(3_600),
     x: z.number().finite().min(-4).max(4),
     y: z.number().finite().min(-4).max(4),
     scale: z.number().finite().min(0.01).max(8),
+    rotation: z.number().finite().min(-3_600).max(3_600).default(0),
     opacity: z.number().finite().min(0).max(1),
     easing: z.enum(["linear", "ease_in_out"]).default("linear"),
   })).max(50).optional(),

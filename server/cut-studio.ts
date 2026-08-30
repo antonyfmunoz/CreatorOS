@@ -109,8 +109,8 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
   return motionPropertyExpression(clip, axis, canvasSize);
 }
 
-function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "opacity", multiplier: number, timeVariable = "t") {
-  const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : 1;
+function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "rotation" | "opacity", multiplier: number, timeVariable = "t") {
+  const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : property === "rotation" ? graphic.rotation : 1;
   const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
@@ -125,6 +125,23 @@ function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5));
     const progress = `(${timeVariable}-${start})/${duration}`;
     expression = `if(lt(${timeVariable}\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
+  }
+  return expression;
+}
+
+function graphicScaleExpression(graphic: NonNullable<CutEdl["graphics"]>[number], divisor = 1, fps = 30) {
+  const points = [{ at: 0, value: 1, easing: "linear" as const }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.scale, easing: keyframe.easing ?? "linear" }))]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const output = (value: number) => Number((value / divisor).toFixed(5));
+  if (points.length === 1) return String(output(points[0].value));
+  let expression = String(output(points.at(-1)!.value));
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const left = points[index]; const right = points[index + 1];
+    const end = Number(right.at.toFixed(3)); const duration = Number((right.at - left.at).toFixed(3));
+    const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5)); const progress = `(on/${fps}-${Number(left.at.toFixed(3))})/${duration}`;
+    const eased = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    expression = `if(lt(on/${fps}\\,${end})\\,${from}+${delta}*${eased}\\,${expression})`;
   }
   return expression;
 }
@@ -623,12 +640,32 @@ async function renderMultitrack(
     if (graphic.kind === "shape" || graphic.kind === "path") {
       const input = rasterGraphicInputIndexes.get(graphic.id);
       if (input === undefined) throw new Error("A raster graphic input could not be prepared");
-      const width = Math.max(1, Math.round(graphic.width * size[0]));
-      const height = Math.max(1, Math.round(graphic.height * size[1]));
-      const x = graphicMotionExpression(graphic, "x", size[0]);
-      const y = graphicMotionExpression(graphic, "y", size[1]);
+      const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
+      const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
+      const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
+      const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
+      const animatedScale = Math.abs(maximumScale - minimumScale) > .0001 || Math.abs(maximumScale - 1) > .0001;
+      const maximumAnimatedWidth = Math.max(2, Math.round(width * maximumScale / 2) * 2);
+      const maximumAnimatedHeight = Math.max(2, Math.round(height * maximumScale / 2) * 2);
+      const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
+      const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
+      const rasterFilters = animatedScale
+        ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
+        : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
+      const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
+      const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
+      let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
+      let rasterHeight = animatedScale ? maximumAnimatedHeight : height;
+      if (rotated) {
+        const diagonal = Math.max(2, Math.ceil(Math.hypot(rasterWidth, rasterHeight) / 2) * 2);
+        rasterFilters.push(`pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${graphicMotionExpression(graphic, "rotation", Math.PI / 180)}':ow=iw:oh=ih:c=none`);
+        rasterWidth = diagonal; rasterHeight = diagonal;
+      }
+      const x = `(${graphicMotionExpression(graphic, "x", size[0])})-${Number(((rasterWidth - width) / 2).toFixed(3))}`;
+      const y = `(${graphicMotionExpression(graphic, "y", size[1])})-${Number(((rasterHeight - height) / 2).toFixed(3))}`;
       const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
-      filters.push(`[${input}:v]format=rgba,scale=${width}:${height},setpts=PTS+${graphic.timelineStart}/TB,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'[rastergraphic${index}]`);
+      rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
+      filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);
       filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
       videoLabel = nextLabel;
       continue;
