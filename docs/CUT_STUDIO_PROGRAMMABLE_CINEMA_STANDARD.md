@@ -44,7 +44,7 @@ control or worse professional output.
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
 | Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio selection; safe vector/path, data and 3D browser preview; bounded filled shapes and allowlisted path commands compile into the native final-render graph | Image/font/Lottie/Rive/Three media pickers, general sanitized SVG rendering and native interactive-media playback remain renderer work |
-| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled title position/opacity plus shape/path position, opacity, scale and Z-rotation compile into bounded FFmpeg expressions | Final-render text scale/rotation, 3D transforms, advanced transitions/effects and interactive-media parity remain renderer work |
+| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled text/shape/path position, opacity, scale and Z-rotation compile into one bounded raster/FFmpeg graph | Final-render 3D transforms, advanced transitions/effects and interactive-media parity remain renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
 | Brief | Objective, audience, genre, era, tone, requirements, exclusions, references, aspect, resolution, FPS and pacing | Production field proof |
@@ -127,9 +127,13 @@ with either.
     scale and Z-rotation with transparent maximum-footprint padding so motion
     is neither clipped nor position-shifted; complete its protected release
     and add the remaining text/3D transform path.
-12. Activate and qualify at least one approved model adapter and one isolated
+12. **Implemented pending qualification:** rasterize normal-user text, caption
+    and lower-third layers with the installed production font and route them
+    through the same bounded scale/Z-rotation graph as vector graphics; prove
+    final-artifact translation, scale and rotation in mobile and desktop runs.
+13. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-13. Run the direct substitution benchmark using locked briefs/assets and human
+14. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

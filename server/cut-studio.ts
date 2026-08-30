@@ -624,58 +624,55 @@ async function renderMultitrack(
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
   const rasterGraphicInputPaths: string[] = [];
-  for (const graphic of graphics.filter((item) => item.kind === "shape" || item.kind === "path")) {
+  const titleFontFilter = graphics.some((graphic) => !["shape", "path"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
+  for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
-    const element = graphic.kind === "path"
-      ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
-      : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
-    await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).png().toFile(rasterPath);
+    if (graphic.kind === "shape" || graphic.kind === "path") {
+      const element = graphic.kind === "path"
+        ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
+        : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
+      await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).png().toFile(rasterPath);
+    } else {
+      const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
+      const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
+      const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
+      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", rasterPath], 30_000, jobId);
+    }
     rasterGraphicInputIndexes.set(graphic.id, inputs.length + rasterGraphicInputPaths.length);
     rasterGraphicInputPaths.push(rasterPath);
   }
-  const fontFilter = graphics.some((graphic) => !["shape", "path"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;
-    if (graphic.kind === "shape" || graphic.kind === "path") {
-      const input = rasterGraphicInputIndexes.get(graphic.id);
-      if (input === undefined) throw new Error("A raster graphic input could not be prepared");
-      const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
-      const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
-      const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
-      const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
-      const animatedScale = Math.abs(maximumScale - minimumScale) > .0001 || Math.abs(maximumScale - 1) > .0001;
-      const maximumAnimatedWidth = Math.max(2, Math.round(width * maximumScale / 2) * 2);
-      const maximumAnimatedHeight = Math.max(2, Math.round(height * maximumScale / 2) * 2);
-      const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
-      const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
-      const rasterFilters = animatedScale
-        ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
-        : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
-      const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
-      const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
-      let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
-      let rasterHeight = animatedScale ? maximumAnimatedHeight : height;
-      if (rotated) {
-        const diagonal = Math.max(2, Math.ceil(Math.hypot(rasterWidth, rasterHeight) / 2) * 2);
-        rasterFilters.push(`pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${graphicMotionExpression(graphic, "rotation", Math.PI / 180)}':ow=iw:oh=ih:c=none`);
-        rasterWidth = diagonal; rasterHeight = diagonal;
-      }
-      const x = `(${graphicMotionExpression(graphic, "x", size[0])})-${Number(((rasterWidth - width) / 2).toFixed(3))}`;
-      const y = `(${graphicMotionExpression(graphic, "y", size[1])})-${Number(((rasterHeight - height) / 2).toFixed(3))}`;
-      const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
-      rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
-      filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);
-      filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
-      videoLabel = nextLabel;
-      continue;
+    const input = rasterGraphicInputIndexes.get(graphic.id);
+    if (input === undefined) throw new Error("A raster graphic input could not be prepared");
+    const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
+    const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
+    const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
+    const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
+    const animatedScale = Math.abs(maximumScale - minimumScale) > .0001 || Math.abs(maximumScale - 1) > .0001;
+    const maximumAnimatedWidth = Math.max(2, Math.round(width * maximumScale / 2) * 2);
+    const maximumAnimatedHeight = Math.max(2, Math.round(height * maximumScale / 2) * 2);
+    const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
+    const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
+    const rasterFilters = animatedScale
+      ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
+      : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
+    const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
+    const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
+    let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
+    let rasterHeight = animatedScale ? maximumAnimatedHeight : height;
+    if (rotated) {
+      const diagonal = Math.max(2, Math.ceil(Math.hypot(rasterWidth, rasterHeight) / 2) * 2);
+      rasterFilters.push(`pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${graphicMotionExpression(graphic, "rotation", Math.PI / 180)}':ow=iw:oh=ih:c=none`);
+      rasterWidth = diagonal; rasterHeight = diagonal;
     }
-    if (!graphic.text.trim()) continue;
-    const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
-    const graphicX = graphicMotionExpression(graphic, "x", size[0]);
-    const graphicY = graphicMotionExpression(graphic, "y", size[1]);
-    const graphicOpacity = graphicMotionExpression(graphic, "opacity", 1);
-    filters.push(`[${videoLabel}]drawtext=${fontFilter}text='${text}':fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:alpha='${graphicOpacity}':x='${graphicX}':y='${graphicY}':box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+    const x = `(${graphicMotionExpression(graphic, "x", size[0])})-${Number(((rasterWidth - width) / 2).toFixed(3))}`;
+    const y = `(${graphicMotionExpression(graphic, "y", size[1])})-${Number(((rasterHeight - height) / 2).toFixed(3))}`;
+    const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
+    rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
+    filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);
+    filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
     videoLabel = nextLabel;
   }
   let audioLabel: string | null = primaryHasAudio ? "baseaudio" : null;
