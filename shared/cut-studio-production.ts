@@ -477,13 +477,14 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const fps = manifest.fps;
+  const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
-    if (!layer.assetId || !["video", "audio"].includes(layer.kind)) return [];
+    if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
     const sourceStart = layer.sourceStartFrame / fps;
     const duration = layer.durationInFrames / fps;
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
-    const peers = manifest.layers.filter((item) => item.kind === layer.kind && item.from <= layer.from);
-    const trackIndex = Math.min(8, Math.max(1, peers.length));
+    mediaTrackCounts[layer.kind] += 1;
+    const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
     const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
     return [{

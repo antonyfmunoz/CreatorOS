@@ -7,10 +7,11 @@ type CompositionLayer = CutCompositionManifest["layers"][number];
 type WorkflowNode = CutGenerativeWorkflow["nodes"][number];
 type WorkflowInput = WorkflowNode["inputs"][number];
 type ParameterValue = string | number | boolean | null;
+type CompositionAsset = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" };
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2.5 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 const compactField = "w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[10px] text-zinc-200 outline-none focus:border-[#1d9bf0]";
-const layerKinds = ["text", "shape", "svg", "path", "rive", "three", "data"] as const;
+const layerKinds = ["video", "audio", "text", "shape", "svg", "path", "rive", "three", "data"] as const;
 const blendModes: CompositionLayer["blendMode"][] = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "difference", "exclusion"];
 const transitionKinds = ["none", "fade", "slide", "wipe", "zoom", "flip", "clock_wipe", "iris"] as const;
 const effectKinds = ["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"] as const;
@@ -35,17 +36,20 @@ function replaceAt<T>(items: T[], index: number, value: T) {
   return items.map((item, itemIndex) => itemIndex === index ? value : item);
 }
 
-function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionManifest): CompositionLayer {
+function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionManifest, assets: CompositionAsset[]): CompositionLayer {
   const id = `${kind}_${crypto.randomUUID().slice(0, 8)}`;
   const style: CompositionLayer["style"] = kind === "shape" ? { fill: "#1d9bf0", borderRadius: 12 } : kind === "text" ? { color: "#ffffff", fontSize: 64, backgroundColor: "#000000", backgroundOpacity: .5 } : {};
+  const media = assets.find((asset) => asset.mediaKind === kind);
+  const sourceAssetId = media?.assetId ?? manifest.layers.find((layer) => layer.kind === kind && layer.assetId)?.assetId;
   const base: CompositionLayer = {
     id, kind, name: `${kind[0].toUpperCase()}${kind.slice(1)} layer`, from: 0, durationInFrames: Math.min(manifest.durationInFrames, manifest.fps * 5), sourceStartFrame: 0,
-    x: .5, y: .5, width: kind === "text" ? .7 : .35, height: kind === "text" ? .2 : .35, opacity: 1, rotation: 0, volume: 1,
+    x: kind === "video" ? 0 : .5, y: kind === "video" ? 0 : .5, width: kind === "video" ? 1 : kind === "text" ? .7 : .35, height: kind === "video" ? 1 : kind === "text" ? .2 : .35, opacity: 1, rotation: 0, volume: 1,
     anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal" as const,
     style,
     dataBindings: {}, effects: [], animations: [],
   };
   if (["text", "svg", "path"].includes(kind)) return { ...base, text: kind === "text" ? "New title" : kind === "svg" ? "<svg viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg>" : "M 0 50 L 100 50" };
+  if (sourceAssetId) return { ...base, assetId: sourceAssetId };
   return base;
 }
 
@@ -54,8 +58,9 @@ function numberValue(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function CompositionAuthoringControls({ composition, busy, onChange, onSave }: {
+export function CompositionAuthoringControls({ composition, assets, busy, onChange, onSave }: {
   composition: { id: string; manifest: CutCompositionManifest };
+  assets: CompositionAsset[];
   busy: boolean;
   onChange: (manifest: CutCompositionManifest) => void;
   onSave: () => void;
@@ -68,6 +73,7 @@ export function CompositionAuthoringControls({ composition, busy, onChange, onSa
   const [keyframeValue, setKeyframeValue] = useState(1);
   const selectedIndex = Math.max(0, manifest.layers.findIndex((layer) => layer.id === selectedId));
   const selected = manifest.layers[selectedIndex];
+  const addableKinds = layerKinds.filter((kind) => !["video", "audio"].includes(kind) || assets.some((asset) => asset.mediaKind === kind));
 
   const updateLayer = (update: (layer: CompositionLayer) => CompositionLayer) => {
     if (!selected) return;
@@ -79,7 +85,7 @@ export function CompositionAuthoringControls({ composition, busy, onChange, onSa
     onChange({ ...manifest, parameters, layers: replaceAt(manifest.layers, selectedIndex, nextLayer) });
   };
   const addLayer = () => {
-    const layer = defaultLayer(newKind, manifest);
+    const layer = defaultLayer(newKind, manifest, assets);
     onChange({ ...manifest, layers: [...manifest.layers, layer] });
     setSelectedId(layer.id);
   };
@@ -113,10 +119,11 @@ export function CompositionAuthoringControls({ composition, busy, onChange, onSa
   const removeEffect = (effectId: string) => updateLayer((layer) => ({ ...layer, effects: layer.effects.filter((item) => item.id !== effectId) }));
 
   return <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3" aria-label="Composition authoring controls">
-    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 text-[10px] text-zinc-500">Add layer<select aria-label="New layer kind" className={field} value={newKind} onChange={(event) => setNewKind(event.target.value as typeof newKind)}>{layerKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select></label><Button size="sm" variant="outline" onClick={addLayer} disabled={busy || manifest.layers.length >= 500}><Plus className="h-3.5 w-3.5"/><span className="sr-only">Add layer</span></Button></div>
+    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 text-[10px] text-zinc-500">Add layer<select aria-label="New layer kind" className={field} value={newKind} onChange={(event) => setNewKind(event.target.value as typeof newKind)}>{addableKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select></label><Button size="sm" variant="outline" onClick={addLayer} disabled={busy || manifest.layers.length >= 500}><Plus className="h-3.5 w-3.5"/><span className="sr-only">Add layer</span></Button></div>
     <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2"><select aria-label="Selected layer" className={compactField} value={selected?.id ?? ""} onChange={(event) => setSelectedId(event.target.value)}>{manifest.layers.map((layer, index) => <option key={layer.id} value={layer.id}>{index + 1}. {layer.name} · {layer.kind}</option>)}</select><div className="flex gap-1"><button aria-label="Move layer up" className="rounded border border-zinc-800 p-1.5 text-zinc-400 disabled:opacity-30" disabled={selectedIndex === 0} onClick={() => moveLayer(-1)}><ArrowUp className="h-3.5 w-3.5"/></button><button aria-label="Move layer down" className="rounded border border-zinc-800 p-1.5 text-zinc-400 disabled:opacity-30" disabled={selectedIndex >= manifest.layers.length - 1} onClick={() => moveLayer(1)}><ArrowDown className="h-3.5 w-3.5"/></button><button aria-label="Duplicate layer" className="rounded border border-zinc-800 p-1.5 text-zinc-400" onClick={duplicateLayer}><Copy className="h-3.5 w-3.5"/></button><button aria-label="Delete layer" className="rounded border border-zinc-800 p-1.5 text-rose-400 disabled:opacity-30" disabled={manifest.layers.length === 1} onClick={deleteLayer}><Trash2 className="h-3.5 w-3.5"/></button></div></div>
     {selected && <div className="mt-3 space-y-3">
       <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-zinc-500">Layer name<input aria-label="Layer name" className={field} value={selected.name} onChange={(event) => updateLayer((layer) => ({ ...layer, name: event.target.value }))}/></label>{["text", "caption", "svg", "path"].includes(selected.kind) ? <label className="text-[10px] text-zinc-500">Content<input aria-label="Layer content" className={field} value={selected.text ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, text: event.target.value }))}/></label> : <label className="text-[10px] text-zinc-500">Blend<select aria-label="Layer blend mode" className={field} value={selected.blendMode} onChange={(event) => updateLayer((layer) => ({ ...layer, blendMode: event.target.value as CompositionLayer["blendMode"] }))}>{blendModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>}</div>
+      {["video", "audio"].includes(selected.kind) && <label className="block text-[10px] text-zinc-500">Project media<select aria-label="Layer media asset" className={field} value={selected.assetId ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, assetId: event.target.value }))}>{assets.filter((asset) => asset.mediaKind === selected.kind).map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.duration.toFixed(1)}s</option>)}</select></label>}
       <div className="grid grid-cols-4 gap-2">{([['Start','from',0,manifest.durationInFrames - 1,1],['Frames','durationInFrames',1,manifest.durationInFrames - selected.from,1],['X','x',-4,4,.01],['Y','y',-4,4,.01],['Width','width',.01,8,.01],['Height','height',.01,8,.01],['Opacity','opacity',0,1,.01],['Rotation','rotation',-3600,3600,1],['Rotate X','rotationX',-3600,3600,1],['Rotate Y','rotationY',-3600,3600,1],['Perspective','perspective',0,10000,10]] as const).map(([label,key,min,max,step]) => <label key={key} className="text-[9px] text-zinc-600">{label}<input aria-label={`Layer ${label.toLowerCase()}`} className={compactField} type="number" min={min} max={max} step={step} value={selected[key]} onChange={(event) => updateLayer((layer) => ({ ...layer, [key]: Math.max(min, Math.min(max, numberValue(event.target.value, layer[key]))) }))}/></label>)}</div>
       {(selected.kind === "text" || selected.kind === "caption") && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-zinc-500">Text color<input aria-label="Layer text color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.color ?? "#ffffff")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, color: event.target.value } }))}/></label><label className="text-[10px] text-zinc-500">Font size<input aria-label="Layer font size" className={field} type="number" min={8} max={400} value={Number(selected.style.fontSize ?? 48)} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, fontSize: numberValue(event.target.value, 48) } }))}/></label></div>}
       <div className="grid grid-cols-2 gap-2">{(["enter", "exit"] as const).map((edge) => <div key={edge} className="rounded-lg border border-zinc-800 p-2"><p className="text-[9px] font-bold uppercase text-zinc-500">{edge}</p><div className="mt-1 grid grid-cols-2 gap-1"><select aria-label={`${edge} transition`} className={compactField} value={selected[edge]?.kind ?? "none"} onChange={(event) => updateLayer((layer) => ({ ...layer, [edge]: event.target.value === "none" ? undefined : { kind: event.target.value as Exclude<typeof transitionKinds[number], "none">, durationInFrames: Math.min(12, layer.durationInFrames), easing: "ease_in_out" } }))}>{transitionKinds.map((kind) => <option key={kind}>{kind}</option>)}</select><input aria-label={`${edge} transition frames`} className={compactField} type="number" min={0} max={selected.durationInFrames} value={selected[edge]?.durationInFrames ?? 0} disabled={!selected[edge]} onChange={(event) => updateLayer((layer) => layer[edge] ? { ...layer, [edge]: { ...layer[edge]!, durationInFrames: Math.max(0, Math.min(layer.durationInFrames, numberValue(event.target.value, 0))) } } : layer)}/></div></div>)}</div>

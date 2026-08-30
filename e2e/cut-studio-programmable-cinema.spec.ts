@@ -33,6 +33,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Preview frame").fill("30");
   await expect(studio.getByText(/Frame 31 \/ /)).toBeVisible();
   await studio.getByLabel("Layer content").fill("A connected creative system");
+  await studio.getByLabel("New layer kind").selectOption("video");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Project B-roll");
+  await expect(studio.getByLabel("Layer media asset")).toHaveValue(source.id);
   await studio.getByLabel("New layer kind").selectOption("shape");
   await studio.getByRole("button", { name: "Add layer" }).click();
   await studio.getByLabel("Layer name").fill("Brand accent");
@@ -140,7 +144,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
   const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
-  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationY: 18, perspective: 800, effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationY: 18, perspective: 800, effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
   const compositionVariants = runtime.compositions.filter((composition: { manifest: { metadata: Record<string, unknown> } }) => composition.manifest.metadata.sourceCompositionId === sourceComposition.id);
   expect(compositionVariants).toHaveLength(3);
   expect(compositionVariants.map((composition: { manifest: { layers: Array<{ id: string; text?: string }> } }) => composition.manifest.layers.find((layer) => layer.id === "hero_title")?.text).sort()).toEqual(["Create once", "Own the audience", "Publish everywhere"]);

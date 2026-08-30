@@ -94,6 +94,22 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)?.x).toBeCloseTo(.1);
   });
 
+  it("assigns stable primary and overlay tracks when media layers start together", () => {
+    const overlayAssetId = "00000000-0000-4000-8000-000000000002";
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [
+        sourceLayer,
+        { ...sourceLayer, id: "broll", name: "B-roll", assetId: overlayAssetId },
+        manifest.layers[1],
+      ],
+    }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.clips).toMatchObject([
+      { id: "source", assetId: sourceAssetId, track: "v1" },
+      { id: "broll", assetId: overlayAssetId, track: "v2" },
+    ]);
+  });
+
   it("resolves typed parameter bindings into reproducible composition variants", () => {
     const parameterized = {
       ...manifest,
