@@ -508,19 +508,23 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption"].includes(layer.kind) || !layer.text) return [];
+    if (!["text", "caption", "shape"].includes(layer.kind) || (layer.kind !== "shape" && !layer.text)) return [];
+    const graphicX = Math.max(0, Math.min(0.95, layer.x));
+    const graphicY = Math.max(0, Math.min(0.95, layer.y));
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : "title" as const,
-      text: layer.text,
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : "title" as const,
+      text: layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
-      x: Math.max(0, Math.min(0.95, layer.x)),
-      y: Math.max(0, Math.min(0.95, layer.y)),
+      x: graphicX,
+      y: graphicY,
+      width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
+      height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       textColor: typeof layer.style.color === "string" && color.safeParse(layer.style.color).success ? layer.style.color : "#ffffff",
-      backgroundColor: typeof layer.style.backgroundColor === "string" && color.safeParse(layer.style.backgroundColor).success ? layer.style.backgroundColor : "#000000",
-      backgroundOpacity: typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
+      backgroundColor: typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000",
+      backgroundOpacity: layer.kind === "shape" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });

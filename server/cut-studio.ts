@@ -604,12 +604,21 @@ async function renderMultitrack(
       } else audioLabels.push(`[${label}]`);
     }
   }
-  const fontFilter = graphics.some((graphic) => graphic.text.trim()) ? await cutStudioFontFilter() : "";
+  const fontFilter = graphics.some((graphic) => graphic.kind !== "shape" && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
+    const nextLabel = `graphic${index}`;
+    if (graphic.kind === "shape") {
+      const x = Math.round(graphic.x * size[0]);
+      const y = Math.round(graphic.y * size[1]);
+      const width = Math.max(1, Math.round(graphic.width * size[0]));
+      const height = Math.max(1, Math.round(graphic.height * size[1]));
+      filters.push(`[${videoLabel}]drawbox=x=${x}:y=${y}:w=${width}:h=${height}:color=${graphic.backgroundColor}@${graphic.backgroundOpacity}:t=fill:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+      videoLabel = nextLabel;
+      continue;
+    }
     if (!graphic.text.trim()) continue;
     const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
-    const nextLabel = `graphic${index}`;
     const graphicX = graphicMotionExpression(graphic, "x", size[0]);
     const graphicY = graphicMotionExpression(graphic, "y", size[1]);
     const graphicOpacity = graphicMotionExpression(graphic, "opacity", 1);

@@ -110,6 +110,38 @@ describe("CutStudio programmable production runtime", () => {
     ]);
   });
 
+  it("compiles a bounded composition shape into the final-render graphic graph", () => {
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [sourceLayer, {
+        id: "accent",
+        kind: "shape" as const,
+        name: "Accent",
+        from: 15,
+        durationInFrames: 45,
+        x: .6,
+        y: .5,
+        width: .3,
+        height: .2,
+        opacity: .75,
+        style: { fill: "#1d9bf0" },
+      }],
+    }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toMatchObject([{
+      id: "accent",
+      kind: "shape",
+      text: "",
+      timelineStart: .5,
+      duration: 1.5,
+      x: .6,
+      y: .5,
+      width: .3,
+      height: .2,
+      backgroundColor: "#1d9bf0",
+      backgroundOpacity: .75,
+    }]);
+  });
+
   it("resolves typed parameter bindings into reproducible composition variants", () => {
     const parameterized = {
       ...manifest,
