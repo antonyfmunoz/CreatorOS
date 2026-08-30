@@ -19,12 +19,14 @@ import {
   compileCompositionToEdl,
   cutCodeCapsuleSchema,
   cutCompositionManifestSchema,
+  cutCompositionVariantBatchSchema,
   cutGenerationProviderRegistry,
   cutGenerationRequestSchema,
   cutGenerativeWorkflowSchema,
   cutProductionBriefSchema,
   cutProductionElementSpecSchema,
   cutShotSpecSchema,
+  resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { validateCutEdl } from "@shared/cut-studio";
 import { attachUser } from "./auth";
@@ -191,6 +193,38 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     if (!updated) return res.status(409).json({ message: "The composition changed elsewhere" });
     res.setHeader("ETag", String(updated.revision));
     res.json(updated);
+  });
+
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/variants", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const parsed = cutCompositionVariantBatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The composition variant batch is invalid", issues: parsed.error.issues });
+    const [source] = await db.select().from(cutStudioCompositions).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.status, "active"))).limit(1);
+    if (!source) return res.status(404).json({ message: "Composition not found" });
+    if (source.mode !== "declarative") return res.status(409).json({ message: "Only declarative compositions support parameter batches" });
+    let manifests: Array<{ name: string; manifest: z.infer<typeof cutCompositionManifestSchema> }>;
+    try {
+      manifests = parsed.data.variants.map((variant, variantIndex) => ({
+        name: variant.name,
+        manifest: cutCompositionManifestSchema.parse({
+          ...resolveCompositionParameters(source.manifest, variant.parameterValues),
+          name: variant.name,
+          metadata: { ...source.manifest.metadata, sourceCompositionId: source.id, variantBatchId: parsed.data.idempotencyKey, variantIndex },
+        }),
+      }));
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Composition parameters are invalid" });
+    }
+    const created = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${access.project.id}:${parsed.data.idempotencyKey}`}))`);
+      const existing = await tx.select().from(cutStudioCompositions).where(and(eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.status, "active"), sql`${cutStudioCompositions.manifest}->'metadata'->>'variantBatchId' = ${parsed.data.idempotencyKey}`)).orderBy(asc(cutStudioCompositions.createdAt));
+      if (existing.length) return existing;
+      return tx.insert(cutStudioCompositions).values(manifests.map((variant) => ({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: variant.name, mode: "declarative" as const, manifest: variant.manifest, codeCapsule: null }))).returning();
+    });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.variants_created", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, sourceCompositionId: source.id, compositionIds: created.map((composition) => composition.id), count: created.length }, idempotencyKey: `cutstudio:${access.project.id}:variants:${parsed.data.idempotencyKey}` });
+    res.status(201).json({ variants: created, count: created.length, idempotencyKey: parsed.data.idempotencyKey });
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {

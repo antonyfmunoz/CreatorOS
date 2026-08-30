@@ -42,7 +42,7 @@ control or worse professional output.
 
 | System | Native implementation | Current gate |
 | --- | --- | --- |
-| Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals | Schema/routes are production-qualified; expanded authoring UI is locally field-qualified pending its protected release |
+| Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
 | Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; safe vector/path, data and 3D browser preview | Native Lottie/Rive/Three playback and final rendering beyond the current EDL subset remain renderer work |
 | Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring | Full final render of every advanced property remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
@@ -54,7 +54,7 @@ control or worse professional output.
 | Model catalog | Explicit allowlist, secret presence, advertised operations and local/cloud routing status | Activate one or more approved adapters |
 | Workflow graph | Versioned nodes, normalized media slots, model/provider selection, prompts, parameters, upstream outputs, coordinates and named outputs; visual add/remove/edit/reposition, cycle-safe typed connections, connection removal and named-output authoring | Native authoring is locally field-qualified; execution worker remains external/model work |
 | Job lifecycle | Idempotent durable request, pending/queued/running/done/error/cancelled states, bounded retry, progress and provider receipt fields | Adapter dispatch, polling/webhooks and artifact ingest remain external/model work |
-| Variants | Durable generated variants, provenance, private asset linkage and selected shot | Adapter callback and production selection field proof |
+| Variants | Durable generated variants, provenance, private asset linkage and selected shot; declarative composition batches retain source composition, batch and index lineage | Adapter callback and production selection field proof |
 | Conventional finish | Existing CutStudio timeline, audio, captions, color, multicam, review and distribution path | Existing bounded workflow is locally qualified; new runtime needs its own release evidence |
 
 ## Direct parity matrix
@@ -99,9 +99,13 @@ with either.
 4. **Implemented and locally field-qualified:** general layer, timing,
    transform, keyframe, transition, effect, node, edge, operation, provider,
    model, position and output authoring; complete its protected release.
-5. Activate and qualify at least one approved model adapter and one isolated
+5. **Implemented and locally field-qualified:** validate typed composition
+   parameters, bind them into text/transform/style targets and create an
+   idempotent durable batch of up to 20 named variants; complete its protected
+   release and final-render evidence.
+6. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-6. Run the direct substitution benchmark using locked briefs/assets and human
+7. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

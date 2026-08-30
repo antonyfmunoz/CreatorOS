@@ -8,6 +8,7 @@ import {
   cutGenerativeWorkflowSchema,
   cutShotSpecSchema,
   evaluateCompositionFrame,
+  resolveCompositionParameters,
 } from "../shared/cut-studio-production";
 
 const sourceAssetId = "00000000-0000-4000-8000-000000000001";
@@ -87,6 +88,23 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
     expect(edl.clips[0].motionKeyframes).toMatchObject([{ at: 0, x: 0 }, { at: 2, x: 1 }]);
     expect(edl.graphics).toMatchObject([{ id: "title", text: "Ship the story", timelineStart: 1 / 3, duration: 2 }]);
+  });
+
+  it("resolves typed parameter bindings into reproducible composition variants", () => {
+    const parameterized = {
+      ...manifest,
+      parameters: [
+        { key: "headline", label: "Headline", type: "text" as const, defaultValue: "Default", required: true },
+        { key: "accent", label: "Accent", type: "color" as const, defaultValue: "#1d9bf0" },
+        { key: "titleX", label: "Title X", type: "number" as const, defaultValue: .1, minimum: 0, maximum: .8 },
+      ],
+      layers: [sourceLayer, { ...manifest.layers[1], dataBindings: { text: "headline", "style.backgroundColor": "accent", x: "titleX" } }],
+    };
+    const variant = resolveCompositionParameters(parameterized, { headline: "Launch everywhere", accent: "#ff5500", titleX: .25 });
+    expect(variant.layers[1]).toMatchObject({ text: "Launch everywhere", x: .25, style: { backgroundColor: "#ff5500" } });
+    expect(variant.parameters.map((parameter) => parameter.defaultValue)).toEqual(["Launch everywhere", "#ff5500", .25]);
+    expect(() => resolveCompositionParameters(parameterized, { titleX: 2 })).toThrow(/maximum/i);
+    expect(() => resolveCompositionParameters(parameterized, { unknown: true })).toThrow(/unknown composition parameter/i);
   });
 
   it("requires isolated code capsules to pin source, lockfile, limits, and denied networking", () => {

@@ -114,6 +114,16 @@ export const cutCompositionManifestSchema = z.object({
   });
 });
 
+export const cutCompositionVariantBatchSchema = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
+  variants: z.array(z.object({
+    name: z.string().trim().min(1).max(160),
+    parameterValues: z.record(z.string().max(80), jsonScalar).superRefine((value, context) => {
+      if (Object.keys(value).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, message: "At most 100 parameter values are allowed" });
+    }),
+  })).min(1).max(20),
+});
+
 export const cutCodeCapsuleSchema = z.object({
   version: z.literal(1),
   entrypoint: z.string().regex(/^(?:src\/)?[A-Za-z0-9_./-]+\.(?:ts|tsx)$/).max(240),
@@ -313,6 +323,7 @@ export const cutGenerationRequestSchema = z.object({
 });
 
 export type CutCompositionManifest = z.infer<typeof cutCompositionManifestSchema>;
+export type CutCompositionVariantBatch = z.infer<typeof cutCompositionVariantBatchSchema>;
 export type CutCodeCapsule = z.infer<typeof cutCodeCapsuleSchema>;
 export type CutProductionBrief = z.infer<typeof cutProductionBriefSchema>;
 export type CutProductionElementSpec = z.infer<typeof cutProductionElementSpecSchema>;
@@ -320,6 +331,47 @@ export type CutShotSpec = z.infer<typeof cutShotSpecSchema>;
 export type CutGenerationRequest = z.infer<typeof cutGenerationRequestSchema>;
 export type CutModelCapability = z.infer<typeof cutModelCapabilitySchema>;
 export type CutGenerativeWorkflow = z.infer<typeof cutGenerativeWorkflowSchema>;
+
+const numericBindingTargets = new Set(["x", "y", "width", "height", "opacity", "rotation", "volume", "anchorX", "anchorY", "rotationX", "rotationY", "perspective"]);
+const styleBindingTargets = new Set(["color", "backgroundColor", "backgroundOpacity", "fontSize", "fill", "stroke", "strokeWidth", "borderRadius"]);
+
+export function resolveCompositionParameters(manifestInput: unknown, parameterValuesInput: unknown) {
+  const manifest = cutCompositionManifestSchema.parse(manifestInput);
+  const parameterValues = z.record(jsonScalar).parse(parameterValuesInput);
+  const definitions = new Map(manifest.parameters.map((parameter) => [parameter.key, parameter]));
+  for (const key of Object.keys(parameterValues)) if (!definitions.has(key)) throw new Error(`Unknown composition parameter: ${key}`);
+  const values = new Map<string, z.infer<typeof jsonScalar>>();
+  for (const parameter of manifest.parameters) {
+    const value = Object.prototype.hasOwnProperty.call(parameterValues, parameter.key) ? parameterValues[parameter.key] : parameter.defaultValue;
+    if (parameter.required && (value === null || value === "")) throw new Error(`${parameter.label} is required`);
+    if (parameter.type === "number" && typeof value !== "number") throw new Error(`${parameter.label} must be a number`);
+    if (parameter.type === "boolean" && typeof value !== "boolean") throw new Error(`${parameter.label} must be true or false`);
+    if (["text", "color", "select"].includes(parameter.type) && typeof value !== "string") throw new Error(`${parameter.label} must be text`);
+    if (parameter.type === "color" && typeof value === "string" && !color.safeParse(value).success) throw new Error(`${parameter.label} must be a six-digit hex color`);
+    if (parameter.type === "select" && typeof value === "string" && !parameter.options?.includes(value)) throw new Error(`${parameter.label} must use an allowed option`);
+    if (typeof value === "number" && parameter.minimum !== undefined && value < parameter.minimum) throw new Error(`${parameter.label} is below its minimum`);
+    if (typeof value === "number" && parameter.maximum !== undefined && value > parameter.maximum) throw new Error(`${parameter.label} exceeds its maximum`);
+    values.set(parameter.key, value);
+  }
+  const layers = manifest.layers.map((layer) => {
+    let next = { ...layer, style: { ...layer.style } };
+    for (const [target, parameterKey] of Object.entries(layer.dataBindings)) {
+      if (!values.has(parameterKey)) throw new Error(`Layer ${layer.name} references unknown parameter ${parameterKey}`);
+      const value = values.get(parameterKey)!;
+      if (target === "text") {
+        if (typeof value !== "string" && typeof value !== "number") throw new Error(`${parameterKey} cannot bind to layer text`);
+        next = { ...next, text: String(value) };
+      } else if (numericBindingTargets.has(target)) {
+        if (typeof value !== "number") throw new Error(`${parameterKey} must be numeric for ${target}`);
+        next = { ...next, [target]: value };
+      } else if (target.startsWith("style.") && styleBindingTargets.has(target.slice(6))) {
+        next = { ...next, style: { ...next.style, [target.slice(6)]: value } };
+      } else throw new Error(`Unsupported composition binding target: ${target}`);
+    }
+    return next;
+  });
+  return cutCompositionManifestSchema.parse({ ...manifest, parameters: manifest.parameters.map((parameter) => ({ ...parameter, defaultValue: values.get(parameter.key)! })), layers });
+}
 
 function easingProgress(value: number, easing: z.infer<typeof cutCompositionKeyframeSchema>["easing"]) {
   const progress = Math.max(0, Math.min(1, value));

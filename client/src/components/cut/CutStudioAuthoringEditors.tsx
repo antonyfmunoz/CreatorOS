@@ -6,6 +6,7 @@ import type { CutCompositionManifest, CutGenerativeWorkflow } from "@shared/cut-
 type CompositionLayer = CutCompositionManifest["layers"][number];
 type WorkflowNode = CutGenerativeWorkflow["nodes"][number];
 type WorkflowInput = WorkflowNode["inputs"][number];
+type ParameterValue = string | number | boolean | null;
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2.5 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 const compactField = "w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[10px] text-zinc-200 outline-none focus:border-[#1d9bf0]";
@@ -134,6 +135,22 @@ export function CompositionAuthoringControls({ composition, busy, onChange, onSa
       </div>
     </div>}
     <Button className="mt-3 w-full" size="sm" variant="outline" disabled={busy} onClick={onSave}><Check className="mr-1 h-3.5 w-3.5"/>Save composition</Button>
+  </div>;
+}
+
+export function CompositionVariantBatchControls({ composition, busy, onCreate }: {
+  composition: { id: string; name: string; manifest: CutCompositionManifest };
+  busy: boolean;
+  onCreate: (variants: Array<{ name: string; parameterValues: Record<string, ParameterValue> }>) => void;
+}) {
+  const defaults = () => Object.fromEntries(composition.manifest.parameters.map((parameter) => [parameter.key, parameter.defaultValue])) as Record<string, ParameterValue>;
+  const [variants, setVariants] = useState(() => [1, 2, 3].map((number) => ({ name: `${composition.name} · Variant ${number}`, parameterValues: defaults() })));
+  const updateValue = (rowIndex: number, key: string, value: ParameterValue) => setVariants((current) => current.map((row, index) => index === rowIndex ? { ...row, parameterValues: { ...row.parameterValues, [key]: value } } : row));
+  if (!composition.manifest.parameters.length) return <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-[9px] text-zinc-600">Add a typed composition parameter before creating batch variants.</p>;
+  return <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3" aria-label="Composition variant batch">
+    <div><p className="text-[10px] font-bold">Parameterized batch</p><p className="mt-1 text-[9px] text-zinc-600">Create reproducible composition variants without hand-editing each timeline.</p></div>
+    <div className="mt-2 space-y-2">{variants.map((variant, rowIndex) => <div key={rowIndex} className="rounded-lg border border-zinc-800 p-2"><input aria-label={`Variant ${rowIndex + 1} name`} className={compactField} value={variant.name} onChange={(event) => setVariants((current) => current.map((row, index) => index === rowIndex ? { ...row, name: event.target.value } : row))}/><div className="mt-1 grid grid-cols-2 gap-1">{composition.manifest.parameters.map((parameter) => <label key={parameter.key} className="text-[9px] text-zinc-600">{parameter.label}{parameter.type === "boolean" ? <select aria-label={`Variant ${rowIndex + 1} ${parameter.label}`} className={compactField} value={String(variant.parameterValues[parameter.key])} onChange={(event) => updateValue(rowIndex, parameter.key, event.target.value === "true")}><option value="true">True</option><option value="false">False</option></select> : parameter.type === "select" ? <select aria-label={`Variant ${rowIndex + 1} ${parameter.label}`} className={compactField} value={String(variant.parameterValues[parameter.key] ?? "")} onChange={(event) => updateValue(rowIndex, parameter.key, event.target.value)}>{parameter.options?.map((option) => <option key={option}>{option}</option>)}</select> : <input aria-label={`Variant ${rowIndex + 1} ${parameter.label}`} className={compactField} type={parameter.type === "number" ? "number" : parameter.type === "color" ? "color" : "text"} min={parameter.minimum} max={parameter.maximum} value={parameter.type === "number" ? Number(variant.parameterValues[parameter.key] ?? 0) : String(variant.parameterValues[parameter.key] ?? "")} onChange={(event) => updateValue(rowIndex, parameter.key, parameter.type === "number" ? numberValue(event.target.value, 0) : event.target.value)}/>}</label>)}</div></div>)}</div>
+    <div className="mt-2 grid grid-cols-2 gap-2"><Button size="sm" variant="ghost" disabled={variants.length >= 20} onClick={() => setVariants((current) => [...current, { name: `${composition.name} · Variant ${current.length + 1}`, parameterValues: defaults() }])}><Plus className="mr-1 h-3.5 w-3.5"/>Variant</Button><Button size="sm" variant="outline" disabled={busy || variants.some((variant) => !variant.name.trim())} onClick={() => onCreate(variants)}><Copy className="mr-1 h-3.5 w-3.5"/>Create {variants.length}</Button></div>
   </div>;
 }
 
