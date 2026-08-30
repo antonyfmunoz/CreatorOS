@@ -124,8 +124,9 @@ describe("CutStudio programmable production runtime", () => {
         width: .3,
         height: .2,
         opacity: .75,
+        rotation: 12,
         style: { fill: "#1d9bf0", borderRadius: 18 },
-        animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }],
+        animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }],
       }],
     }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.graphics).toMatchObject([{
@@ -141,7 +142,8 @@ describe("CutStudio programmable production runtime", () => {
       backgroundColor: "#1d9bf0",
       backgroundOpacity: .75,
       borderRadius: 18,
-      motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25 })]),
+      rotation: 12,
+      motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12 })]),
     }]);
   });
 

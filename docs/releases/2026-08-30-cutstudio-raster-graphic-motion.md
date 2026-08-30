@@ -30,5 +30,5 @@ the actual artifact.
 
 ## Remaining boundary
 
-Dynamic graphic scale, rotation, advanced transitions/effects, general SVG and
-interactive-media renderers remain separate work.
+Text scale/rotation, 3D transforms, advanced transitions/effects, general SVG
+and interactive-media renderers remain separate work.
