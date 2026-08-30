@@ -54,7 +54,7 @@ control or worse professional output.
 | Model catalog | Explicit allowlist, secret presence, advertised operations and local/cloud routing status | Activate one or more approved adapters |
 | Workflow graph | Versioned nodes, normalized media slots, model/provider selection, prompts, parameters, upstream outputs, coordinates and named outputs; visual add/remove/edit/reposition, cycle-safe typed connections, connection removal and named-output authoring | Native authoring is locally field-qualified; execution worker remains external/model work |
 | Job lifecycle | Idempotent durable request, pending/queued/running/done/error/cancelled states, bounded retry, progress and provider receipt fields | Adapter dispatch, polling/webhooks and artifact ingest remain external/model work |
-| Variants | Durable generated variants, provenance, private asset linkage and selected shot; declarative composition batches retain source composition, batch and index lineage | Adapter callback and production selection field proof |
+| Variants | Durable generated variants, provenance, private asset linkage and selected shot; declarative composition batches retain source composition, batch and index lineage; existing private project video can enter the same candidate review, select/reject and idempotent lineage-preserving timeline handoff used by future provider results | Adapter callback and provider-result field proof |
 | Conventional finish | Existing CutStudio timeline, audio, captions, color, multicam, review and distribution path | Existing bounded workflow is locally qualified; new runtime needs its own release evidence |
 
 ## Direct parity matrix
@@ -164,9 +164,14 @@ with either.
    lower-third layers, preserve their family and asset identity through EDL v3,
    load them into the browser preview and use the exact materialized font in
    native FFmpeg final rendering; complete its protected release.
-20. Activate and qualify at least one approved model adapter and one isolated
+20. **Implemented and locally field-qualified:** admit ready private project
+   video into durable shot-variant review, select or reject candidates with
+   role and tenant enforcement, supersede an earlier choice, and append the
+   selected asset directly to EDL v3 with shot, variant and generation-job
+   lineage without export or re-upload; complete its protected release.
+21. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-21. Run the direct substitution benchmark using locked briefs/assets and human
+22. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

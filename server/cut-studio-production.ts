@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
 import {
@@ -44,6 +44,10 @@ const compositionInput = z.object({
   if (value.mode === "declarative" && value.codeCapsule) context.addIssue({ code: z.ZodIssueCode.custom, path: ["codeCapsule"], message: "Declarative compositions cannot include executable code" });
 });
 const workflowInput = z.object({ workflow: cutGenerativeWorkflowSchema });
+const variantImportInput = z.object({
+  assetId: z.string().uuid(),
+  label: z.string().trim().min(1).max(160).default("Imported candidate"),
+}).strict();
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
 
 async function projectAccess(userId: number, projectId: string) {
@@ -429,6 +433,42 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     res.status(202).json(retried);
   });
 
+  cut.post("/api/cut/projects/:id/shots/:shotId/variants/import", attachUser, generationLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const parsed = variantImportInput.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A valid project video candidate is required", issues: parsed.error.issues });
+    const plan = await productionPlan(access.project);
+    if (!plan) return res.status(404).json({ message: "Production plan not found" });
+    const [[shot], [media], [asset]] = await Promise.all([
+      db.select().from(cutStudioShots).where(and(eq(cutStudioShots.id, req.params.shotId), eq(cutStudioShots.planId, plan.id))).limit(1),
+      db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, parsed.data.assetId), eq(cutStudioProjectMedia.ownerUserId, access.project.ownerUserId), eq(cutStudioProjectMedia.mediaKind, "video"))).limit(1),
+      db.select().from(assets).where(and(eq(assets.id, parsed.data.assetId), eq(assets.ownerUserId, access.project.ownerUserId), eq(assets.businessId, access.project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1),
+    ]);
+    if (!shot) return res.status(404).json({ message: "Shot not found" });
+    if (!media || !asset?.mimeType?.startsWith("video/")) return res.status(409).json({ message: "Only ready private project video may enter variant review" });
+    const variant = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${shot.id}:${asset.id}:variant-import`}))`);
+      const [existing] = await tx.select().from(cutStudioShotVariants).where(and(eq(cutStudioShotVariants.shotId, shot.id), eq(cutStudioShotVariants.assetId, asset.id))).limit(1);
+      if (existing) return existing;
+      const [created] = await tx.insert(cutStudioShotVariants).values({
+        shotId: shot.id,
+        generationJobId: null,
+        assetId: asset.id,
+        businessId: access.project.businessId,
+        ownerUserId: access.project.ownerUserId,
+        provider: "project_media",
+        model: "manual_import",
+        status: "candidate",
+        provenance: { source: "project_media", label: parsed.data.label, importedByUserId: req.dbUser!.id, projectMediaId: media.id, importedAt: new Date().toISOString() },
+      }).returning();
+      return created;
+    });
+    await emitProjectionEvent({ aggregateType: "cutstudio_shot", aggregateId: shot.id, eventType: "cutstudio.variant.imported", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, projectId: access.project.id, variantId: variant.id, assetId: asset.id }, idempotencyKey: `cutstudio:variant:${variant.id}:imported` });
+    res.status(201).json(variant);
+  });
+
   cut.post("/api/cut/projects/:id/shots/:shotId/variants/:variantId/select", attachUser, async (req, res) => {
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access) return res.status(404).json({ message: "Project not found" });
@@ -438,9 +478,65 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     try { await assertProjectAssets(access.project, [variant.assetId]); } catch { return res.status(409).json({ message: "The generated asset is not a ready private asset in this business" }); }
     const plan = await productionPlan(access.project);
     if (!plan) return res.status(404).json({ message: "Production plan not found" });
-    const [updated] = await db.update(cutStudioShots).set({ selectedVariantId: variant.id, status: "selected", revision: sql`${cutStudioShots.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioShots.id, req.params.shotId), eq(cutStudioShots.planId, plan.id))).returning();
-    if (!updated) return res.status(404).json({ message: "Shot not found" });
-    res.json(updated);
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(cutStudioShots).set({ selectedVariantId: variant.id, status: "selected", revision: sql`${cutStudioShots.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioShots.id, req.params.shotId), eq(cutStudioShots.planId, plan.id))).returning();
+      if (!updated) return null;
+      await tx.update(cutStudioShotVariants).set({ status: "superseded" }).where(and(eq(cutStudioShotVariants.shotId, updated.id), eq(cutStudioShotVariants.status, "selected"), ne(cutStudioShotVariants.id, variant.id)));
+      const [selected] = await tx.update(cutStudioShotVariants).set({ status: "selected" }).where(eq(cutStudioShotVariants.id, variant.id)).returning();
+      return { shot: updated, variant: selected };
+    });
+    if (!result) return res.status(404).json({ message: "Shot not found" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_shot", aggregateId: result.shot.id, eventType: "cutstudio.variant.selected", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, projectId: access.project.id, variantId: result.variant.id, assetId: result.variant.assetId }, idempotencyKey: `cutstudio:variant:${result.variant.id}:selected` });
+    res.json(result);
+  });
+
+  cut.post("/api/cut/projects/:id/shots/:shotId/variants/:variantId/reject", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const plan = await productionPlan(access.project);
+    if (!plan) return res.status(404).json({ message: "Production plan not found" });
+    const [shot] = await db.select().from(cutStudioShots).where(and(eq(cutStudioShots.id, req.params.shotId), eq(cutStudioShots.planId, plan.id))).limit(1);
+    if (!shot) return res.status(404).json({ message: "Shot not found" });
+    if (shot.selectedVariantId === req.params.variantId) return res.status(409).json({ message: "Select another candidate before rejecting the current timeline choice" });
+    const [rejected] = await db.update(cutStudioShotVariants).set({ status: "rejected" }).where(and(eq(cutStudioShotVariants.id, req.params.variantId), eq(cutStudioShotVariants.shotId, shot.id), inArray(cutStudioShotVariants.status, ["candidate", "superseded"]))).returning();
+    if (!rejected) return res.status(409).json({ message: "This candidate cannot be rejected" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_shot", aggregateId: shot.id, eventType: "cutstudio.variant.rejected", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, projectId: access.project.id, variantId: rejected.id }, idempotencyKey: `cutstudio:variant:${rejected.id}:rejected` });
+    res.json(rejected);
+  });
+
+  cut.post("/api/cut/projects/:id/shots/:shotId/variants/:variantId/handoff", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const expected = requireExpectedRevision(req.header("If-Match"));
+    if (!expected) return res.status(428).json({ message: "Project revision is required" });
+    const plan = await productionPlan(access.project);
+    if (!plan) return res.status(404).json({ message: "Production plan not found" });
+    const [[shot], [variant]] = await Promise.all([
+      db.select().from(cutStudioShots).where(and(eq(cutStudioShots.id, req.params.shotId), eq(cutStudioShots.planId, plan.id))).limit(1),
+      db.select().from(cutStudioShotVariants).where(and(eq(cutStudioShotVariants.id, req.params.variantId), eq(cutStudioShotVariants.shotId, req.params.shotId), eq(cutStudioShotVariants.businessId, access.project.businessId))).limit(1),
+    ]);
+    if (!shot || !variant?.assetId) return res.status(404).json({ message: "Selected variant not found" });
+    if (shot.selectedVariantId !== variant.id || variant.status !== "selected") return res.status(409).json({ message: "Select this candidate before handing it to the timeline" });
+    const [[media], [asset]] = await Promise.all([
+      db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, variant.assetId), eq(cutStudioProjectMedia.ownerUserId, access.project.ownerUserId), eq(cutStudioProjectMedia.mediaKind, "video"))).limit(1),
+      db.select().from(assets).where(and(eq(assets.id, variant.assetId), eq(assets.ownerUserId, access.project.ownerUserId), eq(assets.businessId, access.project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1),
+    ]);
+    if (!media || !asset?.mimeType?.startsWith("video/")) return res.status(409).json({ message: "The selected variant is not ready private project video" });
+    const existing = access.project.edl.clips.find((clip) => clip.sourceVariantId === variant.id);
+    if (existing) return res.json({ edl: access.project.edl, duration: access.project.duration, revision: access.project.revision, clip: existing, idempotent: true });
+    const timelineStart = access.project.edl.clips.filter((clip) => (clip.track ?? "v1") === "v1").reduce((maximum, clip) => Math.max(maximum, (clip.timelineStart ?? 0) + ((clip.end - clip.start) / (clip.speed ?? 1))), 0);
+    const duration = Math.min(media.duration, 43_200 - timelineStart);
+    if (duration < .05) return res.status(409).json({ message: "The primary timeline has no room for another variant" });
+    const clip = { id: `variant_${variant.id.replaceAll("-", "")}`, start: 0, end: duration, label: `${shot.spec.name} · selected`, assetId: variant.assetId, sourceVariantId: variant.id, generationJobId: variant.generationJobId, track: "v1" as const, timelineStart, speed: 1, volume: 1, fadeIn: 0, fadeOut: 0, transition: "cut" as const, transform: { x: 0, y: 0, width: 1, height: 1, opacity: 1 } };
+    const nextDuration = Math.max(access.project.duration, timelineStart + duration);
+    let edl;
+    try { edl = validateCutEdl({ ...access.project.edl, version: 3, clips: [...access.project.edl.clips, clip] }, nextDuration); } catch (error) { return res.status(409).json({ message: error instanceof Error ? error.message : "The selected variant could not enter the timeline" }); }
+    const [updated] = await db.update(cutStudioProjects).set({ edl, duration: nextDuration, revision: sql`${cutStudioProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioProjects.id, access.project.id), eq(cutStudioProjects.revision, expected))).returning();
+    if (!updated) return res.status(409).json({ message: "The timeline changed elsewhere" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.variant.handed_off", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, shotId: shot.id, variantId: variant.id, assetId: variant.assetId, clipId: clip.id }, idempotencyKey: `cutstudio:variant:${variant.id}:timeline` });
+    res.json({ edl: updated.edl, duration: updated.duration, revision: updated.revision, clip, idempotent: false });
   });
 
   cut.post("/api/cut/projects/:id/generative-workflows", attachUser, async (req, res) => {

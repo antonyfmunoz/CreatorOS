@@ -625,8 +625,10 @@ and increments its failure count.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant
-  records are implemented; provider execution, production variant review and
-  selected-asset field handoff into the existing timeline remain.
+  records are implemented; private project video now enters durable candidate
+  review with select/reject/supersede decisions and direct lineage-preserving
+  EDL v3 handoff. Provider execution, callback ingest and provider-result field
+  proof remain.
 - Close benchmark-discovered normal-workflow gaps against Premiere, Resolve,
   Descript, CapCut, Remotion and Higgsfield independently; only then measure the
   connected Broadcast/Media Cloud/Distribution advantage.

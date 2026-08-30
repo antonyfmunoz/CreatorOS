@@ -13,6 +13,7 @@ type CompositionRow = { id: string; name: string; mode: string; manifest: CutCom
 type PlanRow = { id: string; brief: CutProductionBrief; revision: number };
 type ShotRow = { id: string; sequence: number; spec: CutShotSpec; revision: number; status: string; selectedVariantId?: string | null };
 type JobRow = { id: string; shotId: string; provider: string; model: string; state: string; detail: string; createdAt: string };
+type VariantRow = { id: string; shotId: string; generationJobId?: string | null; assetId?: string | null; provider: string; model: string; seed?: number | null; status: "candidate" | "selected" | "rejected" | "superseded"; provenance: Record<string, unknown> };
 type WorkflowRow = { id: string; workflow: CutGenerativeWorkflow; revision: number };
 type ProviderRow = { id: string; label: string; configured: boolean; capabilities: readonly string[] };
 type RuntimePayload = {
@@ -24,7 +25,7 @@ type RuntimePayload = {
   shots: ShotRow[];
   jobs: JobRow[];
   workflows: WorkflowRow[];
-  variants: Array<{ id: string; shotId: string; assetId?: string | null; label: string; status: string }>;
+  variants: VariantRow[];
 };
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
@@ -64,6 +65,7 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
   const [shotName, setShotName] = useState("Opening shot");
   const [shotPrompt, setShotPrompt] = useState("A cinematic opening that establishes the subject, environment, and creative promise");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [candidateAssetByShot, setCandidateAssetByShot] = useState<Record<string, string>>({});
 
   const refresh = async () => {
     const next = await (await apiRequest("GET", `/api/cut/projects/${project.id}/creative-runtime`)).json() as RuntimePayload;
@@ -139,6 +141,24 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
     await refresh(); setMessage(runtime?.generationRuntime.providers.some((item) => item.configured) ? "Generation submitted." : "The job is safely staged; connect an approved model runtime to execute it.");
   });
 
+  const importVariant = (shot: ShotRow) => act(`variant-import:${shot.id}`, async () => {
+    const assetId = candidateAssetByShot[shot.id] ?? media.find((item) => item.mediaKind === "video")?.assetId;
+    if (!assetId) throw new Error("Add private project video before creating a review candidate");
+    const selected = media.find((item) => item.assetId === assetId);
+    await apiRequest("POST", `/api/cut/projects/${project.id}/shots/${shot.id}/variants/import`, { assetId, label: selected?.name ?? "Imported candidate" });
+    await refresh(); setMessage("The project video is ready for shot review with its source lineage retained.");
+  });
+
+  const decideVariant = (shot: ShotRow, variant: VariantRow, decision: "select" | "reject") => act(`variant-${decision}:${variant.id}`, async () => {
+    await apiRequest("POST", `/api/cut/projects/${project.id}/shots/${shot.id}/variants/${variant.id}/${decision}`, {});
+    await refresh(); setMessage(decision === "select" ? "Variant selected. You can now hand it directly to the editable timeline." : "Variant rejected without deleting its provenance.");
+  });
+
+  const handoffVariant = (shot: ShotRow, variant: VariantRow) => act(`variant-handoff:${variant.id}`, async () => {
+    const result = await (await apiRequest("POST", `/api/cut/projects/${project.id}/shots/${shot.id}/variants/${variant.id}/handoff`, {}, { "If-Match": String(project.revision) })).json() as { edl: CutEdl; duration: number; revision: number; idempotent: boolean };
+    onTimelineApplied(result); await refresh(); setMessage(result.idempotent ? "This selected variant is already on the editable timeline." : "Selected variant added to the editable timeline without export or re-upload.");
+  });
+
   const createWorkflow = () => act("workflow", async () => {
     const workflow: CutGenerativeWorkflow = { version: 1, name: "Cinematic campaign pipeline", description: "Create the hero frame, animate it, then finish the audio layer.", nodes: [{ id: "hero_image", operation: "text_to_image", provider: "auto", model: "auto", prompt: brief.objective || "Create the campaign hero image", parameters: {}, inputs: [], position: { x: 0, y: 0 } }, { id: "hero_video", operation: "image_to_video", provider: "auto", model: "auto", prompt: "Add deliberate cinematic camera movement", parameters: {}, inputs: [{ slot: "start_frame", sourceNodeId: "hero_image", sourceOutput: "image", assetIds: [] }], position: { x: 280, y: 0 } }, { id: "sound", operation: "sound_effect_generation", provider: "auto", model: "auto", prompt: "Create a cohesive sound bed", parameters: {}, inputs: [{ slot: "source_video", sourceNodeId: "hero_video", sourceOutput: "video", assetIds: [] }], position: { x: 560, y: 0 } }], outputs: [{ nodeId: "hero_video", output: "video", label: "Hero video" }, { nodeId: "sound", output: "audio", label: "Sound bed" }] };
     await apiRequest("POST", `/api/cut/projects/${project.id}/generative-workflows`, { workflow });
@@ -169,7 +189,25 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
         <label className="block text-[10px] font-bold text-zinc-500">Audience<input className={field} value={brief.audience} onChange={(event) => setBrief({ ...brief, audience: event.target.value })}/></label>
         <Button size="sm" variant="outline" className="w-full" disabled={Boolean(busy)} onClick={() => void saveBrief()}>{busy === "brief" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Check className="mr-1 h-3.5 w-3.5"/>}Save brief</Button>
         <div className="border-t border-zinc-800 pt-3"><div className="flex items-center gap-2"><Camera className="h-4 w-4 text-[#1d9bf0]"/><p className="text-xs font-bold">Shot builder</p></div><input aria-label="Shot name" className={field} value={shotName} onChange={(event) => setShotName(event.target.value)}/><textarea aria-label="Shot prompt" className={`${field} min-h-20 resize-none`} value={shotPrompt} onChange={(event) => setShotPrompt(event.target.value)}/><label className="mt-2 flex items-start gap-2 text-[10px] leading-4 text-zinc-400"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} className="mt-0.5 accent-[#1d9bf0]"/>I control the media/model rights for this shot. Likeness consent is separately enforced when cast elements are used.</label><Button className="mt-3 w-full" size="sm" disabled={!shotName.trim() || !shotPrompt.trim() || Boolean(busy)} onClick={() => void createShot()}>{busy === "shot" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Plus className="mr-1 h-3.5 w-3.5"/>}Add shot</Button></div>
-        {runtime.shots.map((shot) => <div key={shot.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold">{shot.sequence}. {shot.spec.name}</p><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-zinc-500">{shot.spec.prompt}</p><p className="mt-1 text-[10px] text-zinc-600">{shot.spec.camera.focalLengthMm}mm · {shot.spec.camera.movements.map((item) => item.kind).join(" + ") || "static"} · {shot.spec.durationSeconds}s</p></div><Button size="sm" variant="outline" aria-label={`Generate ${shot.spec.name}`} disabled={!shot.spec.safety.rightsConfirmed || Boolean(busy)} onClick={() => void queueGeneration(shot)}>{busy === `generate:${shot.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Sparkles className="h-3.5 w-3.5"/>}</Button></div>{runtime.jobs.filter((job) => job.shotId === shot.id).slice(0,1).map((job) => <p key={job.id} className={`mt-2 rounded px-2 py-1 text-[10px] ${job.state === "provider_pending" ? "bg-amber-950 text-amber-300" : "bg-zinc-900 text-zinc-400"}`}>{job.state.replace("_", " ")} · {job.detail}</p>)}</div>)}
+        {runtime.shots.map((shot) => {
+          const shotVariants = runtime.variants.filter((variant) => variant.shotId === shot.id);
+          const candidateVideos = media.filter((item) => item.mediaKind === "video");
+          return <div key={shot.id} className="rounded-xl border border-zinc-800 bg-black p-3">
+            <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold">{shot.sequence}. {shot.spec.name}</p><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-zinc-500">{shot.spec.prompt}</p><p className="mt-1 text-[10px] text-zinc-600">{shot.spec.camera.focalLengthMm}mm · {shot.spec.camera.movements.map((item) => item.kind).join(" + ") || "static"} · {shot.spec.durationSeconds}s</p></div><Button size="sm" variant="outline" aria-label={`Generate ${shot.spec.name}`} disabled={!shot.spec.safety.rightsConfirmed || Boolean(busy)} onClick={() => void queueGeneration(shot)}>{busy === `generate:${shot.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Sparkles className="h-3.5 w-3.5"/>}</Button></div>
+            {runtime.jobs.filter((job) => job.shotId === shot.id).slice(0, 1).map((job) => <p key={job.id} className={`mt-2 rounded px-2 py-1 text-[10px] ${job.state === "provider_pending" ? "bg-amber-950 text-amber-300" : "bg-zinc-900 text-zinc-400"}`}>{job.state.replace("_", " ")} · {job.detail}</p>)}
+            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label={`Variant review for ${shot.spec.name}`}>
+              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-zinc-500">Variant review</p>
+              <div className="mt-2 flex gap-2"><select aria-label={`Candidate video for ${shot.spec.name}`} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-black px-2 py-1.5 text-[10px] text-white" value={candidateAssetByShot[shot.id] ?? candidateVideos[0]?.assetId ?? ""} onChange={(event) => setCandidateAssetByShot((current) => ({ ...current, [shot.id]: event.target.value }))}><option value="" disabled>Choose project video</option>{candidateVideos.map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><Button size="sm" variant="outline" aria-label={`Add candidate for ${shot.spec.name}`} disabled={!candidateVideos.length || Boolean(busy)} onClick={() => void importVariant(shot)}>{busy === `variant-import:${shot.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : "Add candidate"}</Button></div>
+              {shotVariants.length === 0 ? <p className="py-3 text-center text-[10px] text-zinc-600">Provider results and imported project media appear here for review.</p> : <div className="mt-2 space-y-2">{shotVariants.map((variant) => {
+                const projectMedia = media.find((item) => item.assetId === variant.assetId);
+                return <div key={variant.id} className="rounded-lg border border-zinc-800 bg-black p-2">
+                  {projectMedia && <video aria-label={`Preview ${projectMedia.name}`} className="aspect-video w-full rounded-md bg-zinc-950 object-contain" src={`/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(projectMedia.id)}/media-file`} muted controls preload="metadata"/>}
+                  <div className="mt-2 flex items-center gap-2"><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold">{typeof variant.provenance.label === "string" ? variant.provenance.label : projectMedia?.name ?? "Generated candidate"}</span><span className="text-[9px] text-zinc-600">{variant.provider} · {variant.model} · {variant.status}</span></span>{variant.status !== "rejected" && variant.status !== "selected" && <Button size="sm" variant="ghost" aria-label={`Reject ${projectMedia?.name ?? "candidate"}`} disabled={Boolean(busy)} onClick={() => void decideVariant(shot, variant, "reject")}>Reject</Button>}{variant.status !== "rejected" && variant.status !== "selected" && <Button size="sm" variant="outline" aria-label={`Select ${projectMedia?.name ?? "candidate"}`} disabled={Boolean(busy)} onClick={() => void decideVariant(shot, variant, "select")}>Select</Button>}{variant.status === "selected" && <Button size="sm" aria-label={`Add ${projectMedia?.name ?? "selected variant"} to timeline`} disabled={Boolean(busy)} onClick={() => void handoffVariant(shot, variant)}>{busy === `variant-handoff:${variant.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Timeline</>}</Button>}</div>
+                </div>;
+              })}</div>}
+            </div>
+          </div>;
+        })}
         {waitingJobs > 0 && <p className="rounded-lg bg-amber-950/60 p-2 text-[10px] leading-4 text-amber-300">{waitingJobs} generation job{waitingJobs === 1 ? " is" : "s are"} staged without pretending an external model executed.</p>}
       </div> : <div className="mt-4 space-y-3"><p className="text-xs leading-5 text-zinc-400">Build reusable capability-driven graphs instead of hard-coding one vendor. Inputs, outputs, model choice, prompts, and lineage remain portable.</p><Button className="w-full" size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createWorkflow()}>{busy === "workflow" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Plus className="mr-1 h-3.5 w-3.5"/>}Starter campaign flow</Button>{runtime.workflows.map((row) => <WorkflowAuthoringEditor key={row.id} workflow={row.workflow} revision={row.revision} busy={Boolean(busy)} onChange={(workflow) => updateWorkflowDraft(row.id, workflow)} onSave={() => void saveWorkflow(row)}/>)}</div>}
       {message && <p role="status" className="mt-3 rounded-lg border border-zinc-800 bg-black px-3 py-2 text-[10px] leading-4 text-zinc-300">{message}</p>}
