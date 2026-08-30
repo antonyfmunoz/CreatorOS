@@ -43,7 +43,7 @@ control or worse professional output.
 | System | Native implementation | Current gate |
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
-| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; safe vector/path, data and 3D browser preview | Native Lottie/Rive/Three playback and final rendering beyond the current EDL subset remain renderer work |
+| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio selection; safe vector/path, data and 3D browser preview | Image/font/Lottie/Rive/Three media pickers, native interactive-media playback and final rendering beyond the current EDL subset remain renderer work |
 | Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled title position and opacity compile into bounded FFmpeg expressions | Final-render scale, rotation, advanced transitions/effects and interactive-media parity remain renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
@@ -107,9 +107,13 @@ with either.
    and opacity from the declarative evaluator into final FFmpeg rendering and
    prove translation with pixels from two frames of a private artifact;
    complete its protected release and the remaining advanced properties.
-7. Activate and qualify at least one approved model adapter and one isolated
+7. **Implemented and locally field-qualified:** select owned project video or
+   audio from the composition authoring controls, preserve exact asset IDs in
+   the manifest and compile simultaneous media layers onto stable primary and
+   overlay tracks; complete its protected release and expand media pickers.
+8. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-8. Run the direct substitution benchmark using locked briefs/assets and human
+9. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.
