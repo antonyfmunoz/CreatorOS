@@ -58,6 +58,16 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expect(studio.getByText("Composition controls saved.")).toBeVisible();
   await studio.getByRole("button", { name: "Apply" }).click();
   await expect(studio.getByText(/now on the editable timeline/)).toBeVisible();
+  const variantBatch = studio.getByLabel("Composition variant batch");
+  await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
+  await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");
+  await variantBatch.getByLabel("Variant 2 name").fill("Launch · B");
+  await variantBatch.getByLabel("Variant 2 Headline").fill("Publish everywhere");
+  await variantBatch.getByLabel("Variant 3 name").fill("Launch · C");
+  await variantBatch.getByLabel("Variant 3 Headline").fill("Own the audience");
+  await variantBatch.getByRole("button", { name: "Create 3" }).focus();
+  await variantBatch.getByRole("button", { name: "Create 3" }).press("Enter");
+  await expect(studio.getByText("3 parameterized composition variants created.")).toBeVisible();
 
   await studio.getByRole("button", { name: /Cinema/ }).click();
   await studio.getByLabel("Production title").fill("World launch");
@@ -96,7 +106,15 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const runtimeResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
-  expect(runtime).toMatchObject({ compositions: [expect.objectContaining({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationY: 18, perspective: 800, effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) })], plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
+  const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
+  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", dataBindings: { text: "headline" } }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationY: 18, perspective: 800, effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: [expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] })] }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  const compositionVariants = runtime.compositions.filter((composition: { manifest: { metadata: Record<string, unknown> } }) => composition.manifest.metadata.sourceCompositionId === sourceComposition.id);
+  expect(compositionVariants).toHaveLength(3);
+  expect(compositionVariants.map((composition: { manifest: { layers: Array<{ id: string; text?: string }> } }) => composition.manifest.layers.find((layer) => layer.id === "hero_title")?.text).sort()).toEqual(["Create once", "Own the audience", "Publish everywhere"]);
+  const repeatedBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions/${sourceComposition.id}/variants`, { idempotencyKey: compositionVariants[0].manifest.metadata.variantBatchId, variants: [{ name: "Launch · A", parameterValues: { headline: "Create once" } }, { name: "Launch · B", parameterValues: { headline: "Publish everywhere" } }, { name: "Launch · C", parameterValues: { headline: "Own the audience" } }] });
+  await expectOk(repeatedBatch);
+  expect((await repeatedBatch.json()).variants.map((composition: { id: string }) => composition.id).sort()).toEqual(compositionVariants.map((composition: { id: string }) => composition.id).sort());
+  expect(runtime).toMatchObject({ plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
 
   const foreignUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(peer) }, multipart: { kind: "video", visibility: "private", video: { name: "foreign.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
   await expectOk(foreignUpload);

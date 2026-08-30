@@ -28,7 +28,8 @@ Date: 2026-08-30
 ## Honest boundary
 
 This slice improves browser rendering. Complete final-render parity, native
-Lottie/Rive/Three playback, executable code isolation, parameterized batch
-variants and external model execution remain separate work. Protected CI,
+Lottie/Rive/Three playback, executable code isolation and external model
+execution remain separate work. Parameterized batch variants are implemented
+and locally field-qualified in the following release candidate. Protected CI,
 merge, deployment and exact-production smoke remain required before this
 candidate is production-qualified.

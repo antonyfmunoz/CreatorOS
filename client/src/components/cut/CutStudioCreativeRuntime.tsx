@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { CompositionAuthoringControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
+import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import type { CutEdl } from "@shared/cut-studio";
 import { type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
@@ -97,6 +97,12 @@ export function CutStudioCreativeRuntime({ project, onTimelineApplied }: { proje
     await refresh(); setMessage("Composition controls saved.");
   });
 
+  const createCompositionVariants = (composition: CompositionRow, variants: Array<{ name: string; parameterValues: Record<string, string | number | boolean | null> }>) => act(`variants:${composition.id}`, async () => {
+    const response = await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/variants`, { idempotencyKey: `variants.${composition.id}.${crypto.randomUUID()}`, variants });
+    const result = await response.json() as { count: number };
+    await refresh(); setMessage(`${result.count} parameterized composition variants created.`);
+  });
+
   const saveBrief = () => act("brief", async () => {
     const headers = runtime?.plan ? { "If-Match": String(runtime.plan.revision) } : undefined;
     await apiRequest("PUT", `/api/cut/projects/${project.id}/production-brief`, brief, headers);
@@ -138,7 +144,7 @@ export function CutStudioCreativeRuntime({ project, onTimelineApplied }: { proje
       {!runtime ? <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#1d9bf0]"/></div> : section === "motion" ? <div className="mt-4 space-y-3">
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
-        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.manifest.layers.length} layers · {composition.manifest.fps} fps · revision {composition.revision}</p></div><Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button></div><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/></div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.manifest.layers.length} layers · {composition.manifest.fps} fps · revision {composition.revision}</p></div><Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button></div><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy)} onCreate={(variants) => void createCompositionVariants(composition, variants)}/></div>)}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · executable code: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">
         <label className="block text-[10px] font-bold text-zinc-500">Production title<input className={field} value={brief.title} onChange={(event) => setBrief({ ...brief, title: event.target.value })}/></label>
