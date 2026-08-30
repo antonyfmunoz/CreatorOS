@@ -44,7 +44,7 @@ control or worse professional output.
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
 | Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio selection; safe vector/path, data and 3D browser preview; bounded filled shapes and allowlisted path commands compile into the native final-render graph | Image/font/Lottie/Rive/Three media pickers, general sanitized SVG rendering and native interactive-media playback remain renderer work |
-| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled text/shape/path position, opacity, scale and Z-rotation compile into one bounded raster/FFmpeg graph | Final-render 3D transforms, advanced transitions/effects and interactive-media parity remain renderer work |
+| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring; sampled text/shape/path position, opacity, scale and Z-rotation plus static X/Y rotation and perspective compile into the bounded raster/FFmpeg graph | Animated 3D/flip, advanced transitions/effects and interactive-media parity remain renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
 | Brief | Objective, audience, genre, era, tone, requirements, exclusions, references, aspect, resolution, FPS and pacing | Production field proof |
@@ -131,9 +131,13 @@ with either.
     and lower-third layers with the installed production font and route them
     through the same bounded scale/Z-rotation graph as vector graphics; prove
     final-artifact translation, scale and rotation in mobile and desktop runs.
-13. Activate and qualify at least one approved model adapter and one isolated
+13. **Implemented pending qualification:** preserve static X/Y rotation and
+    perspective on safe raster graphics, project their exact 3D quadrilateral
+    through FFmpeg and prove non-rectilinear row geometry in the final private
+    artifact; animated 3D/flip remains part of advanced transition work.
+14. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-14. Run the direct substitution benchmark using locked briefs/assets and human
+15. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

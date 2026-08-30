@@ -41,9 +41,9 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByRole("button", { name: "Add layer" }).click();
   await studio.getByLabel("Layer name").fill("Brand accent");
   await studio.getByLabel("Layer fill color").fill("#f43f5e");
-  await studio.getByLabel("Layer rotation").fill("12");
-  await studio.getByLabel("Layer rotate y").fill("18");
-  await studio.getByLabel("Layer perspective").fill("800");
+  await studio.getByLabel("Layer rotate x").fill("-18");
+  await studio.getByLabel("Layer rotate y").fill("32");
+  await studio.getByLabel("Layer perspective").fill("700");
   await studio.getByLabel("Keyframe property").selectOption("opacity");
   await studio.getByLabel("Keyframe frame").fill("12");
   await studio.getByLabel("Keyframe value").fill("0.75");
@@ -118,6 +118,23 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect({ red: settledPixels[accentOffset], green: settledPixels[accentOffset + 1], blue: settledPixels[accentOffset + 2] }).toMatchObject({ red: expect.any(Number), green: expect.any(Number), blue: expect.any(Number) });
   expect(settledPixels[accentOffset]).toBeGreaterThan(settledPixels[accentOffset + 1] + 60);
   expect(settledPixels[accentOffset]).toBeGreaterThan(settledPixels[accentOffset + 2] + 40);
+  let accentMinimumX = 1280; let accentMaximumX = -1; let accentMinimumY = 720; let accentMaximumY = -1;
+  const accentRowCounts = new Map<number, number>();
+  for (let offset = 0; offset + 2 < settledPixels.length; offset += 3) {
+    const red = settledPixels[offset]; const green = settledPixels[offset + 1]; const blue = settledPixels[offset + 2];
+    if (red > green + 60 && red > blue + 40) {
+      const pixel = Math.floor(offset / 3); const x = pixel % 1280; const y = Math.floor(pixel / 1280);
+      accentMinimumX = Math.min(accentMinimumX, x); accentMaximumX = Math.max(accentMaximumX, x); accentMinimumY = Math.min(accentMinimumY, y); accentMaximumY = Math.max(accentMaximumY, y);
+      accentRowCounts.set(y, (accentRowCounts.get(y) ?? 0) + 1);
+    }
+  }
+  const widestAccentRow = Math.max(...accentRowCounts.values());
+  const middleAccentRow = accentRowCounts.get(Math.round((accentMinimumY + accentMaximumY) / 2)) ?? 0;
+  const topAccentRow = accentRowCounts.get(accentMinimumY) ?? 0;
+  const bottomAccentRow = accentRowCounts.get(accentMaximumY) ?? 0;
+  expect(widestAccentRow).toBeGreaterThan(600);
+  expect(middleAccentRow).toBeLessThan(widestAccentRow - 150);
+  expect(Math.abs(bottomAccentRow - topAccentRow)).toBeGreaterThan(60);
   const vacatedAccentOffset = ((500 * 1280) + 1000) * 3;
   expect(settledPixels[vacatedAccentOffset]).toBeLessThan(80);
   const ruleOffset = ((486 * 1280) + 850) * 3;
@@ -173,7 +190,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
   const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
-  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotation: 12, rotationY: 18, perspective: 800, style: expect.objectContaining({ fill: "#f43f5e" }), effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: [expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) })], animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
   const compositionVariants = runtime.compositions.filter((composition: { manifest: { metadata: Record<string, unknown> } }) => composition.manifest.metadata.sourceCompositionId === sourceComposition.id);
   expect(compositionVariants).toHaveLength(3);
   expect(compositionVariants.map((composition: { manifest: { layers: Array<{ id: string; text?: string }> } }) => composition.manifest.layers.find((layer) => layer.id === "hero_title")?.text).sort()).toEqual(["Create once", "Own the audience", "Publish everywhere"]);

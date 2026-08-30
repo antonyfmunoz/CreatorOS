@@ -30,5 +30,6 @@ longer stops at the browser preview for text transforms.
 
 ## Remaining boundary
 
-3D transforms, advanced transitions/effects, sanitized general SVG and
-interactive image/font/Lottie/Rive/Three media rendering remain separate work.
+Static X/Y rotation and perspective are completed by the subsequent bounded
+3D slice. Animated 3D/flip, advanced transitions/effects, sanitized general
+SVG and interactive image/font/Lottie/Rive/Three rendering remain separate.
