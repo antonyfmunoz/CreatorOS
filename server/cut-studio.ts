@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import sharp from "sharp";
 import { z } from "zod";
 import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
 import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
@@ -604,7 +605,16 @@ async function renderMultitrack(
       } else audioLabels.push(`[${label}]`);
     }
   }
-  const fontFilter = graphics.some((graphic) => graphic.kind !== "shape" && graphic.text.trim()) ? await cutStudioFontFilter() : "";
+  const vectorInputIndexes = new Map<string, number>();
+  const vectorInputPaths: string[] = [];
+  for (const graphic of graphics.filter((item) => item.kind === "path")) {
+    const vectorPath = path.join(temp, `graphic-path-${vectorInputPaths.length}.png`);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}" opacity="${graphic.backgroundOpacity}"/></svg>`;
+    await sharp(Buffer.from(svg)).png().toFile(vectorPath);
+    vectorInputIndexes.set(graphic.id, inputs.length + vectorInputPaths.length);
+    vectorInputPaths.push(vectorPath);
+  }
+  const fontFilter = graphics.some((graphic) => !["shape", "path"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;
@@ -614,6 +624,18 @@ async function renderMultitrack(
       const width = Math.max(1, Math.round(graphic.width * size[0]));
       const height = Math.max(1, Math.round(graphic.height * size[1]));
       filters.push(`[${videoLabel}]drawbox=x=${x}:y=${y}:w=${width}:h=${height}:color=${graphic.backgroundColor}@${graphic.backgroundOpacity}:t=fill:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+      videoLabel = nextLabel;
+      continue;
+    }
+    if (graphic.kind === "path") {
+      const input = vectorInputIndexes.get(graphic.id);
+      if (input === undefined) throw new Error("A vector graphic input could not be prepared");
+      const x = Math.round(graphic.x * size[0]);
+      const y = Math.round(graphic.y * size[1]);
+      const width = Math.max(1, Math.round(graphic.width * size[0]));
+      const height = Math.max(1, Math.round(graphic.height * size[1]));
+      filters.push(`[${input}:v]format=rgba,scale=${width}:${height}[vector${index}]`);
+      filters.push(`[${videoLabel}][vector${index}]overlay=x=${x}:y=${y}:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
       videoLabel = nextLabel;
       continue;
     }
@@ -636,7 +658,7 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  const args = ["-y", ...inputs.flatMap((input) => ["-i", input.url]), ...vectorInputPaths.flatMap((vectorPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", vectorPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }

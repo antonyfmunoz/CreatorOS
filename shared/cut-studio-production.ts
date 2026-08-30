@@ -85,6 +85,7 @@ export const cutCompositionLayerSchema = z.object({
 }).superRefine((value, context) => {
   if (["video", "audio", "image", "lottie"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
   if (["text", "caption", "svg", "path"].includes(value.kind) && !value.text?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `${value.kind} layers require source text or path data` });
+  if (value.kind === "path" && value.text && (value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
   if (Object.keys(value.dataBindings).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, path: ["dataBindings"], message: "At most 100 data bindings are allowed" });
 });
 
@@ -508,12 +509,12 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape"].includes(layer.kind) || (layer.kind !== "shape" && !layer.text)) return [];
+    if (!["text", "caption", "shape", "path"].includes(layer.kind) || (!["shape"].includes(layer.kind) && !layer.text)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : "title" as const,
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : "title" as const,
       text: layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
@@ -522,9 +523,11 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
       height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
-      textColor: typeof layer.style.color === "string" && color.safeParse(layer.style.color).success ? layer.style.color : "#ffffff",
+      textColor: typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff",
       backgroundColor: typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000",
-      backgroundOpacity: layer.kind === "shape" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
+      backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
+      fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
+      strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
   });

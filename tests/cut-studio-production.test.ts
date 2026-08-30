@@ -142,6 +142,29 @@ describe("CutStudio programmable production runtime", () => {
     }]);
   });
 
+  it("compiles an allowlisted vector path and rejects active or unbounded source", () => {
+    const vectorManifest = {
+      ...manifest,
+      layers: [sourceLayer, {
+        id: "rule",
+        kind: "path" as const,
+        name: "Rule",
+        from: 0,
+        durationInFrames: 60,
+        text: "M 0 50 L 100 50",
+        x: .5,
+        y: .5,
+        width: .35,
+        height: .35,
+        opacity: .9,
+        style: { stroke: "#ffffff", strokeWidth: 4 },
+      }],
+    };
+    const edl = compileCompositionToEdl(vectorManifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toMatchObject([{ id: "rule", kind: "path", text: "M 0 50 L 100 50", textColor: "#ffffff", fillColor: null, strokeWidth: 4, backgroundOpacity: .9 }]);
+    expect(() => compileCompositionToEdl({ ...vectorManifest, layers: [sourceLayer, { ...vectorManifest.layers[1], text: "<script>alert(1)</script>" }] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4 }] })).toThrow(/path commands and numbers/i);
+  });
+
   it("resolves typed parameter bindings into reproducible composition variants", () => {
     const parameterized = {
       ...manifest,
