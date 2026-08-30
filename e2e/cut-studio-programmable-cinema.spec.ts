@@ -14,13 +14,19 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const directory = testInfo.outputPath("programmable-cinema");
   mkdirSync(directory, { recursive: true });
   const sourcePath = `${directory}/source.mp4`;
+  const imagePath = `${directory}/product-still.png`;
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=magenta:size=200x100", "-frames:v", "1", imagePath]);
   const upload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "video", visibility: "private", video: { name: "source.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
   await expectOk(upload);
   const source = (await upload.json()).asset;
   const created = await request(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Programmable cinema ${Date.now()}`, duration: 2, mediaKind: "video" });
   await expectOk(created);
   const project = await created.json();
+  const imageUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "photo", visibility: "private", image: { name: "product-still.png", mimeType: "image/png", buffer: readFileSync(imagePath) } } });
+  await expectOk(imageUpload);
+  const imageAsset = (await imageUpload.json()).asset;
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: imageAsset.id, name: "Product still", duration: 2, mediaKind: "image" }));
   expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
@@ -88,6 +94,15 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Layer y").fill("0.05");
   const svgPreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="svg"]');
   await expect(svgPreview.locator("img")).toHaveAttribute("src", /^data:image\/svg\+xml/);
+  await studio.getByLabel("New layer kind").selectOption("image");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Product still layer");
+  await expect(studio.getByLabel("Layer media asset")).toHaveValue(imageAsset.id);
+  await studio.getByLabel("Layer x").fill("0.7");
+  await studio.getByLabel("Layer y").fill("0.05");
+  await studio.getByLabel("Layer width").fill("0.2");
+  await studio.getByLabel("Layer height").fill("0.2");
+  await expect(studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="image"] img')).toBeVisible();
   await studio.getByLabel("Selected layer").selectOption("hero_title");
   await studio.getByLabel("Layer rotation").fill("-8");
   await studio.getByLabel("Keyframe property").selectOption("scale");
@@ -166,6 +181,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(settledPixels[svgOffset + 1]).toBeGreaterThan(180);
   expect(settledPixels[svgOffset]).toBeLessThan(60);
   expect(settledPixels[svgOffset + 2]).toBeLessThan(60);
+  const imageOffset = ((108 * 1280) + 1024) * 3;
+  expect(settledPixels[imageOffset]).toBeGreaterThan(180);
+  expect(settledPixels[imageOffset + 1]).toBeLessThan(60);
+  expect(settledPixels[imageOffset + 2]).toBeGreaterThan(180);
   const variantBatch = studio.getByLabel("Composition variant batch");
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");

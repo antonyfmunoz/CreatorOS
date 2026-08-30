@@ -55,7 +55,7 @@ const projectMediaSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
   duration: z.number().finite().positive().max(43_200),
-  mediaKind: z.enum(["video", "audio"]),
+  mediaKind: z.enum(["video", "audio", "image"]),
 });
 const audioRoutingTemplateInputSchema = z.object({
   businessId: z.string().uuid(),
@@ -515,8 +515,8 @@ async function renderMultitrack(
   temp: string,
   outputPath: string,
 ) {
-  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : [])]));
-  const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), inArray(assets.id, requestedAssetIds)));
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => graphic.assetId ? [graphic.assetId] : [])]));
+  const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
   const inputs = await Promise.all(assetRows.map(async (asset, index) => {
     const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
@@ -647,7 +647,11 @@ async function renderMultitrack(
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
     const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
     const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
-    if (graphic.kind === "svg") {
+    if (graphic.kind === "image") {
+      const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
+      if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
+      await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(rasterPath);
+    } else if (graphic.kind === "svg") {
       await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(rasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
@@ -1391,7 +1395,7 @@ export function registerCutStudioRoutes(app: Express) {
   cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
     noStore(res);
     const parsed = projectMediaSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Valid private video or audio metadata is required" });
+    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, or image metadata is required" });
     const project = await ownedProject(req.dbUser!.id, req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
     const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);

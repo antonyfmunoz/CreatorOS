@@ -54,7 +54,8 @@ export const cutClipSchema = z.object({
 
 export const cutGraphicSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
-  kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg"]).default("title"),
+  kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg", "image"]).default("title"),
+  assetId: z.string().uuid().optional(),
   text: z.string().max(20_000),
   timelineStart: z.number().finite().min(0).max(43_200),
   duration: z.number().finite().min(0.25).max(3_600),
@@ -103,6 +104,7 @@ export const cutGraphicSchema = z.object({
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: error instanceof Error ? error.message : "SVG source is invalid" });
     }
   }
+  if (value.kind === "image" && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: "Image graphics require a private asset" });
 });
 
 export const cutMarkerSchema = z.object({
