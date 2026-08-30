@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeCutClips, type CutEdl } from "./cut-studio";
+import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -86,6 +87,11 @@ export const cutCompositionLayerSchema = z.object({
   if (["video", "audio", "image", "lottie"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
   if (["text", "caption", "svg", "path"].includes(value.kind) && !value.text?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `${value.kind} layers require source text or path data` });
   if (value.kind === "path" && value.text && (value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
+  if (value.kind === "svg" && value.text) {
+    try { sanitizeCutStudioSvg(value.text); } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: error instanceof Error ? error.message : "SVG source is invalid" });
+    }
+  }
   if (Object.keys(value.dataBindings).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, path: ["dataBindings"], message: "At most 100 data bindings are allowed" });
 });
 
@@ -509,14 +515,14 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape", "path"].includes(layer.kind) || (!["shape"].includes(layer.kind) && !layer.text)) return [];
+    if (!["text", "caption", "shape", "path", "svg"].includes(layer.kind) || (!["shape"].includes(layer.kind) && !layer.text)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : "title" as const,
-      text: layer.text ?? "",
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : "title" as const,
+      text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
       x: graphicX,

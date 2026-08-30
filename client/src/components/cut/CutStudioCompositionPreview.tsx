@@ -1,30 +1,12 @@
-import { createElement, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
+import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
 
-const svgTags = new Set(["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]);
-const svgAttributes = new Set(["d", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "width", "height", "points", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "opacity", "transform"]);
-
 function safeSvg(source: string) {
-  if (typeof DOMParser === "undefined") return { viewBox: "0 0 100 100", shapes: [] as Array<{ tag: string; attributes: Record<string, string> }> };
-  const document = new DOMParser().parseFromString(source, "image/svg+xml");
-  if (document.querySelector("parsererror")) return { viewBox: "0 0 100 100", shapes: [] as Array<{ tag: string; attributes: Record<string, string> }> };
-  const root = document.documentElement.tagName.toLowerCase() === "svg" ? document.documentElement : null;
-  const rawViewBox = root?.getAttribute("viewBox") ?? "0 0 100 100";
-  const viewBox = /^-?[\d.]+(?:\s+|-)[\d.]+(?:\s+|-)[\d.]+(?:\s+|-)[\d.]+$/.test(rawViewBox.trim()) ? rawViewBox : "0 0 100 100";
-  const shapes = Array.from(document.querySelectorAll(Array.from(svgTags).join(","))).slice(0, 200).map((element) => {
-    const attributes: Record<string, string> = {};
-    for (const attribute of Array.from(element.attributes)) {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim();
-      if (!svgAttributes.has(name) || /url\s*\(|javascript:|data:/i.test(value) || value.length > 4_000) continue;
-      attributes[name === "stroke-width" ? "strokeWidth" : name === "stroke-linecap" ? "strokeLinecap" : name === "stroke-linejoin" ? "strokeLinejoin" : name] = value;
-    }
-    return { tag: element.tagName.toLowerCase(), attributes };
-  }).filter((shape) => svgTags.has(shape.tag));
-  return { viewBox, shapes };
+  try { return sanitizeCutStudioSvg(source); } catch { return null; }
 }
 
 function amount(effect: FrameState["effects"][number], key: string, fallback: number) {
@@ -73,9 +55,9 @@ function colorWithOpacity(value: unknown, opacity: unknown) {
 
 function VectorLayer({ layer }: { layer: Layer }) {
   if (layer.kind === "path") return <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d={layer.text} fill={String(layer.style.fill ?? "none")} stroke={String(layer.style.stroke ?? layer.style.color ?? "#ffffff")} strokeWidth={Number(layer.style.strokeWidth ?? 2)}/></svg>;
-  const parsed = useMemo(() => safeSvg(layer.text ?? ""), [layer.text]);
-  if (!parsed.shapes.length) return <div className="grid h-full w-full place-items-center border border-dashed border-zinc-500 text-[8px] text-zinc-400">Invalid or unsupported SVG</div>;
-  return <svg className="h-full w-full" viewBox={parsed.viewBox} preserveAspectRatio="xMidYMid meet" aria-hidden="true">{parsed.shapes.map((shape, index) => createElement(shape.tag, { key: `${shape.tag}:${index}`, ...shape.attributes }))}</svg>;
+  const sanitized = useMemo(() => safeSvg(layer.text ?? ""), [layer.text]);
+  if (!sanitized) return <div className="grid h-full w-full place-items-center border border-dashed border-zinc-500 text-[8px] text-zinc-400">Invalid or unsupported SVG</div>;
+  return <img alt="" className="h-full w-full object-contain" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitized)}`}/>;
 }
 
 function PreviewLayer({ layer, state }: { layer: Layer; state: FrameState }) {

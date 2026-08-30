@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 
 export const cutClipSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
@@ -53,8 +54,8 @@ export const cutClipSchema = z.object({
 
 export const cutGraphicSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
-  kind: z.enum(["title", "lower_third", "callout", "shape", "path"]).default("title"),
-  text: z.string().max(240),
+  kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg"]).default("title"),
+  text: z.string().max(20_000),
   timelineStart: z.number().finite().min(0).max(43_200),
   duration: z.number().finite().min(0.25).max(3_600),
   x: z.number().finite().min(0).max(0.95).default(0.1),
@@ -91,8 +92,16 @@ export const cutGraphicSchema = z.object({
     easing: z.enum(["linear", "ease_in_out"]).default("linear"),
   })).max(50).optional(),
 }).superRefine((value, context) => {
+  if (!["path", "svg"].includes(value.kind) && value.text.length > 240) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Graphic text may contain at most 240 characters" });
+  }
   if (value.kind === "path" && (!value.text.trim() || value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
+  }
+  if (value.kind === "svg") {
+    try { sanitizeCutStudioSvg(value.text); } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: error instanceof Error ? error.message : "SVG source is invalid" });
+    }
   }
 });
 

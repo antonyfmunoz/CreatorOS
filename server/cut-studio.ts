@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
+import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { z } from "zod";
 import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
 import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
@@ -641,17 +642,19 @@ async function renderMultitrack(
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
   const rasterGraphicInputPaths: string[] = [];
-  const titleFontFilter = graphics.some((graphic) => !["shape", "path"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
+  const titleFontFilter = graphics.some((graphic) => !["shape", "path", "svg"].includes(graphic.kind) && graphic.text.trim()) ? await cutStudioFontFilter() : "";
   for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
-    if (graphic.kind === "shape" || graphic.kind === "path") {
+    const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
+    const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
+    if (graphic.kind === "svg") {
+      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(rasterPath);
+    } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
         : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
       await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).png().toFile(rasterPath);
     } else {
-      const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
-      const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
       const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
       await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", rasterPath], 30_000, jobId);
     }
