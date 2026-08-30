@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 
 function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith("mobile") ? 1 : 2; }
@@ -7,14 +7,14 @@ async function request(page: Page, owner: number, method: string, url: string, d
 async function expectOk(response: APIResponse) { expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy(); }
 
 test("CutStudio persists and enforces the programmable motion and cinematic production lifecycle", async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
   const peerUsername = peer === 1 ? "owner" : "sarahmitchell";
   const directory = testInfo.outputPath("programmable-cinema");
   mkdirSync(directory, { recursive: true });
   const sourcePath = `${directory}/source.mp4`;
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", sourcePath]);
   const upload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "video", visibility: "private", video: { name: "source.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
   await expectOk(upload);
   const source = (await upload.json()).asset;
@@ -54,10 +54,43 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const pathPreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="path"]');
   await expect(pathPreview.locator("svg")).toBeVisible();
   await expect(pathPreview.locator("path")).toHaveAttribute("d", "M 0 50 L 100 50");
+  await studio.getByLabel("Selected layer").selectOption("hero_title");
+  await studio.getByLabel("enter transition", { exact: true }).selectOption("slide");
   await studio.getByRole("button", { name: "Save composition" }).click();
   await expect(studio.getByText("Composition controls saved.")).toBeVisible();
   await studio.getByRole("button", { name: "Apply" }).click();
   await expect(studio.getByText(/now on the editable timeline/)).toBeVisible();
+  const renderResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
+  await expectOk(renderResponse);
+  const render = await renderResponse.json();
+  await expect.poll(async () => (await (await request(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  const renderedJob = await request(page, owner, "GET", `/api/cut/jobs/${render.id}`);
+  await expectOk(renderedJob);
+  const completedRender = await renderedJob.json();
+  expect(completedRender, completedRender.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String) });
+  const renderMedia = await request(page, owner, "GET", `/api/cut/jobs/${render.id}/media`);
+  await expectOk(renderMedia);
+  const artifact = await page.request.get((await renderMedia.json()).url);
+  await expectOk(artifact);
+  const renderedPath = `${directory}/composition-motion.mp4`;
+  writeFileSync(renderedPath, await artifact.body());
+  const brandBounds = (seconds: number) => {
+    const pixels = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(seconds), "-i", renderedPath, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { maxBuffer: 4 * 1024 * 1024 });
+    let minimumX = 1280; let maximumX = -1; let count = 0;
+    for (let offset = 0; offset + 2 < pixels.length; offset += 3) {
+      const red = pixels[offset]; const green = pixels[offset + 1]; const blue = pixels[offset + 2];
+      if (blue > 30 && blue > green + 12 && green > red + 10) {
+        const x = Math.floor(offset / 3) % 1280;
+        minimumX = Math.min(minimumX, x); maximumX = Math.max(maximumX, x); count += 1;
+      }
+    }
+    return { minimumX, maximumX, count };
+  };
+  const openingTitle = brandBounds(.55);
+  const settledTitle = brandBounds(1.1);
+  expect(openingTitle.count).toBeGreaterThan(1_000);
+  expect(settledTitle.count).toBeGreaterThan(1_000);
+  expect(openingTitle.minimumX - settledTitle.minimumX).toBeGreaterThan(120);
   const variantBatch = studio.getByLabel("Composition variant batch");
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");

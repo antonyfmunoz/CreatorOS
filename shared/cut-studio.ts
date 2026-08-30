@@ -63,6 +63,14 @@ export const cutGraphicSchema = z.object({
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#000000"),
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
+  motionKeyframes: z.array(z.object({
+    at: z.number().finite().min(0).max(3_600),
+    x: z.number().finite().min(-4).max(4),
+    y: z.number().finite().min(-4).max(4),
+    scale: z.number().finite().min(0.01).max(8),
+    opacity: z.number().finite().min(0).max(1),
+    easing: z.enum(["linear", "ease_in_out"]).default("linear"),
+  })).max(50).optional(),
 });
 
 export const cutMarkerSchema = z.object({
@@ -327,6 +335,15 @@ export function validateCutEdl(value: unknown, duration: number): CutEdl {
       const roundedTime = Math.round(keyframe.at * 1_000);
       if (volumeKeyframeTimes.has(roundedTime)) throw new Error("Volume keyframes must use unique times");
       volumeKeyframeTimes.add(roundedTime);
+    }
+  }
+  for (const graphic of parsed.graphics ?? []) {
+    const keyframeTimes = new Set<number>();
+    for (const keyframe of graphic.motionKeyframes ?? []) {
+      if (keyframe.at > graphic.duration + 0.001) throw new Error("A graphic motion keyframe must remain inside its graphic");
+      const roundedTime = Math.round(keyframe.at * 1_000);
+      if (keyframeTimes.has(roundedTime)) throw new Error("Graphic motion keyframes must use unique times");
+      keyframeTimes.add(roundedTime);
     }
   }
   const compounds = parsed.version === 3 ? reconcileCutCompounds(parsed.compounds, clips) : [];

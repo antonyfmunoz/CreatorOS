@@ -108,6 +108,26 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
   return motionPropertyExpression(clip, axis, canvasSize);
 }
 
+function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "opacity", multiplier: number) {
+  const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : 1;
+  const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const output = (value: number) => Number((value * multiplier).toFixed(5));
+  if (points.length === 1) return String(output(points[0].value));
+  let expression = String(output(points.at(-1)!.value));
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    const left = points[index]; const right = points[index + 1];
+    const start = Number((graphic.timelineStart + left.at).toFixed(3));
+    const end = Number((graphic.timelineStart + right.at).toFixed(3));
+    const duration = Number((right.at - left.at).toFixed(3));
+    const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5));
+    const progress = `(t-${start})/${duration}`;
+    expression = `if(lt(t\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
+  }
+  return expression;
+}
+
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
   const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
     .sort((left, right) => left.at - right.at)
@@ -590,7 +610,10 @@ async function renderMultitrack(
     if (!graphic.text.trim()) continue;
     const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
     const nextLabel = `graphic${index}`;
-    filters.push(`[${videoLabel}]drawtext=${fontFilter}text='${text}':fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=w*${graphic.x}:y=h*${graphic.y}:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
+    const graphicX = graphicMotionExpression(graphic, "x", size[0]);
+    const graphicY = graphicMotionExpression(graphic, "y", size[1]);
+    const graphicOpacity = graphicMotionExpression(graphic, "opacity", 1);
+    filters.push(`[${videoLabel}]drawtext=${fontFilter}text='${text}':fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:alpha='${graphicOpacity}':x='${graphicX}':y='${graphicY}':box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
     videoLabel = nextLabel;
   }
   let audioLabel: string | null = primaryHasAudio ? "baseaudio" : null;

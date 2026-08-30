@@ -146,6 +146,7 @@ describe("CutStudio edit decision list", () => {
     expect(result.graphics).toEqual([expect.objectContaining({ text: "Launch day", kind: "lower_third" })]);
     expect(cutDuration(result)).toBe(5);
     expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2 }], graphics: [{ id: "title", text: "Invalid", timelineStart: 0, duration: 2, textColor: "white" }] }, 2)).toThrow();
+    expect(() => validateCutEdl({ version: 3, clips: [{ start: 0, end: 2 }], graphics: [{ id: "title", text: "Invalid motion", timelineStart: 0, duration: 2, motionKeyframes: [{ at: 2.1, x: .1, y: .1, scale: 1, opacity: 1 }] }] }, 2)).toThrow(/inside its graphic/i);
   });
 
   it("persists timeline markers and snaps edits to meaningful boundaries", () => {
