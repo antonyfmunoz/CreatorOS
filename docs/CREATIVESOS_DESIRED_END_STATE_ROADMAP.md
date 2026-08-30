@@ -624,8 +624,12 @@ and increments its failure count.
   cube, pyramid and plane geometry now shares one inert browser/final-render
   path. Private self-contained Lottie JSON now has bounded upload validation,
   owned-project registration and deterministic expression-free SVG preview;
-  its isolated final renderer, native Rive playback, imported programmable
-  Three scenes and an isolated code executor remain.
+  its isolated final renderer remains. Private `.riv` media now has bounded
+  header/size validation, owned-project registration and deterministic browser
+  playback through a pinned same-origin Canvas2D/WASM runtime with CDN,
+  external-asset, pointer-listener and automatic-event behavior disabled;
+  isolated Rive final rendering, imported programmable Three scenes and an
+  isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant

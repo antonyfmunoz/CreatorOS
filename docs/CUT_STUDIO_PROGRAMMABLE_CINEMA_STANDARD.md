@@ -37,6 +37,11 @@ control or worse professional output.
   renderer behind private authenticated asset access and a stricter native
   validator that rejects expressions, external or embedded resources, footage,
   cameras, audio and unbounded documents.
+- [Rive's MIT-licensed web runtime](https://github.com/rive-app/rive-wasm)
+  supplies bounded `.riv` decoding and Canvas2D playback. CutStudio pins and
+  self-hosts the reviewed WASM binary, disables CDN fallback, automatic Rive
+  events, pointer listeners and external asset delivery, and scrubs the first
+  linear animation without running a state machine.
 - [Open Generative AI](https://github.com/Anil-matcha/Open-Generative-AI) is an
   MIT-licensed architecture reference. CutStudio adopts the compatible
   capability-catalog, normalized input-slot and submit/poll/cancel concepts,
@@ -48,7 +53,7 @@ control or worse professional output.
 | System | Native implementation | Current gate |
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
-| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image/font/Lottie selection; safe vector/path/SVG, data, bounded 3D and validated private Lottie browser preview; private image and TTF/OTF font media plus bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | The dedicated isolated Lottie final renderer, native Rive playback and imported programmable Three scenes remain renderer work; timeline apply fails closed while a Lottie/Rive layer is present |
+| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image/font/Lottie/Rive selection; safe vector/path/SVG, data, bounded 3D plus validated private Lottie SVG and Rive Canvas2D browser preview; private image and TTF/OTF font media plus bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | Dedicated isolated Lottie/Rive final rendering and imported programmable Three scenes remain renderer work; timeline apply fails closed while a Lottie/Rive layer is present |
 | Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, directional wipe/iris/clock, private custom-mask and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition, direction, private-mask and effect authoring; sampled image/text/shape/path/SVG position, opacity, scale, Z/X/Y rotation, perspective, blur, brightness, saturation and reveals plus shadow, glow, grain, noise, vignette, color-matrix, chroma-key, displacement, motion-blur and light-leak treatments compile into the bounded raster/FFmpeg graph | Interactive-media parity remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
@@ -105,83 +110,91 @@ with either.
    project and scrub deterministic frames through the expression-free light SVG
    runtime. Cross-tenant registration, expressions, external/embedded media,
    unsupported layer runtimes and silent final-render fallback are denied.
-   Complete the dedicated isolated Lottie final renderer, native Rive playback
-   and imported programmable Three-scene execution only after their execution
-   boundaries are approved.
-5. **Implemented and locally field-qualified:** general layer, timing,
+   Complete the dedicated isolated Lottie final renderer and imported
+   programmable Three-scene execution only after their execution boundaries
+   are approved.
+5. **Private Rive preview implemented and locally field-qualified:** normal
+   users can upload a bounded `.riv`, associate it with an owned project and
+   deterministically scrub its first linear animation through a pinned,
+   same-origin Canvas2D/WASM runtime. The runtime disables CDN fallback,
+   automatic events, pointer listeners and external asset delivery; CSP grants
+   only `wasm-unsafe-eval`, never general `unsafe-eval`. Real pixels, readiness,
+   byte delivery, persistence, cross-tenant denial, invalid-header denial and
+   fail-closed timeline apply pass on an isolated browser/database stack.
+6. **Implemented and locally field-qualified:** general layer, timing,
    transform, keyframe, transition, effect, node, edge, operation, provider,
    model, position and output authoring; complete its protected release.
-6. **Implemented and locally field-qualified:** validate typed composition
+7. **Implemented and locally field-qualified:** validate typed composition
    parameters, bind them into text/transform/style targets and create an
    idempotent durable batch of up to 20 named variants; complete its protected
    release and final-render evidence.
-7. **Implemented and locally field-qualified:** compile sampled title position
+8. **Implemented and locally field-qualified:** compile sampled title position
    and opacity from the declarative evaluator into final FFmpeg rendering and
    prove translation with pixels from two frames of a private artifact;
    complete its protected release and the remaining advanced properties.
-7. **Implemented and locally field-qualified:** select owned project video or
+9. **Implemented and locally field-qualified:** select owned project video or
    audio from the composition authoring controls, preserve exact asset IDs in
    the manifest and compile simultaneous media layers onto stable primary and
    overlay tracks; complete its protected release and expand media pickers.
-8. **Implemented and locally field-qualified:** compile bounded filled shape
+10. **Implemented and locally field-qualified:** compile bounded filled shape
    layers into the final FFmpeg render graph and verify their color at an exact
    private-artifact pixel; complete its protected release and add shape motion
    plus vector/path renderers.
-9. **Implemented and locally field-qualified:** validate inline path data
+11. **Implemented and locally field-qualified:** validate inline path data
    against an inert command/number grammar, rasterize it through the existing
    Sharp runtime and render the exact stroke into the private artifact;
    complete its protected release.
-10. **Implemented and locally field-qualified:** route shapes and paths through
+12. **Implemented and locally field-qualified:** route shapes and paths through
     one private raster overlay graph, preserve rounded shape geometry and apply
     sampled X/Y/opacity motion in final FFmpeg output; complete its protected
     release and add graphic scale/rotation.
-11. **Implemented and locally field-qualified:** render bounded shape/path
+13. **Implemented and locally field-qualified:** render bounded shape/path
     scale and Z-rotation with transparent maximum-footprint padding so motion
     is neither clipped nor position-shifted; complete its protected release
     and add the remaining text/3D transform path.
-12. **Implemented and locally field-qualified:** rasterize normal-user text, caption
+14. **Implemented and locally field-qualified:** rasterize normal-user text, caption
     and lower-third layers with the installed production font and route them
     through the same bounded scale/Z-rotation graph as vector graphics; prove
     final-artifact translation, scale and rotation in mobile and desktop runs.
-13. **Implemented and locally field-qualified:** preserve static X/Y rotation and
+15. **Implemented and locally field-qualified:** preserve static X/Y rotation and
     perspective on safe raster graphics, project their exact 3D quadrilateral
     through FFmpeg and prove non-rectilinear row geometry in the final private
     artifact.
-14. **Implemented and locally field-qualified:** compile sampled graphic blur into
+16. **Implemented and locally field-qualified:** compile sampled graphic blur into
     bounded time segments and brightness/saturation into frame-evaluated FFmpeg
     expressions; prove the darker/desaturated transformed card in the private
     artifact while retaining motion and perspective evidence.
-15. **Implemented and locally field-qualified:** accept a bounded SVG subset,
+17. **Implemented and locally field-qualified:** accept a bounded SVG subset,
    reject active elements, events, CSS, entities and external resources through
    one shared fail-closed sanitizer, and use its canonical output for browser
    preview, EDL compilation, Sharp rasterization and exact-pixel private MP4
    evidence; complete its protected release.
-16. **Implemented and locally field-qualified:** admit ready private image media
+18. **Implemented and locally field-qualified:** admit ready private image media
    to the project library, select it from image-layer controls, preserve the
    authorized asset identity in EDL v3, materialize and rasterize it server-side
    and prove exact image pixels in mobile and desktop private MP4 exports;
    complete its protected release.
-17. **Implemented and locally field-qualified:** animate X/Y rotation and
+19. **Implemented and locally field-qualified:** animate X/Y rotation and
    perspective through the shared evaluator, compile flip transitions into
    mutually exclusive sampled perspective segments, and prove an edge-on flip
    frame differs from the settled layer in mobile and desktop private MP4
    exports; complete its protected release.
-18. **Implemented and locally field-qualified:** compile directional wipe,
+20. **Implemented and locally field-qualified:** compile directional wipe,
    radial iris and clockwise/counterclockwise clock reveals into bounded alpha
    segments; apply one authorized private luminance mask across a layer's
    custom-mask transitions; prove all four spatial results in mobile and
    desktop private MP4 exports; complete its protected release.
-19. **Implemented and locally field-qualified:** upload private TTF/OTF assets,
+21. **Implemented and locally field-qualified:** upload private TTF/OTF assets,
    associate them to an owned CutStudio project, select them on text/caption/
    lower-third layers, preserve their family and asset identity through EDL v3,
    load them into the browser preview and use the exact materialized font in
    native FFmpeg final rendering; complete its protected release.
-20. **Implemented and locally field-qualified:** admit ready private project
+22. **Implemented and locally field-qualified:** admit ready private project
    video into durable shot-variant review, select or reject candidates with
    role and tenant enforcement, supersede an earlier choice, and append the
    selected asset directly to EDL v3 with shot, variant and generation-job
    lineage without export or re-upload; complete its protected release.
-21. **Implemented and locally field-qualified:** author bounded cube, pyramid
+23. **Implemented and locally field-qualified:** author bounded cube, pyramid
    and plane layers with depth, face and edge colors and wireframe control;
    preserve their descriptor in EDL v3 and use the same inert SVG geometry for
    browser preview and native FFmpeg final rendering.

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { createHash, randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { createProductionBackup } from "./production-backup";
 import { z } from "zod";
 import { storage } from "./storage";
@@ -682,6 +683,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", app: "creativesos" });
   });
+
+  // Keep the reviewed Rive runtime on our own origin. The browser runtime is
+  // configured without a CDN fallback, so a missing deployment dependency
+  // fails closed instead of silently loading executable runtime code from a
+  // third party.
+  app.get(
+    "/api/runtime-assets/rive-2.41.0.wasm",
+    rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }),
+    (_req, res) => {
+      try {
+        const runtimePath = createRequire(import.meta.url).resolve("@rive-app/canvas-lite/rive.wasm");
+        res.setHeader("Content-Type", "application/wasm");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.sendFile(runtimePath);
+      } catch (error) {
+        console.error("Rive runtime asset is unavailable", {
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+        return res.status(503).json({ message: "Rive runtime asset is unavailable" });
+      }
+    },
+  );
 
   // A healthy process is not proof that the intended source or migration
   // ledger is serving. This endpoint provides a non-secret, independently
@@ -1522,7 +1545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ message: "A valid client mutation ID is required" });
         }
         if (
-          !["photo", "video", "audio", "cut-lut", "cut-font", "cut-lottie", "download"].includes(kind) ||
+          !["photo", "video", "audio", "cut-lut", "cut-font", "cut-lottie", "cut-rive", "download"].includes(kind) ||
           !visibility
         ) {
           await discardUploadedFiles(files);

@@ -27,6 +27,8 @@ describe("production safety boundaries", () => {
     expect(headers.get("Content-Security-Policy")).toContain("https://accounts.creativesos.net");
     expect(headers.get("Content-Security-Policy")).toContain("https://connect.facebook.net");
     expect(headers.get("Content-Security-Policy")).toContain("https://www.facebook.com");
+    expect(headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+    expect(headers.get("Content-Security-Policy")).not.toMatch(/(?:^|\s)'unsafe-eval'(?:\s|$)/);
     expect(headers.get("Content-Security-Policy")).not.toContain("script-src 'self' 'unsafe-inline'");
     expect(headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
   });
@@ -35,7 +37,8 @@ describe("production safety boundaries", () => {
     process.env.NODE_ENV = "development";
     const headers = new Map<string, string>();
     securityHeaders({} as never, { setHeader: (key: string, value: string) => headers.set(key, value) } as never, () => undefined);
-    expect(headers.get("Content-Security-Policy")).toContain("script-src 'self' 'unsafe-inline'");
+    expect(headers.get("Content-Security-Policy")).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'");
+    expect(headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
     expect(headers.has("Strict-Transport-Security")).toBe(false);
   });
 
@@ -81,6 +84,13 @@ describe("production safety boundaries", () => {
     expect(statuses.filter((status) => status === 429)).toHaveLength(20);
     expect(retryAfter).toHaveLength(20);
     expect(retryAfter.every((value) => Number(value) >= 1 && Number(value) <= 60)).toBe(true);
+  });
+
+  it("rate limits the self-hosted Rive runtime before filesystem access", async () => {
+    const routesSource = await fs.readFile(path.resolve(process.cwd(), "server/routes.ts"), "utf8");
+    expect(routesSource).toMatch(
+      /\/api\/runtime-assets\/rive-2\.41\.0\.wasm"[\s\S]*?rateLimit\(\{ windowMs: 60_000, limit: 120/,
+    );
   });
 
   it("keeps local assets development-only and records provider-neutral paths", async () => {
@@ -185,6 +195,8 @@ describe("production safety boundaries", () => {
     expect(validateAssetUpload({ kind: "cut-font", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
     expect(validateAssetUpload({ kind: "cut-lottie", mimeType: "application/json", sizeBytes: 20_000, visibility: "private" })).toBeNull();
     expect(validateAssetUpload({ kind: "cut-lottie", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
+    expect(validateAssetUpload({ kind: "cut-rive", mimeType: "application/octet-stream", sizeBytes: 20_000, visibility: "private" })).toBeNull();
+    expect(validateAssetUpload({ kind: "cut-rive", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
     expect(monthlyAssetQuotaFor("video")).toEqual({ maxBytes: 25 * 1024 * 1024 * 1024, maxAssets: 200 });
   });

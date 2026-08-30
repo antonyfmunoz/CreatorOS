@@ -57,9 +57,34 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const invalidRegistration = await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: invalidLottieAsset.id, name: "Expression", duration: 2, mediaKind: "lottie" });
   expect(invalidRegistration.status()).toBe(400);
   expect(await invalidRegistration.text()).toMatch(/expressions are not allowed/i);
+  // MIT-licensed rive-app/rive-wasm fixture runtime_nested_inputs.riv at
+  // 3f9c4dead349519ac690f0c598fda7ce3fff530d. Kept inline so qualification
+  // never depends on a public CDN or test-time network access.
+  const riveFixture = Buffer.from("UklWRQcAkYQBxAHuA+MBxQHgAeQBxgHsAeEB7QEAAAAAAAAAAAAAAAAAFwABBAxNYWluQXJ0Ym9hcmQHAABIQwgAAEhD7gMF7AEAAFwEC0NpcmNsZU91dGVyBQANAADIQQ4AAMhBxQECAF8FAcYBAAB7BQLtAQAAEgUGJTExMf8ApAMFAAAUBQAAHzcKVGltZWxpbmUgMgAfNwpUaW1lbGluZSAxADU3EE1haW5TdGF0ZU1hY2hpbmUAO4oBCE1haW5Cb29sADmKAQdMYXllciAxAD8APZUBAQA+AEGXAQEAR5sBAJwBAQBBlwEEAEebAQAAQAA9lQEAAHIAdeMBAOQBAgABBAtDaXJjbGVJbm5lcsQBAAcAAMhCCAAAyELuAwQJAADRQwoAABBB7AEAAAMFAA0AAEhCDgAASEIABAUBFAAAyEIVAADIQgASBQUApAMFAAAUBQEAHzcKVGltZWxpbmUgMgAZMwMAGjUlACVEAVhsG/3/AB83ClRpbWVsaW5lIDEAGTMDABo1JQAlRAFYdHR0/wA1Nw9TdGF0ZSBNYWNoaW5lIDEAO4oBEENpcmNsZUlubmVyU3RhdGUAOYoBB0xheWVyIDEAPwA9lQEBAD4AQZcBAQBHmwEAnAEBAEGXAQQAR5sBAABAAD2VAQAAAQQLQ2lyY2xlT3V0ZXLEAQAHAAAWQwgAABZD7gMHCQAAbUMKAACAQOwBAABcBAtDaXJjbGVJbm5lcgUADQAAyEEOAADIQcUBAQBfBQHGAQAAewUC7QEAAAMFAA0AAJZCDgAAlkIABAUEFAAAFkMVAAAWQwASBQgApAMFAAAUBQQAHzcKVGltZWxpbmUgMgAZMwYAGjUlACVEAVgu/R//AB83ClRpbWVsaW5lIDEAGTMGABo1JQAlRAFYdHR0/wA1NxJDaXJjbGVTdGF0ZU1hY2hpbmUAO4oBEENpcmNsZU91dGVyU3RhdGUAOYoBB0xheWVyIDEAPwBAAD2VAQAAPZUBAQA+AEGXAQMAR5sBAJwBAQBBlwECAEebAQAAcooBB0VsbGlwc2XgAQThAQEAdeMBAOQBAAByigEHRWxsaXBzZeABBAB14wEAAA==", "base64");
+  expect(riveFixture.length).toBe(829);
+  // Official visible MIT-licensed fixture from rive-app/rive-wasm, blob
+  // 02d4ff4f4a16cc3e4f0ab4d833edcd30b1a3a1d6. The checked-in base64 has
+  // SHA-256 c5cba2b19b3d77dc6df85de5fc80097ac6dd20b4947e2776f1e8088ed7d741c7.
+  const riveRenderFixture = Buffer.from(readFileSync("e2e/fixtures/rive-look.base64.txt", "utf8").trim(), "base64");
+  const riveUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-rive", visibility: "private", rive: { name: "interactive-avatar.riv", mimeType: "application/octet-stream", buffer: riveRenderFixture } } });
+  await expectOk(riveUpload);
+  const riveAsset = (await riveUpload.json()).asset;
+  const riveMediaResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: riveAsset.id, name: "Interactive circles", duration: 2, mediaKind: "rive" });
+  await expectOk(riveMediaResponse);
+  const riveMedia = await riveMediaResponse.json();
+  expect((await request(page, peer, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: riveAsset.id, name: "Stolen Rive", duration: 2, mediaKind: "rive" })).status()).toBe(404);
+  const invalidRiveUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-rive", visibility: "private", rive: { name: "not-rive.riv", mimeType: "application/octet-stream", buffer: Buffer.from("not a Rive container") } } });
+  await expectOk(invalidRiveUpload);
+  const invalidRiveAsset = (await invalidRiveUpload.json()).asset;
+  const invalidRiveRegistration = await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: invalidRiveAsset.id, name: "Invalid Rive", duration: 2, mediaKind: "rive" });
+  expect(invalidRiveRegistration.status()).toBe(400);
+  expect(await invalidRiveRegistration.text()).toMatch(/header is invalid/i);
   expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
+  const riveRuntimeResponse = await page.request.get("/api/runtime-assets/rive-2.41.0.wasm");
+  await expectOk(riveRuntimeResponse);
+  expect((await riveRuntimeResponse.body()).length).toBeGreaterThan(700_000);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   const studio = page.getByLabel("CutStudio creative runtime");
   await expect(studio.getByText("Motion graphics + cinema studio")).toBeVisible();
@@ -208,6 +233,33 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(runtimeWithLottie);
   expect((await runtimeWithLottie.json()).compositions[0].manifest.layers).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "lottie", assetId: lottieAsset.id })]));
   await expectOk(await request(page, owner, "GET", `/api/cut/projects/${project.id}/media-library/${lottieMedia.id}/media`));
+  await studio.getByRole("button", { name: "Delete layer" }).click();
+  await studio.getByLabel("New layer kind").selectOption("rive");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Interactive circles animation");
+  await expect(studio.getByLabel("Layer media asset")).toHaveValue(riveAsset.id);
+  const riveLayer = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="rive"]');
+  await expect(riveLayer).toBeVisible();
+  const rivePreview = riveLayer.locator("canvas");
+  await expect(rivePreview).toBeVisible();
+  await expect(rivePreview).toHaveAttribute("data-rive-loaded", "true", { timeout: 15_000 });
+  await expect.poll(async () => rivePreview.evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context || canvas.width === 0 || canvas.height === 0) return false;
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) return true;
+    return false;
+  }), { timeout: 15_000 }).toBe(true);
+  await studio.getByLabel("Preview frame").fill("24");
+  await studio.getByRole("button", { name: "Save composition" }).click();
+  await expect(studio.getByText("Composition controls saved.")).toBeVisible();
+  await studio.getByRole("button", { name: "Apply" }).click();
+  await expect(studio.getByText(/isolated animation renderer/i)).toBeVisible();
+  const runtimeWithRive = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
+  await expectOk(runtimeWithRive);
+  expect((await runtimeWithRive.json()).compositions[0].manifest.layers).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "rive", assetId: riveAsset.id })]));
+  await expectOk(await request(page, owner, "GET", `/api/cut/projects/${project.id}/media-library/${riveMedia.id}/media`));
   await studio.getByRole("button", { name: "Delete layer" }).click();
   await studio.getByLabel("Selected layer").selectOption("hero_title");
   await studio.getByLabel("Layer private font").selectOption(fontAsset.id);
