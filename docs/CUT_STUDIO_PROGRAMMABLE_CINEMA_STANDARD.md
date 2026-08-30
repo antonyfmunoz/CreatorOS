@@ -43,8 +43,8 @@ control or worse professional output.
 | System | Native implementation | Current gate |
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals | Schema/routes are production-qualified; expanded authoring UI is locally field-qualified pending its protected release |
-| Layers | Video, audio, image, text, shape, SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls | Advanced layer rendering beyond current EDL subset remains renderer work |
-| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, deterministic entry/exit transitions, bounded effects and a frame scrubber driven by the shared evaluator; normal-user keyframe, transition and effect authoring | Full render of every advanced property remains renderer work |
+| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; safe vector/path, data and 3D browser preview | Native Lottie/Rive/Three playback and final rendering beyond the current EDL subset remain renderer work |
+| Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, geometric wipe/iris/clock and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition and effect authoring | Full final render of every advanced property remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
 | Brief | Objective, audience, genre, era, tone, requirements, exclusions, references, aspect, resolution, FPS and pacing | Production field proof |
@@ -92,8 +92,10 @@ with either.
    production on release `613ad52277ad65fe0ec36397ddbc631752f3974a`.
 2. **Completed:** owner/editor/reviewer, cross-tenant denial, private-asset
    injection denial and persistence pass protected browser qualification.
-3. Extend the shared-evaluator browser scrubber and safe render compiler across
-   the full declarative layer/effect set.
+3. **Browser side implemented and locally field-qualified:** extend the shared
+   evaluator and scrubber across allowlisted vector/path, data, 3D, geometric
+   transition and bounded visual-effect rendering; complete native
+   Lottie/Rive/Three playback and safe final-render parity.
 4. **Implemented and locally field-qualified:** general layer, timing,
    transform, keyframe, transition, effect, node, edge, operation, provider,
    model, position and output authoring; complete its protected release.

@@ -612,9 +612,10 @@ and increments its failure count.
 
 - Complete the clean-room programmable composition runtime defined in
   [`CUT_STUDIO_PROGRAMMABLE_CINEMA_STANDARD.md`](./CUT_STUDIO_PROGRAMMABLE_CINEMA_STANDARD.md):
-  general visual layer/keyframe/effects authoring and deterministic preview are
-  implemented; complete safe render compilation, parameterized batch variants
-  and an isolated code executor remain.
+  general visual authoring plus allowlisted vector/path, 3D, geometric
+  transition and animated-effect browser preview are implemented; native
+  Lottie/Rive/Three playback, complete safe final-render compilation,
+  parameterized batch variants and an isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant

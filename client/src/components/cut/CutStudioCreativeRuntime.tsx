@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
+import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import type { CutEdl } from "@shared/cut-studio";
-import { evaluateCompositionFrame, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
+import { type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
 type CompositionRow = { id: string; name: string; mode: string; manifest: CutCompositionManifest; revision: number };
@@ -50,27 +51,6 @@ function starterBrief(project: ProjectInput): CutProductionBrief {
 
 function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
-}
-
-function CompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
-  const [frame, setFrame] = useState(Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6));
-  const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
-  return <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Deterministic composition preview">
-    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>
-      {evaluated.map((state) => {
-        const layer = manifest.layers.find((candidate) => candidate.id === state.id)!;
-        const style = { left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity, transform: `translate(${-layer.anchorX * 100}%, ${-layer.anchorY * 100}%) rotate(${state.rotation}deg) scale(${state.scale})`, transformOrigin: `${layer.anchorX * 100}% ${layer.anchorY * 100}%`, mixBlendMode: layer.blendMode.replace("_", "-") as CSSProperties["mixBlendMode"] };
-        if (layer.kind === "text" || layer.kind === "caption") return <div key={layer.id} className="absolute overflow-hidden rounded px-2 py-1 font-bold" style={{ ...style, color: String(layer.style.color ?? "#ffffff"), background: String(layer.style.backgroundColor ?? "transparent"), fontSize: `${Math.max(8, Math.min(32, Number(layer.style.fontSize ?? 48) / 3))}px` }}>{layer.text}</div>;
-        if (layer.kind === "shape") return <div key={layer.id} className="absolute" style={{ ...style, background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>
-        if (layer.kind === "image" && layer.assetId) return <img key={layer.id} alt={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} className="absolute object-cover" style={style}/>;
-        if (layer.kind === "video" && layer.assetId) return <video key={layer.id} aria-label={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} muted playsInline preload="metadata" className="absolute object-cover" style={style}/>;
-        if (layer.kind === "svg" || layer.kind === "path") return <div key={layer.id} className="absolute grid place-items-center border border-dashed border-zinc-500 bg-zinc-900/70 text-[8px] text-zinc-300" style={style}>{layer.kind.toUpperCase()}</div>;
-        if (["lottie", "rive", "three", "data"].includes(layer.kind)) return <div key={layer.id} className="absolute grid place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]" style={style}>{layer.kind}</div>;
-        return null;
-      })}
-    </div>
-    <label className="mt-2 block text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => setFrame(Number(event.target.value))}/></label>
-  </div>;
 }
 
 export function CutStudioCreativeRuntime({ project, onTimelineApplied }: { project: ProjectInput; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void }) {
@@ -158,7 +138,7 @@ export function CutStudioCreativeRuntime({ project, onTimelineApplied }: { proje
       {!runtime ? <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#1d9bf0]"/></div> : section === "motion" ? <div className="mt-4 space-y-3">
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
-        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.manifest.layers.length} layers · {composition.manifest.fps} fps · revision {composition.revision}</p></div><Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button></div><CompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/></div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.manifest.layers.length} layers · {composition.manifest.fps} fps · revision {composition.revision}</p></div><Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button></div><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/></div>)}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · executable code: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">
         <label className="block text-[10px] font-bold text-zinc-500">Production title<input className={field} value={brief.title} onChange={(event) => setBrief({ ...brief, title: event.target.value })}/></label>

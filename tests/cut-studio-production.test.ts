@@ -55,6 +55,33 @@ describe("CutStudio programmable production runtime", () => {
     expect(fading.opacity).toBeCloseTo(.1);
   });
 
+  it("evaluates 3D transforms, animated filters, and geometric reveals without hiding them behind placeholders", () => {
+    const visualManifest = {
+      ...manifest,
+      layers: [{
+        ...sourceLayer,
+        rotationX: 12,
+        rotationY: -18,
+        perspective: 900,
+        enter: { kind: "iris" as const, durationInFrames: 20, easing: "linear" as const },
+        animations: [
+          { property: "blur" as const, keyframes: [{ frame: 0, value: 8 }, { frame: 20, value: 0 }] },
+          { property: "brightness" as const, keyframes: [{ frame: 0, value: .5 }, { frame: 20, value: 1 }] },
+          { property: "saturation" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 20, value: 1 }] },
+        ],
+      }],
+    };
+    const [state] = evaluateCompositionFrame(visualManifest, 10);
+    expect(state).toMatchObject({ rotationX: 12, rotationY: -18, perspective: 900, blur: 4, brightness: .75, saturation: .5, reveal: { kind: "iris", progress: .5 } });
+    expect(state.opacity).toBe(1);
+  });
+
+  it("models flip transitions as deterministic 3D rotation", () => {
+    const [state] = evaluateCompositionFrame({ ...manifest, layers: [{ ...sourceLayer, enter: { kind: "flip" as const, durationInFrames: 20, easing: "linear" as const, direction: "left" as const } }] }, 10);
+    expect(state.rotationY).toBeCloseTo(-45);
+    expect(state.scale).toBe(1);
+  });
+
   it("compiles media motion and graphics into the editable EDL without flattening the source", () => {
     const edl = compileCompositionToEdl(manifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
