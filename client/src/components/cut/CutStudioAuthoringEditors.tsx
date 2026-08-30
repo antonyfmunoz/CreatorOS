@@ -15,7 +15,7 @@ const layerKinds = ["video", "audio", "image", "text", "shape", "svg", "path", "
 const blendModes: CompositionLayer["blendMode"][] = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "difference", "exclusion"];
 const transitionKinds = ["none", "fade", "slide", "wipe", "zoom", "flip", "clock_wipe", "iris"] as const;
 const effectKinds = ["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"] as const;
-const animationProperties = ["x", "y", "scale", "rotation", "opacity", "volume", "blur", "brightness", "saturation"] as const;
+const animationProperties = ["x", "y", "scale", "rotation", "rotationX", "rotationY", "perspective", "opacity", "volume", "blur", "brightness", "saturation"] as const;
 const workflowOperations = [
   "text_to_image", "image_to_image", "inpaint_image", "outpaint_image", "remove_background", "relight_image", "upscale_image", "product_placement",
   "text_to_video", "image_to_video", "first_last_frame", "video_to_video", "extend_video", "motion_transfer", "lip_sync", "talking_avatar", "inpaint_video", "relight_video", "upscale_video",

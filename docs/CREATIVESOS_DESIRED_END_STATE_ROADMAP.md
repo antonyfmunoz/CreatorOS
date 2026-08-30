@@ -615,9 +615,11 @@ and increments its failure count.
   general visual authoring plus allowlisted vector/path, 3D, geometric
   transition and animated-effect browser preview are implemented, as are
   typed parameter binding and idempotent durable batches of up to 20 named
-  variants, while sampled title position and opacity now compile into FFmpeg
-  output; native Lottie/Rive/Three playback, final-render scale/rotation,
-  advanced transition/effect compilation and an isolated code executor remain.
+  variants, while private images, text, shapes, paths and sanitized SVG now
+  compile through sampled position, opacity, scale, Z/X/Y rotation,
+  perspective, blur, brightness and saturation into FFmpeg output, including
+  animated flip transitions; native Lottie/Rive/Three playback, geometric
+  masks, remaining stylized effects and an isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant

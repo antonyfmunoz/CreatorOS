@@ -50,6 +50,8 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Layer rotate x").fill("-18");
   await studio.getByLabel("Layer rotate y").fill("32");
   await studio.getByLabel("Layer perspective").fill("700");
+  await studio.getByLabel("enter transition", { exact: true }).selectOption("flip");
+  await studio.getByLabel("enter transition frames").fill("20");
   await studio.getByLabel("Keyframe property").selectOption("opacity");
   await studio.getByLabel("Keyframe frame").fill("12");
   await studio.getByLabel("Keyframe value").fill("0.75");
@@ -171,6 +173,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(widestAccentRow).toBeGreaterThan(600);
   expect(middleAccentRow).toBeLessThan(widestAccentRow - 150);
   expect(Math.abs(bottomAccentRow - topAccentRow)).toBeGreaterThan(60);
+  const openingPixels = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", "0.25", "-i", renderedPath, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { maxBuffer: 4 * 1024 * 1024 });
+  const flipProofOffset = ((400 * 1280) + 640) * 3;
+  expect(openingPixels[flipProofOffset]).toBeLessThan(40);
+  expect(settledPixels[flipProofOffset]).toBeGreaterThan(80);
   const vacatedAccentOffset = ((500 * 1280) + 1000) * 3;
   expect(settledPixels[vacatedAccentOffset]).toBeLessThan(80);
   const ruleOffset = ((486 * 1280) + 850) * 3;
