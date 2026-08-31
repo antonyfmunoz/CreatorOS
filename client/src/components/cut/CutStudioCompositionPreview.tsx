@@ -3,7 +3,9 @@ import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/c
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import type { AnimationItem } from "lottie-web";
+import type { Rive as RiveInstance } from "@rive-app/canvas-lite";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -113,7 +115,69 @@ function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
   return <div ref={host} aria-label={`${layer.name} Lottie preview`} className="h-full w-full overflow-hidden"/>;
 }
 
-function PreviewLayer({ layer, state, frame }: { layer: Layer; state: FrameState; frame: number }) {
+function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: number }) {
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const animation = useRef<RiveInstance | null>(null);
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const scrub = (instance: RiveInstance) => {
+    const firstAnimation = instance.animationNames[0];
+    if (firstAnimation) instance.scrub(firstAnimation, Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps);
+    instance.drawFrame();
+  };
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setError("");
+    setLoaded(false);
+    animation.current?.cleanup(); animation.current = null;
+    if (!layer.assetId || !canvas.current) return () => controller.abort();
+    void (async () => {
+      try {
+        const response = await fetch(`/api/assets/${encodeURIComponent(layer.assetId!)}/stream`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Private Rive media is unavailable");
+        const buffer = await response.arrayBuffer();
+        validateCutStudioRiveBytes(buffer);
+        const { Rive, RuntimeLoader } = await import("@rive-app/canvas-lite");
+        if (!active || !canvas.current) return;
+        RuntimeLoader.setWasmUrl("/api/runtime-assets/rive-2.41.0.wasm");
+        RuntimeLoader.setWasmFallbackUrl(null);
+        let instance: RiveInstance;
+        instance = new Rive({
+          buffer,
+          canvas: canvas.current,
+          autoplay: false,
+          autoBind: false,
+          enableRiveAssetCDN: false,
+          shouldDisableRiveListeners: true,
+          automaticallyHandleEvents: false,
+          onLoad: () => {
+            if (!active) return;
+            const firstAnimation = instance.animationNames[0];
+            if (firstAnimation) instance.play(firstAnimation);
+            instance.resizeDrawingSurfaceToCanvas(1);
+            requestAnimationFrame(() => {
+              if (!active) return;
+              if (firstAnimation) instance.pause(firstAnimation);
+              scrub(instance);
+              requestAnimationFrame(() => { if (active) setLoaded(true); });
+            });
+          },
+          onLoadError: () => { if (active) setError("The Rive animation could not be decoded"); },
+        });
+        animation.current = instance;
+      } catch (caught) {
+        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Rive preview failed");
+      }
+    })();
+    return () => { active = false; controller.abort(); animation.current?.cleanup(); animation.current = null; };
+  }, [layer.assetId]);
+  useEffect(() => { if (animation.current) scrub(animation.current); }, [frame, fps, layer.from, layer.sourceStartFrame]);
+  if (error) return <div className="grid h-full w-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</div>;
+  return <canvas ref={canvas} width={640} height={360} data-rive-loaded={loaded ? "true" : "false"} aria-label={`${layer.name} Rive preview`} className="h-full w-full"/>;
+}
+
+function PreviewLayer({ layer, state, frame, fps }: { layer: Layer; state: FrameState; frame: number; fps: number }) {
   const visual = effectStyles(state);
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity,
@@ -129,7 +193,7 @@ function PreviewLayer({ layer, state, frame }: { layer: Layer; state: FrameState
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
   else if (layer.kind === "lottie") content = <LottieLayer layer={layer} frame={frame}/>;
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
-  else if (layer.kind === "rive") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 text-[8px] font-bold uppercase text-[#1d9bf0]">rive runtime</div>;
+  else if (layer.kind === "rive") content = <RiveLayer layer={layer} frame={frame} fps={fps}/>;
   if (!content) return null;
   return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
 }
@@ -138,7 +202,7 @@ export function CutStudioCompositionPreview({ manifest }: { manifest: CutComposi
   const [frame, setFrame] = useState(Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6));
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
   return <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Deterministic composition preview">
-    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
+    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
     <label className="mt-2 block text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => setFrame(Number(event.target.value))}/></label>
   </div>;
 }

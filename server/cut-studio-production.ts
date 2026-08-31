@@ -133,9 +133,11 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   if (fontIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-font" || !asset.mimeType || !/^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(asset.mimeType); })) throw new Error("Every composition font must be ready private TTF or OTF media");
   const imageIds = manifest.layers.flatMap((layer) => layer.kind === "image" && layer.assetId ? [layer.assetId] : []);
   const lottieIds = manifest.layers.flatMap((layer) => layer.kind === "lottie" && layer.assetId ? [layer.assetId] : []);
+  const riveIds = manifest.layers.flatMap((layer) => layer.kind === "rive" && layer.assetId ? [layer.assetId] : []);
   const maskIds = manifest.layers.flatMap((layer) => [layer.enter?.maskAssetId, layer.exit?.maskAssetId, ...layer.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)));
   if ([...imageIds, ...maskIds].some((assetId) => !byId.get(assetId)?.mimeType?.startsWith("image/"))) throw new Error("Every composition image or mask must be ready private image media");
   if (lottieIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-lottie" || !asset.mimeType || !/^(application\/(json|lottie\+json)|text\/json)$/i.test(asset.mimeType); })) throw new Error("Every Lottie layer must reference ready private validated Lottie JSON");
+  if (riveIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-rive" || !asset.mimeType || !/^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(asset.mimeType); })) throw new Error("Every Rive layer must reference ready private validated Rive media");
 }
 
 async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {

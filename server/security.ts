@@ -118,7 +118,7 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self' https://accounts.creativesos.net https://*.clerk.accounts.dev https://connect.stripe.com https://checkout.stripe.com",
-    `script-src 'self'${isProduction ? "" : " 'unsafe-inline'"} https://clerk.creativesos.net https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https://connect.facebook.net`,
+    `script-src 'self' 'wasm-unsafe-eval'${isProduction ? "" : " 'unsafe-inline'"} https://clerk.creativesos.net https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https://connect.facebook.net`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",

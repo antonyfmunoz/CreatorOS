@@ -9,6 +9,7 @@ import sharp from "sharp";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import { CUT_STUDIO_RIVE_MAX_BYTES, validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import { z } from "zod";
 import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
 import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
@@ -57,11 +58,12 @@ const projectMediaSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
   duration: z.number().finite().positive().max(43_200),
-  mediaKind: z.enum(["video", "audio", "image", "font", "lottie"]),
+  mediaKind: z.enum(["video", "audio", "image", "font", "lottie", "rive"]),
 });
 
 const cutStudioFontMime = /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i;
 const cutStudioLottieMime = /^(application\/(json|lottie\+json)|text\/json)$/i;
+const cutStudioRiveMime = /^application\/(octet-stream|x-rive|vnd\.rive)$/i;
 
 async function validatePrivateLottieAsset(asset: typeof assets.$inferSelect) {
   if (asset.kind !== "cut-lottie" || !asset.mimeType || !cutStudioLottieMime.test(asset.mimeType) || asset.sizeBytes === null || asset.sizeBytes > 5 * 1024 * 1024) throw new Error("The private Lottie asset is invalid");
@@ -72,6 +74,18 @@ async function validatePrivateLottieAsset(asset: typeof assets.$inferSelect) {
     const source = await fs.readFile(file, "utf8");
     if (Buffer.byteLength(source, "utf8") > 5 * 1024 * 1024) throw new Error("The Lottie document exceeds the safe limit");
     return validateCutStudioLottie(JSON.parse(source) as unknown);
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+}
+
+async function validatePrivateRiveAsset(asset: typeof assets.$inferSelect) {
+  if (asset.kind !== "cut-rive" || !asset.mimeType || !cutStudioRiveMime.test(asset.mimeType) || asset.sizeBytes === null || asset.sizeBytes > CUT_STUDIO_RIVE_MAX_BYTES) throw new Error("The private Rive asset is invalid");
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-rive-"));
+  const file = path.join(temp, "animation.riv");
+  try {
+    await materializePrivateAsset(asset.storageKey, file);
+    return validateCutStudioRiveBytes(await fs.readFile(file));
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }
@@ -1561,15 +1575,18 @@ export function registerCutStudioRoutes(app: Express) {
   cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
     noStore(res);
     const parsed = projectMediaSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, image, font, or Lottie metadata is required" });
+    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, image, font, Lottie, or Rive metadata is required" });
     const project = await ownedProject(req.dbUser!.id, req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
     const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);
-    const kindMatches = Boolean(asset && (parsed.data.mediaKind === "font" ? asset.kind === "cut-font" && asset.mimeType && cutStudioFontMime.test(asset.mimeType) : parsed.data.mediaKind === "lottie" ? asset.kind === "cut-lottie" && asset.mimeType && cutStudioLottieMime.test(asset.mimeType) : asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)));
+    const kindMatches = Boolean(asset && (parsed.data.mediaKind === "font" ? asset.kind === "cut-font" && asset.mimeType && cutStudioFontMime.test(asset.mimeType) : parsed.data.mediaKind === "lottie" ? asset.kind === "cut-lottie" && asset.mimeType && cutStudioLottieMime.test(asset.mimeType) : parsed.data.mediaKind === "rive" ? asset.kind === "cut-rive" && asset.mimeType && cutStudioRiveMime.test(asset.mimeType) : asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)));
     if (!asset || asset.businessId !== project.businessId || asset.visibility !== "private" || asset.status !== "ready" || !kindMatches) return res.status(400).json({ message: "The private media asset is not ready" });
     let canonicalDuration = parsed.data.duration;
     if (parsed.data.mediaKind === "lottie") {
       try { canonicalDuration = (await validatePrivateLottieAsset(asset)).durationSeconds; } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "The private Lottie asset is invalid" }); }
+    }
+    if (parsed.data.mediaKind === "rive") {
+      try { await validatePrivateRiveAsset(asset); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "The private Rive asset is invalid" }); }
     }
     const [row] = await db.insert(cutStudioProjectMedia).values({ projectId: project.id, assetId: asset.id, ownerUserId: req.dbUser!.id, name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: canonicalDuration }).onConflictDoUpdate({ target: [cutStudioProjectMedia.projectId, cutStudioProjectMedia.assetId], set: { name: parsed.data.name, mediaKind: parsed.data.mediaKind, duration: canonicalDuration } }).returning();
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.media.added", actorUserId: req.dbUser!.id, payload: { businessId: project.businessId, assetId: asset.id, mediaKind: parsed.data.mediaKind }, idempotencyKey: `cutstudio:${project.id}:media:${asset.id}` });

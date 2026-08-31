@@ -827,6 +827,13 @@
       "when": 1787720400000,
       "tag": "0117_cut_studio_lottie_media",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1787724000000,
+      "tag": "0118_cut_studio_rive_media",
+      "breakpoints": true
     }
   ]
 }
