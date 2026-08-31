@@ -39,6 +39,24 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(fontUpload);
   const fontAsset = (await fontUpload.json()).asset;
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: fontAsset.id, name: "Editorial Serif", duration: 2, mediaKind: "font" }));
+  const lottieDocument = {
+    v: "5.13.0", fr: 30, ip: 0, op: 60, w: 100, h: 100, assets: [],
+    layers: [{ ddd: 0, ind: 1, ty: 1, nm: "Moving brand block", sr: 1, ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 1, k: [{ t: 0, s: [25, 50, 0], e: [75, 50, 0] }, { t: 60, s: [75, 50, 0] }] }, a: { a: 0, k: [50, 50, 0] }, s: { a: 0, k: [50, 50, 100] } }, ao: 0, sw: 100, sh: 100, sc: "#00ff88", ip: 0, op: 60, st: 0, bm: 0 }],
+  };
+  const lottieUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-lottie", visibility: "private", lottie: { name: "moving-brand.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(lottieDocument)) } } });
+  await expectOk(lottieUpload);
+  const lottieAsset = (await lottieUpload.json()).asset;
+  const lottieMediaResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: lottieAsset.id, name: "Moving brand", duration: 999, mediaKind: "lottie" });
+  await expectOk(lottieMediaResponse);
+  const lottieMedia = await lottieMediaResponse.json();
+  expect(lottieMedia.duration).toBe(2);
+  expect((await request(page, peer, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: lottieAsset.id, name: "Stolen animation", duration: 2, mediaKind: "lottie" })).status()).toBe(404);
+  const invalidLottieUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-lottie", visibility: "private", lottie: { name: "expression.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...lottieDocument, layers: [{ ty: 4, x: "time * 10" }] })) } } });
+  await expectOk(invalidLottieUpload);
+  const invalidLottieAsset = (await invalidLottieUpload.json()).asset;
+  const invalidRegistration = await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: invalidLottieAsset.id, name: "Expression", duration: 2, mediaKind: "lottie" });
+  expect(invalidRegistration.status()).toBe(400);
+  expect(await invalidRegistration.text()).toMatch(/expressions are not allowed/i);
   expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
@@ -175,6 +193,22 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const threePreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="three"] img');
   await expect(threePreview).toHaveAttribute("alt", "pyramid primitive");
   await expect(threePreview).toHaveAttribute("src", /^data:image\/svg\+xml/);
+  await studio.getByLabel("New layer kind").selectOption("lottie");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Moving brand animation");
+  await expect(studio.getByLabel("Layer media asset")).toHaveValue(lottieAsset.id);
+  const lottiePreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="lottie"]');
+  await expect(lottiePreview.getByLabel("Moving brand animation Lottie preview")).toBeVisible();
+  await expect(lottiePreview.locator("svg")).toBeVisible();
+  await studio.getByRole("button", { name: "Save composition" }).click();
+  await expect(studio.getByText("Composition controls saved.")).toBeVisible();
+  await studio.getByRole("button", { name: "Apply" }).click();
+  await expect(studio.getByText(/isolated animation renderer/i)).toBeVisible();
+  const runtimeWithLottie = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
+  await expectOk(runtimeWithLottie);
+  expect((await runtimeWithLottie.json()).compositions[0].manifest.layers).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "lottie", assetId: lottieAsset.id })]));
+  await expectOk(await request(page, owner, "GET", `/api/cut/projects/${project.id}/media-library/${lottieMedia.id}/media`));
+  await studio.getByRole("button", { name: "Delete layer" }).click();
   await studio.getByLabel("Selected layer").selectOption("hero_title");
   await studio.getByLabel("Layer private font").selectOption(fontAsset.id);
   await studio.getByLabel("Layer rotation").fill("-8");

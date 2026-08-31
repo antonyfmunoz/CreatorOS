@@ -503,6 +503,8 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
 
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
+  const isolatedLayers = manifest.layers.filter((layer) => layer.kind === "lottie" || layer.kind === "rive");
+  if (isolatedLayers.length) throw new Error(`${isolatedLayers.map((layer) => layer.kind).join("/")} layers require the isolated animation renderer before timeline apply`);
   const fps = manifest.fps;
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {

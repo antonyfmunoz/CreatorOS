@@ -107,6 +107,11 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
   });
 
+  it("fails closed instead of silently flattening browser-only animation layers", () => {
+    const lottie = { id: "animated-mark", kind: "lottie" as const, name: "Animated mark", assetId: "00000000-0000-4000-8000-000000000008", from: 0, durationInFrames: 60 };
+    expect(() => compileCompositionToEdl({ ...manifest, layers: [sourceLayer, lottie] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] })).toThrow(/isolated animation renderer/i);
+  });
+
   it("requires a declared private font family and compiles its asset into the final graphic", () => {
     const fontAssetId = "00000000-0000-4000-8000-000000000007";
     const family = "CreativesOS_00000000000040008000000000000007";
