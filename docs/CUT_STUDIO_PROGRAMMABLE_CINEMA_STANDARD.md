@@ -92,10 +92,11 @@ with either.
    production on release `613ad52277ad65fe0ec36397ddbc631752f3974a`.
 2. **Completed:** owner/editor/reviewer, cross-tenant denial, private-asset
    injection denial and persistence pass protected browser qualification.
-3. **Browser side implemented and locally field-qualified:** extend the shared
-   evaluator and scrubber across allowlisted vector/path, data, 3D, geometric
-   transition and bounded visual-effect rendering; complete native
-   Lottie/Rive/Three playback and safe final-render parity.
+3. **Bounded 3D primitives implemented and locally field-qualified:** editable
+   cube, pyramid and plane descriptors use one fail-closed schema and the same
+   geometry in browser preview and native final rendering. Complete native
+   Lottie/Rive playback and imported programmable Three-scene execution only
+   after their asset/runtime isolation boundaries are approved.
 4. **Implemented and locally field-qualified:** general layer, timing,
    transform, keyframe, transition, effect, node, edge, operation, provider,
    model, position and output authoring; complete its protected release.
@@ -169,9 +170,13 @@ with either.
    role and tenant enforcement, supersede an earlier choice, and append the
    selected asset directly to EDL v3 with shot, variant and generation-job
    lineage without export or re-upload; complete its protected release.
-21. Activate and qualify at least one approved model adapter and one isolated
+21. **Implemented and locally field-qualified:** author bounded cube, pyramid
+   and plane layers with depth, face and edge colors and wireframe control;
+   preserve their descriptor in EDL v3 and use the same inert SVG geometry for
+   browser preview and native FFmpeg final rendering.
+22. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-22. Run the direct substitution benchmark using locked briefs/assets and human
+23. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

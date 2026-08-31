@@ -158,6 +158,23 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await studio.getByLabel("Layer width").fill("0.2");
   await studio.getByLabel("Layer height").fill("0.2");
   await expect(studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="image"] img')).toBeVisible();
+  await studio.getByLabel("New layer kind").selectOption("three");
+  await studio.getByRole("button", { name: "Add layer" }).click();
+  await studio.getByLabel("Layer name").fill("Product pyramid");
+  await studio.getByLabel("3D primitive").selectOption("pyramid");
+  await studio.getByLabel("3D primary color").fill("#ffff00");
+  await studio.getByLabel("3D secondary color").fill("#aa8800");
+  await studio.getByLabel("3D depth").fill("1.5");
+  await studio.getByLabel("Layer x").fill("0.72");
+  await studio.getByLabel("Layer y").fill("0.32");
+  await studio.getByLabel("Layer width").fill("0.18");
+  await studio.getByLabel("Layer height").fill("0.18");
+  await studio.getByLabel("Layer rotate x").fill("12");
+  await studio.getByLabel("Layer rotate y").fill("24");
+  await studio.getByLabel("Layer perspective").fill("800");
+  const threePreview = studio.getByLabel("Deterministic composition preview").locator('[data-layer-kind="three"] img');
+  await expect(threePreview).toHaveAttribute("alt", "pyramid primitive");
+  await expect(threePreview).toHaveAttribute("src", /^data:image\/svg\+xml/);
   await studio.getByLabel("Selected layer").selectOption("hero_title");
   await studio.getByLabel("Layer private font").selectOption(fontAsset.id);
   await studio.getByLabel("Layer rotation").fill("-8");
@@ -261,6 +278,11 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(settledPixels[imageOffset]).toBeGreaterThan(180);
   expect(settledPixels[imageOffset + 1]).toBeLessThan(60);
   expect(settledPixels[imageOffset + 2]).toBeGreaterThan(180);
+  let threePixelCount = 0;
+  for (let offset = 0; offset + 2 < settledPixels.length; offset += 3) {
+    if (settledPixels[offset] > 145 && settledPixels[offset + 1] > 105 && settledPixels[offset + 2] < 80) threePixelCount += 1;
+  }
+  expect(threePixelCount).toBeGreaterThan(1_000);
   const variantBatch = studio.getByLabel("Composition variant batch");
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");
