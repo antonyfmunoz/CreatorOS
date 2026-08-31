@@ -91,6 +91,7 @@ describe("CreativesOS release readiness", () => {
       },
       cutStudio: {
         privateIngest: "configured",
+        renderPlane: "embedded",
         nonDestructiveEdl: "configured",
         timelineMarkers: "configured",
         boundarySnapping: "configured",
@@ -304,6 +305,7 @@ describe("CreativesOS release readiness", () => {
     });
     expect(result.cutStudio).toEqual({
       privateIngest: "unconfigured",
+      renderPlane: "embedded",
       nonDestructiveEdl: "configured",
       timelineMarkers: "configured",
       boundarySnapping: "configured",
@@ -355,6 +357,22 @@ describe("CreativesOS release readiness", () => {
       customColorCorrection: "configured",
       chromaKey: "configured",
     });
+  });
+
+  it("fails closed when external CutStudio processing lacks its signed dispatcher", () => {
+    const result = getReleaseReadiness({
+      CLERK_PUBLISHABLE_KEY: "pk_live_example",
+      CLERK_SECRET_KEY: "sk_live_example",
+      ASSET_STORAGE_PROVIDER: "r2",
+      R2_PRIVATE_BUCKET_NAME: "private",
+      R2_ACCOUNT_ID: "account",
+      R2_ACCESS_KEY_ID: "access",
+      R2_SECRET_ACCESS_KEY: "secret",
+      CUT_STUDIO_PROCESSING_MODE: "external",
+    });
+    expect(result.status).toBe("release_gated");
+    expect(result.blockers).toContain("cut_studio_render_plane_unconfigured");
+    expect(result.cutStudio.renderPlane).toBe("unconfigured");
   });
 
   it("keeps deferred room providers informational instead of release-blocking", () => {

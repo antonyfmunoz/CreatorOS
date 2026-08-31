@@ -25,6 +25,8 @@
     "verify:stitch": "node scripts/qualify-stitch-references.mjs",
     "verify:infrastructure": "node scripts/verify-scaled-infrastructure.mjs && node --test scripts/audit-live-fly-topology.test.mjs scripts/resolve-live-fly-config.test.mjs",
     "verify:media-cloud": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-media-cloud.ps1",
+    "verify:gcp-cutstudio": "node scripts/verify-gcp-cutstudio.mjs && vitest run tests/cut-cloud.test.ts",
+    "gcp:cutstudio:connect-fly": "node scripts/connect-fly-gcp-cutstudio.mjs",
     "verify:backup-restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-backup-restore.ps1",
     "verify:secrets": "node scripts/scan-source-secrets.mjs",
     "verify:capacity": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-capacity.ps1",
