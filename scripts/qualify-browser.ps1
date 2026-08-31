@@ -27,6 +27,7 @@ $priorDatabaseUrl = $env:DATABASE_URL
 $priorIsolationFlag = $env:QUALIFICATION_ISOLATED_DATABASE
 $priorUploadDirectory = $env:CREATOROS_UPLOAD_DIR
 $priorViteCacheDirectory = $env:CREATOROS_VITE_CACHE_DIR
+$priorPlaywrightOutputDirectory = $env:PLAYWRIGHT_OUTPUT_DIR
 $priorNodeOptions = $env:NODE_OPTIONS
 $priorTemp = $env:TEMP
 $priorTmp = $env:TMP
@@ -64,6 +65,7 @@ try {
   $env:QUALIFICATION_ISOLATED_DATABASE = "true"
   $env:CREATOROS_UPLOAD_DIR = Join-Path $qualificationPath "uploads"
   $env:CREATOROS_VITE_CACHE_DIR = Join-Path $qualificationPath "vite-cache"
+  $env:PLAYWRIGHT_OUTPUT_DIR = Join-Path $qualificationPath "playwright-results"
   & node scripts/migrate-qualification.mjs
   if ($LASTEXITCODE -ne 0) { throw "Browser database migration failed" }
   if ($PreflightWorkerResilience) {
@@ -82,6 +84,7 @@ try {
   $env:QUALIFICATION_ISOLATED_DATABASE = $priorIsolationFlag
   $env:CREATOROS_UPLOAD_DIR = $priorUploadDirectory
   $env:CREATOROS_VITE_CACHE_DIR = $priorViteCacheDirectory
+  $env:PLAYWRIGHT_OUTPUT_DIR = $priorPlaywrightOutputDirectory
   $env:NODE_OPTIONS = $priorNodeOptions
   $env:TEMP = $priorTemp
   $env:TMP = $priorTmp

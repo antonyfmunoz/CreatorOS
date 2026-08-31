@@ -322,9 +322,35 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect((await repeatedBatch.json()).variants.map((composition: { id: string }) => composition.id).sort()).toEqual(compositionVariants.map((composition: { id: string }) => composition.id).sort());
   expect(runtime).toMatchObject({ plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
 
+  await studio.getByRole("button", { name: /Cinema/ }).focus();
+  await studio.getByRole("button", { name: /Cinema/ }).press("Enter");
+  await expect(studio.getByLabel("Variant review for Hero reveal")).toBeVisible();
+  await expect(studio.getByLabel("Candidate video for Hero reveal")).toHaveValue(source.id);
+  await studio.getByRole("button", { name: "Add candidate for Hero reveal" }).click();
+  await expect(studio.getByText("The project video is ready for shot review with its source lineage retained.")).toBeVisible();
+  await expect(studio.getByLabel("Preview source.mp4")).toBeVisible();
+  await studio.getByRole("button", { name: "Select source.mp4" }).click();
+  await expect(studio.getByText("Variant selected. You can now hand it directly to the editable timeline.")).toBeVisible();
+  await studio.getByRole("button", { name: "Add source.mp4 to timeline" }).click();
+  await expect(studio.getByText("Selected variant added to the editable timeline without export or re-upload.")).toBeVisible();
+  const handoffRuntimeResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
+  await expectOk(handoffRuntimeResponse);
+  const handoffRuntime = await handoffRuntimeResponse.json();
+  const selectedVariant = handoffRuntime.variants.find((variant: { shotId: string; status: string }) => variant.shotId === runtime.shots[0].id && variant.status === "selected");
+  expect(selectedVariant).toMatchObject({ assetId: source.id, provider: "project_media", model: "manual_import", provenance: expect.objectContaining({ source: "project_media" }) });
+  const handedOffProjectResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}`);
+  await expectOk(handedOffProjectResponse);
+  const handedOffProject = await handedOffProjectResponse.json();
+  expect(handedOffProject.edl.clips).toEqual(expect.arrayContaining([expect.objectContaining({ assetId: source.id, sourceVariantId: selectedVariant.id, track: "v1", timelineStart: expect.any(Number) })]));
+  await studio.getByRole("button", { name: "Add source.mp4 to timeline" }).click();
+  await expect(studio.getByText("This selected variant is already on the editable timeline.")).toBeVisible();
+
   const foreignUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(peer) }, multipart: { kind: "video", visibility: "private", video: { name: "foreign.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } } });
   await expectOk(foreignUpload);
   const foreignAsset = (await foreignUpload.json()).asset;
+  const foreignVariant = await request(page, owner, "POST", `/api/cut/projects/${project.id}/shots/${runtime.shots[0].id}/variants/import`, { assetId: foreignAsset.id, label: "Foreign candidate" });
+  expect(foreignVariant.status()).toBe(409);
+  expect(await foreignVariant.json()).toMatchObject({ message: "Only ready private project video may enter variant review" });
   const foreignGeneration = await request(page, owner, "POST", `/api/cut/projects/${project.id}/shots/${runtime.shots[0].id}/generations`, { ...runtime.jobs[0].request, inputs: [{ slot: "reference_video", assetIds: [foreignAsset.id], required: true }], idempotencyKey: `foreign.${crypto.randomUUID()}` });
   expect(foreignGeneration.status()).toBe(400);
   expect(await foreignGeneration.json()).toMatchObject({ message: "Every referenced asset must be a ready private asset in this business" });
