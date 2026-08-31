@@ -78,6 +78,8 @@ if (-not $buildServiceAccount) { $buildServiceAccount = "$projectNumber-compute@
 foreach ($role in @("roles/artifactregistry.writer", "roles/logging.logWriter")) {
   Invoke-Gcloud @("projects", "add-iam-policy-binding", $Project, "--member", "serviceAccount:$buildServiceAccount", "--role", $role, "--condition", "None", "--quiet")
 }
+$cloudBuildSourceBucket = "gs://$($Project)_cloudbuild"
+Invoke-Gcloud @("storage", "buckets", "add-iam-policy-binding", $cloudBuildSourceBucket, "--member", "serviceAccount:$buildServiceAccount", "--role", "roles/storage.objectViewer", "--quiet")
 
 $commit = (git rev-parse HEAD).Trim()
 $image = "$Region-docker.pkg.dev/$Project/$Repository/cutstudio:$commit"
