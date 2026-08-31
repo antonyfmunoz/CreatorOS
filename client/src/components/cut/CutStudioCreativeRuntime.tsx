@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
+import { CompositionAuthoringControls, CompositionVariantBatchControls, cutStudioPrivateFontFamily, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import type { CutEdl } from "@shared/cut-studio";
 import { type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
-type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" };
+type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" };
 type CompositionRow = { id: string; name: string; mode: string; manifest: CutCompositionManifest; revision: number };
 type PlanRow = { id: string; brief: CutProductionBrief; revision: number };
 type ShotRow = { id: string; sequence: number; spec: CutShotSpec; revision: number; status: string; selectedVariantId?: string | null };
@@ -72,6 +72,22 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
   };
 
   useEffect(() => { setRuntime(null); setMessage(""); void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Creative runtime could not load")); }, [project.id]);
+  useEffect(() => {
+    const loaded: FontFace[] = [];
+    let cancelled = false;
+    for (const asset of media.filter((item) => item.mediaKind === "font")) {
+      const face = new FontFace(cutStudioPrivateFontFamily(asset.assetId), `url(/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(asset.id)}/media)`);
+      void face.load().then((ready) => {
+        if (cancelled) return;
+        document.fonts.add(ready);
+        loaded.push(ready);
+      }).catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+      loaded.forEach((face) => document.fonts.delete(face));
+    };
+  }, [media, project.id]);
   const waitingJobs = useMemo(() => runtime?.jobs.filter((job) => job.state === "provider_pending").length ?? 0, [runtime]);
 
   const act = async (key: string, action: () => Promise<void>) => {

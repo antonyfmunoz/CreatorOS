@@ -96,7 +96,7 @@ async function productionPlan(project: typeof cutStudioProjects.$inferSelect, cr
 async function assertProjectAssets(project: typeof cutStudioProjects.$inferSelect, assetIds: string[]) {
   const uniqueIds = Array.from(new Set(assetIds));
   if (!uniqueIds.length) return;
-  const rows = await db.select({ id: assets.id }).from(assets).where(and(inArray(assets.id, uniqueIds), eq(assets.businessId, project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+  const rows = await db.select({ id: assets.id }).from(assets).where(and(inArray(assets.id, uniqueIds), eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready")));
   if (rows.length !== uniqueIds.length) throw new Error("Every referenced asset must be a ready private asset in this business");
 }
 
@@ -114,7 +114,22 @@ function manifestAssetIds(manifest: z.infer<typeof cutCompositionManifestSchema>
     ...manifest.fonts.flatMap((font) => font.assetId ? [font.assetId] : []),
     ...manifest.audioReactiveSignals.map((signal) => signal.assetId),
     ...manifest.layers.flatMap((layer) => [layer.enter?.maskAssetId, layer.exit?.maskAssetId].filter((value): value is string => Boolean(value))),
+    ...manifest.layers.flatMap((layer) => layer.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])),
   ];
+}
+
+async function assertCompositionAssets(project: typeof cutStudioProjects.$inferSelect, manifest: z.infer<typeof cutCompositionManifestSchema>) {
+  const ids = manifestAssetIds(manifest);
+  await assertProjectAssets(project, ids);
+  const uniqueIds = Array.from(new Set(ids));
+  if (!uniqueIds.length) return;
+  const rows = await db.select({ id: assets.id, kind: assets.kind, mimeType: assets.mimeType }).from(assets).where(and(inArray(assets.id, uniqueIds), eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+  const byId = new Map(rows.map((asset) => [asset.id, asset]));
+  const fontIds = manifest.fonts.flatMap((font) => font.assetId ? [font.assetId] : []);
+  if (fontIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-font" || !asset.mimeType || !/^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(asset.mimeType); })) throw new Error("Every composition font must be ready private TTF or OTF media");
+  const imageIds = manifest.layers.flatMap((layer) => layer.kind === "image" && layer.assetId ? [layer.assetId] : []);
+  const maskIds = manifest.layers.flatMap((layer) => [layer.enter?.maskAssetId, layer.exit?.maskAssetId, ...layer.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)));
+  if ([...imageIds, ...maskIds].some((assetId) => !byId.get(assetId)?.mimeType?.startsWith("image/"))) throw new Error("Every composition image or mask must be ready private image media");
 }
 
 async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
@@ -173,7 +188,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     const parsed = compositionInput.safeParse(req.body ?? { name: `${access.project.name} composition`, manifest: defaultComposition(access.project) });
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
     if (parsed.data.mode === "sandboxed_tsx" && !process.env.CUT_COMPOSITION_SANDBOX_URL) return res.status(409).json({ message: "The isolated composition runtime is not activated" });
-    try { await assertProjectAssets(access.project, manifestAssetIds(parsed.data.manifest)); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
+    try { await assertCompositionAssets(access.project, parsed.data.manifest); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [composition] = await db.insert(cutStudioCompositions).values({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule }).returning();
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.created", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, mode: composition.mode }, idempotencyKey: `cutstudio:${composition.id}:composition.created` });
     res.status(201).json(composition);
@@ -188,7 +203,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     const parsed = compositionInput.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
     if (parsed.data.mode === "sandboxed_tsx" && !process.env.CUT_COMPOSITION_SANDBOX_URL) return res.status(409).json({ message: "The isolated composition runtime is not activated" });
-    try { await assertProjectAssets(access.project, manifestAssetIds(parsed.data.manifest)); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
+    try { await assertCompositionAssets(access.project, parsed.data.manifest); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [updated] = await db.update(cutStudioCompositions).set({ name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule, revision: sql`${cutStudioCompositions.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.revision, expected), eq(cutStudioCompositions.status, "active"))).returning();
     if (!updated) return res.status(409).json({ message: "The composition changed elsewhere" });
     res.setHeader("ETag", String(updated.revision));

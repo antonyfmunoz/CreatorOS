@@ -43,7 +43,7 @@ control or worse professional output.
 | System | Native implementation | Current gate |
 | --- | --- | --- |
 | Composition | Durable tenant-scoped manifest with dimensions, FPS, duration, background, parameters, layers, fonts, metadata and audio-reactive signals; typed parameter binding and idempotent batches of up to 20 durable variants | Schema/routes are production-qualified; expanded authoring and batch variants are locally field-qualified pending their protected releases |
-| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image selection; safe vector/path/SVG, data and 3D browser preview; private image, bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | Font/Lottie/Rive/Three media pickers and native interactive-media playback remain renderer work |
+| Layers | Video, audio, image, text, shape, allowlisted SVG/path, caption, Lottie, Rive, 3D and data descriptors; absolute timing, transforms, perspective, blend modes and bindings; visual add, duplicate, delete, reorder, timing, transform, content and style controls; normal-user project video/audio/image/font selection; safe vector/path/SVG, data and 3D browser preview; private image and TTF/OTF font media plus bounded filled shape, allowlisted path and sanitized SVG layers compile into the native final-render graph | Native Lottie/Rive/Three media playback remains renderer work |
 | Motion | Ordered keyframes, deterministic interpolation, linear/ease/spring/step behavior, directional wipe/iris/clock, private custom-mask and 3D flip transitions, animated blur/brightness/saturation, bounded effects and an exact-frame scrubber; normal-user keyframe, transition, direction, private-mask and effect authoring; sampled image/text/shape/path/SVG position, opacity, scale, Z/X/Y rotation, perspective, blur, brightness, saturation and reveals plus shadow, glow, grain, noise, vignette, color-matrix, chroma-key, displacement, motion-blur and light-leak treatments compile into the bounded raster/FFmpeg graph | Interactive-media parity remains renderer work |
 | Templates | Editable kinetic title, lower-third and product composition starters | Expand through real creative-team evidence |
 | Code composition | Pinned source and lockfile assets, denied network, CPU/memory/output quotas, isolated runtime only | Approved sandbox/container capacity; never execute in the web process |
@@ -159,9 +159,14 @@ with either.
    segments; apply one authorized private luminance mask across a layer's
    custom-mask transitions; prove all four spatial results in mobile and
    desktop private MP4 exports; complete its protected release.
-19. Activate and qualify at least one approved model adapter and one isolated
+19. **Implemented and locally field-qualified:** upload private TTF/OTF assets,
+   associate them to an owned CutStudio project, select them on text/caption/
+   lower-third layers, preserve their family and asset identity through EDL v3,
+   load them into the browser preview and use the exact materialized font in
+   native FFmpeg final rendering; complete its protected release.
+20. Activate and qualify at least one approved model adapter and one isolated
    code executor, with secrets, rate limits, cancellation, timeout, artifact
    lineage, privacy export/deletion and failure recovery.
-18. Run the direct substitution benchmark using locked briefs/assets and human
+21. Run the direct substitution benchmark using locked briefs/assets and human
    quality review. Only then may the relevant parity verdict change from
    `not_benchmarked`.

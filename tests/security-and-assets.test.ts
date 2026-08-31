@@ -181,6 +181,8 @@ describe("production safety boundaries", () => {
     expect(validateAssetUpload({ kind: "video", mimeType: "video/mp4", sizeBytes: 251 * 1024 * 1024, visibility: "private" })).toMatch(/exceeds/i);
     expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/plain", sizeBytes: 2_048, visibility: "private" })).toBeNull();
     expect(validateAssetUpload({ kind: "cut-lut", mimeType: "text/html", sizeBytes: 2_048, visibility: "private" })).toMatch(/not allowed/i);
+    expect(validateAssetUpload({ kind: "cut-font", mimeType: "font/ttf", sizeBytes: 20_000, visibility: "private" })).toBeNull();
+    expect(validateAssetUpload({ kind: "cut-font", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
     expect(monthlyAssetQuotaFor("video")).toEqual({ maxBytes: 25 * 1024 * 1024 * 1024, maxAssets: 200 });
   });
