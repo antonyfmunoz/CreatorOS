@@ -115,8 +115,7 @@ try {
   flyctl deploy . `
     --app creatoros-app `
     --config $flyConfigPath `
-    --remote-only `
-    --depot=false `
+    --local-only `
     --release-command-timeout 10m `
     --build-arg "VITE_CLERK_PUBLISHABLE_KEY=$env:VITE_CLERK_PUBLISHABLE_KEY" `
     --build-arg "CREATIVESOS_SOURCE_COMMIT=$sourceCommit" `
