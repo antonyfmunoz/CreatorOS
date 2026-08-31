@@ -27,25 +27,35 @@ function Invoke-Gcloud([string[]]$Arguments) {
   if ($LASTEXITCODE -ne 0) { throw "gcloud command failed: $($Arguments -join ' ')" }
 }
 
+function Test-Gcloud([string[]]$Arguments) {
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "SilentlyContinue"
+  try {
+    & $Gcloud @Arguments 1>$null 2>$null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 Invoke-Gcloud @("config", "set", "project", $Project)
 Invoke-Gcloud @("config", "set", "run/region", $Region)
 Invoke-Gcloud @("services", "enable", "run.googleapis.com", "artifactregistry.googleapis.com", "cloudbuild.googleapis.com", "secretmanager.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "cloudresourcemanager.googleapis.com", "--project", $Project)
 
-& $Gcloud artifacts repositories describe $Repository --location $Region --project $Project --format "value(name)" 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+if (-not (Test-Gcloud @("artifacts", "repositories", "describe", $Repository, "--location", $Region, "--project", $Project, "--format", "value(name)"))) {
   Invoke-Gcloud @("artifacts", "repositories", "create", $Repository, "--repository-format", "docker", "--location", $Region, "--description", "Private CreativesOS render images", "--project", $Project)
 }
 
 foreach ($name in @($WorkerServiceAccountName, $DispatcherServiceAccountName)) {
-  & $Gcloud iam service-accounts describe "$name@$Project.iam.gserviceaccount.com" --project $Project --format "value(email)" 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) {
+  if (-not (Test-Gcloud @("iam", "service-accounts", "describe", "$name@$Project.iam.gserviceaccount.com", "--project", $Project, "--format", "value(email)"))) {
     Invoke-Gcloud @("iam", "service-accounts", "create", $name, "--display-name", $name, "--project", $Project)
   }
 }
 
 foreach ($name in $requiredSecrets) {
-  & $Gcloud secrets describe $name --project $Project --format "value(name)" 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "Required secret $name is missing. Run scripts/sync-gcp-cutstudio-secrets.ps1 first." }
+  if (-not (Test-Gcloud @("secrets", "describe", $name, "--project", $Project, "--format", "value(name)"))) {
+    throw "Required secret $name is missing. Run scripts/sync-gcp-cutstudio-secrets.ps1 first."
+  }
 }
 
 $workerEmail = "$WorkerServiceAccountName@$Project.iam.gserviceaccount.com"
@@ -57,7 +67,13 @@ Invoke-Gcloud @("secrets", "add-iam-policy-binding", "creativesos-cut-dispatch-s
 
 $projectNumber = (& $Gcloud projects describe $Project --format "value(projectNumber)").Trim()
 if (-not $projectNumber) { throw "Unable to resolve the Google Cloud project number" }
-$buildServiceAccount = (& $Gcloud builds get-default-service-account --project $Project --format "value(serviceAccountEmail)" 2>$null).Trim()
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+try {
+  $buildServiceAccount = (& $Gcloud builds get-default-service-account --project $Project --format "value(serviceAccountEmail)" 2>$null).Trim()
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
 if (-not $buildServiceAccount) { $buildServiceAccount = "$projectNumber-compute@developer.gserviceaccount.com" }
 foreach ($role in @("roles/artifactregistry.writer", "roles/logging.logWriter")) {
   Invoke-Gcloud @("projects", "add-iam-policy-binding", $Project, "--member", "serviceAccount:$buildServiceAccount", "--role", $role, "--condition", "None", "--quiet")

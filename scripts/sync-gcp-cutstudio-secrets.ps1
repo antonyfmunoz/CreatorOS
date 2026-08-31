@@ -13,9 +13,19 @@ function Invoke-Gcloud([string[]]$Arguments) {
   if ($LASTEXITCODE -ne 0) { throw "gcloud command failed" }
 }
 
+function Test-Gcloud([string[]]$Arguments) {
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "SilentlyContinue"
+  try {
+    & $Gcloud @Arguments 1>$null 2>$null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 function Ensure-Secret([string]$Name) {
-  & $Gcloud secrets describe $Name --project $Project --format "value(name)" 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) {
+  if (-not (Test-Gcloud @("secrets", "describe", $Name, "--project", $Project, "--format", "value(name)"))) {
     Invoke-Gcloud @("secrets", "create", $Name, "--project", $Project, "--replication-policy", "automatic")
   }
 }
