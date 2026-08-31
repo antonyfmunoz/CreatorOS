@@ -71,7 +71,8 @@ describe("production deployment contract", () => {
     expect(deploySource).toContain("releaseIdentity.build.sourceFingerprint -ne $sourceFingerprint");
     expect(deploySource).toContain("releaseIdentity.build.sourceDirty -ne $false");
     expect(deploySource).toContain("releaseIdentity.migrations.parity -ne $true");
-    expect(deploySource).toContain("--depot=false");
+    expect(deploySource).toContain("--local-only");
+    expect(deploySource).not.toContain("--remote-only");
   });
 
   it("keeps production deployment manual, main-only, serialized, backed up, and environment-gated", () => {
