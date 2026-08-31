@@ -619,8 +619,8 @@ and increments its failure count.
   compile through sampled position, opacity, scale, Z/X/Y rotation,
   perspective, blur, brightness and saturation into FFmpeg output, including
   animated flip, directional wipe, iris, clock and authorized private
-  custom-mask transitions; native Lottie/Rive/Three playback, remaining
-  stylized effects and an isolated code executor remain.
+  custom-mask transitions, plus the allowlisted stylized-effect stack; native
+  font assets, Lottie/Rive/Three playback and an isolated code executor remain.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 
+const cutGraphicEffectSchema = z.object({
+  kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
+  parameters: z.record(z.string().max(80), z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()])).superRefine((value, context) => {
+    if (Object.keys(value).length > 20) context.addIssue({ code: z.ZodIssueCode.custom, message: "A graphic effect may contain at most 20 parameters" });
+  }).default({}),
+});
+
 export const cutClipSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
   start: z.number().finite().min(0),
@@ -81,6 +88,7 @@ export const cutGraphicSchema = z.object({
   revealDirection: z.enum(["left", "right", "up", "down", "clockwise", "counterclockwise"]).nullable().default(null),
   revealProgress: z.number().finite().min(0).max(1).default(1),
   revealMaskAssetId: z.string().uuid().nullable().default(null),
+  effects: z.array(cutGraphicEffectSchema).max(20).default([]),
   motionKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(3_600),
     x: z.number().finite().min(-4).max(4),
@@ -113,6 +121,14 @@ export const cutGraphicSchema = z.object({
     }
   }
   if (value.kind === "image" && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: "Image graphics require a private asset" });
+  const staticMask = value.effects.find((effect) => effect.kind === "mask");
+  const staticMaskAssetId = staticMask?.parameters.maskAssetId;
+  if (staticMask && (typeof staticMaskAssetId !== "string" || !z.string().uuid().safeParse(staticMaskAssetId).success)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["effects"], message: "Mask effects require a private image asset" });
+  }
+  if (value.revealMaskAssetId && typeof staticMaskAssetId === "string" && value.revealMaskAssetId !== staticMaskAssetId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["effects"], message: "A graphic may not combine different transition and static masks" });
+  }
 });
 
 export const cutMarkerSchema = z.object({

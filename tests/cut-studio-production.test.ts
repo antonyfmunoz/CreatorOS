@@ -39,6 +39,7 @@ describe("CutStudio programmable production runtime", () => {
   it("validates bounded, parameterized motion compositions", () => {
     expect(cutCompositionManifestSchema.parse(manifest).layers).toHaveLength(2);
     expect(() => cutCompositionManifestSchema.parse({ ...manifest, layers: [{ ...sourceLayer, durationInFrames: 121 }] })).toThrow(/inside the composition/i);
+    expect(() => cutCompositionManifestSchema.parse({ ...manifest, layers: [{ ...sourceLayer, effects: [{ id: "mask", kind: "mask", enabled: true, parameters: {} }] }] })).toThrow(/private image asset/i);
   });
 
   it("evaluates deterministic keyframes and enabled effects at an exact frame", () => {
@@ -140,6 +141,7 @@ describe("CutStudio programmable production runtime", () => {
         rotationY: 18,
         perspective: 800,
         enter: { kind: "iris" as const, durationInFrames: 20, easing: "linear" as const, direction: "in" as const },
+        effects: [{ id: "glow", kind: "glow" as const, enabled: true, parameters: { radius: 12, color: "#1d9bf0" } }, { id: "grain", kind: "grain" as const, enabled: true, parameters: { amount: .3 } }],
         style: { fill: "#1d9bf0", borderRadius: 18 },
         animations: [{ property: "x" as const, keyframes: [{ frame: 0, value: .6 }, { frame: 30, value: .25 }] }, { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: 1.4 }] }, { property: "blur" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 30, value: 3 }] }, { property: "brightness" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .9 }] }, { property: "saturation" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 30, value: .7 }] }],
       }],
@@ -161,6 +163,7 @@ describe("CutStudio programmable production runtime", () => {
       rotationX: 10,
       rotationY: 18,
       perspective: 800,
+      effects: [{ kind: "glow", parameters: { radius: 12, color: "#1d9bf0" } }, { kind: "grain", parameters: { amount: .3 } }],
       motionKeyframes: expect.arrayContaining([expect.objectContaining({ at: 1, x: .25, scale: 1.4, rotation: 12, blur: 3, brightness: .9, saturation: .7 })]),
     }]);
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 10 / 30, rotationX: 10, rotationY: 18, perspective: 800, revealKind: "iris", revealProgress: .5 })]));
