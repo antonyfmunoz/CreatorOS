@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "creativesos.cutstudio-render-plane.v1",
+  "project": "creativesos-504623",
+  "region": "us-central1",
+  "budget": {
+    "name": "CreativesOS render guardrail",
+    "monthlyUsd": 25,
+    "alertPercentages": [50, 75, 90, 100]
+  },
+  "dispatcher": {
+    "service": "creativesos-cut-dispatch",
+    "minimumInstances": 0,
+    "maximumInstances": 2,
+    "cpu": 1,
+    "memoryMiB": 256,
+    "concurrency": 20,
+    "authentication": "hmac_sha256_timestamp_nonce",
+    "secretSource": "gcp_secret_manager_from_1password"
+  },
+  "worker": {
+    "job": "creativesos-cut-worker",
+    "tasks": 1,
+    "cpu": 2,
+    "memoryMiB": 4096,
+    "timeoutSeconds": 7200,
+    "maximumRetries": 1,
+    "maximumClaimsPerExecution": 1,
+    "canonicalStorage": "r2"
+  },
+  "security": {
+    "workerPublicEndpoint": false,
+    "workerIdentity": "creativesos-cut-worker",
+    "dispatcherIdentity": "creativesos-cut-dispatch",
+    "dispatcherJobRole": "roles/run.invoker",
+    "runtimeUser": "node",
+    "plaintextSecretsOnDisk": false
+  }
+}
+

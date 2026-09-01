@@ -29,6 +29,10 @@ MEDIA_WORKER_REGION=local
 MEDIA_WORKER_CONCURRENCY=2
 CUT_WORKER_REGION=local
 CUT_WORKER_CONCURRENCY=2
+# Optional scale-to-zero Google Cloud render plane. The dispatcher URL is not a
+# secret; its HMAC credential remains server-only and lives in 1Password.
+# CUT_CLOUD_DISPATCH_URL=https://creativesos-cut-dispatch-REGION.run.app/dispatch
+# CUT_CLOUD_DISPATCH_SECRET=op://CreativesOS/Google Cloud CutStudio/password
 # Set measured infrastructure rates to attribute compute cost. Zero means
 # unpriced, not free; the operations UI preserves that distinction.
 MEDIA_WORKER_COST_MICROS_PER_MINUTE=0

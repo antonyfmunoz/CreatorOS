@@ -46,6 +46,7 @@ import {
   removeStoredAsset,
 } from "./asset-storage";
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
+import { dispatchCutStudioCloudJob } from "./cut-cloud-client";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -1169,8 +1170,14 @@ export async function processCutStudioJob(jobId: string) {
   }
 }
 
-function queueJob(_jobId: string) {
-  if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") setImmediate(() => void processDueCutStudioJobs());
+function queueJob(jobId: string) {
+  if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") {
+    setImmediate(() => void processDueCutStudioJobs());
+    return;
+  }
+  void dispatchCutStudioCloudJob(jobId).catch((error) => {
+    console.error("CutStudio cloud dispatch failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
+  });
 }
 
 export async function recoverInterruptedCutStudioJobs() {

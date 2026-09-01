@@ -2,6 +2,8 @@ import "dotenv/config";
 import { closeDatabase } from "./db";
 import {
   cutWorkerIdentity,
+  processDueCutStudioJobs,
+  recoverInterruptedCutStudioJobs,
   scheduleCutStudioProcessing,
   stopCutStudioProcessing,
 } from "./cut-studio";
@@ -13,6 +15,14 @@ if (process.env.CREATOROS_DEMO_MODE === "true" || process.env.CREATOROS_QUALIFIC
 async function main() {
   const identity = cutWorkerIdentity();
   process.stdout.write(`${JSON.stringify({ event: "cut.worker.start", workerId: identity.id, region: identity.region, capabilities: identity.capabilities, maxConcurrency: identity.maxConcurrency })}\n`);
+  if (process.env.CUT_WORKER_RUN_ONCE === "true") {
+    const recovered = await recoverInterruptedCutStudioJobs();
+    const processed = await processDueCutStudioJobs(1);
+    process.stdout.write(`${JSON.stringify({ event: "cut.worker.complete", workerId: identity.id, recovered, processed })}\n`);
+    await stopCutStudioProcessing().catch(() => undefined);
+    await closeDatabase().catch(() => undefined);
+    return;
+  }
   scheduleCutStudioProcessing();
   const keepAlive = setInterval(() => undefined, 60_000);
   let stopping = false;

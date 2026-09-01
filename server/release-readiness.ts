@@ -85,12 +85,17 @@ export function getReleaseReadiness(
       environment.YOUTUBE_CLIENT_SECRET &&
       environment.SOCIAL_TOKEN_ENCRYPTION_KEY,
   );
+  const cutStudioRenderPlane = environment.CUT_STUDIO_PROCESSING_MODE === "external"
+    ? Boolean(environment.CUT_CLOUD_DISPATCH_URL && environment.CUT_CLOUD_DISPATCH_SECRET && environment.CUT_CLOUD_DISPATCH_SECRET.length >= 32)
+    : true;
 
   const blockers: string[] = [];
   if (!clerkProduction)
     blockers.push(clerkConfigured ? "clerk_test_mode" : "clerk_unconfigured");
   if (!privateAssetDelivery)
     blockers.push("private_asset_delivery_unconfigured");
+  if (!cutStudioRenderPlane)
+    blockers.push("cut_studio_render_plane_unconfigured");
 
   return {
     status: blockers.length === 0 ? "release_ready" : "release_gated",
@@ -162,6 +167,9 @@ export function getReleaseReadiness(
     },
     cutStudio: {
       privateIngest: privateAssetDelivery ? "configured" : "unconfigured",
+      renderPlane: environment.CUT_STUDIO_PROCESSING_MODE === "external"
+        ? cutStudioRenderPlane ? "configured" : "unconfigured"
+        : "embedded",
       nonDestructiveEdl: "configured",
       timelineMarkers: "configured",
       boundarySnapping: "configured",
