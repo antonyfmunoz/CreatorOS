@@ -169,4 +169,6 @@ jobs:
       - run: node scripts/migrate-qualification.mjs
       - run: npx tsx scripts/seed-browser-qualification.ts
       - run: npx playwright install --with-deps chromium
+      - name: Qualify isolated CutStudio animation rendering
+        run: npm run verify:cut-animation
       - run: npx playwright test

@@ -63,7 +63,7 @@ export const cutClipSchema = z.object({
 
 export const cutGraphicSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
-  kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg", "image", "three"]).default("title"),
+  kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg", "image", "lottie", "rive", "three"]).default("title"),
   assetId: z.string().uuid().optional(),
   text: z.string().max(20_000),
   timelineStart: z.number().finite().min(0).max(43_200),
@@ -129,7 +129,7 @@ export const cutGraphicSchema = z.object({
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: error instanceof Error ? error.message : "SVG source is invalid" });
     }
   }
-  if (value.kind === "image" && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: "Image graphics require a private asset" });
+  if (["image", "lottie", "rive"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} graphics require a private asset` });
   if (value.kind === "three" && !value.primitive) context.addIssue({ code: z.ZodIssueCode.custom, path: ["primitive"], message: "3D graphics require a bounded primitive" });
   const staticMask = value.effects.find((effect) => effect.kind === "mask");
   const staticMaskAssetId = staticMask?.parameters.maskAssetId;

@@ -107,9 +107,15 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
   });
 
-  it("fails closed instead of silently flattening browser-only animation layers", () => {
+  it("compiles validated private animation layers for isolated final rendering", () => {
     const lottie = { id: "animated-mark", kind: "lottie" as const, name: "Animated mark", assetId: "00000000-0000-4000-8000-000000000008", from: 0, durationInFrames: 60 };
-    expect(() => compileCompositionToEdl({ ...manifest, layers: [sourceLayer, lottie] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] })).toThrow(/isolated animation renderer/i);
+    const rive = { id: "interactive-mark", kind: "rive" as const, name: "Interactive mark", assetId: "00000000-0000-4000-8000-000000000009", from: 60, durationInFrames: 60 };
+    const edl = compileCompositionToEdl({ ...manifest, layers: [sourceLayer, lottie, rive] }, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
+    expect(edl.graphics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "animated-mark", kind: "lottie", assetId: lottie.assetId, duration: 2 }),
+      expect.objectContaining({ id: "interactive-mark", kind: "rive", assetId: rive.assetId, timelineStart: 2, duration: 2 }),
+    ]));
+    expect(() => cutCompositionManifestSchema.parse({ ...manifest, layers: [sourceLayer, { ...rive, assetId: undefined }] })).toThrow(/rive layers require an asset/i);
   });
 
   it("requires a declared private font family and compiles its asset into the final graphic", () => {
