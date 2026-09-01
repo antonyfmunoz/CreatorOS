@@ -48,6 +48,7 @@ import {
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
+import { renderCutAnimationFrames } from "./cut-animation-renderer";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -621,12 +622,13 @@ async function renderMultitrack(
     const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
     const inputPath = path.join(temp, `source-${index}${extension}`);
     await materializePrivateAsset(asset.storageKey, inputPath);
-    return { asset, url: inputPath, media: asset.kind === "cut-font" ? { hasVideo: false, hasAudio: false } : await probeMedia(inputPath) };
+    const rendererResource = ["cut-font", "cut-lottie", "cut-rive"].includes(asset.kind);
+    return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false } : await probeMedia(inputPath) };
   }));
-  // Font files are renderer resources, not audiovisual demuxer inputs. Keep
-  // them addressable for drawtext while excluding them from the final FFmpeg
-  // input list so every media and generated-raster index remains stable.
-  const mediaInputs = inputs.filter((input) => input.asset.kind !== "cut-font");
+  // Fonts and validated animation documents are renderer resources rather
+  // than audiovisual demuxer inputs. Keep them addressable while excluding
+  // them from the FFmpeg input list so generated-raster indexes remain stable.
+  const mediaInputs = inputs.filter((input) => !["cut-font", "cut-lottie", "cut-rive"].includes(input.asset.kind));
   const inputIndex = new Map(mediaInputs.map((input, index) => [input.asset.id, index]));
   const inputById = new Map(inputs.map((input) => [input.asset.id, input]));
   const settings = new Map(trackSettings.map((track) => [track.track, track]));
@@ -744,9 +746,9 @@ async function renderMultitrack(
     }
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
-  const rasterGraphicInputPaths: string[] = [];
+  const rasterGraphicInputs: Array<{ path: string; animated: boolean }> = [];
   for (const graphic of graphics) {
-    const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputPaths.length}.png`);
+    const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputs.length}.png`);
     const staticMaskEffect = graphicEffect(graphic, "mask");
     const staticMaskAssetId = typeof staticMaskEffect?.parameters.maskAssetId === "string" ? staticMaskEffect.parameters.maskAssetId : null;
     if (graphic.revealMaskAssetId && staticMaskAssetId && graphic.revealMaskAssetId !== staticMaskAssetId) {
@@ -754,10 +756,19 @@ async function renderMultitrack(
     }
     const maskAssetId = graphic.revealMaskAssetId ?? staticMaskAssetId;
     const needsBakedEffects = Boolean(graphicEffect(graphic, "drop_shadow") || graphicEffect(graphic, "glow"));
-    const baseRasterPath = maskAssetId || needsBakedEffects ? path.join(temp, `graphic-raster-base-${rasterGraphicInputPaths.length}.png`) : rasterPath;
+    const baseRasterPath = maskAssetId || needsBakedEffects ? path.join(temp, `graphic-raster-base-${rasterGraphicInputs.length}.png`) : rasterPath;
     const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
     const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
-    if (graphic.kind === "image") {
+    if (graphic.kind === "lottie" || graphic.kind === "rive") {
+      if (maskAssetId || needsBakedEffects) throw new Error("Animation layers cannot use baked masks, shadows, or glows; use realtime effects instead");
+      const privateAnimation = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
+      const expectedKind = graphic.kind === "lottie" ? "cut-lottie" : "cut-rive";
+      if (!privateAnimation || privateAnimation.asset.kind !== expectedKind) throw new Error(`A composition ${graphic.kind} layer must reference ready private validated media`);
+      const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration });
+      rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
+      rasterGraphicInputs.push({ path: frames.pattern, animated: true });
+      continue;
+    } else if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
       await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
@@ -777,7 +788,7 @@ async function renderMultitrack(
       const titleFontFilter = await cutStudioFontFilter(privateFont?.url);
       await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", baseRasterPath], 30_000, jobId);
     }
-    const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputPaths.length}.png`) : rasterPath;
+    const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputs.length}.png`) : rasterPath;
     const styledInputPath = needsBakedEffects ? await bakeGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
     if (maskAssetId) {
       const privateMask = inputById.get(maskAssetId);
@@ -786,8 +797,8 @@ async function renderMultitrack(
       const mask = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 } } }).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
       await sharp(styledInputPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
     }
-    rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputPaths.length);
-    rasterGraphicInputPaths.push(rasterPath);
+    rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
+    rasterGraphicInputs.push({ path: rasterPath, animated: false });
   }
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
@@ -910,7 +921,7 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputPaths.flatMap((rasterPath) => ["-loop", "1", "-framerate", String(request.fps), "-i", rasterPath]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }

@@ -93,7 +93,7 @@ export const cutCompositionLayerSchema = z.object({
   exit: cutLayerTransitionSchema.optional(),
   animations: z.array(cutCompositionAnimationSchema).max(50).default([]),
 }).superRefine((value, context) => {
-  if (["video", "audio", "image", "lottie"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
+  if (["video", "audio", "image", "lottie", "rive"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
   if (["text", "caption", "svg", "path"].includes(value.kind) && !value.text?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `${value.kind} layers require source text or path data` });
   if (value.kind === "path" && value.text && (value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
   if (value.kind === "svg" && value.text) {
@@ -503,8 +503,6 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
 
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
-  const isolatedLayers = manifest.layers.filter((layer) => layer.kind === "lottie" || layer.kind === "rive");
-  if (isolatedLayers.length) throw new Error(`${isolatedLayers.map((layer) => layer.kind).join("/")} layers require the isolated animation renderer before timeline apply`);
   const fps = manifest.fps;
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
@@ -537,7 +535,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape", "path", "svg", "image", "three"].includes(layer.kind) || (!["shape", "image", "three"].includes(layer.kind) && !layer.text) || (layer.kind === "image" && !layer.assetId)) return [];
+    if (!["text", "caption", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
     const graphicX = Math.max(0, Math.min(0.95, layer.x));
     const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
@@ -547,7 +545,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     const three = layer.kind === "three" ? parseCutThreePrimitiveStyle(layer.style) : null;
     return [{
       id: layer.id,
-      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "three" ? "three" as const : "title" as const,
+      kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "lottie" ? "lottie" as const : layer.kind === "rive" ? "rive" as const : layer.kind === "three" ? "three" as const : "title" as const,
       assetId: layer.assetId,
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,

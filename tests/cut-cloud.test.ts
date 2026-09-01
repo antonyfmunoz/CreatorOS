@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import { cutCloudDispatchBodySchema, signCutCloudDispatch, verifyCutCloudDispatch } from "../server/cut-cloud-contract";
 import { cutCloudDispatchLeaseDue, dispatchCutStudioCloudJob } from "../server/cut-cloud-client";
 import { createCutCloudDispatchServer } from "../server/cut-cloud-dispatch";
@@ -12,6 +13,12 @@ afterEach(() => {
 });
 
 describe("CutStudio cloud dispatch contract", () => {
+  it("packages Chromium in the isolated GCP render image", () => {
+    const dockerfile = readFileSync(new URL("../Dockerfile.cut-cloud", import.meta.url), "utf8");
+    expect(dockerfile).toMatch(/apt-get install[^\n]*chromium/);
+    expect(dockerfile).toContain("USER node");
+  });
+
   it("exposes the Cloud Run readiness route", async () => {
     const server = createCutCloudDispatchServer({ project: "test", region: "us-central1", secret, runWorker: async () => null });
     server.listen(0, "127.0.0.1");
