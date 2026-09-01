@@ -47,11 +47,13 @@ if ($LASTEXITCODE -ne 0) {
 
 $secretReferences = @{
   "creativesos-cut-dispatch-secret" = "op://$Vault/Google Cloud CutStudio/password"
-  "creativesos-database-url" = "op://$Vault/Development/DATABASE_URL"
+  "creativesos-database-url" = "op://$Vault/Development/PRODUCTION_DATABASE_URL"
   "creativesos-r2-account-id" = "op://$Vault/Development/R2_ACCOUNT_ID"
   "creativesos-r2-access-key-id" = "op://$Vault/Development/R2_ACCESS_KEY_ID"
   "creativesos-r2-secret-access-key" = "op://$Vault/Development/R2_SECRET_ACCESS_KEY"
   "creativesos-r2-private-bucket" = "op://$Vault/Development/R2_PRIVATE_BUCKET_NAME"
+  "creativesos-r2-bucket-name" = "op://$Vault/Development/R2_BUCKET_NAME"
+  "creativesos-r2-public-base-url" = "op://$Vault/Development/R2_PUBLIC_BASE_URL"
 }
 
 foreach ($entry in $secretReferences.GetEnumerator()) {
