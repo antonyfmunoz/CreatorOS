@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
 import { cutCloudDispatchBodySchema, signCutCloudDispatch, verifyCutCloudDispatch } from "../server/cut-cloud-contract";
-import { dispatchCutStudioCloudJob } from "../server/cut-cloud-client";
+import { cutCloudDispatchLeaseDue, dispatchCutStudioCloudJob } from "../server/cut-cloud-client";
 import { createCutCloudDispatchServer } from "../server/cut-cloud-dispatch";
 
 const secret = "cut-cloud-test-secret-that-is-longer-than-thirty-two-characters";
@@ -79,5 +79,41 @@ describe("CutStudio cloud dispatch contract", () => {
       server.close();
       await once(server, "close");
     }
+  });
+
+  it("deduplicates fresh signed requests for the same durable render job", async () => {
+    const runWorker = vi.fn(async () => "projects/test/locations/us-central1/operations/one");
+    const server = createCutCloudDispatchServer({ project: "test", region: "us-central1", secret, runWorker });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Test server address is unavailable");
+    const body = { jobId };
+    const send = () => {
+      const envelope = signCutCloudDispatch(secret, body);
+      return fetch(`http://127.0.0.1:${address.port}/dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CreativesOS-Issued-At": envelope.issuedAt, "X-CreativesOS-Nonce": envelope.nonce, "X-CreativesOS-Signature": envelope.signature },
+        body: JSON.stringify(body),
+      });
+    };
+    try {
+      const first = await send();
+      const second = await send();
+      expect(first.status).toBe(202);
+      expect(second.status).toBe(202);
+      expect(await second.json()).toMatchObject({ accepted: true, duplicate: true });
+      expect(runWorker).toHaveBeenCalledOnce();
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("holds a durable dispatch lease through normal Cloud Run cold starts", () => {
+    const now = new Date("2026-08-31T20:00:00.000Z");
+    expect(cutCloudDispatchLeaseDue(null, now)).toBe(true);
+    expect(cutCloudDispatchLeaseDue(new Date(now.getTime() - 29 * 60_000), now)).toBe(false);
+    expect(cutCloudDispatchLeaseDue(new Date(now.getTime() - 31 * 60_000), now)).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ const secret = process.env.CUT_CLOUD_DISPATCH_SECRET || "";
 const port = Number(process.env.PORT) || 8080;
 const recentNonces = new Map<string, number>();
 const nonceTtlMs = 10 * 60_000;
+const jobDispatchTtlMs = 30 * 60_000;
 
 function json(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
@@ -72,6 +73,7 @@ export function createCutCloudDispatchServer(options: DispatchServerOptions = {}
   const configuredJobName = options.jobName ?? jobName;
   const configuredSecret = options.secret ?? secret;
   const executeWorker = options.runWorker ?? (() => runWorkerJob(configuredProject, configuredRegion, configuredJobName));
+  const recentJobs = new Map<string, { expiresAt: number; execution: Promise<string | null> }>();
   if (!configuredProject) throw new Error("CUT_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT is required");
   if (configuredSecret.length < 32) throw new Error("CUT_CLOUD_DISPATCH_SECRET must contain at least 32 characters");
   return http.createServer(async (req, res) => {
@@ -88,7 +90,20 @@ export function createCutCloudDispatchServer(options: DispatchServerOptions = {}
       pruneNonces(now);
       if (recentNonces.has(nonce)) return json(res, 202, { accepted: true, duplicate: true });
       recentNonces.set(nonce, now + nonceTtlMs);
-      const execution = await executeWorker();
+      recentJobs.forEach((entry, queuedJobId) => {
+        if (entry.expiresAt <= now) recentJobs.delete(queuedJobId);
+      });
+      const existing = recentJobs.get(parsed.data.jobId);
+      if (existing) return json(res, 202, { accepted: true, duplicate: true, execution: await existing.execution });
+      const requested = executeWorker();
+      recentJobs.set(parsed.data.jobId, { expiresAt: now + jobDispatchTtlMs, execution: requested });
+      let execution: string | null;
+      try {
+        execution = await requested;
+      } catch (error) {
+        recentJobs.delete(parsed.data.jobId);
+        throw error;
+      }
       process.stdout.write(`${JSON.stringify({ event: "cut.cloud.dispatched", jobId: parsed.data.jobId, execution })}\n`);
       return json(res, 202, { accepted: true, execution });
     } catch (error) {
