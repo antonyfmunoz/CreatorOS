@@ -49,6 +49,7 @@ import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
+import { cutRenderDurationArgs } from "./cut-render-duration";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -921,7 +922,7 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId);
 }
