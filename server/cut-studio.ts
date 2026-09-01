@@ -46,7 +46,7 @@ import {
   removeStoredAsset,
 } from "./asset-storage";
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
-import { dispatchCutStudioCloudJob } from "./cut-cloud-client";
+import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -1170,14 +1170,31 @@ export async function processCutStudioJob(jobId: string) {
   }
 }
 
+async function claimCutCloudDispatch(jobId: string) {
+  const requestedAt = new Date();
+  const retryBefore = new Date(requestedAt.getTime() - cutCloudDispatchLeaseMs);
+  const [claimed] = await db.update(cutStudioJobs).set({ detail: "External worker requested", heartbeatAt: requestedAt }).where(and(
+    eq(cutStudioJobs.id, jobId),
+    eq(cutStudioJobs.state, "queued"),
+    or(isNull(cutStudioJobs.heartbeatAt), lt(cutStudioJobs.heartbeatAt, retryBefore)),
+  )).returning({ id: cutStudioJobs.id });
+  return Boolean(claimed);
+}
+
 function queueJob(jobId: string) {
   if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") {
     setImmediate(() => void processDueCutStudioJobs());
     return;
   }
-  void dispatchCutStudioCloudJob(jobId).catch((error) => {
-    console.error("CutStudio cloud dispatch failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
-  });
+  void (async () => {
+    if (!await claimCutCloudDispatch(jobId)) return;
+    try {
+      await dispatchCutStudioCloudJob(jobId);
+    } catch (error) {
+      await db.update(cutStudioJobs).set({ detail: "External dispatch retry pending", heartbeatAt: null }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued")));
+      console.error("CutStudio cloud dispatch failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
+    }
+  })();
 }
 
 export async function recoverInterruptedCutStudioJobs() {

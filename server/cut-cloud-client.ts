@@ -1,6 +1,11 @@
 import { cutCloudDispatchBodySchema, signCutCloudDispatch } from "./cut-cloud-contract";
 
 const activeDispatches = new Set<string>();
+export const cutCloudDispatchLeaseMs = 30 * 60_000;
+
+export function cutCloudDispatchLeaseDue(heartbeatAt: Date | null, now = new Date()) {
+  return !heartbeatAt || heartbeatAt.getTime() <= now.getTime() - cutCloudDispatchLeaseMs;
+}
 
 export function cutCloudDispatchConfigured(environment: NodeJS.ProcessEnv = process.env) {
   return Boolean(environment.CUT_CLOUD_DISPATCH_URL && environment.CUT_CLOUD_DISPATCH_SECRET?.length && environment.CUT_CLOUD_DISPATCH_SECRET.length >= 32);
@@ -32,4 +37,3 @@ export async function dispatchCutStudioCloudJob(jobId: string, environment: Node
     activeDispatches.delete(jobId);
   }
 }
-
