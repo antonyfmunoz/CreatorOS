@@ -57,7 +57,9 @@ source commit, deploys the worker job and dispatcher, and prints the resulting
 dispatch URL. Configure Fly with that URL and the same vault-backed dispatch
 secret before setting `CUT_STUDIO_PROCESSING_MODE=external`.
 
+Use the dispatcher's `/readyz` route for external health checks. The HMAC-only
+`/dispatch` route is the sole mutation endpoint.
+
 Do not call the render plane production-complete until a real signed-in
 upload-to-render-to-private-download journey passes against the exact deployed
 web and worker revisions and the job execution/log receipt is retained.
-

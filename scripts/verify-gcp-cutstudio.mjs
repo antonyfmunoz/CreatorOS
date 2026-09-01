@@ -21,9 +21,9 @@ assert.match(provision, /roles\/run\.invoker/);
 assert.match(provision, /roles\/secretmanager\.secretAccessor/);
 assert.match(provision, /--min-instances", "0"/);
 assert.match(sync, /op:\/\/\$Vault\/Google Cloud CutStudio\/password/);
+assert.match(sync, /read --no-newline/);
 assert.doesNotMatch(sync, /Write-Output\s+\$?value/i);
 assert.match(worker, /CUT_WORKER_RUN_ONCE/);
 assert.match(studio, /dispatchCutStudioCloudJob/);
 
 process.stdout.write(`${JSON.stringify({ status: "verified", policy: policy.schemaVersion, project: policy.project, region: policy.region })}\n`);
-

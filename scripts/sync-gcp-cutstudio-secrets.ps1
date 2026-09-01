@@ -33,7 +33,7 @@ function Ensure-Secret([string]$Name) {
 function Add-SecretVersion([string]$Name, [string]$Reference) {
   Ensure-Secret $Name
   $opPath = (Get-Command op).Source
-  $command = '"{0}" read "{1}" | "{2}" secrets versions add "{3}" --project "{4}" --data-file=- --quiet' -f $opPath, $Reference, $Gcloud, $Name, $Project
+  $command = '"{0}" read --no-newline "{1}" | "{2}" secrets versions add "{3}" --project "{4}" --data-file=- --quiet' -f $opPath, $Reference, $Gcloud, $Name, $Project
   & $env:ComSpec /d /s /c $command | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Unable to sync $Name from 1Password" }
   Write-Output "Synced $Name"

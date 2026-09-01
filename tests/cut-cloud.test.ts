@@ -12,6 +12,22 @@ afterEach(() => {
 });
 
 describe("CutStudio cloud dispatch contract", () => {
+  it("exposes the Cloud Run readiness route", async () => {
+    const server = createCutCloudDispatchServer({ project: "test", region: "us-central1", secret, runWorker: async () => null });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Test server address is unavailable");
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/readyz`);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ status: "ok", project: "test", region: "us-central1" });
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("signs a fresh dispatch and rejects tampering or expiration", () => {
     const body = cutCloudDispatchBodySchema.parse({ jobId });
     const now = new Date("2026-08-31T20:00:00.000Z");
@@ -65,4 +81,3 @@ describe("CutStudio cloud dispatch contract", () => {
     }
   });
 });
-
