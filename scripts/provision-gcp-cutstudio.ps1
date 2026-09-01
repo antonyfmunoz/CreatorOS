@@ -16,7 +16,9 @@ $requiredSecrets = @(
   "creativesos-r2-account-id",
   "creativesos-r2-access-key-id",
   "creativesos-r2-secret-access-key",
-  "creativesos-r2-private-bucket"
+  "creativesos-r2-private-bucket",
+  "creativesos-r2-bucket-name",
+  "creativesos-r2-public-base-url"
 )
 
 if (-not (Test-Path -LiteralPath $Gcloud)) { throw "Google Cloud CLI was not found at $Gcloud" }
@@ -85,7 +87,7 @@ $commit = (git rev-parse HEAD).Trim()
 $image = "$Region-docker.pkg.dev/$Project/$Repository/cutstudio:$commit"
 Invoke-Gcloud @("builds", "submit", ".", "--project", $Project, "--config", "cloudbuild.cutstudio.yaml", "--substitutions", "_IMAGE=$image", "--quiet")
 
-$workerSecrets = "DATABASE_URL=creativesos-database-url:latest,R2_ACCOUNT_ID=creativesos-r2-account-id:latest,R2_ACCESS_KEY_ID=creativesos-r2-access-key-id:latest,R2_SECRET_ACCESS_KEY=creativesos-r2-secret-access-key:latest,R2_PRIVATE_BUCKET_NAME=creativesos-r2-private-bucket:latest"
+$workerSecrets = "DATABASE_URL=creativesos-database-url:latest,R2_ACCOUNT_ID=creativesos-r2-account-id:latest,R2_ACCESS_KEY_ID=creativesos-r2-access-key-id:latest,R2_SECRET_ACCESS_KEY=creativesos-r2-secret-access-key:latest,R2_PRIVATE_BUCKET_NAME=creativesos-r2-private-bucket:latest,R2_BUCKET_NAME=creativesos-r2-bucket-name:latest,R2_PUBLIC_BASE_URL=creativesos-r2-public-base-url:latest"
 Invoke-Gcloud @("run", "jobs", "deploy", $WorkerJob, "--project", $Project, "--region", $Region, "--image", $image, "--service-account", $workerEmail, "--cpu", "2", "--memory", "4Gi", "--task-timeout", "7200s", "--max-retries", "1", "--tasks", "1", "--set-env-vars", "NODE_ENV=production,ASSET_STORAGE_PROVIDER=r2,CUT_STUDIO_PROCESSING_MODE=external,CUT_WORKER_RUN_ONCE=true,CUT_WORKER_REGION=$Region,CUT_WORKER_CONCURRENCY=1", "--set-secrets", $workerSecrets, "--quiet")
 Invoke-Gcloud @("run", "jobs", "add-iam-policy-binding", $WorkerJob, "--project", $Project, "--region", $Region, "--member", "serviceAccount:$dispatcherEmail", "--role", "roles/run.invoker", "--quiet")
 

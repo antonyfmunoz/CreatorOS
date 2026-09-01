@@ -21,9 +21,14 @@ assert.match(provision, /roles\/run\.invoker/);
 assert.match(provision, /roles\/secretmanager\.secretAccessor/);
 assert.match(provision, /--min-instances", "0"/);
 assert.match(sync, /op:\/\/\$Vault\/Google Cloud CutStudio\/password/);
+assert.match(sync, /op:\/\/\$Vault\/Development\/PRODUCTION_DATABASE_URL/);
+assert.match(sync, /op:\/\/\$Vault\/Development\/R2_BUCKET_NAME/);
+assert.match(sync, /op:\/\/\$Vault\/Development\/R2_PUBLIC_BASE_URL/);
 assert.match(sync, /read --no-newline/);
 assert.doesNotMatch(sync, /Write-Output\s+\$?value/i);
 assert.match(worker, /CUT_WORKER_RUN_ONCE/);
 assert.match(studio, /dispatchCutStudioCloudJob/);
+assert.match(provision, /R2_BUCKET_NAME=creativesos-r2-bucket-name:latest/);
+assert.match(provision, /R2_PUBLIC_BASE_URL=creativesos-r2-public-base-url:latest/);
 
 process.stdout.write(`${JSON.stringify({ status: "verified", policy: policy.schemaVersion, project: policy.project, region: policy.region })}\n`);

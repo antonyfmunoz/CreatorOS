@@ -47,6 +47,7 @@ import {
 } from "./asset-storage";
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
+import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -952,8 +953,7 @@ function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
 
 async function renderJob(jobId: string, leaseToken: string, project: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
-  const outputName = `${project.name.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "cut"}.mp4`;
-  const outputPath = path.join(temp, outputName);
+  const { outputName, outputPath, sourcePath } = cutRenderWorkspacePaths(temp, project.name, source.originalFilename);
   try {
     let clips = project.edl.clips;
     if (request.clip) {
@@ -974,7 +974,6 @@ async function renderJob(jobId: string, leaseToken: string, project: typeof cutS
       await registerCutArtifact(source.id, artifact, "rendered_from");
       return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };
     }
-    const sourcePath = path.join(temp, source.originalFilename || "source.mp4");
     await materializePrivateAsset(source.storageKey, sourcePath);
     const media = await probeMedia(sourcePath);
     const filters: string[] = [];
@@ -1160,7 +1159,7 @@ export async function processCutStudioJob(jobId: string) {
   } catch (error) {
     console.error("CutStudio job failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "processing_failed";
-    const failed = await db.update(cutStudioJobs).set({ state: "error", detail: error instanceof Error ? error.message.slice(0, 240) : "Processing failed", errorCode: code, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).catch(() => []);
+    const failed = await db.update(cutStudioJobs).set({ state: "error", detail: cutJobErrorDetail(error), errorCode: code, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).catch(() => []);
     if (failed.length) processingOutcome = false;
   } finally {
     if (leaseHeartbeat) clearInterval(leaseHeartbeat);
