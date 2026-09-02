@@ -60,6 +60,7 @@ import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
+import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -174,9 +175,9 @@ function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number
   let expression = String(output(points.at(-1)!.value));
   for (let index = points.length - 2; index >= 0; index -= 1) {
     const left = points[index]; const right = points[index + 1];
-    const start = Number((graphic.timelineStart + left.at).toFixed(3));
-    const end = Number((graphic.timelineStart + right.at).toFixed(3));
-    const duration = Number((right.at - left.at).toFixed(3));
+    const start = Number((graphic.timelineStart + left.at).toFixed(6));
+    const end = Number((graphic.timelineStart + right.at).toFixed(6));
+    const duration = Number((right.at - left.at).toFixed(6));
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5));
     const progress = `(${timeVariable}-${start})/${duration}`;
     expression = `if(lt(${timeVariable}\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
@@ -841,9 +842,9 @@ async function renderMultitrack(
       // letterboxing instead of painting an opaque black box behind the image.
       await sharp(privateImage.url).rotate().resize(width, height, { fit: graphic.imageFit ?? "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "svg") {
-      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "three") {
-      await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
@@ -990,8 +991,8 @@ async function renderMultitrack(
     const x = `(${graphicMotionExpression(graphic, "x", size[0])})+${Number((anchorX * width - rasterWidth / 2).toFixed(5))}${pivotShiftX}`;
     const y = `(${graphicMotionExpression(graphic, "y", size[1])})+${Number((anchorY * height - rasterHeight / 2).toFixed(5))}${pivotShiftY}`;
     const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
-    rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
-    filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);
+    filters.push(`[${input}:v]${rasterFilters.join(",")}[preparedgraphic${index}]`);
+    filters.push(...cutGraphicOpacityFilters(`preparedgraphic${index}`, `rastergraphic${index}`, opacity));
     filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
     videoLabel = nextLabel;
   }

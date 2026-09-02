@@ -454,33 +454,37 @@ function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, loc
   return { opacity, x, y, scale, rotationY, reveal };
 }
 
+// Internal fast path: callers must first validate the complete manifest.
+// Sampling one layer must not reparse/evaluate every other layer for each point.
+function evaluateValidatedLayerFrame(layer: CutCompositionManifest["layers"][number], localFrame: number) {
+  const transition = transitionAtFrame(layer, localFrame);
+  return {
+    id: layer.id,
+    kind: layer.kind,
+    localFrame,
+    sourceFrame: layer.sourceStartFrame + localFrame,
+    x: valueAtFrame(layer, "x", localFrame, layer.x) + transition.x,
+    y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
+    scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
+    rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
+    rotationX: valueAtFrame(layer, "rotationX", localFrame, layer.rotationX),
+    rotationY: valueAtFrame(layer, "rotationY", localFrame, layer.rotationY) + transition.rotationY,
+    perspective: Math.max(0, valueAtFrame(layer, "perspective", localFrame, layer.perspective)),
+    opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
+    volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
+    blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
+    brightness: Math.max(0, valueAtFrame(layer, "brightness", localFrame, 1)),
+    saturation: Math.max(0, valueAtFrame(layer, "saturation", localFrame, 1)),
+    reveal: transition.reveal,
+    effects: layer.effects.filter((effect) => effect.enabled),
+  };
+}
+
 export function evaluateCompositionFrame(manifestInput: unknown, frame: number) {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const boundedFrame = Math.max(0, Math.min(manifest.durationInFrames - 1, Math.floor(frame)));
-  return manifest.layers.filter((layer) => boundedFrame >= layer.from && boundedFrame < layer.from + layer.durationInFrames).map((layer) => {
-    const localFrame = boundedFrame - layer.from;
-    const transition = transitionAtFrame(layer, localFrame);
-    return {
-      id: layer.id,
-      kind: layer.kind,
-      localFrame,
-      sourceFrame: layer.sourceStartFrame + localFrame,
-      x: valueAtFrame(layer, "x", localFrame, layer.x) + transition.x,
-      y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
-      scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
-      rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
-      rotationX: valueAtFrame(layer, "rotationX", localFrame, layer.rotationX),
-      rotationY: valueAtFrame(layer, "rotationY", localFrame, layer.rotationY) + transition.rotationY,
-      perspective: Math.max(0, valueAtFrame(layer, "perspective", localFrame, layer.perspective)),
-      opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
-      volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
-      blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
-      brightness: Math.max(0, valueAtFrame(layer, "brightness", localFrame, 1)),
-      saturation: Math.max(0, valueAtFrame(layer, "saturation", localFrame, 1)),
-      reveal: transition.reveal,
-      effects: layer.effects.filter((effect) => effect.enabled),
-    };
-  });
+  return manifest.layers.filter((layer) => boundedFrame >= layer.from && boundedFrame < layer.from + layer.durationInFrames)
+    .map((layer) => evaluateValidatedLayerFrame(layer, boundedFrame - layer.from));
 }
 
 function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompositionManifest["layers"][number]) {
@@ -488,18 +492,25 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   const important = new Set<number>([0, finalFrame]);
   for (const animation of layer.animations) {
     if (["x", "y", "scale", "rotation", "rotationX", "rotationY", "perspective", "opacity", "blur", "brightness", "saturation"].includes(animation.property)) {
-      for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
+      for (const keyframe of animation.keyframes) {
+        important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
+        // Preserve the last held composition frame before a step changes.
+        // A sparse linear sample must not turn an authored cut into a glide.
+        if (keyframe.easing === "step" && keyframe.frame > 0 && keyframe.frame <= finalFrame) important.add(keyframe.frame - 1);
+      }
     }
   }
   if (layer.enter) important.add(Math.max(0, Math.min(finalFrame, layer.enter.durationInFrames)));
   if (layer.exit) important.add(Math.max(0, Math.min(finalFrame, layer.durationInFrames - layer.exit.durationInFrames)));
+  if (important.size > 50) throw new Error(`Layer ${layer.name} exceeds the native limit of 50 motion boundary frames; split the layer instead of dropping authored keyframes`);
   const candidate = Array.from(important).sort((left, right) => left - right);
   for (let index = 0; candidate.length < 12 && index < 10; index += 1) candidate.push(Math.round(finalFrame * index / 9));
   const ordered = Array.from(new Set(candidate)).sort((left, right) => left - right);
-  const frames = ordered.length <= 12 ? ordered : Array.from({ length: 12 }, (_, index) => ordered[Math.round(index * (ordered.length - 1) / 11)]);
+  // Keep every authored boundary. Extra samples still approximate nonlinear
+  // easing; this is not a claim of general frame-exact curve interpolation.
+  const frames = ordered;
   return Array.from(new Set(frames)).map((frame) => {
-    const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
-    if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
+    const evaluated = evaluateValidatedLayerFrame(layer, frame);
     const revealKind = evaluated.reveal?.kind ?? null;
     return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, blur: evaluated.blur, brightness: evaluated.brightness, saturation: evaluated.saturation, opacity: evaluated.opacity, revealKind, revealDirection: evaluated.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(evaluated.reveal.direction) ? evaluated.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null, revealProgress: evaluated.reveal?.progress ?? 1, revealMaskAssetId: evaluated.reveal?.maskAssetId ?? null, easing: "linear" as const };
   });
@@ -543,7 +554,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
   });
   const graphics = manifest.layers.flatMap((layer) => {
     if (!["text", "caption", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
-    const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
+    const initialState = evaluateValidatedLayerFrame(layer, 0);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
