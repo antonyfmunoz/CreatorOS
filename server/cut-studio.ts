@@ -63,6 +63,7 @@ import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
 import { cutGraphicColorFilters } from "./cut-graphic-color";
+import { reserveCutWorkerSlot } from "./cut-worker-admission";
 import { cutColorMatrixControls } from "../shared/cut-color-effects";
 import { cutFilterGraphArgs } from "./cut-filter-graph";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
@@ -1217,8 +1218,9 @@ async function createProxyJob(jobId: string, leaseToken: string, project: typeof
 }
 
 export async function processCutStudioJob(jobId: string) {
-  if (running.has(jobId)) return;
-  running.add(jobId);
+  // Dispatch queries can overlap while awaiting their queued rows. Recheck and
+  // reserve here, synchronously, rather than trusting their stale slot counts.
+  if (!reserveCutWorkerSlot(running, jobId, cutWorker.maxConcurrency, cutWorkerStopping)) return;
   const leaseToken = randomUUID();
   let leaseHeartbeat: NodeJS.Timeout | null = null;
   const processingStartedAt = Date.now();
