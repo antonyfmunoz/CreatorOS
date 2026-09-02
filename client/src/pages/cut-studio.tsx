@@ -10,6 +10,7 @@ import { CutStudioRenderPreview } from "@/components/cut/CutStudioRenderPreview"
 import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, switchCutMulticamAngle, trimCutClip, ungroupCutClips, validateCutEdl, type CutAudioRoutingTemplatePayload, type CutEdl, type CutMulticamGroup, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
 import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
+import { updateCutTrackSettings } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile"; createdAt: string };
 type ProjectLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } } };
@@ -67,6 +68,11 @@ export default function CutStudioPage() {
   const trimRef = useRef<{ clipId: string; edge: "start" | "end"; startX: number; trackWidth: number; sourceDuration: number; origin: CutEdl; moved: boolean; rolling: boolean } | null>(null);
   const suppressClipClickRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveGeneration = useRef(0);
+  const saveInFlight = useRef<symbol | null>(null);
+  const failedSave = useRef<string | null>(null);
+  const openGeneration = useRef(0);
+  const [saveWake, setSaveWake] = useState(0);
   const initialProjectOpened = useRef(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
@@ -133,6 +139,10 @@ export default function CutStudioPage() {
   useEffect(() => { void refreshProjects().catch((error) => setMessage(error.message)); }, [refreshProjects]);
 
   const openProject = useCallback(async (id: string) => {
+    const opening = ++openGeneration.current;
+    ++saveGeneration.current;
+    clearTimeout(saveTimer.current);
+    saveInFlight.current = null;
     setBusy("open"); setMessage("");
     try {
       const [projectResponse, mediaResponse, reviewResponse, workspaceResponse] = await Promise.all([apiRequest("GET", `/api/cut/projects/${id}`), apiRequest("GET", `/api/cut/projects/${id}/media`), apiRequest("GET", `/api/cut/projects/${id}/reviews`), apiRequest("GET", `/api/cut/workspace/projects/${id}`)]);
@@ -142,10 +152,20 @@ export default function CutStudioPage() {
       const projectMedia = next.media ?? [];
       const primaryMedia = projectMedia.find((item) => item.assetId === next.sourceAssetId) ?? projectMedia[0] ?? null;
       const templateResponse = await apiRequest("GET", `/api/cut/audio-routing-templates?businessId=${encodeURIComponent(next.businessId)}`);
+      const nextReviews = await reviewResponse.json() as ReviewVersion[];
+      const nextWorkspace = await workspaceResponse.json() as WorkspacePayload;
+      const nextTemplates = await templateResponse.json() as AudioRoutingTemplate[];
+      if (opening !== openGeneration.current) return;
       edlRef.current = next.edl;
-      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(await reviewResponse.json() as ReviewVersion[]); setWorkspace(await workspaceResponse.json() as WorkspacePayload); setAudioTemplates(await templateResponse.json() as AudioRoutingTemplate[]); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not open the project"); }
-    finally { setBusy(""); }
+      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(nextReviews); setWorkspace(nextWorkspace); setAudioTemplates(nextTemplates); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
+    } catch (error) { if (opening === openGeneration.current) setMessage(error instanceof Error ? error.message : "Could not open the project"); }
+    finally { if (opening === openGeneration.current) setBusy(""); }
+  }, []);
+
+  useEffect(() => () => {
+    ++saveGeneration.current;
+    ++openGeneration.current;
+    clearTimeout(saveTimer.current);
   }, []);
 
   useEffect(() => {
@@ -183,20 +203,44 @@ export default function CutStudioPage() {
   }, [edl, selectedClip]);
 
   useEffect(() => {
-    if (!project || !edl || JSON.stringify(edl) === JSON.stringify(project.edl)) return;
+    if (!project || !edl || busy === "open" || saveInFlight.current || JSON.stringify(edl) === JSON.stringify(project.edl)) return;
+    const saveIdentity = JSON.stringify([saveGeneration.current, project.id, revision, edl]);
+    if (failedSave.current === saveIdentity) return;
     clearTimeout(saveTimer.current);
+    const generation = saveGeneration.current;
+    const submitted = edl;
     setSaveStatus("Saving…");
     saveTimer.current = setTimeout(async () => {
+      if (generation !== saveGeneration.current || saveInFlight.current) return;
+      const saving = Symbol("timeline-save");
+      saveInFlight.current = saving;
+      let succeeded = false;
       try {
-        const response = await apiRequest("PUT", `/api/cut/projects/${project.id}/edl`, edl, { "If-Match": String(revision) });
+        const response = await apiRequest("PUT", `/api/cut/projects/${project.id}/edl`, submitted, { "If-Match": String(revision) });
         const saved = await response.json() as CutEdl;
         const nextRevision = Number(response.headers.get("X-EDL-Rev"));
-        edlRef.current = saved;
-        setRevision(nextRevision); setEdl(saved); setProject((value) => value ? { ...value, edl: saved, revision: nextRevision } : value); setSaveStatus("Saved");
-      } catch (error) { setSaveStatus("Save failed"); setMessage(error instanceof Error ? error.message : "Could not save the edit"); }
+        if (generation !== saveGeneration.current) return;
+        if (!Number.isInteger(nextRevision) || nextRevision <= revision) throw new Error("The saved edit revision could not be verified. Reload the project before continuing.");
+        const hasNewerEdit = JSON.stringify(edlRef.current) !== JSON.stringify(submitted);
+        if (!hasNewerEdit) { edlRef.current = saved; setEdl(saved); }
+        setRevision(nextRevision);
+        setProject((value) => value?.id === project.id ? { ...value, edl: saved, revision: nextRevision } : value);
+        setSaveStatus(hasNewerEdit ? "Saving…" : "Saved");
+        succeeded = true;
+      } catch (error) {
+        if (generation === saveGeneration.current) {
+          failedSave.current = JSON.stringify([generation, project.id, revision, edlRef.current]);
+          setSaveStatus("Save failed"); setMessage(error instanceof Error ? error.message : "Could not save the edit");
+        }
+      } finally {
+        if (saveInFlight.current === saving) saveInFlight.current = null;
+        // Only a confirmed save advances the queue. Failures retain the draft
+        // and require an edit/retry, rather than repeatedly overwriting a conflict.
+        if (succeeded && generation === saveGeneration.current) setSaveWake((value) => value + 1);
+      }
     }, 800);
     return () => clearTimeout(saveTimer.current);
-  }, [edl, project, revision]);
+  }, [edl, project, revision, busy, saveWake]);
 
   useEffect(() => {
     const active = jobs.filter((job) => job.state === "queued" || job.state === "running");
@@ -859,9 +903,8 @@ export default function CutStudioPage() {
   };
 
   const updateTrackSettings = (track: string, patch: Partial<NonNullable<CutEdl["tracks"]>[number]>) => {
-    if (!edl || edl.version !== 3) return;
-    const current = edl.tracks?.find((item) => item.track === track) ?? { track, locked: false, hidden: false, muted: false, solo: false, gain: 1 };
-    applyEdit({ ...edl, tracks: [...(edl.tracks ?? []).filter((item) => item.track !== track), { ...current, ...patch }] });
+    if (!edl || !project) return;
+    applyEdit(updateCutTrackSettings(edl, track, patch, Math.max(project.duration, ...mediaLibrary.map((media) => media.duration))));
   };
 
   const updateAudioBus = (id: "dialogue" | "music" | "effects", patch: Partial<NonNullable<CutEdl["audioBuses"]>[number]>) => {
@@ -966,7 +1009,7 @@ export default function CutStudioPage() {
   const renderEstimate = estimateCutRenderSeconds(cutDuration(edl), { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps } as CutRenderRequest);
   return (
     <main className="min-h-screen bg-black pb-24 text-white">
-      <header className="sticky top-0 z-30 flex h-14 items-center border-b border-zinc-800 bg-black px-3"><Button variant="ghost" size="icon" onClick={() => { setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><Scissors className="ml-1 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 min-w-0 flex-1 truncate font-bold">{project.name}</h1><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="ml-1 rounded-lg border border-zinc-700 p-2" href={`/api/cut/projects/${project.id}/export.edl`} aria-label="Export EDL"><Download className="h-4 w-4"/></a></header>
+      <header className="sticky top-0 z-30 flex h-14 items-center border-b border-zinc-800 bg-black px-3"><Button variant="ghost" size="icon" onClick={() => { ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><Scissors className="ml-1 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 min-w-0 flex-1 truncate font-bold">{project.name}</h1><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="ml-1 rounded-lg border border-zinc-700 p-2" href={`/api/cut/projects/${project.id}/export.edl`} aria-label="Export EDL"><Download className="h-4 w-4"/></a></header>
       <div className="mx-auto grid max-w-[1500px] gap-4 p-3 lg:grid-cols-[1fr_360px]">
         <section className="min-w-0 space-y-4">
           <div className="grid gap-3 xl:grid-cols-2">
@@ -1063,7 +1106,7 @@ export default function CutStudioPage() {
           {workspace && <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4" aria-label="CutStudio workspace collaboration"><div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">Workspace collaboration</h2><p className="mt-1 text-xs text-zinc-500">Invite signed-in teammates and use @username to notify them in private time-coded notes.</p></div><Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/cut-studio/workspace/${project.id}`)}><Copy className="mr-1.5 h-3.5 w-3.5"/>Workspace link</Button></div><div className="mt-3 flex gap-2"><input aria-label="Collaborator username" value={collaboratorUsername} onChange={(event) => setCollaboratorUsername(event.target.value.replace(/^@/, ""))} placeholder="username" className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs outline-none focus:border-[#1d9bf0]"/><Button size="sm" disabled={!collaboratorUsername.trim() || busy === "collaborator"} onClick={() => void addCollaborator()}>{busy === "collaborator" ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Plus className="h-3.5 w-3.5"/>}</Button></div><div className="mt-3 flex flex-wrap gap-2">{workspace.participants.map((participant) => <span key={participant.id} className="inline-flex items-center gap-1 rounded-full bg-black px-2 py-1 text-[10px] text-zinc-400"><span className="font-bold text-zinc-200">@{participant.username}</span> · {participant.role}{participant.role !== "owner" && <button aria-label={`Remove ${participant.username} collaborator`} onClick={async () => { await apiRequest("DELETE", `/api/cut/projects/${project.id}/collaborators/${participant.id}`); await refreshWorkspace(); }}><X className="h-3 w-3 text-zinc-600"/></button>}</span>)}</div><textarea aria-label="Owner workspace note" value={workspaceNote} onChange={(event) => setWorkspaceNote(event.target.value)} placeholder={`Note at ${formatTime(playhead)} · mention @username`} className="mt-3 min-h-20 w-full rounded-xl border border-zinc-700 bg-black p-3 text-xs outline-none focus:border-[#1d9bf0]"/><Button className="mt-2" size="sm" variant="outline" disabled={!workspaceNote.trim() || busy === "workspace-note"} onClick={() => void addWorkspaceNote()}>{busy === "workspace-note" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <MessageSquare className="mr-1.5 h-3.5 w-3.5"/>}Add note</Button>{workspace.notes.length > 0 && <div className="mt-3 space-y-2">{workspace.notes.slice(-5).map((note) => <button key={note.id} className="w-full rounded-lg border border-zinc-800 bg-black p-2 text-left" onClick={() => seek(note.positionMs / 1_000)}><span className="text-[10px] font-bold text-[#1d9bf0]">{formatTime(note.positionMs / 1_000)}</span><p className="mt-1 text-xs">{note.body}</p><p className="mt-1 text-[10px] text-zinc-600">{note.author?.displayName ?? "Workspace member"}</p></button>)}</div>}</div>}
           {comparisonVersionIds.length === 2 && <div className="rounded-2xl border border-[#1d9bf0]/40 bg-zinc-950 p-4" aria-label="Review version comparison"><div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">Version comparison</h2><p className="mt-1 text-xs text-zinc-500">Play two private review renders in sync and inspect the revision side by side.</p></div><Button size="sm" variant="outline" onClick={() => void toggleComparisonPlayback()}><Play className="mr-1.5 h-3.5 w-3.5"/>Play / pause both</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{comparisonVersionIds.map((versionId, index) => { const version = reviews.find((item) => item.id === versionId); return <div key={versionId} className="overflow-hidden rounded-xl border border-zinc-800 bg-black"><div className="flex items-center justify-between px-3 py-2 text-xs"><span className="font-bold">{version?.label}</span><span className="text-zinc-500">Revision {version?.revision}</span></div><video ref={(node) => { comparisonVideoRefs.current[index] = node; }} aria-label={`${version?.label ?? "Review version"} comparison video`} className="aspect-video w-full bg-black object-contain" src={comparisonMedia[versionId]} controls={false} muted={index === 0} onPlay={() => comparisonVideoRefs.current.forEach((video) => { if (video && video.paused) void video.play(); })} onPause={() => comparisonVideoRefs.current.forEach((video) => { if (video && !video.paused) video.pause(); })} onTimeUpdate={(event) => synchronizeComparison(event.currentTarget)}/></div>; })}</div></div>}
           {(reviews.length > 0 || reviewUrl) && <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1d9bf0]"/><h2 className="font-bold">Review & approval</h2></div>{reviewUrl && <div className="mt-3 rounded-xl border border-[#1d9bf0]/40 bg-[#1d9bf0]/10 p-3"><p className="text-xs font-bold text-[#1d9bf0]">New link · shown once</p><p className="mt-1 break-all text-[11px] text-zinc-300">{reviewUrl}</p><Button className="mt-2" size="sm" onClick={() => void navigator.clipboard.writeText(reviewUrl)}><Copy className="mr-1.5 h-3.5 w-3.5"/>Copy</Button></div>}<div className="mt-3 space-y-3">{reviews.map((version) => <div key={version.id} className="rounded-xl bg-zinc-900 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-sm font-bold">{version.label}</p><p className="text-[11px] text-zinc-600">Edit revision {version.revision}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${version.reviewStatus === "approved" ? "bg-emerald-950 text-emerald-300" : version.reviewStatus === "changes_requested" ? "bg-amber-950 text-amber-300" : "bg-black text-zinc-400"}`}>{version.reviewStatus.replace("_", " ")}</span>{version.artifactAssetId && <Button size="sm" variant={comparisonVersionIds.includes(version.id) ? "default" : "outline"} aria-label={`Select ${version.label} for comparison`} aria-pressed={comparisonVersionIds.includes(version.id)} onClick={() => void toggleComparisonVersion(version)}>{comparisonVersionIds.includes(version.id) ? "Selected" : "Compare"}</Button>}</div></div><div className="mt-3 space-y-2">{version.comments.map((comment) => <div key={comment.id} className={`rounded-lg border p-2 ${comment.status === "resolved" ? "border-zinc-800 opacity-50" : "border-zinc-700 bg-black"}`}><div className="flex items-start gap-2"><button className="text-[10px] font-bold text-[#1d9bf0]" onClick={() => seek(comment.positionMs / 1_000)}>{formatTime(comment.positionMs / 1_000)}</button><p className="min-w-0 flex-1 text-xs">{comment.body}<span className="mt-1 block text-[10px] text-zinc-600">{comment.authorName}</span></p>{comment.status === "open" && <button aria-label="Resolve review note" onClick={async () => { await apiRequest("POST", `/api/cut/projects/${project.id}/review-comments/${comment.id}/resolve`, {}); await refreshReviews(); }}><CheckCircle2 className="h-4 w-4 text-emerald-400"/></button>}</div></div>)}</div><div className="mt-3 flex flex-wrap gap-2">{version.links.filter((link) => link.status === "active").map((link) => <Button key={link.id} size="sm" variant="ghost" onClick={async () => { await apiRequest("POST", `/api/cut/projects/${project.id}/reviews/${link.id}/revoke`, {}); await refreshReviews(); }}><X className="mr-1 h-3 w-3"/>Revoke {link.label}</Button>)}</div></div>)}</div></div>}
-          {saveStatus && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{saveStatus}</p>}
+          {saveStatus && <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300"><p role="status">{saveStatus}</p>{saveStatus === "Save failed" && <Button className="mt-2" size="sm" variant="outline" onClick={() => { failedSave.current = null; setSaveWake((value) => value + 1); }}>Retry saving edit</Button>}</div>}
           {message && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{message}</p>}
         </aside>
       </div>

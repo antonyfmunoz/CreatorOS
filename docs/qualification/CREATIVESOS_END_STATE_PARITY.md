@@ -2,6 +2,12 @@
 
 Last reconciled: 2026-08-26
 
+CutStudio update (2026-09-02): use the
+[evidence-separated Remotion closure register](CUTSTUDIO_REMOTION_CLOSURE.md)
+for the current programmable-runtime gaps and exact production boundary. Older
+bounded-editor qualification does not establish public executable-capsule
+support, exhaustive media compatibility or competitive parity.
+
 The dependency-ordered implementation program is maintained in
 [`CREATIVESOS_DESIRED_END_STATE_ROADMAP.md`](../CREATIVESOS_DESIRED_END_STATE_ROADMAP.md).
 This ledger remains the qualification state of each implemented capability;

@@ -381,6 +381,20 @@ export function cutTrackEffectiveGain(track: string, tracks: CutTrackSettings[] 
   return (setting?.gain ?? 1) * (bus?.muted ? 0 : bus?.gain ?? 1);
 }
 
+export function updateCutTrackSettings(edl: CutEdl, track: string, patch: Partial<CutTrackSettings>, duration: number): CutEdl {
+  // Legacy sequential edits expose the primary mixer too. Upgrade on the first
+  // track edit, preserving their speed-adjusted concatenation order and trims.
+  let cursor = 0;
+  const clips = edl.version === 3 ? edl.clips : edl.clips.map((clip) => {
+    const timelineStart = cursor;
+    cursor += (clip.end - clip.start) / (clip.speed ?? 1);
+    return { ...clip, track: "v1", timelineStart };
+  });
+  if (!clips.some((clip) => (clip.track ?? "v1") === track)) throw new Error("The selected timeline track does not exist");
+  const current = edl.tracks?.find((item) => item.track === track) ?? { track, locked: false, hidden: false, muted: false, solo: false, gain: 1 };
+  return validateCutEdl({ ...edl, version: 3, clips, tracks: [...(edl.tracks ?? []).filter((item) => item.track !== track), { ...current, ...patch, track }] }, duration);
+}
+
 export function normalizeCutClips(clips: CutClip[], duration?: number, version: 1 | 2 | 3 = 2): CutClip[] {
   const maxDuration = typeof duration === "number" && Number.isFinite(duration) ? Math.max(0, duration) : Number.POSITIVE_INFINITY;
   const ordered = clips

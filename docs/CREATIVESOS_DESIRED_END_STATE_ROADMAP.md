@@ -2,6 +2,12 @@
 
 Last reconciled: 2026-08-26
 
+CutStudio checkpoint (2026-09-02): the
+[Remotion closure register](qualification/CUTSTUDIO_REMOTION_CLOSURE.md)
+separates current production receipts from isolated prototype capabilities and
+remaining native/security/benchmark work. Do not interpret older bounded-editor
+closure below as programmable-video parity or as an external-provider-only gap.
+
 ## Purpose
 
 This is the canonical execution roadmap from the current CreativesOS production

@@ -1060,7 +1060,9 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
         while (remaining > 2.0001) { audioFilters.push("atempo=2"); remaining /= 2; }
         while (remaining < 0.4999) { audioFilters.push("atempo=0.5"); remaining /= 0.5; }
         if (Math.abs(remaining - 1) > 0.0001) audioFilters.push(`atempo=${remaining}`);
-        audioFilters.push(`volume=${clip.volume ?? 1}`);
+        const primaryTrack = project.edl.tracks?.find((track) => track.track === "v1");
+        const gain = primaryTrack?.muted ? 0 : cutTrackEffectiveGain("v1", project.edl.tracks ?? [], project.edl.audioBuses ?? []);
+        audioFilters.push(`volume='${clipVolumeExpression(clip, gain)}':eval=frame`);
         if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
         if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
         filters.push(`[0:a]${audioFilters.join(",")}[a${index}]`);
