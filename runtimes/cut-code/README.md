@@ -11,8 +11,14 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
-- `@creativesos/cut`: `useFrame`, `useComposition`, `useInputs`, `FullFrame`,
-  local-frame `Sequence`, and numeric `interpolate`.
+- `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
+  `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
+- Stateless motion math: numeric keyframes with clamp/extend/wrap behavior,
+  easing and cubic Bezier timing, analytic under/critical/over-damped physical
+  springs, explicit sRGB hex/alpha transitions and keyed repeatable variation.
+  `seededRandom` is creative variation, not cryptographic randomness. Spring
+  mass/stiffness/damping are direct physical parameters; duration remapping and
+  spring-settling measurement are not implemented by this API.
 - Direct frame-driven PNG (including transparency) or a silent H.264 MP4.
   Frames and input props are passed explicitly to the React composition.
 - Strict source, expanded-archive, dimensions, duration, pixel-frame, output,
@@ -63,3 +69,27 @@ input binding, alpha, a probed MP4 frame count, denied internet/metadata/local-f
 reads, actual watchdog timeout and actual abort, and no leftover containers.
 Passing this proves the bounded contract, not arbitrary-code safety or competitor
 equivalence for every possible input.
+
+## Motion authoring example
+
+```tsx
+import { FullFrame, useFrame, useComposition, spring, interpolateColor } from '@creativesos/cut';
+export default function Launch({ title }) {
+  const frame = useFrame();
+  const { fps } = useComposition();
+  return <FullFrame style={{
+    background: interpolateColor(frame, [0, 60], ['#08080cff', '#182850ff']),
+    display: 'grid', placeItems: 'center', color: 'white',
+  }}>
+    <h1 style={{ transform: `scale(${spring({ frame, fps, damping: 14 })})` }}>{title}</h1>
+  </FullFrame>;
+}
+```
+
+This is our native API, not source-compatible Remotion. Public documentation on
+[spring motion](https://www.remotion.dev/docs/spring),
+[easing](https://www.remotion.dev/docs/easing) and
+[repeating sequences](https://www.remotion.dev/docs/loop) informs the user jobs;
+no competitor implementation is copied. The qualification suite checks actual
+nested timing, global frames, frozen frames, Bezier position and color pixels,
+and rejects React effect failures instead of accepting a blank artifact.

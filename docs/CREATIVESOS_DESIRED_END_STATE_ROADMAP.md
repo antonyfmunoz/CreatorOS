@@ -624,12 +624,18 @@ and increments its failure count.
   cube, pyramid and plane geometry now shares one inert browser/final-render
   path. Private self-contained Lottie JSON now has bounded upload validation,
   owned-project registration and deterministic expression-free SVG preview;
-  its isolated final renderer remains. Private `.riv` media now has bounded
+  bounded isolated final rendering is implemented. Private `.riv` media has bounded
   header/size validation, owned-project registration and deterministic browser
   playback through a pinned same-origin Canvas2D/WASM runtime with CDN,
   external-asset, pointer-listener and automatic-event behavior disabled;
-  isolated Rive final rendering, imported programmable Three scenes and an
-  isolated code executor remain.
+  bounded isolated Rive final rendering is implemented. Imported programmable
+  Three scenes and production code execution remain. The independent
+  `runtimes/cut-code` TSX prototype has real Linux image/video and execution-
+  boundary evidence, but is not wired to public jobs. Hardened production
+  dispatch, private asset exchange, tenant admission, application preview,
+  media/audio compatibility and recovery are still implementation work, not
+  merely provider activation. Use the dated evidence checkpoint in the
+  programmable cinema standard before interpreting older completion wording.
 - Complete the cinematic production runtime: brief, cast/world/prop continuity,
   first/last/reference frames, camera/lens/focal/lighting/movement direction,
   visual multi-model workflow authoring, generation lifecycle and variant
