@@ -32,6 +32,19 @@ Evidence is retained in `B:/CreativesOS-task-artifacts/` as
 
 ## Reproducibility and remaining gates
 
+Protected candidate job [33614621889](https://github.com/antonyfmunoz/CreatorOS/actions/runs/33614621889)
+at source `2a077b69f8b4d3944e922cedd52c4190d09cd902` passed both the complete
+isolated artifact suite and the independent zero HIGH/CRITICAL OS/Node scan.
+Downloaded evidence is retained in
+`B:/CreativesOS-task-artifacts/noble-ci-33614621889/`.
+Independent local inspection of its ProRes 4444 MOV confirms six 128x72 frames,
+0.2-second video, alpha-bearing decoded format, stereo 48-kHz PCM16 and 9,600
+audio samples. Its SHA-256 matches the local candidate byte-for-byte:
+`820b49a7c611c1135e0c62ac7227eb719f34d0abfc5e6683476a057d6287e769`.
+GIF, WAV and private-CSS PNG comparison samples also match byte-for-byte.
+This is bounded cross-host reproducibility evidence, not general determinism,
+public deployment, security approval or competitor equivalence.
+
 The build caller creates a content-addressed local tag from the checked image ID
 and verifies that mapping before and after the candidate build. Docker cannot use
 a bare local image ID as a FROM reference. The parent Dockerfile and dependency
