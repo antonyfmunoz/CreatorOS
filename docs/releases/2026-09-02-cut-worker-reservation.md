@@ -55,3 +55,10 @@ at the deadline; desktop spent 33 seconds before encoding and remained at frame
 zero. The failures are not waived. Admission correctness does not establish
 adequate render resource behavior; bounded filter scheduling is being evaluated
 separately without changing quality, job capacity or deadlines.
+
+Combined Cut/Media admission and explicit filter-pool source `fa7d1ff` passed
+all 120 migrations, both real SQL admission proofs, existing lease/recovery
+checks and zero fixture leakage. Full root passed 662 tests across 158 files,
+types, build, budgets and Worker dry-run. Retained receipts are the
+`cut-worker-admission-{database,root}-20260902T130246.log` files. This does not
+waive the earlier browser failure; the combined native repeat is still required.
