@@ -35,6 +35,22 @@ production topology approval or enable public code execution.
   for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
+- Native `measureText` and `fitText` calculate actual browser text layout and
+  bounded single-/multi-line font sizing. Use their returned `style` for matching
+  layout. Text, font family, size, spacing, direction, line count and box limits
+  are validated; unknown options fail instead of silently being ignored.
+  One CSS generic or an explicitly registered, loaded private font family is
+  required. A missing family fails rather than silently measuring a substitute.
+  These helpers do not fetch fonts: prepare imported private fonts with the
+  existing frame-hold workflow before measuring. Glyph coverage/system fallback
+  within a loaded family remains the browser's responsibility.
+  `fitText` returns `fits: false` when the minimum still overflows; callers must
+  handle that explicitly instead of presenting it as a fitted result. Search
+  uses at most 20 actual layouts, with 1/64-pixel line-height units reflected in
+  the returned style. Limits: 10,000 text characters, font sizes 1..2048, boxes
+  1..16384 pixels, at most 20 lines. Measurements describe CSS layout, not shadows,
+  stroke/italic ink overhang or transforms applied afterwards. This is a native
+  authoring contract, not a drop-in Remotion API or universal-script/font promise.
 - Explicit asynchronous preparation: `holdFrame({timeoutMs})` returns an opaque
   handle; `releaseFrame(handle)` lets capture proceed only when every hold clears.
   `failRender()` permanently rejects the current render without exporting private

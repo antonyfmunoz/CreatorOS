@@ -2,6 +2,7 @@ import React, { createContext, useContext, useId } from 'react';
 import { frameReadiness } from './frame-readiness.mjs';
 import { validateFrameAudio } from './frame-audio.mjs';
 export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
+export { measureText, fitText } from './text-layout.mjs';
 
 export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
 export const useFrame = () => useContext(FrameContext).frame;

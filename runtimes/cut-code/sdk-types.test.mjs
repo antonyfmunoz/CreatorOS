@@ -59,9 +59,26 @@ useComposition().fps=1;
 export {};`);
 });
 
+test('typechecks native text metrics, fitting styles and explicit overflow', () => {
+  check(`import {measureText,fitText} from '@creativesos/cut';
+const measured=measureText({text:'A title',fontFamily:'sans-serif',fontSize:32,width:400});
+const fitted=fitText({text:'A longer title',fontFamily:'Private Brand',fontWeight:650,direction:'rtl',withinWidth:400,withinHeight:200,maxLines:3,minFontSize:8,maxFontSize:100});
+const width:number=measured.width; const fits:boolean=fitted.fits;
+const element=<div style={fitted.style}>{width}{fits?'fits':'overflow'}</div>;
+// @ts-expect-error fit requires a box width
+fitText({text:'Missing width',fontFamily:'sans-serif'});
+// @ts-expect-error CSS strings are not pixel-valued numeric spacing
+measureText({text:'Units',fontFamily:'sans-serif',fontSize:32,letterSpacing:'2px'});
+// @ts-expect-error measurements are immutable
+measured.width=4;
+// @ts-expect-error measured styles are immutable
+fitted.style.fontSize=4;
+export {};`);
+});
+
 test('declarations cover exactly the SDK runtime export names', () => {
   const names = new Set();
-  for (const file of ['sdk.jsx', 'motion.mjs']) {
+  for (const file of ['sdk.jsx', 'motion.mjs', 'text-layout.mjs']) {
     const source = ts.createSourceFile(file, fs.readFileSync(path.join(directory, file), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
     for (const statement of source.statements) {
       if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
