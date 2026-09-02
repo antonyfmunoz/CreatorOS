@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
-import { waitForCutRender } from './helpers/cut-render';
+import { decodeCutRenderFrame, downloadCutRender, waitForCutRender } from './helpers/cut-render';
 
 test('image framing controls preserve crop, transparent fit and stretch in actual export', async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -78,8 +78,8 @@ test('image framing controls preserve crop, transparent fit and stretch in actua
   expect(rendered.ok()).toBeTruthy(); const job = await rendered.json();
   await waitForCutRender(page.request, job.id, info);
   expect(await (await page.request.get(`/api/cut/jobs/${job.id}`)).json()).toMatchObject({ state: 'done' });
-  const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=6`); expect(still.ok()).toBeTruthy();
-  const exportBytes = await still.body(); writeFileSync(`${directory}/export.png`, exportBytes);
+  const exportPath = await downloadCutRender(page.request, job.id, `${directory}/render.mp4`);
+  const exportBytes = decodeCutRenderFrame(exportPath, 6); writeFileSync(`${directory}/export.png`, exportBytes);
   await info.attach('image-framing-export', { body: exportBytes, contentType: 'image/png' });
   const exported = await samples(exportBytes);
   for (let p = 0; p < points.length; p++) for (let c = 0; c < 3; c++) expect(Math.abs(exported[p][c] - previewSamples[p][c]), `export sample ${p}, channel ${c}`).toBeLessThanOrEqual(6);
