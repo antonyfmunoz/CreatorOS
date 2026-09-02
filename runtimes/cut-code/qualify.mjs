@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { zipSync, strToU8 } from 'fflate';
+import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
+import { createHash } from 'node:crypto';
 import { renderIsolated } from './host.mjs';
 
 const image = execFileSync('docker', ['image', 'inspect', 'creativesos-cut-code:qualification', '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
@@ -29,6 +30,44 @@ assert.equal(probe.streams.length, 1);
 assert.deepEqual({ width: probe.streams[0].width, height: probe.streams[0].height, frames: Number(probe.streams[0].nb_frames) }, { width: 320, height: 180, frames: 30 });
 records.push({ test: 'video', ...video.receipt, probe });
 console.log('PASS actual 30-frame H.264 motion video');
+for (const format of ['jpeg', 'webp']) {
+  const result = await renderIsolated({ request: { ...request, format, quality: 95 }, source, image });
+  const decoded = pixel(result.artifact);
+  assert.ok(decoded[0] >= 240 && decoded[1] <= 15 && decoded[2] <= 15 && decoded[3] === 255, 'Compressed still must retain the expected red output.');
+  assert.equal(result.receipt.mediaType, `image/${format}`);
+  await writeFile(`${directory}frame-0.${format}`, result.artifact);
+  records.push({ test: `direct-${format}-still`, ...result.receipt });
+}
+console.log('PASS directly decoded JPEG and WebP composition stills');
+const ranged = await renderIsolated({ request: { ...request, mode: 'video', frameRange: [12, 17] }, source, image });
+const rangedPath = `${directory}range-12-17.mp4`;
+await writeFile(rangedPath, ranged.artifact);
+const rangedProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=nb_frames,duration', '-of', 'json', rangedPath], { encoding: 'utf8', windowsHide: true }));
+assert.equal(Number(rangedProbe.streams[0].nb_frames), 6);
+for (const [frame, channel] of [[0, 0], [5, 2]]) {
+  const still = execFileSync('ffmpeg', ['-v', 'error', '-i', rangedPath, '-vf', `select=eq(n\\,${frame})`, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'], { maxBuffer: 1024 * 1024, windowsHide: true });
+  assert.ok(pixel(still)[channel] > 240, 'Ranged video must preserve absolute composition timing.');
+}
+records.push({ test: 'inclusive-video-frame-range', ...ranged.receipt, probe: rangedProbe });
+console.log('PASS exact six-frame video range with absolute timeline pixels');
+const sequenceRequest = { ...request, mode: 'sequence', frameRange: [12, 17] };
+const sequence = await renderIsolated({ request: sequenceRequest, source, image });
+const files = unzipSync(sequence.artifact);
+const manifest = JSON.parse(strFromU8(files['manifest.json']));
+assert.deepEqual(manifest.frames.map((item) => item.frame), [12, 13, 14, 15, 16, 17]);
+assert.equal(manifest.requestSha256, sequence.receipt.requestSha256);
+assert.equal(Object.keys(files).length, 7);
+for (const item of manifest.frames) {
+  const bytes = Buffer.from(files[item.filename]);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), item.sha256);
+  assert.equal(bytes.length, item.bytes);
+  assert.deepEqual(pixel(bytes), item.frame < 15 ? [255, 0, 0, 255] : [0, 0, 255, 255]);
+}
+const sequenceReplay = await renderIsolated({ request: sequenceRequest, source, image });
+assert.equal(sequenceReplay.receipt.artifactSha256, sequence.receipt.artifactSha256, 'The same frame-driven request must produce an identical PNG sequence archive.');
+await writeFile(`${directory}sequence-12-17.zip`, sequence.artifact);
+records.push({ test: 'hashed-reproducible-png-sequence', ...sequence.receipt });
+console.log('PASS decoded image sequence, manifest hashes and byte-identical replay');
 const transparent = await renderIsolated({ request: { ...request, input: { color: '#ff00ff' } }, source: capsule(`import {useInputs} from '@creativesos/cut';export default function Scene(){const input=useInputs();return <div style={{width:100,height:100,background:input.color}}/>}`), image });
 assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);

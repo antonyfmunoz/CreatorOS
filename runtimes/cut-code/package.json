@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs", "qualify": "node qualify.mjs" },
+  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs receipt.test.mjs", "qualify": "node qualify.mjs" },
   "dependencies": {
     "esbuild": "0.28.2",
     "fflate": "0.8.3",

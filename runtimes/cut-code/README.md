@@ -19,15 +19,26 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   `seededRandom` is creative variation, not cryptographic randomness. Spring
   mass/stiffness/damping are direct physical parameters; duration remapping and
   spring-settling measurement are not implemented by this API.
-- Direct frame-driven PNG (including transparency) or a silent H.264 MP4.
-  Frames and input props are passed explicitly to the React composition.
+- Direct frame-driven PNG (including transparency), JPEG or WebP; JPEG/WebP
+  expose bounded 1..100 quality. JPEG and MP4 cannot carry transparency.
+- Silent H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
+  values stay on the absolute composition timeline; range output starts at
+  media timestamp zero and contains exactly `last - first + 1` frames.
+- PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
+  FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
+  ZIP timestamps are fixed, and actual PNG-sequence replay is byte-checked.
+  The whole sequence shares the 64 MB output and 500-million pixel-frame limits.
+- Host receipt verification binds source bytes, the full normalized request
+  (including input parameters), output bytes, dimensions, format, FPS and range.
+  A receipt is not itself proof of visually correct media; decoded-pixel tests
+  are independent gates.
 - Strict source, expanded-archive, dimensions, duration, pixel-frame, output,
   process, CPU, memory, temporary-storage and deadline limits. The host checks
   receipt hashes and preserves no private source in application logs.
 
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Media playback,
-audio mixing, arbitrary dependencies, PDF/WebP/JPEG direct output, image sequences,
+audio mixing, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Isolation and qualification
