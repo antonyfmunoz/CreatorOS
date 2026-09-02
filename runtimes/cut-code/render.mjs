@@ -138,7 +138,9 @@ try {
   }
   await browser.close();
   browser = undefined;
+  phase = 'audio_mix';
   const audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath) : 0;
+  phase = 'receipt';
   const size = (await stat(outputPath)).size;
   if (!size || size >= MAX_ARTIFACT_BYTES) throw new Error('Artifact output limit exceeded.');
   const artifact = await readFile(outputPath);
