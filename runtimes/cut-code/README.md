@@ -103,6 +103,19 @@ production topology approval or enable public code execution.
   quality guarantee. The same one-thread, deadline and byte caps apply. Receipts
   bind normalized quality and speed controls. Actual decoded noise-fixture
   artifacts prove a quality/size tradeoff, not generalized competitor superiority.
+- `videoEncoding: { losslessRgb: true, preset: "fast" }` selects an opaque
+  H.264 RGB MP4 editing master. It preserves the captured 8-bit RGB pixels without
+  chroma subsampling; CRF, bitrate and VP9 controls cannot be combined with it.
+  This is not lossless audio, alpha, HDR or recovery of detail already lost in
+  source media. Ordinary MP4 remains the default for browser playback; RGB
+  H.264 is not promised to play in browsers, phones or every external editor.
+  All existing frame, pixel-frame, memory, time and output-byte caps remain.
+- Frame capture uses grayscale text coverage and invalidates retained layout/
+  paint layers before settling each frame. Authored React components and prepared
+  media are not remounted. This prevents the qualified text/rounded-transition
+  fixtures from inheriting prior subpixel raster state; it does not make arbitrary
+  wall-clock/random application code deterministic. Full-HD still/sequence/video
+  comparisons use exact RGB samples, not a relaxed visual tolerance.
 - Opt-in `format: "webm"` video exports use VP9 with an alpha channel and, when
   requested, an Opus soundtrack. Transparent areas of the composition remain
   transparent; an authored opaque background remains opaque. This is a bounded
