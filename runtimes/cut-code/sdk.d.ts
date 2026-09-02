@@ -13,6 +13,7 @@ declare module '@creativesos/cut' {
     globalFrame: number;
     config: CompositionConfig | null;
     input: Record<string, unknown>;
+    audioPaused?: boolean;
   }
   export const FrameContext: Context<FrameState>;
   /** Local frame, relative to the nearest Sequence/Repeat/Freeze. */
@@ -38,6 +39,8 @@ declare module '@creativesos/cut' {
   export type PrivateVideoSource = `data:video/${'mp4' | 'webm'};base64,${string}`;
   /** Decoded into a frame-synchronized canvas. Audio uses explicit audioTracks. */
   export function FrameVideo(props: CanvasHTMLAttributes<HTMLCanvasElement> & { src: PrivateVideoSource; startFrom?: number; speed?: number; repeat?: boolean }): ReactNode;
+  /** Capsule-root file, local frame clock, 0.5..2 pitch-preserving speed, 0..2 per-frame gain. Video requests opt in with compositionAudio: true. */
+  export function FrameAudio(props: { file: string; startFrom?: number; speed?: number; volume?: number; muted?: boolean; audioStream?: number }): ReactNode;
 
   export type EasingFunction = (progress: number) => number;
   export type Extrapolation = 'clamp' | 'extend' | 'wrap';

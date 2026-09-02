@@ -41,6 +41,8 @@ export function validateRequest(request) {
   const tracks = request.audioTracks ?? [];
   if (!Array.isArray(tracks) || tracks.length > 8 || (tracks.length && !['video', 'audio'].includes(request.mode))) throw new Error('Up to eight private soundtracks are supported on video or audio exports.');
   if (format === 'gif' && tracks.length) throw new Error('GIF cannot contain a soundtrack. Select a video or audio format.');
+  if (request.compositionAudio !== undefined && request.compositionAudio !== true) throw new Error('Composition audio must be explicitly enabled or omitted.');
+  if (request.compositionAudio && (request.mode !== 'video' || !['mp4', 'webm', 'mov'].includes(format) || (frameRange[1] - frameRange[0] + 1) / fps > 120)) throw new Error('Composition audio requires a video soundtrack and at most 120 seconds.');
   const audioTracks = tracks.map((track) => {
     if (!track || typeof track !== 'object' || typeof track.file !== 'string' || track.file.length > 200 || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg|mp4|webm)$/i.test(track.file)) throw new Error('A soundtrack must identify a supported private capsule audio or video file.');
     if (track.audioStream !== undefined && (!Number.isInteger(track.audioStream) || track.audioStream < 0 || track.audioStream > 7)) throw new Error('Audio stream must be an index within 0..7.');
@@ -54,7 +56,7 @@ export function validateRequest(request) {
     });
     return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume, ...(volumeKeyframes ? { volumeKeyframes } : {}), ...(track.audioStream !== undefined ? { audioStream: track.audioStream } : {}) };
   });
-  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}), ...(proresProfile ? { proresProfile } : {}), ...(videoEncoding ? { videoEncoding } : {}) };
+  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}), ...(proresProfile ? { proresProfile } : {}), ...(videoEncoding ? { videoEncoding } : {}), ...(request.compositionAudio ? { compositionAudio: true } : {}) };
 }
 
 export function outputContract(request) {

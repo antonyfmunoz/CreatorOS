@@ -19,7 +19,14 @@ export function assertArtifactReceipt(artifact, receipt, request, source) {
   if (receipt?.proresProfile !== request.proresProfile) throw new Error('Artifact ProRes profile did not match its request.');
   if (JSON.stringify(receipt?.videoEncoding) !== JSON.stringify(request.videoEncoding)) throw new Error('Artifact video encoding did not match its request.');
   const hasSoundtrack = ['video', 'audio'].includes(request.mode);
-  const audioTrackCount = hasSoundtrack ? audioPlan(request).length : 0;
+  let compositionTrackCount = 0;
+  if (request.compositionAudio) {
+    const evidence = receipt?.compositionAudio;
+    if (!evidence || !Number.isInteger(evidence.trackCount) || evidence.trackCount < 0 || evidence.trackCount + request.audioTracks.length > 8
+      || typeof evidence.planSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(evidence.planSha256)) throw new Error('Invalid composition soundtrack receipt.');
+    compositionTrackCount = evidence.trackCount;
+  } else if (receipt?.compositionAudio !== undefined) throw new Error('Unexpected composition soundtrack receipt.');
+  const audioTrackCount = (hasSoundtrack ? audioPlan(request).length : 0) + compositionTrackCount;
   if (receipt?.audioTrackCount !== audioTrackCount || receipt?.silent !== (hasSoundtrack && audioTrackCount === 0)) throw new Error('Artifact audio did not match its request.');
   if (!Buffer.isBuffer(artifact) || !artifact.length || artifact.length >= MAX_ARTIFACT_BYTES || !receipt || receipt.version !== 1 || receipt.runtime !== 'cut-code-prototype-v1' || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.requestSha256 !== hash(JSON.stringify(request)) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.fps !== request.fps || receipt.format !== request.format || receipt.quality !== request.quality || receipt.start !== output.start || receipt.end !== output.end || receipt.mediaType !== output.mediaType || receipt.frames !== output.frames || (request.mode === 'still' && receipt.frame !== request.frame)) throw new Error('Artifact did not match its request and receipt.');
 }

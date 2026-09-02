@@ -2,6 +2,7 @@ import { writeFile, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MAX_ARTIFACT_BYTES, outputContract } from './request.mjs';
+import { frameVolumeExpression } from './frame-audio.mjs';
 const execute = promisify(execFile);
 
 export function audioPlan(request) {
@@ -17,6 +18,10 @@ export function audioPlan(request) {
 // Only normalized numeric keyframes enter this expression. The frame clock is
 // track-local after retiming; a range export continues rather than restarts it.
 export function volumeAutomationFilter(track, fps) {
+  if (track.volumeSamples) {
+    const expression = frameVolumeExpression(track.volumeSamples, fps, track.localStartFrame);
+    return `aeval=exprs='val(0)*(${expression})|val(1)*(${expression})':channel_layout=stereo,aformat=channel_layouts=stereo`;
+  }
   if (!track.volumeKeyframes?.length) return `volume=${track.volume}`;
   const points = track.volumeKeyframes;
   const frame = `(t*${fps}+${track.localStartFrame})`;
@@ -35,7 +40,7 @@ export function volumeAutomationFilter(track, fps) {
 }
 
 export function audioTrackFilters(track, fps) {
-  const gain = track.volumeKeyframes
+  const gain = track.volumeKeyframes || track.volumeSamples
     ? `aresample=48000,aformat=channel_layouts=stereo,asetpts=N/SR/TB,${volumeAutomationFilter(track, fps)}`
     : `volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo`;
   const sourceClock = /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
@@ -60,13 +65,13 @@ export function validateSoundtrackProbe(probe, track) {
 
 // Container-only media work. File names, decoders and process arguments are
 // owned by the runtime, never interpreted as commands or provider URLs.
-export async function prepareAudioTracks(request, capsule) {
+export async function prepareAudioTracks(request, capsule, indexOffset = 0) {
   for (const track of request.audioTracks) if (!capsule[track.file]?.length) throw new Error('A private soundtrack file is missing.');
   const plan = audioPlan(request);
   for (let index = 0; index < plan.length; index++) {
     const track = plan[index];
     const extension = track.file.split('.').at(-1).toLowerCase();
-    const filename = `/tmp/soundtrack-${index}.${extension}`;
+    const filename = `/tmp/soundtrack-${index + indexOffset}.${extension}`;
     await writeFile(filename, capsule[track.file], { flag: 'wx' });
     const inputOptions = soundtrackInputOptions(track.file);
     const probe = JSON.parse((await execute('ffprobe', ['-v', 'error', ...inputOptions, '-show_entries', 'stream=codec_type,sample_rate,channels,duration:format=duration', '-of', 'json', filename], { timeout: 8000, maxBuffer: 16384 })).stdout);
@@ -97,7 +102,13 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
     : ['wav', 'mov'].includes(request.format) ? ['-c:a', 'pcm_s16le']
     : request.format === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', '192k']
     : ['-c:a', 'aac', '-b:a', '192k'];
-  args.push('-filter_complex', filters.join(';'), ...(audioOnly ? ['-vn'] : ['-map', '0:v:0', '-c:v', 'copy']), '-map', '[mix]', ...encoding,
+  const graph = filters.join(';');
+  // Frame-sampled gain can exceed the OS's single argument limit. This fixed
+  // private file contains only runtime-generated filters and normalized numbers.
+  if (Buffer.byteLength(graph) > 1024 * 1024) throw new Error('Soundtrack filter graph exceeds its limit.');
+  const graphArgs = graph.length > 24_000 ? ['-filter_complex_script', '/tmp/soundtrack-filters.txt'] : ['-filter_complex', graph];
+  if (graphArgs[0] === '-filter_complex_script') await writeFile(graphArgs[1], graph, { flag: 'wx' });
+  args.push(...graphArgs, ...(audioOnly ? ['-vn'] : ['-map', '0:v:0', '-c:v', 'copy']), '-map', '[mix]', ...encoding,
     '-ar', '48000', '-ac', '2', '-map_metadata', '-1', '-threads', '1', '-t', String(duration),
     ...(['mp4', 'm4a', 'mov'].includes(request.format) ? ['-movflags', '+faststart'] : request.format === 'webm' ? ['-fflags', '+bitexact'] : []), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
   await execute('ffmpeg', args, { timeout: 20_000, maxBuffer: 16384 });

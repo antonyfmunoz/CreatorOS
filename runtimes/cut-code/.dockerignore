@@ -5,6 +5,7 @@
 !bundle.mjs
 !sdk.jsx
 !frame-readiness.mjs
+!frame-audio.mjs
 !motion.mjs
 !audio.mjs
 !video-encoding.mjs

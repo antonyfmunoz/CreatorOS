@@ -4,6 +4,16 @@ import { createHash } from 'node:crypto';
 import { assertArtifactReceipt } from './host.mjs';
 import { validateRequest, outputContract } from './request.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+test('composition soundtrack receipts bind opt-in, bounded discovered intervals and plan hash', () => {
+  const artifact = Buffer.from('unit only'), source = Buffer.from('source');
+  const request = validateRequest({ version: 1, mode: 'video', width: 64, height: 32, fps: 30, durationInFrames: 6, entrypoint: 'main.tsx', input: {}, compositionAudio: true });
+  const output = outputContract(request);
+  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', bytes: artifact.length, artifactSha256: hash(artifact), sourceSha256: hash(source), requestSha256: hash(JSON.stringify(request)), width: request.width, height: request.height, fps: request.fps, mode: request.mode, format: request.format, quality: request.quality, start: output.start, end: output.end, frames: output.frames, mediaType: output.mediaType, audioTrackCount: 2, silent: false, compositionAudio: { trackCount: 2, planSha256: hash('plan') } };
+  assert.doesNotThrow(() => assertArtifactReceipt(artifact, receipt, request, source));
+  for (const change of [{ compositionAudio: undefined }, { compositionAudio: { trackCount: 9, planSha256: hash('plan') } }, { compositionAudio: { trackCount: 2, planSha256: 'bad' } }, { audioTrackCount: 0 }, { silent: true }]) assert.throws(() => assertArtifactReceipt(artifact, { ...receipt, ...change }, request, source));
+  assert.throws(() => assertArtifactReceipt(artifact, receipt, { ...request, compositionAudio: undefined }, source));
+});
 test('ProRes receipts bind the chosen profile independently of container identity', () => {
   const artifact = Buffer.from('unit fixture'), source = Buffer.from('source');
   const request = validateRequest({ version: 1, mode: 'video', format: 'mov', proresProfile: '4444', width: 64, height: 32, fps: 30, durationInFrames: 6, entrypoint: 'index.tsx', input: {} });
