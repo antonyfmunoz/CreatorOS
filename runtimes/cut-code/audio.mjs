@@ -94,12 +94,12 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
     ? `${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`
     : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[mix]`);
   const encoding = request.format === 'webm' ? ['-c:a', 'libopus', '-b:a', '160k']
-    : request.format === 'wav' ? ['-c:a', 'pcm_s16le']
+    : ['wav', 'mov'].includes(request.format) ? ['-c:a', 'pcm_s16le']
     : request.format === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', '192k']
     : ['-c:a', 'aac', '-b:a', '192k'];
   args.push('-filter_complex', filters.join(';'), ...(audioOnly ? ['-vn'] : ['-map', '0:v:0', '-c:v', 'copy']), '-map', '[mix]', ...encoding,
     '-ar', '48000', '-ac', '2', '-map_metadata', '-1', '-threads', '1', '-t', String(duration),
-    ...(['mp4', 'm4a'].includes(request.format) ? ['-movflags', '+faststart'] : []), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
+    ...(['mp4', 'm4a', 'mov'].includes(request.format) ? ['-movflags', '+faststart'] : []), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
   await execute('ffmpeg', args, { timeout: 20_000, maxBuffer: 16384 });
   if ((await stat(outputVideo)).size >= MAX_ARTIFACT_BYTES) throw new Error('Soundtrack output exceeds the artifact limit.');
   return plan.length;

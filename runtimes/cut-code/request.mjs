@@ -18,7 +18,9 @@ export function validateRequest(request) {
   if (visualSequence && width * height * (frameRange[1] - frameRange[0] + 1) > 500_000_000) throw new Error('Render exceeds the pixel-frame budget.');
   if (request.mode === 'audio' && (frameRange[1] - frameRange[0] + 1) / fps > 120) throw new Error('Audio-only exports are limited to 120 seconds per request.');
   const format = request.format ?? (request.mode === 'video' ? 'mp4' : request.mode === 'audio' ? 'wav' : 'png');
-  if (!(request.mode === 'video' ? ['mp4', 'webm', 'gif'] : request.mode === 'audio' ? ['wav', 'mp3', 'm4a'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');
+  if (!(request.mode === 'video' ? ['mp4', 'webm', 'gif', 'mov'] : request.mode === 'audio' ? ['wav', 'mp3', 'm4a'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');
+  const proresProfile = format === 'mov' ? request.proresProfile ?? '422hq' : undefined;
+  if (format === 'mov' ? !['422hq', '4444', '4444xq'].includes(proresProfile) : request.proresProfile !== undefined) throw new Error('ProRes profile requires a supported MOV export.');
   let gifOptions;
   if (format === 'gif') {
     const options = request.gifOptions ?? {};
@@ -50,12 +52,12 @@ export function validateRequest(request) {
     });
     return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume, ...(volumeKeyframes ? { volumeKeyframes } : {}), ...(track.audioStream !== undefined ? { audioStream: track.audioStream } : {}) };
   });
-  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}) };
+  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}), ...(proresProfile ? { proresProfile } : {}) };
 }
 
 export function outputContract(request) {
   const start = request.mode === 'still' ? request.frame : request.frameRange[0];
   const end = request.mode === 'still' ? start : request.frameRange[1];
-  const mediaType = request.mode === 'sequence' ? 'application/zip' : { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', webm: 'video/webm', wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4' }[request.format];
+  const mediaType = request.mode === 'sequence' ? 'application/zip' : { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4' }[request.format];
   return { start, end, frames: Math.ceil((end - start + 1) / (request.gifOptions?.frameStep ?? 1)), mediaType, extension: request.mode === 'sequence' ? 'zip' : request.format };
 }

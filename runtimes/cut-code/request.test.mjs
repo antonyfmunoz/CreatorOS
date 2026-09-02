@@ -2,6 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRequest, outputContract } from './request.mjs';
 const valid = { version: 1, mode: 'still', width: 1920, height: 1080, fps: 30, durationInFrames: 60, frame: 30, entrypoint: 'src/main.tsx', input: { title: 'Launch' } };
+test('ProRes MOV profiles preserve format, range and the existing execution bounds', () => {
+  const base = { ...valid, mode: 'video', format: 'mov', frame: 0, frameRange: [12, 17] };
+  assert.equal(validateRequest(base).proresProfile, '422hq');
+  for (const proresProfile of ['422hq', '4444', '4444xq']) {
+    const request = validateRequest({ ...base, proresProfile });
+    assert.deepEqual(validateRequest(request), request);
+    assert.deepEqual(outputContract(request), { start: 12, end: 17, frames: 6, extension: 'mov', mediaType: 'video/quicktime' });
+  }
+  for (const change of [{ mode: 'still' }, { mode: 'audio' }, { proresProfile: 'h264' }, { proresProfile: 4 }, { quality: 90 }, { width: 321 }, { gifOptions: {} }, { format: 'mp4', proresProfile: '4444' }, { width: 3840, height: 2160, durationInFrames: 600, frameRange: [0, 599] }]) assert.throws(() => validateRequest({ ...base, ...change }));
+});
 test('GIF sampling, repetition, odd dimensions and memory limits have explicit contracts', () => {
   const base = { ...valid, mode: 'video', format: 'gif', width: 321, height: 181, frame: 0, frameRange: [3, 9], gifOptions: { frameStep: 3, repeatCount: 2 } };
   const request = validateRequest(base);
