@@ -1,0 +1,18 @@
+# Candidate only. The caller supplies a content-addressed local tag, verifies
+# its image ID before and after the build, and builds the parent from this
+# checkout's pinned Dockerfile. Docker FROM cannot resolve a bare local ID.
+ARG CUT_CODE_QUALIFIED_IMAGE
+FROM ${CUT_CODE_QUALIFIED_IMAGE}
+USER root
+# Chromium and FFmpeg are the only execution media engines. These optional
+# GStreamer/WebKit/Firefox components and global package manager are not used.
+# Remove their actual files/packages, not scanner metadata or an ignore list.
+RUN apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0 \
+    && rm -rf /usr/lib/node_modules/npm /usr/bin/npm /usr/bin/npx \
+      /ms-playwright/firefox-1538 /ms-playwright/webkit-2336 \
+    && test ! -e /usr/lib/node_modules/npm \
+    && test ! -e /usr/bin/npm \
+    && dpkg-query -W > /opt/cut-code/os-packages.txt \
+    && node --version > /opt/cut-code/node-version.txt \
+    && node -e "process.stdout.write(require('node:child_process').execFileSync(require('playwright-core').chromium.executablePath(), ['--version']))" > /opt/cut-code/chromium-version.txt
+USER pwuser

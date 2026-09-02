@@ -5,6 +5,11 @@ This is a separate native, clean-room React/TSX motion-graphics runtime. It is
 or a claim of Remotion parity**. Application readiness must continue to report
 executable code as not implemented until its end-to-end dispatcher is qualified.
 
+The [lean Noble candidate](../../docs/releases/2026-09-02-cut-code-noble-candidate.md)
+passed the full local artifact/isolation suite and a zero HIGH/CRITICAL image
+scan. Its independent CI job must reproduce that evidence. This does not grant
+production topology approval or enable public code execution.
+
 ## Implemented execution contract
 
 - A private ZIP with `package.json`, a TSX/JSX entrypoint and relative modules.
