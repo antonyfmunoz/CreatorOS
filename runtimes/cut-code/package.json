@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs receipt.test.mjs audio.test.mjs", "qualify": "node qualify.mjs" },
+  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs receipt.test.mjs audio.test.mjs sdk-types.test.mjs", "qualify": "node qualify.mjs" },
+  "devDependencies": { "typescript": "5.9.3", "@types/react": "18.3.31" },
   "dependencies": {
     "esbuild": "0.28.2",
     "fflate": "0.8.3",
