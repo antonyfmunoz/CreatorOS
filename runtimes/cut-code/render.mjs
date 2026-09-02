@@ -13,6 +13,7 @@ import { audioPlan, mixAudioTracks, prepareAudioTracks, soundtrackInputOptions }
 import { videoAudioCatalogEntry, videoSourceAudioSample } from './video-source-audio.mjs';
 import { videoEncodingArgs } from './video-encoding.mjs';
 import { FrameAudioCollector } from './frame-audio.mjs';
+import { PrivateVideoFrames } from './video-frames.mjs';
 
 let browser;
 let encoder;
@@ -45,6 +46,7 @@ try {
   } else {
   phase = 'bundle';
   const bundle = await bundleCapsule(capsule, request.entrypoint);
+  const privateVideo = new PrivateVideoFrames(bundle.videoImports, capsule);
   const videoAudioCatalog = [];
   if (request.compositionAudio) {
     if (bundle.videoImports.length > 8) throw new Error('At most eight private video imports support automatic source sound.');
@@ -82,8 +84,8 @@ try {
   const nonce = randomBytes(20).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div></body></html>`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(({ javascript, stylesheet, nonce, videoAudioSources }) => {
-    window.__cutVideoAudioSources = videoAudioSources;
+  await page.evaluate(({ javascript, stylesheet, nonce, videoSources }) => {
+    window.__cutVideoSources = videoSources;
     if (stylesheet) {
       const style = document.createElement('style');
       style.textContent = stylesheet;
@@ -95,7 +97,7 @@ try {
     script.nonce = nonce;
     script.textContent = javascript;
     document.body.appendChild(script);
-  }, { ...bundle, nonce, videoAudioSources: videoAudioCatalog.map((entry) => entry.src) });
+  }, { ...bundle, nonce, videoSources: privateVideo.sources });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames, compositionAudio: Boolean(request.compositionAudio) };
   const hasAudio = request.mode === 'video' && (request.compositionAudio || audioPlan(request).length > 0);
   const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
@@ -117,56 +119,52 @@ try {
     encoderDone = once(encoder, 'close');
   }
   for (let frame = first; frame < last; frame += frameStep) {
-    const soundData = await page.evaluate(async ({ frame, config, input }) => {
+    await page.evaluate(({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
+    }, { frame, config, input: request.input });
+    let soundData;
       // Preparation may introduce new images/fonts/media or effects. Recheck
       // after browser settlement instead of capturing an early placeholder.
       for (let settlement = 0; settlement < 8; settlement++) {
+      const preparedFrame = await page.evaluate(async () => {
       const revision = await window.__cutWaitForFrame();
       await document.fonts.ready;
       await Promise.all([...document.images].map((image) => image.decode()));
-      const waitForMedia = (video, event, action) => new Promise((resolve, reject) => {
-        const cleanup = () => { clearTimeout(timer); video.removeEventListener(event, ready); video.removeEventListener('error', failed); };
-        const ready = () => { cleanup(); resolve(); };
-        const failed = () => { cleanup(); reject(new Error('Private video decode failed.')); };
-        const timer = setTimeout(failed, 8000);
-        video.addEventListener(event, ready, { once: true });
-        video.addEventListener('error', failed, { once: true });
-        try { action?.(); } catch { failed(); }
-      });
       const videos = [...document.querySelectorAll('canvas[data-cut-video-time]')];
-      const videoSounds = [];
       if (videos.length > 8) throw new Error('Too many simultaneous code video layers.');
-      await Promise.all(videos.map(async (canvas) => {
+      const descriptors = videos.map((canvas) => {
         const source = canvas.dataset.cutVideoSrc;
-        if (!/^data:video\/(mp4|webm);base64,/.test(source)) throw new Error('Video must remain capsule-local.');
-        let video = canvas.__cutVideo;
-        if (!video || video.src !== source) {
-          video?.pause();
-          video = document.createElement('video');
-          video.muted = true; video.preload = 'auto'; video.src = source;
-          canvas.__cutVideo = video;
-        }
-        video.pause();
-        if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
-        if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 120 || video.videoWidth < 1 || video.videoHeight < 1 || video.videoWidth * video.videoHeight > 3840 * 2160) throw new Error('Private video exceeds decode limits.');
+        const importIndex = window.__cutVideoSources.indexOf(source);
+        if (importIndex < 0) throw new Error('Video requires an imported private MP4/WebM.');
         const time = Number(canvas.dataset.cutVideoTime);
         if (!Number.isFinite(time) || time < 0) throw new Error('Invalid video seek.');
-        const requested = window.__cutVideoSourceTime(time, video.duration, canvas.dataset.cutVideoRepeat === 'yes');
-        const target = Math.min(requested, Math.max(0, video.duration - 0.000001));
-        if (Math.abs(video.currentTime - target) > 0.0000001) await waitForMedia(video, 'seeked', () => { video.currentTime = target; });
-        // Decoded-frame custody must not depend on the video's asynchronous
-        // compositor paint. Copy its decoded bitmap into our captured canvas.
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        return { importIndex, time, repeat: canvas.dataset.cutVideoRepeat === 'yes', id: canvas.dataset.cutVideoAudioId, speed: Number(canvas.dataset.cutVideoSpeed), volume: Number(canvas.dataset.cutVideoVolume), audioStream: Number(canvas.dataset.cutVideoAudioStream) };
+      });
+      if (JSON.stringify(descriptors).length > 8192) throw new Error('Frame video data limit exceeded.');
+      window.__cutPreparedVideos = { revision, videos, descriptors };
+      return { revision, descriptors };
+      });
+      if (!Array.isArray(preparedFrame.descriptors) || preparedFrame.descriptors.length > 8 || JSON.stringify(preparedFrame).length > 16384) throw new Error('Invalid frame video data.');
+      const decoded = [];
+      // Serial decoding bounds process and memory pressure. Each requested
+      // frame is selected from probed integer presentation timestamps; a prior
+      // HTMLVideoElement compositor frame can never be copied by accident.
+      for (const descriptor of preparedFrame.descriptors) decoded.push(await privateVideo.frame(descriptor.importIndex, descriptor.time, descriptor.repeat));
+      soundData = await page.evaluate(async ({ frame, config, revision, decoded }) => {
+      const prepared = window.__cutPreparedVideos;
+      if (!prepared || prepared.revision !== revision || await window.__cutWaitForFrame() !== revision || prepared.videos.some(canvas => !canvas.isConnected)) return null;
+      const videoSounds = [];
+      for (let i = 0; i < decoded.length; i++) {
+        const canvas = prepared.videos[i], descriptor = prepared.descriptors[i];
+        const image = new Image();
+        image.src = decoded[i].png;
+        await image.decode();
+        canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
         const drawing = canvas.getContext('2d');
         if (!drawing) throw new Error('Video frame canvas is unavailable.');
-        drawing.drawImage(video, 0, 0);
-        if (config.compositionAudio && canvas.dataset.cutVideoAudioId) {
-          const importIndex = window.__cutVideoAudioSources.indexOf(source);
-          if (importIndex < 0) throw new Error('Source sound requires an imported private video.');
-          videoSounds.push({ importIndex, id: canvas.dataset.cutVideoAudioId, time, duration: video.duration, repeat: canvas.dataset.cutVideoRepeat === 'yes', speed: Number(canvas.dataset.cutVideoSpeed), volume: Number(canvas.dataset.cutVideoVolume), audioStream: Number(canvas.dataset.cutVideoAudioStream) });
-        }
-      }));
+        drawing.drawImage(image, 0, 0);
+        if (config.compositionAudio && descriptor.id) videoSounds.push({ ...descriptor, duration: decoded[i].duration });
+      }
       // Invalidate retained layout/paint layers without remounting authored
       // React components or discarding their prepared media. Otherwise moving
       // rounded/translucent layers can reuse a prior subpixel raster, making
@@ -192,9 +190,11 @@ try {
         if (sounds.length + videoSounds.length > 8 || JSON.stringify({ sounds, videoSounds }).length > 8192) throw new Error('Frame soundtrack data limit exceeded.');
         return { sounds, videoSounds };
       }
+      return null;
+      }, { frame, config, revision: preparedFrame.revision, decoded });
+      if (soundData) break;
       }
-      throw new Error('Composition frame preparation did not settle.');
-    }, { frame, config, input: request.input });
+    if (!soundData) throw new Error('Composition frame preparation did not settle.');
     if (pageFailed) throw new Error('Composition execution failed.');
     const frameSounds = [...soundData.sounds, ...soundData.videoSounds.flatMap((sample) => {
       if (!Number.isInteger(sample.importIndex) || sample.importIndex < 0 || sample.importIndex >= videoAudioCatalog.length) throw new Error('Invalid private video soundtrack binding.');
