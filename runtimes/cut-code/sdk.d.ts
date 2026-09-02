@@ -1,6 +1,6 @@
 /** Authoring contract for the native CutStudio SDK, not Remotion API compatibility. */
 declare module '@creativesos/cut' {
-  import type { ReactNode, Context, HTMLAttributes, CanvasHTMLAttributes } from 'react';
+  import type { ReactNode, Context, HTMLAttributes, CanvasHTMLAttributes, CSSProperties } from 'react';
 
   export interface CompositionConfig {
     readonly width: number;
@@ -31,6 +31,29 @@ declare module '@creativesos/cut' {
   export function releaseFrame(handle: FramePreparation): void;
   /** Permanently fails this render; authored error contents are not exported. */
   export function failRender(): void;
+
+  export interface TextTypography {
+    text: string;
+    /** One already loaded/registered private family, or a standard CSS generic. */
+    fontFamily: string;
+    fontWeight?: number;
+    fontStyle?: 'normal' | 'italic' | 'oblique';
+    letterSpacing?: number;
+    lineHeight?: number;
+    direction?: 'ltr' | 'rtl';
+  }
+  export interface TextMeasurement {
+    readonly fontSize: number;
+    readonly width: number;
+    readonly height: number;
+    readonly lines: number;
+    /** Apply the returned typography/layout unchanged for matching measurements. */
+    readonly style: Readonly<CSSProperties>;
+  }
+  /** Browser-only CSS text layout; width enables wrapping. Does not fetch fonts. */
+  export function measureText(input: TextTypography & { fontSize: number; width?: number }): TextMeasurement;
+  /** Bounded font search; fits=false explicitly reports overflow at the minimum. */
+  export function fitText(input: TextTypography & { withinWidth: number; withinHeight?: number; minFontSize?: number; maxFontSize?: number; maxLines?: number }): TextMeasurement & { readonly fits: boolean };
 
   export function FullFrame(props: HTMLAttributes<HTMLDivElement>): ReactNode;
   export function Sequence(props: { at?: number; duration?: number; children?: ReactNode }): ReactNode;
