@@ -30,8 +30,12 @@ short fixture does not prove a constant bitrate or sustained throughput.
 
 Artifacts and receipts: `runtimes/cut-code/qualification-output/`; retained logs:
 `B:/CreativesOS-task-artifacts/encoding-unit.log`, `encoding-image-2.log`, and
-`encoding-isolated.log`. Protected CI and the updated candidate-image scan remain
-separate gates. No live application release is claimed by these prototype tests.
+`encoding-isolated.log`. The updated lean candidate also passed the full isolated
+suite and a fresh Trivy 0.74.0 scan with zero HIGH/CRITICAL findings; logs and JSON
+are `encoding-candidate-isolated.log` and `encoding-candidate-vulnerabilities.json`
+in the same retained directory. No findings were ignored or severity gates
+changed. Protected CI remains a separate gate. No live application release or
+production-isolation approval is claimed by these prototype tests.
 
 This does not implement H.265/AV1/VP8, two-pass encoding, hardware encoding, HDR,
 lossless RGB, CRF/bitrate equivalence across codecs, or representative Remotion
