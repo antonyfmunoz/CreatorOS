@@ -11,6 +11,14 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
+- The MIT-licensed Three.js 0.185.1 core and its explicitly approved SVGRenderer
+  addon can be imported by private source. This enables frame-driven geometry,
+  perspective cameras, depth ordering and vector-shaded motion graphics without
+  granting network imports or arbitrary addons. The dependency must be exact;
+  ranges, other versions and unapproved addons fail admission/bundling. GPU
+  WebGL/WebGPU compatibility is not qualified by the SVG tests. SVGRenderer does
+  not support textures, shadows or advanced shading; it is not a replacement
+  for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - `FrameVideo` seeks a capsule-local MP4/WebM import at the local composition
@@ -27,9 +35,16 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   spring-settling measurement are not implemented by this API.
 - Direct frame-driven PNG (including transparency), JPEG or WebP; JPEG/WebP
   expose bounded 1..100 quality. JPEG and MP4 cannot carry transparency.
-- Silent H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
+- H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
+- Optional `audioTracks` on video requests mix up to eight capsule-local
+  WAV/MP3/FLAC/Ogg files into stereo AAC. Tracks have a composition start frame,
+  exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
+  Range exports retain original audio timing rather than restarting soundtracks.
+  Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
+  and local input paths are fixed by the runtime. A 0.95 peak limiter protects
+  summing, without normalizing quiet material upward. No network input is allowed.
 - PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
   FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
   ZIP timestamps are fixed, and actual PNG-sequence replay is byte-checked.
@@ -41,10 +56,16 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 - Strict source, expanded-archive, dimensions, duration, pixel-frame, output,
   process, CPU, memory, temporary-storage and deadline limits. The host checks
   receipt hashes and preserves no private source in application logs.
+- Timelines may span up to one hour, but each video/sequence request is still
+  capped at 600 frames, 500 million pixel-frames, 64 MB and its execution deadline.
+  Longer projects require explicit bounded frame ranges; there is no automatic
+  unmetered fan-out. Stills can address any valid frame without rendering earlier
+  frames. Odd dimensions are supported for images; H.264 retains even dimensions.
 
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Video codec/VFR
-compatibility beyond the qualified MP4 fixtures, audio mixing, arbitrary dependencies, PDF output,
+compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
+automatic video-audio extraction, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Isolation and qualification

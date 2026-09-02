@@ -73,6 +73,38 @@ assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);
 records.push({ test: 'transparent-png-and-input-binding', ...transparent.receipt });
 console.log('PASS direct transparent composition PNG and input-bound output');
+const latePoster = await renderIsolated({ request: { ...request, width: 321, height: 181, durationInFrames: 108000, frame: 107999 }, source: capsule(`import {FullFrame,useFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:useFrame()===107999?'#00ff00':'#ff0000'}}/>`), image });
+assert.deepEqual(pixel(latePoster.artifact), [0, 255, 0, 255]);
+await writeFile(`${directory}late-frame-poster.png`, latePoster.artifact);
+const posterProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'json', `${directory}late-frame-poster.png`], { encoding: 'utf8', windowsHide: true }));
+assert.deepEqual(posterProbe.streams[0], { width: 321, height: 181 });
+records.push({ test: 'odd-sized-late-frame-poster', ...latePoster.receipt });
+console.log('PASS odd-sized still at a late absolute frame without rendering the whole timeline');
+const threeSource = capsule(`import {useRef,useMemo,useLayoutEffect} from 'react';import {Scene,PerspectiveCamera,BoxGeometry,PlaneGeometry,Mesh,MeshBasicMaterial} from 'three';import {SVGRenderer} from 'three/addons/renderers/SVGRenderer.js';import {useFrame,useComposition,useInputs} from '@creativesos/cut';
+export default function SceneView(){const frame=useFrame(),config=useComposition(),input=useInputs(),host=useRef(null);const view=useMemo(()=>{const scene=new Scene(),camera=new PerspectiveCamera(50,config.width/config.height,.1,100),renderer=new SVGRenderer();renderer.setSize(config.width,config.height);renderer.setPrecision(5);const back=new Mesh(new PlaneGeometry(20,20),new MeshBasicMaterial({color:'#0000ff'}));back.position.z=-1;scene.add(back);const box=new Mesh(new BoxGeometry(1.2,1.2,1.2),new MeshBasicMaterial({color:'#ff0000'}));scene.add(box);return {scene,camera,renderer,box,back};},[]);useLayoutEffect(()=>{view.camera.position.z=input.cameraZ??4;view.box.position.x=frame*1.3/20;view.box.rotation.y=frame/30;view.box.rotation.x=frame/100;view.renderer.render(view.scene,view.camera);host.current.replaceChildren(view.renderer.domElement);},[frame,input.cameraZ]);return <div ref={host}/>;}`);
+const threeFrames = [];
+for (const [name, frame, cameraZ] of [['near',0,4],['moving',20,4],['far',0,6]]) {
+  const rendered = await renderIsolated({ request: { ...request, frame, input: { cameraZ } }, source: threeSource, image });
+  await writeFile(`${directory}three-${name}.png`, rendered.artifact);
+  threeFrames.push(rendered);
+  records.push({ test: `private-three-vector-${name}`, ...rendered.receipt });
+}
+assert.deepEqual(pixel(threeFrames[0].artifact,160,90),[255,0,0,255]);
+assert.deepEqual(pixel(threeFrames[1].artifact,160,90),[0,0,255,255]);
+assert.deepEqual(pixel(threeFrames[1].artifact,220,90),[255,0,0,255]);
+const redArea = artifact => {const decoded=execFileSync('ffmpeg',['-v','error','-i','pipe:0','-f','rawvideo','-pix_fmt','rgba','pipe:1'],{input:artifact,maxBuffer:2_000_000,windowsHide:true});let area=0;for(let i=0;i<decoded.length;i+=4)if(decoded[i]>240&&decoded[i+1]<15&&decoded[i+2]<15)area++;return area;};
+assert.ok(redArea(threeFrames[0].artifact)>1000);
+assert.ok(redArea(threeFrames[2].artifact)<redArea(threeFrames[0].artifact)*.6,'A farther perspective camera must reduce the projected geometry area');
+console.log('PASS actual pinned Three geometry, depth ordering, frame motion and perspective camera pixels');
+const threeVideo = await renderIsolated({ request: { ...request, mode: 'video', frameRange: [0, 5], input: { cameraZ: 4 } }, source: threeSource, image });
+const threeVideoPath = `${directory}three-motion.mp4`;
+await writeFile(threeVideoPath, threeVideo.artifact);
+const threeProbe = JSON.parse(execFileSync('ffprobe', ['-v','error','-show_entries','stream=nb_frames,width,height','-of','json',threeVideoPath], { encoding:'utf8',windowsHide:true }));
+assert.equal(Number(threeProbe.streams[0].nb_frames),6);
+const centroids = [0,5].map(frame => {const raw=execFileSync('ffmpeg',['-v','error','-i',threeVideoPath,'-vf',`select=eq(n\\,${frame})`,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{maxBuffer:2_000_000,windowsHide:true});let total=0,area=0;for(let i=0;i<raw.length;i+=3)if(raw[i]>220&&raw[i+1]<30&&raw[i+2]<30){total+=(i/3)%320;area++;}assert.ok(area>1000);return total/area;});
+assert.ok(centroids[1]-centroids[0]>10,'Encoded Three video must advance actual geometry between frames');
+records.push({ test:'private-three-motion-video',...threeVideo.receipt,probe:threeProbe });
+console.log('PASS actual six-frame Three video with decoded geometry movement');
 const motionSource = capsule(`import {FullFrame,Sequence,Repeat,Freeze,useFrame,useGlobalFrame,interpolate,easing,spring,interpolateColor,seededRandom} from '@creativesos/cut';
 function Probe(){const local=useFrame(),global=useGlobalFrame();return <div style={{position:'absolute',left:0,top:0,width:40,height:40,background:local===4&&global===20?'#00ff00':'#ff0000'}}/>;}
 function Frozen(){return <div style={{position:'absolute',left:40,top:0,width:40,height:40,background:useFrame()===7&&useGlobalFrame()===20?'#00ff00':'#ff0000'}}/>;}
@@ -114,6 +146,38 @@ for (const [frame, channel] of [[1, 2], [2, 0]]) {
   records.push({ test: `retimed-private-video-${frame}`, ...retimed.receipt });
 }
 console.log('PASS capsule-local video seeking and six-frame code video render (silent)');
+const sounds = {};
+for (const frequency of [440, 660]) {
+  const file = `${directory}tone-${frequency}.wav`;
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=${frequency}:sample_rate=48000:duration=1`, file], { windowsHide: true });
+  sounds[`src/tone-${frequency}.wav`] = await readFile(file);
+}
+const soundSource = capsule(`import {FullFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:'#0000ff'}}/>`, sounds);
+const soundRequest = { ...request, mode: 'video', audioTracks: [
+  { file: 'src/tone-440.wav', startFrame: 6, endFrame: 24, sourceStartSeconds: .1, volume: .5 },
+  { file: 'src/tone-660.wav', startFrame: 12, endFrame: 18, volume: .4 },
+] };
+const sound = await renderIsolated({ request: soundRequest, source: soundSource, image });
+const soundPath = `${directory}code-audio-mix.mp4`;
+await writeFile(soundPath, sound.artifact);
+const soundProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,sample_rate,channels,duration', '-of', 'json', soundPath], { encoding: 'utf8', windowsHide: true }));
+assert.equal(soundProbe.streams.filter((stream) => stream.codec_type === 'audio').length, 1);
+assert.equal(sound.receipt.audioTrackCount, 2); assert.equal(sound.receipt.silent, false);
+const rms = (file, start, end) => {
+  const samples = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-vn', '-af', `atrim=start=${start}:end=${end}`, '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { maxBuffer: 1024 * 1024, windowsHide: true });
+  assert.ok(samples.length > 0);
+  let sum = 0; for (let index = 0; index < samples.length; index += 4) sum += samples.readFloatLE(index) ** 2;
+  return Math.sqrt(sum / (samples.length / 4));
+};
+assert.ok(rms(soundPath, .03, .12) < .001, 'Soundtrack must not start before its timeline offset.');
+assert.ok(rms(soundPath, .88, .97) < .001, 'Soundtrack must stop at its exclusive end frame.');
+const solo = rms(soundPath, .25, .35), mixed = rms(soundPath, .45, .55);
+assert.ok(solo > .015 && mixed > solo * 1.15, 'Both independent private tracks must actually contribute to the mix.');
+const soundRange = await renderIsolated({ request: { ...soundRequest, frameRange: [12, 20] }, source: soundSource, image });
+const soundRangePath = `${directory}code-audio-range.mp4`; await writeFile(soundRangePath, soundRange.artifact);
+assert.ok(rms(soundRangePath, .02, .12) > rms(soundRangePath, .24, .29) * 1.15, 'Ranged audio must retain original absolute track timing.');
+records.push({ test: 'private-audio-mix-and-range', ...sound.receipt, probe: soundProbe, soloRms: solo, mixedRms: mixed, rangeReceipt: soundRange.receipt });
+console.log('PASS actual private audio mixing, offset/trim/gain and ranged A/V timing');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);

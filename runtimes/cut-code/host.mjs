@@ -8,12 +8,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
+import { audioPlan } from './audio.mjs';
 
 const execute = promisify(execFile);
 const root = path.dirname(fileURLToPath(import.meta.url));
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 export function assertArtifactReceipt(artifact, receipt, request, source) {
   const output = outputContract(request);
+  const audioTrackCount = request.mode === 'video' ? audioPlan(request).length : 0;
+  if (receipt?.audioTrackCount !== audioTrackCount || receipt?.silent !== (request.mode === 'video' && audioTrackCount === 0)) throw new Error('Artifact audio did not match its request.');
   if (!Buffer.isBuffer(artifact) || !artifact.length || artifact.length >= MAX_ARTIFACT_BYTES || !receipt || receipt.version !== 1 || receipt.runtime !== 'cut-code-prototype-v1' || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.requestSha256 !== hash(JSON.stringify(request)) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.fps !== request.fps || receipt.format !== request.format || receipt.quality !== request.quality || receipt.start !== output.start || receipt.end !== output.end || receipt.mediaType !== output.mediaType || receipt.frames !== output.frames || (request.mode === 'still' && receipt.frame !== request.frame)) throw new Error('Artifact did not match its request and receipt.');
 }
 async function docker(args, options = {}) {

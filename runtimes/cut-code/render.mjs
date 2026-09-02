@@ -9,6 +9,7 @@ import { networkInterfaces } from 'node:os';
 import { chromium } from 'playwright-core';
 import { readCapsule, bundleCapsule } from './bundle.mjs';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
+import { audioPlan, mixAudioTracks } from './audio.mjs';
 
 let browser;
 let encoder;
@@ -24,7 +25,8 @@ try {
   const output = outputContract(request);
   const requestSha256 = createHash('sha256').update(JSON.stringify(request)).digest('hex');
   const source = await readFile('/input/source.zip');
-  const bundle = await bundleCapsule(readCapsule(source, request.entrypoint), request.entrypoint);
+  const capsule = readCapsule(source, request.entrypoint);
+  const bundle = await bundleCapsule(capsule, request.entrypoint);
   phase = 'browser_start';
   browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage'], timeout: 20_000 });
   const context = await browser.newContext({ viewport: { width: request.width, height: request.height }, deviceScaleFactor: 1, serviceWorkers: 'block', acceptDownloads: false, reducedMotion: 'reduce', locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light' });
@@ -44,12 +46,14 @@ try {
   await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replaceAll('</script', '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
   const outputPath = `/tmp/artifact.${output.extension}`;
+  const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;
+  const videoPath = hasAudio ? '/tmp/silent.mp4' : outputPath;
   const sequence = Object.create(null);
   const sequenceFrames = [];
   let sequenceBytes = 0;
   let encoderDone;
   if (request.mode === 'video') {
-    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', String(request.fps), '-i', 'pipe:0', '-an', '-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-fs', String(MAX_ARTIFACT_BYTES), outputPath], { stdio: ['pipe', 'ignore', 'ignore'] });
+    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', String(request.fps), '-i', 'pipe:0', '-an', '-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-fs', String(MAX_ARTIFACT_BYTES), videoPath], { stdio: ['pipe', 'ignore', 'ignore'] });
     encoder.stdin.on('error', () => {});
     encoderDone = once(encoder, 'close');
   }
@@ -134,10 +138,11 @@ try {
   }
   await browser.close();
   browser = undefined;
+  const audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath) : 0;
   const size = (await stat(outputPath)).size;
   if (!size || size >= MAX_ARTIFACT_BYTES) throw new Error('Artifact output limit exceeded.');
   const artifact = await readFile(outputPath);
-  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: last - first, start: first, end: last - 1, frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, silent: request.mode === 'video', operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
+  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: last - first, start: first, end: last - 1, frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: request.mode === 'video' && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
   process.stdout.write(JSON.stringify({ receipt, artifact: artifact.toString('base64') }));
 } catch (error) {
   // Capsule errors can contain source text. Never forward them into shared logs.
