@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { createHash } from 'node:crypto';
 import { renderIsolated } from './host.mjs';
+import { qualifyAudioOnly } from './qualify-audio-only.mjs';
+import { qualifyGif } from './qualify-gif.mjs';
 
 const image = execFileSync('docker', ['image', 'inspect', 'creativesos-cut-code:qualification', '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
 const directory = fileURLToPath(new URL('./qualification-output/', import.meta.url));
@@ -14,6 +16,8 @@ const capsule = (code, extras = {}) => Buffer.from(zipSync({ 'package.json': str
 const source = capsule(`import {FullFrame,Sequence,useFrame,useInputs,interpolate} from '@creativesos/cut';import Title from './title';export default function Scene(){const f=useFrame();const input=useInputs();return <FullFrame style={{background:f<15?'#ff0000':'#0000ff'}}><div style={{position:'absolute',left:interpolate(f,[0,29],[0,240]),top:70,width:40,height:40,background:'#00ff00'}}/><Sequence at={15} duration={15}><Title label={input.title}/></Sequence></FullFrame>}`, { 'src/title.tsx': strToU8(`import {useFrame} from '@creativesos/cut';export default ({label})=><span style={{position:'absolute',top:0,color:'white'}}>{label}: {useFrame()}</span>`) });
 const pixel = (artifact, x = 300, y = 160) => [...execFileSync('ffmpeg', ['-v', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-vf', `format=rgba,crop=1:1:${x}:${y}`, '-f', 'rawvideo', 'pipe:1'], { input: artifact, maxBuffer: 8192, windowsHide: true })];
 const records = [];
+records.push(...await qualifyGif({ image, directory }));
+records.push(...await qualifyAudioOnly({ image, directory }));
 for (const frame of [0, 20]) {
   const rendered = await renderIsolated({ request: { ...request, frame }, source, image });
   assert.deepEqual(pixel(rendered.artifact), frame === 0 ? [255, 0, 0, 255] : [0, 0, 255, 255]);
@@ -73,6 +77,28 @@ assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);
 records.push({ test: 'transparent-png-and-input-binding', ...transparent.receipt });
 console.log('PASS direct transparent composition PNG and input-bound output');
+const cssSource = capsule(`import {useLayoutEffect} from 'react';import {useFrame} from '@creativesos/cut';import './styles/theme.css';import a from './styles/a.module.css';import b from './styles/b.module.css';export default function Scene(){const f=useFrame();useLayoutEffect(()=>{void document.fonts.load('24px PrivateBrand').then(fonts=>{if(fonts.length!==1||fonts[0].status!=='loaded')throw Error('Private CSS font did not load');});},[]);return <><div className={a.box} style={{left:20+f*2,top:20}}/><div className={b.box} style={{left:130,top:20}}/><div className="private-image"/><div className="private-font">Private typography</div></>}`, {
+  'src/styles/theme.css': strToU8('@import "palette.css"; @font-face {font-family:PrivateBrand;src:url(../../assets/brand.ttf) format("truetype");} body{background:var(--background)} .private-image{position:absolute;left:220px;top:20px;width:40px;height:40px;background:url(../../assets/brand.svg)} .private-font{position:absolute;left:20px;top:90px;font-family:PrivateBrand;font-size:24px;color:white} .escaped::after{content:"</SCRIPT><div>not markup</div>";}'),
+  'src/styles/palette.css': strToU8(':root{--background:#000000}'),
+  'src/styles/base.module.css': strToU8('.base{position:absolute;width:40px;height:40px}'),
+  'src/styles/a.module.css': strToU8('.box{composes:base from "base.module.css";background:#00ff00}'),
+  'src/styles/b.module.css': strToU8('.box{composes:base from "base.module.css";background:#0000ff}'),
+  'assets/brand.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path fill="#ff00ff" d="M0 0h40v40H0z"/></svg>'),
+  'assets/brand.ttf': await readFile(new URL('../../shared/assets/cut-fonts/NotoSans-Variable.ttf', import.meta.url)),
+});
+for (const frame of [0, 20]) {
+  const rendered = await renderIsolated({ request: { ...request, frame }, source: cssSource, image });
+  assert.deepEqual(pixel(rendered.artifact, 30 + frame * 2, 30), [0, 255, 0, 255], 'CSS module composition must keep frame-driven positioning.');
+  assert.deepEqual(pixel(rendered.artifact, 140, 30), [0, 0, 255, 255], 'Identically named classes in different modules must not collide.');
+  assert.deepEqual(pixel(rendered.artifact, 230, 30), [255, 0, 255, 255], 'Stylesheet image URLs must embed private assets.');
+  assert.deepEqual(pixel(rendered.artifact), [0, 0, 0, 255], 'Nested stylesheet imports must apply before capture.');
+  if (frame === 20) assert.deepEqual(pixel(rendered.artifact, 30, 30), [0, 0, 0, 255]);
+  await writeFile(`${directory}private-css-${frame}.png`, rendered.artifact);
+  records.push({ test: `private-css-modules-assets-frame-${frame}`, ...rendered.receipt });
+}
+const cssReplay = await renderIsolated({ request: { ...request, frame: 0 }, source: cssSource, image });
+assert.equal(cssReplay.receipt.artifactSha256, records.find((item) => item.test === 'private-css-modules-assets-frame-0').artifactSha256, 'Imported stylesheet output must be reproducible.');
+console.log('PASS actual private CSS imports/modules, scoped classes, font/image URLs, frame motion and replay');
 const latePoster = await renderIsolated({ request: { ...request, width: 321, height: 181, durationInFrames: 108000, frame: 107999 }, source: capsule(`import {FullFrame,useFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:useFrame()===107999?'#00ff00':'#ff0000'}}/>`), image });
 assert.deepEqual(pixel(latePoster.artifact), [0, 255, 0, 255]);
 await writeFile(`${directory}late-frame-poster.png`, latePoster.artifact);
@@ -192,6 +218,66 @@ const soundRangePath = `${directory}code-audio-range.mp4`; await writeFile(sound
 assert.ok(rms(soundRangePath, .02, .12) > rms(soundRangePath, .24, .29) * 1.15, 'Ranged audio must retain original absolute track timing.');
 records.push({ test: 'private-audio-mix-and-range', ...sound.receipt, probe: soundProbe, soloRms: solo, mixedRms: mixed, rangeReceipt: soundRange.receipt });
 console.log('PASS actual private audio mixing, offset/trim/gain and ranged A/V timing');
+const automatedRequest = { ...request, mode: 'video', audioTracks: [{ file: 'src/tone-440.wav', volume: .5, volumeKeyframes: [{ frame: 0, value: 0 }, { frame: 12, value: 1, interpolation: 'hold' }, { frame: 24, value: 0 }] }] };
+const automated = await renderIsolated({ request: automatedRequest, source: soundSource, image });
+const automatedPath = `${directory}code-audio-envelope.mp4`;
+await writeFile(automatedPath, automated.artifact);
+const fadeStart = rms(automatedPath, .03, .10), gainPlateau = rms(automatedPath, .45, .65), gainEnd = rms(automatedPath, .86, .96);
+assert.ok(fadeStart > .001 && fadeStart < gainPlateau * .3 && gainPlateau > .03 && gainEnd < .001, 'Encoded private audio must contain the fade, held gain and mute.');
+const automatedRange = await renderIsolated({ request: { ...automatedRequest, frameRange: [6, 26] }, source: soundSource, image });
+const automatedRangePath = `${directory}code-audio-envelope-range.mp4`;
+await writeFile(automatedRangePath, automatedRange.artifact);
+assert.ok(Math.abs(rms(automatedRangePath, .05, .15) / rms(automatedPath, .25, .35) - 1) < .05, 'Encoded range must continue the same fade, without restarting it.');
+assert.ok(rms(automatedRangePath, .64, .69) < .001, 'Ranged held mute must use the original track clock.');
+records.push({ test: 'private-audio-gain-keyframes-and-range', ...automated.receipt, fadeStartRms: fadeStart, plateauRms: gainPlateau, mutedRms: gainEnd, rangeReceipt: automatedRange.receipt });
+console.log('PASS actual encoded soundtrack fades, held gain, mute and range continuity');
+for (const format of ['mp4', 'webm']) {
+  const privateVideoPath = `${directory}private-audio-streams.${format}`;
+  const codecs = format === 'mp4' ? ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac'] : ['-c:v', 'libvpx-vp9', '-c:a', 'libopus'];
+  execFileSync('ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=red:s=160x90:r=30:d=1','-i',`${directory}tone-440.wav`,'-i',`${directory}tone-660.wav`,'-map','0:v:0','-map','1:a:0','-map','2:a:0',...codecs,'-filter:a:1','volume=0.25','-threads','1','-t','1',privateVideoPath], { windowsHide:true, timeout:20_000 });
+  const mediaSource = capsule(`import {FullFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:'#0000ff'}}/>`, { [`src/voice.${format}`]: await readFile(privateVideoPath) });
+  const mediaRequest = { ...request, mode:'video', audioTracks:[{ file:`src/voice.${format}`, audioStream:1, startFrame:3, endFrame:27, sourceStartSeconds:.1 }] };
+  const mediaSound = await renderIsolated({ request:mediaRequest, source:mediaSource, image });
+  const mediaSoundPath = `${directory}code-${format}-selected-audio.mp4`; await writeFile(mediaSoundPath,mediaSound.artifact);
+  const selectedRms = rms(mediaSoundPath,.25,.45);
+  assert.ok(selectedRms > .015 && selectedRms < .028, 'The quieter second audio stream must be selected, not the first or a mixture.');
+  assert.ok(rms(mediaSoundPath,.01,.07) < .001 && rms(mediaSoundPath,.94,.99) < .001, 'Embedded audio must retain the explicit offset and end.');
+  const sample = execFileSync('ffmpeg',['-v','error','-i',mediaSoundPath,'-ss','0.25','-t','0.2','-vn','-ac','1','-ar','48000','-f','f32le','pipe:1'], { maxBuffer:100_000,windowsHide:true });
+  const energy = frequency => { let real=0,imaginary=0;for(let index=0;index<sample.length/4;index++){const value=sample.readFloatLE(index*4),angle=2*Math.PI*frequency*index/48000;real+=value*Math.cos(angle);imaginary+=value*Math.sin(angle);}return Math.hypot(real,imaginary); };
+  assert.ok(energy(660)>energy(440)*10,'The selected soundtrack must contain the second stream frequency.');
+  records.push({ test:`private-${format}-selected-audio-stream`,...mediaSound.receipt,selectedRms });
+  await assert.rejects(renderIsolated({ request:{...mediaRequest,audioTracks:[{file:`src/voice.${format}`,audioStream:2}]},source:mediaSource,image }), error => /\(audio_probe\)/.test(error.stderr));
+}
+await assert.rejects(renderIsolated({request:{...request,mode:'video',audioTracks:[{file:'src/clip.mp4'}]},source:videoSource,image}), error => /\(audio_probe\)/.test(error.stderr));
+await assert.rejects(renderIsolated({request:{...request,mode:'video',audioTracks:[{file:'src/missing.wav'}]},source:capsule('while(true){};export default ()=>null;'),image}), error => /\(audio_probe\)/.test(error.stderr));
+console.log('PASS actual private MP4/WebM audio selection, trim/offset and missing-stream rejection');
+const alphaSource = capsule(`import {useFrame} from '@creativesos/cut';export default ()=> <><div style={{position:'absolute',left:20+20*useFrame(),top:20,width:40,height:40,background:'#00ff00'}}/><div style={{position:'absolute',left:220,top:20,width:40,height:40,background:'rgba(255,0,0,0.5)'}}/></>`, sounds);
+const alphaRequest = { ...request, mode:'video', format:'webm', fps:10, durationInFrames:6 };
+const alphaVideo = await renderIsolated({request:alphaRequest,source:alphaSource,image});
+const alphaPath = `${directory}transparent-motion.webm`; await writeFile(alphaPath,alphaVideo.artifact);
+const alphaProbe = JSON.parse(execFileSync('ffprobe',['-v','error','-count_frames','-show_entries','stream=codec_type,codec_name,width,height,nb_read_frames:stream_tags=alpha_mode','-of','json',alphaPath],{encoding:'utf8',windowsHide:true}));
+assert.equal(alphaProbe.streams[0].codec_name,'vp9'); assert.equal(Number(alphaProbe.streams[0].nb_read_frames),6); assert.equal(alphaVideo.receipt.mediaType,'video/webm');
+const alphaPixel = (file,frame,x,y) => {
+  const bytes=execFileSync('ffmpeg',['-v','error','-c:v','libvpx-vp9','-i',file,'-vf',`select=eq(n\\,${frame}),format=rgba,crop=1:1:${x}:${y}`,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:8192,windowsHide:true});
+  assert.equal(bytes.length,4);return [...bytes];
+};
+assert.equal(alphaPixel(alphaPath,0,300,160)[3],0,'Background must remain transparent after VP9 encoding.');
+const opaque=alphaPixel(alphaPath,0,30,30),partial=alphaPixel(alphaPath,0,230,30);
+assert.ok(opaque[1]>235&&opaque[0]<20&&opaque[2]<20&&opaque[3]===255);
+assert.ok(partial[0]>235&&Math.abs(partial[3]-128)<=3,'Semi-transparent authored pixels must retain their alpha.');
+assert.equal(alphaPixel(alphaPath,4,30,30)[3],0); assert.ok(alphaPixel(alphaPath,4,110,30)[1]>235,'Actual transparent motion must advance to the later frame.');
+execFileSync('ffmpeg',['-v','error','-y','-nostdin','-c:v','libvpx-vp9','-i',alphaPath,'-frames:v','1',`${directory}transparent-motion-frame-0.png`],{windowsHide:true});
+const alphaWithSound=await renderIsolated({request:{...alphaRequest,audioTracks:[{file:'src/tone-440.wav',volume:.5}]},source:alphaSource,image});
+const alphaSoundPath=`${directory}transparent-motion-with-audio.webm`;await writeFile(alphaSoundPath,alphaWithSound.artifact);
+const alphaSoundProbe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','stream=codec_type,codec_name','-of','json',alphaSoundPath],{encoding:'utf8',windowsHide:true}));
+assert.ok(alphaSoundProbe.streams.some(stream=>stream.codec_type==='audio'&&stream.codec_name==='opus'));assert.ok(rms(alphaSoundPath,.1,.4)>.03);assert.equal(alphaPixel(alphaSoundPath,0,300,160)[3],0,'Muxing Opus must not flatten video alpha.');
+const reusedAlphaSource=capsule(`import {FullFrame,FrameVideo} from '@creativesos/cut';import overlay from './overlay.webm';export default ()=> <FullFrame style={{background:'#0000ff'}}><FrameVideo src={overlay} style={{width:'100%',height:'100%'}}/></FullFrame>`,{'src/overlay.webm':alphaVideo.artifact});
+const reusedAlpha=await renderIsolated({request:{...request,fps:10,durationInFrames:6,frame:4},source:reusedAlphaSource,image});
+assert.deepEqual(pixel(reusedAlpha.artifact),[0,0,255,255]);assert.ok(pixel(reusedAlpha.artifact,110,30)[1]>235);
+const mixedAlpha=pixel(reusedAlpha.artifact,230,30);assert.ok(Math.abs(mixedAlpha[0]-128)<8&&mixedAlpha[1]<8&&Math.abs(mixedAlpha[2]-127)<8,'Reimported alpha must composite correctly over the next scene.');
+await writeFile(`${directory}reused-transparent-overlay.png`,reusedAlpha.artifact);
+records.push({test:'transparent-vp9-alpha-motion',...alphaVideo.receipt,probe:alphaProbe,opaquePixel:opaque,partialPixel:partial,audioReceipt:alphaWithSound.receipt,reuseReceipt:reusedAlpha.receipt});
+console.log('PASS actual VP9 alpha, partial opacity, frame motion, Opus mux and private video-layer reuse');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);

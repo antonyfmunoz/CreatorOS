@@ -7,7 +7,8 @@ function archive(source, extra = {}) { return zipSync({ 'package.json': strToU8(
 test('bundles real TSX and the clean-room frame SDK without running source code', async () => {
   const source = `import {FullFrame,useFrame,interpolate} from '@creativesos/cut'; export default function Scene(){const f=useFrame();return <FullFrame style={{left:interpolate(f,[0,30],[0,100])}}>Frame {f}</FullFrame>}`;
   const bundle = await bundleCapsule(readCapsule(archive(source), 'src/index.tsx'), 'src/index.tsx');
-  assert.ok(bundle.includes('__cutRenderFrame'));
+  assert.ok(bundle.javascript.includes('__cutRenderFrame'));
+  assert.equal(bundle.stylesheet, '');
 });
 test('rejects host, network and unapproved dependency imports', async () => {
   for (const specifier of ['node:fs', 'child_process', 'https://example.com/code.js', '/etc/passwd', '../../host.ts', 'unapproved-package', 'three/addons/loaders/GLTFLoader.js', 'three/src/Three.js']) {
@@ -25,4 +26,47 @@ test('allows private relative TSX imports and rejects escaping archive paths', a
   const files = readCapsule(archive(`export {default} from './title';`, { 'src/title.tsx': strToU8('export default () => <h1>Private title</h1>') }), 'src/index.tsx');
   assert.ok(await bundleCapsule(files, 'src/index.tsx'));
   assert.throws(() => readCapsule(archive('export default null', { '../escape': strToU8('no') }), 'src/index.tsx'));
+});
+
+test('bundles nested private styles, local module names, composition and image URLs', async () => {
+  const files = readCapsule(archive(`import './theme.css'; import styles from './title.module.css'; export default () => <h1 className={styles.title}>Private title</h1>`, {
+    'src/theme.css': strToU8('@import "palette.css"; h1 { color: red; }'),
+    'src/palette.css': strToU8(':root { --brand: #00ff00; }'),
+    'src/title.module.css': strToU8('.title { composes: base from "base.module.css"; color: var(--brand); background-image: url(../assets/logo.svg); filter:url(#shadow); }'),
+    'src/base.module.css': strToU8('.base { font-weight: bold; }'),
+    'assets/logo.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><path fill="blue" d="M0 0h2v2H0z"/></svg>'),
+  }), 'src/index.tsx');
+  const bundle = await bundleCapsule(files, 'src/index.tsx');
+  assert.ok(bundle.javascript.includes('title_title'));
+  assert.ok(bundle.stylesheet.includes('base_base'));
+  assert.ok(bundle.stylesheet.includes('data:image/svg+xml'));
+  assert.ok(bundle.stylesheet.includes('--brand'));
+  assert.ok(bundle.stylesheet.includes('#shadow'));
+  assert.ok(!bundle.javascript.includes('data:image/svg+xml'), 'Stylesheet resource text must not be embedded in generated JavaScript.');
+});
+
+test('markup-like private stylesheet content is returned as data, not constructed code', async () => {
+  const files = readCapsule(archive(`import './literal.css'; export default () => <div/>`, {
+    'src/literal.css': strToU8('.literal::after{content:"</SCRIPT><div id=css-injection>not markup</div>";}'),
+  }), 'src/index.tsx');
+  const bundle = await bundleCapsule(files, 'src/index.tsx');
+  assert.ok(bundle.stylesheet.includes('css-injection'));
+  assert.ok(!bundle.javascript.includes('css-injection'));
+});
+
+test('rejects network, host, missing and unsupported stylesheet dependencies', async () => {
+  const attempts = [
+    '@import "https://example.invalid/style.css";', '@import "//example.invalid/style.css";',
+    '@import "file:///etc/passwd";', '@import "../../outside.css";', '@import "missing.css";',
+    '.x { background: url(https://example.invalid/a.png); }', '.x { background: url(/etc/passwd); }',
+    '.x { background: url(data:image/png;base64,AAAA); }', '.x { background: url(../secret.json); }',
+    '.x { background: url(../assets/a.png?query=yes); }',
+    '.x { composes: other from "https://example.invalid/style.css"; }',
+  ];
+  for (const css of attempts) {
+    const files = readCapsule(archive(`import styles from './x.module.css'; export default () => <div className={styles.x}/>`, {
+      'src/x.module.css': strToU8(css), 'secret.json': strToU8('{}'),
+    }), 'src/index.tsx');
+    await assert.rejects(bundleCapsule(files, 'src/index.tsx'), undefined, css);
+  }
 });

@@ -2,9 +2,12 @@
 
 Last prepared: 2026-08-14
 
-This is the remaining competitive-evidence gate for CutStudio and Broadcast.
-It is not an implementation backlog. Native provider-independent functionality
-is qualified separately in `CREATIVESOS_END_STATE_PARITY.md`.
+This describes the competitive-evidence gate for CutStudio and Broadcast;
+it is not proof that implementation is finished. In particular, executable
+CutStudio compositions still have native implementation and production-isolation
+gaps. See [the current Remotion closure register](CUTSTUDIO_REMOTION_CLOSURE.md).
+Native bounded functionality is tracked separately in
+`CREATIVESOS_END_STATE_PARITY.md`.
 
 ## Locked evidence rules
 

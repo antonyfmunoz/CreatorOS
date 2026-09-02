@@ -261,8 +261,21 @@ export const cutRenderSettingsSchema = z.object({
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(50), z.literal(60)]).default(30),
 });
 
+export const cutRenderTimelineDataSchema = z.object({
+  version: z.literal(1),
+  projectId: z.string().uuid(),
+  sourceAssetId: z.string().uuid(),
+  revision: z.number().int().positive(),
+  name: z.string().trim().min(1).max(160),
+  duration: z.number().finite().positive().max(43_200),
+  edl: cutEdlSchema,
+  transcript: cutTranscriptSchema.nullable(),
+});
+export const cutRenderTimelineSnapshotSchema = cutRenderTimelineDataSchema.extend({ sha256: z.string().regex(/^[a-f0-9]{64}$/) });
+
 export const cutRenderRequestSchema = cutRenderSettingsSchema.extend({
   clip: z.object({ start: z.number().min(0), end: z.number().positive() }).optional(),
+  timeline: cutRenderTimelineSnapshotSchema.optional(),
   composition: z.object({
     id: z.string().uuid(),
     revision: z.number().int().positive(),
@@ -272,6 +285,7 @@ export const cutRenderRequestSchema = cutRenderSettingsSchema.extend({
     manifest: z.unknown(),
   }).optional(),
 }).superRefine((value, context) => {
+  if (value.composition && value.timeline) context.addIssue({ code: z.ZodIssueCode.custom, path: ["timeline"], message: "Choose a timeline or composition snapshot, not both" });
   if (value.composition && value.clip) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["clip"], message: "Composition snapshots cannot be combined with a timeline clip range" });
   }
@@ -365,6 +379,20 @@ export function cutTrackEffectiveGain(track: string, tracks: CutTrackSettings[] 
   const setting = tracks.find((item) => item.track === track);
   const bus = setting?.bus ? buses.find((item) => item.id === setting.bus) : undefined;
   return (setting?.gain ?? 1) * (bus?.muted ? 0 : bus?.gain ?? 1);
+}
+
+export function updateCutTrackSettings(edl: CutEdl, track: string, patch: Partial<CutTrackSettings>, duration: number): CutEdl {
+  // Legacy sequential edits expose the primary mixer too. Upgrade on the first
+  // track edit, preserving their speed-adjusted concatenation order and trims.
+  let cursor = 0;
+  const clips = edl.version === 3 ? edl.clips : edl.clips.map((clip) => {
+    const timelineStart = cursor;
+    cursor += (clip.end - clip.start) / (clip.speed ?? 1);
+    return { ...clip, track: "v1", timelineStart };
+  });
+  if (!clips.some((clip) => (clip.track ?? "v1") === track)) throw new Error("The selected timeline track does not exist");
+  const current = edl.tracks?.find((item) => item.track === track) ?? { track, locked: false, hidden: false, muted: false, solo: false, gain: 1 };
+  return validateCutEdl({ ...edl, version: 3, clips, tracks: [...(edl.tracks ?? []).filter((item) => item.track !== track), { ...current, ...patch, track }] }, duration);
 }
 
 export function normalizeCutClips(clips: CutClip[], duration?: number, version: 1 | 2 | 3 = 2): CutClip[] {

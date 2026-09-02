@@ -42,6 +42,7 @@ export async function bundleCapsule(files, entrypoint) {
   const result = await build({
     stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {FrameContext} from './sdk.jsx';import Composition from 'capsule-entry';const root=createRoot(document.getElementById('stage'));window.__cutRenderFrame=(frame,config,input)=>flushSync(()=>root.render(React.createElement(FrameContext.Provider,{value:{frame,globalFrame:frame,config,input}},React.createElement(Composition,input))));`, resolveDir: runtimeRoot, sourcefile: 'bootstrap.jsx', loader: 'jsx' },
     bundle: true, platform: 'browser', format: 'iife', write: false,
+    outfile: path.join(runtimeRoot, '__compiled_capsule__.js'),
     jsx: 'automatic', sourcemap: false, logLevel: 'silent',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'private-capsule', setup(plugin) {
@@ -50,6 +51,17 @@ export async function bundleCapsule(files, entrypoint) {
       // arbitrary Three addon, package installation or remote import is allowed.
       plugin.onResolve({ filter: /^three$/ }, () => ({ path: threeModule }));
       plugin.onResolve({ filter: /.*/, namespace: 'capsule' }, (args) => {
+        // CSS dependencies are files in the same private capsule, not npm or
+        // remote resources. A bare CSS URL is relative to its stylesheet.
+        if (['import-rule', 'composes-from', 'url-token'].includes(args.kind)) {
+          if (args.kind === 'url-token' && /^#[A-Za-z_][A-Za-z0-9_.:-]*$/.test(args.path)) return { path: args.path, external: true };
+          if (!args.path || /^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/|\\)/.test(args.path) || /[?#\\]/.test(args.path)) throw new Error('Stylesheet resources must stay capsule-local.');
+          const name = path.posix.normalize(path.posix.join(path.posix.dirname(args.importer), args.path));
+          if (name.startsWith('../') || name.startsWith('/') || !files[name]) throw new Error('A private stylesheet resource is missing or escapes the capsule.');
+          const supported = args.kind === 'url-token' ? /\.(png|jpe?g|webp|svg|ttf|otf|woff2)$/i : /\.css$/i;
+          if (!supported.test(name)) throw new Error('Unsupported private stylesheet resource.');
+          return { path: name, namespace: 'capsule' };
+        }
         if (args.path === '@creativesos/cut') return { path: path.join(runtimeRoot, 'sdk.jsx') };
         if (args.path === 'three/addons/renderers/SVGRenderer.js') return { path: require.resolve(args.path) };
         if (allowedDependencies.has(args.path)) return { path: require.resolve(args.path) };
@@ -62,12 +74,18 @@ export async function bundleCapsule(files, entrypoint) {
       });
       plugin.onLoad({ filter: /.*/, namespace: 'capsule' }, (args) => {
         const extension = path.posix.extname(args.path).slice(1).toLowerCase();
-        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl' };
+        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', css: args.path.endsWith('.module.css') ? 'local-css' : 'css', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl' };
         if (!loaders[extension] || !files[args.path]) throw new Error('Unsupported capsule module type.');
         return { contents: files[args.path], loader: loaders[extension] };
       });
     } }],
   });
-  if (result.outputFiles.length !== 1 || result.outputFiles[0].contents.length > 25 * 1024 * 1024) throw new Error('Compiled capsule exceeds its output limit.');
-  return result.outputFiles[0].text;
+  const javascript = result.outputFiles.filter((file) => file.path.endsWith('.js'));
+  const stylesheets = result.outputFiles.filter((file) => file.path.endsWith('.css'));
+  if (javascript.length !== 1 || stylesheets.length > 1 || result.outputFiles.length !== javascript.length + stylesheets.length) throw new Error('Unexpected compiled capsule outputs.');
+  // CSS remains data, never JavaScript source or HTML markup. The isolated
+  // renderer transfers both fields through Playwright's structured arguments.
+  const compiled = { javascript: javascript[0].text, stylesheet: stylesheets[0]?.text ?? '' };
+  if (Buffer.byteLength(compiled.javascript, 'utf8') + Buffer.byteLength(compiled.stylesheet, 'utf8') > 25 * 1024 * 1024) throw new Error('Compiled capsule exceeds its output limit.');
+  return compiled;
 }

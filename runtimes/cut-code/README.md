@@ -11,6 +11,15 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
+- Capsule-relative CSS imports and CSS modules support reusable motion-design
+  styles. Nested `@import`, module `composes`, and private image/font `url(...)`
+  references stay inside the archive and are bundled before rendering. Local
+  SVG fragment references are allowed; remote, host and package stylesheet
+  resources fail admission. CSS and JavaScript share the existing 25 MB compiled
+  limit. No Sass, Tailwind build, PostCSS plugins or external font fetch is run.
+  Styles are installed before source execution and private font readiness.
+  As with inline styles, motion must be driven by composition frames, not
+  wall-clock CSS animations or transitions.
 - The MIT-licensed Three.js 0.185.1 core and its explicitly approved SVGRenderer
   addon can be imported by private source. This enables frame-driven geometry,
   perspective cameras, depth ordering and vector-shaded motion graphics without
@@ -25,7 +34,8 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   frame, with source offset, speed, repetition and end-frame freeze. It uses
   `startFrom` in composition-frame units, `speed` in `(0, 8]`, and `repeat` as a
   boolean. Up to eight simultaneous, at-most-120-second/4K sources are admitted.
-  Embedded video remains muted; source audio is not included in exports yet.
+  Embedded video remains muted by default. To include its source sound, name
+  the same capsule-local MP4/WebM in an explicit `audioTracks` request.
   No external media URL or network permission is introduced.
 - Stateless motion math: numeric keyframes with clamp/extend/wrap behavior,
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
@@ -44,13 +54,65 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 - H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
+- Opt-in `format: "webm"` video exports use VP9 with an alpha channel and, when
+  requested, an Opus soundtrack. Transparent areas of the composition remain
+  transparent; an authored opaque background remains opaque. This is a bounded
+  single-pass export, not distributed alpha chunk stitching. MP4 stays the
+  default opaque output. WebM preserves the same even-size, frame, pixel-frame,
+  CPU, memory, deadline and byte limits. It is not ProRes, HDR or universal-device
+  playback support. Private WebM overlays can be reused through `FrameVideo`.
+- Opt-in `format: "gif"` video exports use a shared 255-color palette plus a
+  reserved transparent entry. Transparency is binary (alpha threshold 128), not
+  the partial alpha available in WebM/PNG. `gifOptions.frameStep` in 1..30 samples
+  absolute frames starting at the range's first frame; the shortened final hold
+  preserves range duration to GIF's centisecond precision. `repeatCount: null`
+  repeats indefinitely, `0` plays once, and 1..1000 repeats that many times after
+  the initial play. Defaults are step 1 and indefinite repetition. GIF supports
+  odd dimensions, at most 50 composition FPS and a stricter 100-million full-range
+  pixel-frame palette budget; sampling cannot bypass that budget. Other execution
+  and byte caps remain unchanged. Soundtrack requests fail explicitly because
+  GIF cannot carry audio. Receipts bind the sampling/repetition settings, original
+  range and actual sampled frame count; `fps` remains the composition frame rate.
+  Decoded artifacts verify moving transparency without trails, opaque colors,
+  frame delays, repeat metadata, one-frame ranges and byte-identical replay.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
-  WAV/MP3/FLAC/Ogg files into stereo AAC. Tracks have a composition start frame,
+  WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
   Range exports retain original audio timing rather than restarting soundtracks.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects
   summing, without normalizing quiet material upward. No network input is allowed.
+- `mode: "audio"` exports the explicit soundtrack mix without bundling or
+  executing visual capsule code or starting Chromium. Formats are PCM16 WAV
+  (default), 192-kbit/s MP3 and 192-kbit/s AAC in M4A, all 48-kHz stereo. This
+  uses the same source validation, stream selection, track gain, fades and
+  absolute range clock as video soundtracks. Empty/nonoverlapping mixes emit
+  genuine silence; missing or out-of-bounds sources fail instead of becoming
+  silence. A request can cover at most 120 seconds within the one-hour timeline;
+  video pixel-frame limits do not apply to a path that renders no pixels.
+  CPU, memory, isolation, source, output and deadline caps remain unchanged.
+  Width/height stay in the composition/request receipt but no video stream is
+  created. Raw ADTS AAC and React audio-component discovery are not implemented.
+  MP3 container duration can include encoder padding and AAC decoding can include
+  a padded final packet; WAV has exact PCM sample counts and verified replay.
+- `audioStream` selects a zero-based audio stream (not the overall video stream
+  index), defaulting to the first. At most eight audio streams are admitted per
+  file. Missing streams fail; they never silently deliver a mute artifact.
+  The selected stream's decode limits and duration are checked. Video soundtrack
+  trim is relative to that audio stream's beginning, including containers with
+  non-zero starting timestamps. MP4 external-track and absolute-path references
+  are explicitly disabled; demuxers and protocol permissions stay fixed.
+- A soundtrack may have 1..32 `volumeKeyframes` with integral, strictly increasing
+  track-local `frame`, `value` in 0..2, and `interpolation` of `linear` (default)
+  or `hold`. The outgoing interval uses the left point's interpolation. The
+  first/last value holds outside the points. Keyframe gain multiplies constant
+  track volume; the existing mix limiter remains in force. Gains are evaluated
+  per output sample after source retiming; playback speed does not retime gain,
+  and range exports continue the original track-local clock. Zero is a true
+  mute. Keyframes cannot lie beyond the track's exclusive end. This bounded
+  data contract does not execute arbitrary callbacks in the host or provide
+  React `<Audio>` lifecycle integration. Existing requests without keyframes
+  retain their normalized shape and filter order.
 - PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
   FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
   ZIP timestamps are fixed, and actual PNG-sequence replay is byte-checked.
@@ -71,7 +133,7 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Video codec/VFR
 compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
-automatic video-audio extraction, arbitrary dependencies, PDF output,
+automatic React video-audio lifecycle mixing, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Typed source authoring

@@ -34,8 +34,12 @@ jobs:
       - run: npm audit --audit-level=moderate
       - name: Install artifact inspection tools
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Prove sample-evaluated audio envelopes and range continuity
+        run: npm run qualify:audio
       - name: Build pinned local qualification image
         run: docker build -t creativesos-cut-code:qualification .
+      - name: Prove envelopes with the container's exact media tools
+        run: npm run qualify:audio -- --container
       - name: Prove actual output and cancellation boundaries
         run: npm run qualify
       - name: Retain synthetic artifacts and receipts
