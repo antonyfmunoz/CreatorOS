@@ -51,7 +51,13 @@ try {
   let pageFailed = false;
   // React effects and rejected promises can fail outside the synchronous render
   // callback. Such failures must not be turned into a successful blank artifact.
-  page.on('pageerror', () => { pageFailed = true; });
+  page.on('pageerror', () => {
+    pageFailed = true;
+    // Reject an outstanding preparation/media wait immediately. Otherwise a
+    // failed effect can leave a held frame burning its whole remaining budget.
+    // Never wait for authored beforeunload handlers or forward exception text.
+    void page.close({ runBeforeUnload: false }).catch(() => {});
+  });
   phase = 'render';
   page.on('dialog', (dialog) => void dialog.dismiss());
   context.on('page', (popup) => { if (popup !== page) void popup.close(); });

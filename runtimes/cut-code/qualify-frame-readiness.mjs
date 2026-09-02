@@ -28,8 +28,14 @@ export async function qualifyFrameReadiness({ image, directory }) {
     ['timeout', `import {useState} from 'react';import {holdFrame} from '@creativesos/cut';export default function Scene(){useState(()=>holdFrame({timeoutMs:80}));return <div/>}`],
     ['cancel', `import {useState,useEffect} from 'react';import {holdFrame,failRender} from '@creativesos/cut';export default function Scene(){useState(()=>holdFrame());useEffect(()=>{const timer=setTimeout(()=>failRender(),40);return()=>clearTimeout(timer)},[]);return <div/>}`],
     ['too-many', `import {useState} from 'react';import {holdFrame} from '@creativesos/cut';export default function Scene(){useState(()=>Array.from({length:65},()=>holdFrame()));return <div/>}`],
+    ['uncaught-while-held', `import {useState,useEffect} from 'react';import {holdFrame} from '@creativesos/cut';export default function Scene(){useState(()=>holdFrame({timeoutMs:30000}));useEffect(()=>{setTimeout(()=>{throw new Error('owned-private-preparation-error')},50)},[]);return <div/>}`],
   ]) {
-    await assert.rejects(renderIsolated({ request: { ...request, mode: 'still', frame: 0 }, source: capsule(code), image, timeoutMs: 15_000 }), /CutStudio isolated code render failed \(render\)/);
+    await assert.rejects(renderIsolated({ request: { ...request, mode: 'still', frame: 0 }, source: capsule(code), image, timeoutMs: 15_000 }), (error) => {
+      assert.notEqual(error.code, 'CUT_RENDER_TIMEOUT', 'A known preparation failure must not consume the outer deadline.');
+      assert.match(error.message, /CutStudio isolated code render failed \(render\)/);
+      assert.ok(!error.message.includes('owned-private-preparation-error'), 'Private error contents must not enter host diagnostics.');
+      return true;
+    });
     console.log(`PASS explicit frame preparation ${name} rejects instead of accepting a placeholder`);
   }
   console.log('PASS actual async per-frame state, multiple holds, committed pixels and identical replay');

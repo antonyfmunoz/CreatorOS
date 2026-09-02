@@ -4,6 +4,10 @@ The isolated code-rendering prototype now coordinates authored asynchronous
 preparation before taking each frame. This is a clean-room CutStudio API, not
 Remotion source/API compatibility or public executable-code deployment.
 
+Current-head note: the error-interruption follow-up below has fresh normal-image
+qualification. Its revised candidate-image and protected-CI checks are still
+required; the earlier image receipts are not evidence for the revised bytes.
+
 `holdFrame({ timeoutMs })` creates an opaque preparation handle; all holds must
 clear through `releaseFrame(handle)` before capture. `failRender()` permanently
 fails the render. Release is idempotent after successful release, supporting
@@ -57,6 +61,30 @@ The desktop and mobile primary-timeline browser journeys both passed (2 tests,
 exported gap/tail audio/video. Logs are `frame-readiness-combined-verify.log`
 and `frame-readiness-combined-browser.log` in the retained task directory.
 This local combined check does not replace protected CI or deployment evidence.
+
+## Follow-up: stop failed preparations promptly
+
+A post-qualification resource audit found that an uncaught browser error during
+a 30-second hold left the evaluation waiting until the outer host deadline. The
+owned probe returned `CUT_RENDER_TIMEOUT` after 15,852 ms with its 15-second host
+budget, instead of returning a render-phase failure. No private error text leaked.
+
+The renderer now closes its isolated page on an uncaught composition error,
+without executing authored unload handlers. Pending preparation or media waits
+reject, normal failure cleanup runs, and the independent host watchdog remains
+unchanged. A new regression fixture must fail in the render phase, not from the
+outer deadline, and must not include its private error marker in host diagnostics.
+
+All 44 unit/type tests and the complete normal-image artifact/isolation suite
+passed again (`frame-error-unit.log`, `frame-error-isolated.log` in the retained
+task directory). Updated normal image:
+`sha256:5e1dcf0f3177b6558cb89357aea7135d4702b17e20d85aee7f58cc156817b4fc`.
+The same probe then failed correctly in the render phase in 3,142 ms, without
+private-text leakage or a leftover test container. These two observed timings
+are diagnostic samples, not a general latency SLA or competitor benchmark.
+
+Reference: [Playwright page closure semantics](https://playwright.dev/docs/api/class-page#page-close).
+Revised candidate-image scanning and protected CI must pass before promotion.
 
 ## Authoring and remaining boundaries
 
