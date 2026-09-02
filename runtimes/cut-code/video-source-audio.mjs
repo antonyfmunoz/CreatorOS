@@ -6,8 +6,10 @@ export function videoAudioCatalogEntry(file, bytes, probe) {
   if (typeof file !== 'string' || file.length > 200 || !PRIVATE_AUDIO_FILE.test(file) || !/\.(mp4|webm)$/i.test(file) || !bytes?.length || bytes.length > 20 * 1024 * 1024) throw new Error('Invalid private video soundtrack import.');
   const streams = Array.isArray(probe?.streams) ? probe.streams.filter((stream) => stream.codec_type === 'audio') : [];
   if (streams.length > 8) throw new Error('Private video has too many audio streams.');
+  const origin = Number(probe?.format?.start_time ?? 0);
+  if (!Number.isFinite(origin) || Math.abs(origin) > 120) throw new Error('Invalid private container origin.');
   const audioDurations = streams.map((stream) => {
-    const duration = Number(stream.duration) > 0 ? Number(stream.start_time ?? 0) + Number(stream.duration) : Number(probe?.format?.start_time ?? 0) + Number(probe?.format?.duration);
+    const duration = Number(stream.duration) > 0 ? Number(stream.start_time ?? origin) + Number(stream.duration) - origin : Number(probe?.format?.duration);
     if (!Number.isFinite(duration) || duration <= 0 || duration > 120 || !Number.isInteger(Number(stream.channels)) || Number(stream.channels) < 1 || Number(stream.channels) > 8 || !Number.isFinite(Number(stream.sample_rate)) || Number(stream.sample_rate) < 1 || Number(stream.sample_rate) > 192000) throw new Error('Private video soundtrack exceeds decode limits.');
     return duration;
   });

@@ -27,7 +27,13 @@ export function videoFrameIndex(probe) {
   const lastFrame = frames.at(-1);
   const lastDuration = Number(lastFrame.duration ?? lastFrame.pkt_duration ?? 0);
   if (!Number.isSafeInteger(lastDuration) || lastDuration < 0) throw new Error('Invalid private video frame duration.');
-  duration = Math.max(duration, (pts.at(-1) + lastDuration) * tick - origin);
+  // The decoded video-stream endpoint also avoids treating an absolute MP4
+  // header end (e.g. offset 5 + length 1) as six seconds of source playback.
+  if (lastDuration > 0) {
+    let originTicks = origin / tick;
+    if (Math.abs(originTicks - Math.round(originTicks)) <= Number.EPSILON * Math.max(1, Math.abs(originTicks)) * 4) originTicks = Math.round(originTicks);
+    duration = (pts.at(-1) + lastDuration - originTicks) * tick;
+  }
   if (duration > 120 || duration <= pts.at(-1) * tick - origin) throw new Error('Private video presentation endpoint is unavailable or unbounded.');
   return { pts, tick, origin, duration, codec: stream.codec_name, alpha: stream.tags?.alpha_mode === '1' };
 }

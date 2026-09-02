@@ -60,15 +60,25 @@ test('late embedded sound retains its container onset and end, not a reset audio
   const [track] = collector.finish();
   assert.equal(track.sourceTimebase, 'container');
   assert.doesNotThrow(() => validateSoundtrackProbe(offsetProbe, { ...track, sourceStart: .6, sourceDuration: .03 }));
-  assert.match(audioTrackFilters({ ...track, sourceStart: .6, sourceDuration: .03, duration: 1 / 30, delaySamples: 0, localStartFrame: 0, containerStartSeconds: 0 }, 30), /^asetpts=PTS\+\(0\)\/TB,aresample=48000:async=1:first_pts=0,atrim=start=0\.6/);
+  assert.match(audioTrackFilters({ ...track, sourceStart: .6, sourceDuration: .03, duration: 1 / 30, delaySamples: 0, localStartFrame: 0, containerStartSeconds: 0 }, 30), /^aresample=48000:async=1:first_pts=0,atrim=start=0\.6/);
   const early = { ...track, sourceTimebase: undefined, sourceStart: 0, sourceDuration: .03, duration: .03, delaySamples: 0, localStartFrame: 0 };
   assert.match(audioTrackFilters(early, 30), /^asetpts=PTS-STARTPTS,atrim=/);
 });
 
-test('unknown-duration streams use the format endpoint and invalid container clocks fail closed', () => {
+test('unknown-duration streams use the relative format duration and invalid clocks fail closed', () => {
   const offset = { streams: [{ codec_type: 'audio', start_time: '-.007', sample_rate: '48000', channels: 2 }], format: { start_time: '-.007', duration: '2.007' } };
-  assert.equal(videoAudioCatalogEntry('clip.webm', Buffer.from([0]), offset).audioDurations[0], 2);
+  assert.equal(videoAudioCatalogEntry('clip.webm', Buffer.from([0]), offset).audioDurations[0], 2.007);
   assert.throws(() => videoAudioCatalogEntry('clip.webm', Buffer.from([0]), { ...offset, format: { start_time: 'broken', duration: 1 } }));
+});
+test('non-zero container origins retain relative source sound onset and endpoint', () => {
+  const offset = { streams: [{ codec_type: 'audio', start_time: '5.228', duration: '.521333', sample_rate: '48000', channels: 1 }], format: { start_time: '5', duration: '6' } };
+  const shifted = videoAudioCatalogEntry('clip.mp4', Buffer.from([0]), offset);
+  assert.ok(Math.abs(shifted.audioDurations[0] - .749333) < 1e-12);
+  const sample = videoSourceAudioSample(shifted, { ...input, time: .6, duration: 1 });
+  assert.equal(sample.sourceSeconds, .6);
+  assert.equal(videoSourceAudioSample(shifted, { ...input, time: .8, duration: 1 }), null);
+  assert.doesNotThrow(() => validateSoundtrackProbe(offset, { ...sample, sourceStart: .6, sourceDuration: .03 }));
+  assert.match(audioTrackFilters({ ...sample, sourceStart: .6, sourceDuration: .03, duration: .03, delaySamples: 0, containerStartSeconds: 5 }, 30), /^aresample=48000:async=1:first_pts=0,atrim=start=0\.6/);
 });
 
 test('container clock mode stays bounded data and does not accept authored probe offsets', () => {

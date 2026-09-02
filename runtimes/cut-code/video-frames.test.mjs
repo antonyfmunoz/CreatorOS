@@ -25,6 +25,14 @@ test('the final decoded presentation interval cannot be truncated by VFR header 
   assert.equal(index.duration, .6);
   assert.equal(selectVideoFrame(index, .5, true), 5);
 });
+test('an absolute MP4 header end is not an extended relative video duration', () => {
+  const input = probe();
+  input.format = { start_time: '5', duration: '5.6' };
+  input.frames.forEach(frame => { frame.best_effort_timestamp += 5000; frame.duration = 100; });
+  const index = videoFrameIndex(input);
+  assert.ok(Math.abs(index.duration - .6) < 1e-12);
+  assert.equal(selectVideoFrame(index, .6, true), 0);
+});
 test('private video rejects ambiguous, unbounded or malformed metadata and bindings', async () => {
   for (const modify of [p=>p.frames[1].best_effort_timestamp=0,p=>p.frames[0].best_effort_timestamp='bad',p=>p.format.duration=121,p=>p.streams[0].width=100000,p=>p.streams[0].time_base='1/0',p=>p.frames=[]]) {
     const input = probe(); modify(input); assert.throws(() => videoFrameIndex(input));

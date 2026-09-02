@@ -47,14 +47,14 @@ export function audioTrackFilters(track, fps) {
     ? `aresample=48000,aformat=channel_layouts=stereo,asetpts=N/SR/TB,${volumeAutomationFilter(track, fps)}`
     : `volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo`;
   // Explicit tracks retain their established stream-relative trim semantics.
-  // Imported-video sound instead shares the browser's container media clock:
-  // FFmpeg first subtracts format.start_time, so restore that trusted probe
-  // offset, then materialize initial silence (or trim negative preroll) before
-  // applying the requested source trim. Never reset late sound to frame zero.
+  // Imported-video sound shares the indexed video's container-relative clock.
+  // FFmpeg already subtracts format.start_time. Preserve that common origin,
+  // materializing initial silence (or trimming preroll) without resetting a
+  // late audio stream to zero or reintroducing an absolute container offset.
   const containerStart = track.containerStartSeconds ?? 0;
   if (!Number.isFinite(containerStart) || Math.abs(containerStart) > 120) throw new Error('Invalid private container clock.');
   const sourceClock = track.sourceTimebase === 'container'
-    ? `asetpts=PTS+(${containerStart})/TB,aresample=48000:async=1:first_pts=0,`
+    ? 'aresample=48000:async=1:first_pts=0,'
     : /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
   return `${sourceClock}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
@@ -71,8 +71,10 @@ export function validateSoundtrackProbe(probe, track) {
   const selected = streams[track.audioStream ?? 0];
   const streamSeconds = Number(selected?.duration);
   const relativeSeconds = Number.isFinite(streamSeconds) && streamSeconds > 0 ? streamSeconds : Number(probe?.format?.duration);
+  const origin = Number(probe?.format?.start_time ?? 0);
+  if (!Number.isFinite(origin) || Math.abs(origin) > 120) throw new Error('Invalid private container origin.');
   const seconds = track.sourceTimebase === 'container'
-    ? Number.isFinite(streamSeconds) && streamSeconds > 0 ? Number(selected?.start_time ?? 0) + streamSeconds : Number(probe?.format?.start_time ?? 0) + relativeSeconds
+    ? Number.isFinite(streamSeconds) && streamSeconds > 0 ? Number(selected?.start_time ?? origin) + streamSeconds - origin : relativeSeconds
     : relativeSeconds;
   if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
   if (track.sourceEndSeconds !== undefined && track.sourceEndSeconds > seconds + .01) throw new Error('Private source sound tail exceeds the selected stream.');

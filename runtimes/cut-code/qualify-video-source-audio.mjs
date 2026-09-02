@@ -109,6 +109,19 @@ export default ()=> <FullFrame><Sequence at={3} duration={18}><Voice/></Sequence
   const offsetFastPcm = decode(offsetFastFile);
   assert.ok(rms(offsetFastPcm, .02, .08) < .001 && rms(offsetFastPcm, .16, .29) > .04 && rms(offsetFastPcm, .42, .48) < .001);
   records.push({ test: 'video-source-audio-container-retiming', ...offsetFast.receipt });
+  const shiftedFile = `${directory}source-video-nonzero-origin.mp4`;
+  execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-i', offsetFile, '-c', 'copy', '-output_ts_offset', '5', shiftedFile], { windowsHide: true, timeout: 10_000 });
+  const shiftedProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,start_time,duration:format=start_time,duration', '-of', 'json', shiftedFile], { encoding: 'utf8', windowsHide: true, timeout: 10_000 }));
+  assert.equal(Number(shiftedProbe.format.start_time), 5);
+  const shifted = await renderIsolated({ request: { ...offsetRequest, durationInFrames: 60 }, source: capsule('export default ()=> <FrameVideo src={clip} repeat/>', await readFile(shiftedFile)), image });
+  const shiftedOutput = `${directory}video-source-audio-nonzero-origin-loop.mov`; await writeFile(shiftedOutput, shifted.artifact);
+  const shiftedPcm = decode(shiftedOutput);
+  for (const start of [0, 1]) {
+    assert.ok(rms(shiftedPcm, start + .03, start + .18) < .001);
+    assert.ok(rms(shiftedPcm, start + .32, start + .45) > .04 && rms(shiftedPcm, start + .60, start + .69) > .04);
+    assert.ok(rms(shiftedPcm, start + .80, start + .95) < .001);
+  }
+  records.push({ test: 'video-source-audio-nonzero-origin-repeat', ...shifted.receipt, probe: shiftedProbe });
   const silentFile = `${directory}source-video-silent.mp4`;
   execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-i', clipFile, '-c:v', 'copy', '-an', silentFile], { windowsHide: true, timeout: 10_000 });
   for (const [name, code, video, enabled] of [['muted', 'export default ()=> <FrameVideo src={clip} muted/>', clip, true], ['no-audio-stream', 'export default ()=> <FrameVideo src={clip}/>', await readFile(silentFile), true], ['legacy-opt-out', 'export default ()=> <FrameVideo src={clip}/>', clip, undefined]]) {
