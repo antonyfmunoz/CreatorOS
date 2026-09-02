@@ -67,3 +67,19 @@ References: [CSS filter functions and sRGB](https://www.w3.org/TR/filter-effects
 [brightness](https://www.w3.org/TR/filter-effects-1/#brightnessEquivalent),
 [saturation matrix](https://www.w3.org/TR/filter-effects-1/#feColorMatrixElement),
 [native expression filters](https://ffmpeg.org/ffmpeg-filters.html#geq).
+
+## Revised local qualification
+
+Source `3b725ec7f9b7d4ce8badb1689f1b01657e880330` passed the full local root:
+654 tests across 156 files, types, production build, budgets and Worker dry-run.
+The expanded mobile/desktop/native run passed all 22 selected checks in 10.4
+minutes, including both cinema workflows within their original deadlines, the
+13 raw RGB/alpha combinations, actual color-card preview/export, exact curves,
+graphic/image/vector framing, title motion and native filter-file selection.
+Evidence is retained at
+`B:/CreatorOS-cut-color-parity/test-results/creativesos-browser-qualification-9c067ebde62e4d11a33324b1f0fda302`.
+
+The earlier nine-pass/one-timeout run remains a failure. No timeout, tolerance,
+test gate or production quota was relaxed. Protected exact-source review and
+coordinated app/worker deployment are still required. This is base RGB control
+qualification, not color-effect-stack or general Remotion equivalence.
