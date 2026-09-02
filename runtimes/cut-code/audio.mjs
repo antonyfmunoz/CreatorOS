@@ -2,7 +2,7 @@ import { writeFile, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MAX_ARTIFACT_BYTES, outputContract } from './request.mjs';
-import { frameVolumeExpression, loopAudioSamples } from './frame-audio.mjs';
+import { frameVolumeExpression, loopAudioSamples, loopAudioClock } from './frame-audio.mjs';
 import { videoSourceTime } from './media-clock.mjs';
 const execute = promisify(execFile);
 
@@ -59,7 +59,8 @@ export function audioTrackFilters(track, fps) {
   const sourceClock = track.sourceTimebase === 'container'
     ? 'aresample=48000:async=1:first_pts=0,'
     : /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
-  const loop = track.sourceLoopSeconds === undefined ? '' : `atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopAudioSamples(track.sourceLoopSeconds)},aloop=loop=-1:size=${loopAudioSamples(track.sourceLoopSeconds)},asetpts=N/SR/TB,`;
+  const loopClock = track.sourceLoopSeconds === undefined ? null : loopAudioClock(track.sourceLoopSeconds);
+  const loop = loopClock === null ? '' : `aresample=${loopClock.sampleRate},atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopClock.samples},aloop=loop=-1:size=${loopClock.samples},asetpts=N/SR/TB,`;
   return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 

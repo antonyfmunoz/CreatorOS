@@ -2,14 +2,29 @@
 import { videoSourceTime } from './media-clock.mjs';
 export const PRIVATE_AUDIO_FILE = /^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg|mp4|webm)$/i;
 
-export function loopAudioSamples(seconds) {
+export function loopAudioClock(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120) throw new Error('Invalid private audio loop duration.');
-  const samples = seconds * 48000, rounded = Math.round(samples);
-  // A loop may cross visual frames, but its fixed PCM period must be exact:
-  // silently rounding each cycle would introduce cumulative A/V drift.
-  if (rounded < 1 || Math.abs(samples - rounded) > 1e-6) throw new Error('Private audio loops require an exact 48 kHz sample period.');
-  return rounded;
+  // Find the exact media period's small rational clock. NTSC and VFR periods
+  // need not land on the 48 kHz output grid. Loop on a bounded intermediate
+  // sample rate, then resample the continuous stream once; rounding every
+  // cycle to output samples would accumulate A/V drift.
+  const tolerance = Number.EPSILON * Math.max(1, seconds) * 8;
+  let value = seconds, previousNumerator = 0, numerator = 1, previousDenominator = 1, denominator = 0;
+  for (let step = 0; step < 32; step++) {
+    const whole = Math.floor(value), nextNumerator = whole * numerator + previousNumerator, nextDenominator = whole * denominator + previousDenominator;
+    if (!Number.isSafeInteger(nextNumerator) || !Number.isSafeInteger(nextDenominator) || nextDenominator > 192000) break;
+    if (nextNumerator > 0 && Math.abs(nextNumerator / nextDenominator - seconds) <= tolerance) {
+      const multiple = Math.ceil(48000 / nextDenominator), sampleRate = nextDenominator * multiple, samples = nextNumerator * multiple;
+      if (sampleRate >= 48000 && sampleRate <= 192000 && samples >= 1) return { sampleRate, samples };
+    }
+    previousNumerator = numerator; numerator = nextNumerator; previousDenominator = denominator; denominator = nextDenominator;
+    const remainder = value - whole;
+    if (remainder === 0) break;
+    value = 1 / remainder;
+  }
+  throw new Error('Private audio loop period exceeds the bounded resampling clock.');
 }
+export function loopAudioSamples(seconds) { return loopAudioClock(seconds).samples; }
 
 export function validateFrameAudio(sample) {
   if (sample?.sourceLoopSeconds !== undefined) {

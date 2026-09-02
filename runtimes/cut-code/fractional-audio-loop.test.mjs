@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FrameAudioCollector, loopAudioSamples, validateFrameAudio } from './frame-audio.mjs';
+import { FrameAudioCollector, loopAudioSamples, loopAudioClock, validateFrameAudio } from './frame-audio.mjs';
 import { videoSourceAudioSample } from './video-source-audio.mjs';
 import { audioPlan, audioTrackFilters, validateSoundtrackProbe } from './audio.mjs';
 import { validateRequest } from './request.mjs';
@@ -50,4 +50,14 @@ test('loops retain a strict sample period, valid private bounds and unchanged pu
   const normalized = validateRequest({ ...request, audioTracks: [{ file: 'clip.mp4', sourceLoopSeconds: .15, sourceTimebase: 'container' }] });
   assert.equal(normalized.audioTracks[0].sourceLoopSeconds, undefined);
   assert.equal(normalized.audioTracks[0].sourceTimebase, undefined);
+});
+test('NTSC and uncommon frame periods keep an exact bounded intermediate sample clock', () => {
+  for (const seconds of [1001/30000, 3003/30000, 1001/60000, 1/15360, 7/90000, 2/7]) {
+    const clock = loopAudioClock(seconds);
+    assert.ok(Number.isInteger(clock.sampleRate) && clock.sampleRate >= 48000 && clock.sampleRate <= 192000);
+    assert.ok(Number.isSafeInteger(clock.samples) && clock.samples > 0);
+    assert.ok(Math.abs(clock.samples / clock.sampleRate - seconds) < 1e-14);
+  }
+  assert.deepEqual(loopAudioClock(.1001), { sampleRate:50000, samples:5005 });
+  assert.deepEqual(loopAudioClock(.15), { sampleRate:48000, samples:7200 });
 });

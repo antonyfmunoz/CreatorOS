@@ -44,6 +44,25 @@ export async function qualifyFractionalAudioLoop({ image, directory }) {
     records.push({ test:`sample-exact-video-loop-${label}`, ...rendered.receipt, rmsError, maxError, sourceProbe:probe });
     if (label === 'range') assert.equal((await renderIsolated({ request, source, image })).receipt.artifactSha256, rendered.receipt.artifactSha256);
   }
+  const ntscFile = `${directory}fractional-loop-ntsc.mp4`;
+  execFileSync('ffmpeg', ['-v','error','-nostdin','-y','-f','lavfi','-i','color=c=blue:s=128x72:r=30000/1001:d=0.1001','-f','lavfi','-i','sine=frequency=400:sample_rate=48000:duration=0.1001','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k',ntscFile], { windowsHide:true,timeout:10000 });
+  const ntscSource = Buffer.from(zipSync({ 'package.json':strToU8('{"dependencies":{"react":"18.3.1"}}'),'main.tsx':strToU8(`import {FrameVideo} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FrameVideo src={clip} startFrom={1} repeat volume={.75}/>;`),'clip.mp4':await readFile(ntscFile) }));
+  const ntsc = await renderIsolated({ request:base,source:ntscSource,image });
+  const ntscOutput = `${directory}fractional-loop-ntsc.mov`; await writeFile(ntscOutput,ntsc.artifact);
+  const ntscPcm = decode(ntscOutput);
+  assert.equal(ntscPcm.length,96000*4);
+  // Five .1001-second source cycles equal exactly 24024 output samples, not
+  // five independently rounded periods. Check stationarity after startup,
+  // and require real signal so silent output cannot pass the drift check.
+  let driftSquared=0,signalSquared=0,driftPeak=0;
+  for(let i=24000;i<48000;i++) {
+    const value=ntscPcm.readFloatLE(i*4), difference=Math.abs(value-ntscPcm.readFloatLE((i+24024)*4));
+    signalSquared+=value*value;driftSquared+=difference*difference;driftPeak=Math.max(driftPeak,difference);
+  }
+  const driftRms=Math.sqrt(driftSquared/24000),signalRms=Math.sqrt(signalSquared/24000);
+  assert.ok(signalRms>.04&&driftRms<.00015&&driftPeak<.003,`NTSC loop drift or missing signal: RMS ${driftRms}, peak ${driftPeak}, signal ${signalRms}`);
+  assert.equal(ntsc.receipt.compositionAudio.trackCount,1);
+  records.push({test:'ntsc-video-loop-no-cumulative-sample-drift',...ntsc.receipt,driftRms,driftPeak,signalRms});
   console.log('PASS actual non-frame-aligned source loops: independent PCM phase, gain, range, repeated custody and one bounded interval');
   return records;
 }
