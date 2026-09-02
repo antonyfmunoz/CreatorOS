@@ -1,0 +1,31 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
+import { test, expect } from "@playwright/test";
+
+test("audible primary preview follows track gain and mute without reloading media", async ({ page }, info) => {
+  const dir = info.outputPath("preview-mix"); mkdirSync(dir, { recursive: true });
+  const file = `${dir}/tone.mp4`;
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=30:d=12", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", file]);
+  const upload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "video", visibility: "private", video: { name: "tone.mp4", mimeType: "video/mp4", buffer: readFileSync(file) } } });
+  expect(upload.ok()).toBeTruthy(); const asset = (await upload.json()).asset;
+  const created = await page.request.post("/api/cut/projects", { data: { sourceAssetId: asset.id, name: "Audible primary preview", duration: 12, mediaKind: "video" } });
+  expect(created.ok()).toBeTruthy(); const project = await created.json();
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const video = page.getByLabel("Timeline monitor").locator("video");
+  await video.evaluate(async (element: HTMLVideoElement) => { element.loop = true; element.muted = false; element.volume = 1; await element.play(); });
+  const level = async () => Number.parseFloat((await page.getByLabel("Live RMS level").textContent()) ?? "-60");
+  await expect.poll(level, { timeout: 10_000 }).toBeGreaterThan(-30);
+  const baseline = await level();
+  const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+  await gain.press("Home"); for (let n = 0; n < 5; n++) await gain.press("ArrowRight");
+  await expect(gain).toHaveValue("0.25");
+  await expect.poll(async () => baseline - await level()).toBeGreaterThan(10);
+  await expect.poll(async () => baseline - await level()).toBeLessThan(14);
+  const quiet = await level();
+  await page.getByRole("button", { name: "Mute V1 track", exact: true }).click();
+  await expect.poll(level).toBeLessThan(-55);
+  await page.getByRole("button", { name: "Unmute V1 track", exact: true }).click();
+  await expect.poll(level).toBeGreaterThan(quiet - 2);
+  await expect.poll(level).toBeLessThan(quiet + 2);
+  await info.attach("audible-preview-gain", { body: JSON.stringify({ baselineDbfs: baseline, quarterGainDbfs: quiet, restoredDbfs: await level() }), contentType: "application/json" });
+});

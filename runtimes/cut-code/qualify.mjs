@@ -7,15 +7,19 @@ import { createHash } from 'node:crypto';
 import { renderIsolated } from './host.mjs';
 import { qualifyAudioOnly } from './qualify-audio-only.mjs';
 import { qualifyGif } from './qualify-gif.mjs';
+import { qualifyProres } from './qualify-prores.mjs';
 
-const image = execFileSync('docker', ['image', 'inspect', 'creativesos-cut-code:qualification', '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
-const directory = fileURLToPath(new URL('./qualification-output/', import.meta.url));
+const variant = process.env.CUT_CODE_IMAGE_VARIANT ?? 'qualification';
+if (!['qualification', 'production-candidate'].includes(variant)) throw new Error('Unsupported qualification image variant.');
+const image = execFileSync('docker', ['image', 'inspect', `creativesos-cut-code:${variant}`, '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
+const directory = fileURLToPath(new URL(`./qualification-output/${variant === 'production-candidate' ? 'production-candidate/' : ''}`, import.meta.url));
 await mkdir(directory, { recursive: true });
 const request = { version: 1, mode: 'still', width: 320, height: 180, fps: 30, durationInFrames: 30, frame: 0, entrypoint: 'src/main.tsx', input: { title: 'CreativesOS' } };
 const capsule = (code, extras = {}) => Buffer.from(zipSync({ 'package.json': strToU8('{"dependencies":{"react":"18.3.1"}}'), 'src/main.tsx': strToU8(code), ...extras }));
 const source = capsule(`import {FullFrame,Sequence,useFrame,useInputs,interpolate} from '@creativesos/cut';import Title from './title';export default function Scene(){const f=useFrame();const input=useInputs();return <FullFrame style={{background:f<15?'#ff0000':'#0000ff'}}><div style={{position:'absolute',left:interpolate(f,[0,29],[0,240]),top:70,width:40,height:40,background:'#00ff00'}}/><Sequence at={15} duration={15}><Title label={input.title}/></Sequence></FullFrame>}`, { 'src/title.tsx': strToU8(`import {useFrame} from '@creativesos/cut';export default ({label})=><span style={{position:'absolute',top:0,color:'white'}}>{label}: {useFrame()}</span>`) });
 const pixel = (artifact, x = 300, y = 160) => [...execFileSync('ffmpeg', ['-v', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-vf', `format=rgba,crop=1:1:${x}:${y}`, '-f', 'rawvideo', 'pipe:1'], { input: artifact, maxBuffer: 8192, windowsHide: true })];
 const records = [];
+records.push(...await qualifyProres({ image, directory }));
 records.push(...await qualifyGif({ image, directory }));
 records.push(...await qualifyAudioOnly({ image, directory }));
 for (const frame of [0, 20]) {

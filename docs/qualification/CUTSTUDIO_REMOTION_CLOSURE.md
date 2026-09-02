@@ -27,7 +27,7 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
 | Media | Private MP4/WebM frame seek/retime/repeat, image/font resources and alpha-overlay reuse | VFR and broad decoder matrix, long media, edge cases and lifecycle-synchronized source sound |
 | Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports | React audio lifecycle integration, preview mixing, longer representative workloads and public code execution |
-| Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF sampling/repetition/transparency | Additional codecs/containers, encoding controls, ProRes/HDR where supported and benchmarked; production exposure of executable exports |
+| Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF sampling/repetition/transparency and ProRes HQ/4444/XQ with PCM audio | Additional codecs/containers and encoding controls, HDR, external-editor interoperability and long-range/chunk workflows; production exposure of executable exports |
 | Workload limits | Single-job CPU/memory/bytes/frame bounds, timeout, cancellation, cleanup | App/runtime quota reconciliation, durable tenant admission, metering, scheduling, dispatch, recovery and scaled rendering |
 | Security | Actual non-root, no-network, read-only, sandboxed browser tests | Production image vulnerability gate, approved execution topology, privilege/credential separation, adversarial review and service deployment |
 | Asset custody | Private native asset lineage and prototype request/source/output hashes | Production source/lockfile exchange, short-lived artifact custody, revocation, deletion and recovery for executable jobs |
@@ -36,12 +36,14 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 
 ## Release blockers versus implementation
 
-1. The stylesheet bundler's generated-code finding must be fixed in source and
-   verified by CodeQL, not dismissed merely because another layer escaped HTML.
-   Structured CSS data transfer is the candidate correction.
-2. The production image candidate is separately blocked by HIGH/CRITICAL
-   vulnerabilities. Passing the local Playwright image is not approval to
-   expose untrusted customer code. No ignore list or lowered gate is authorized.
+1. Structured CSS data transfer fixed the stylesheet generated-code finding;
+   CodeQL and the full protected suite passed before PR 141 merged. Exact
+   production release qualification remains distinct from those source checks.
+2. The older Trixie image remains blocked. The lean Noble candidate removed
+   unused vulnerable components and passed the full local artifact suite plus
+   a fresh zero HIGH/CRITICAL scan. Protected candidate CI, approved isolation
+   topology and actual public service qualification remain required. No ignore
+   list or lowered gate is authorized.
 3. The ordinary GCP worker holds application/provider credentials. It must never
    become the executable-capsule worker by simply importing the prototype.
 4. Existing public capsule CPU/memory/output declarations do not yet match the

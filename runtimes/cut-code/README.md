@@ -5,6 +5,11 @@ This is a separate native, clean-room React/TSX motion-graphics runtime. It is
 or a claim of Remotion parity**. Application readiness must continue to report
 executable code as not implemented until its end-to-end dispatcher is qualified.
 
+The [lean Noble candidate](../../docs/releases/2026-09-02-cut-code-noble-candidate.md)
+passed the full local artifact/isolation suite and a zero HIGH/CRITICAL image
+scan. Its independent CI job must reproduce that evidence. This does not grant
+production topology approval or enable public code execution.
+
 ## Implemented execution contract
 
 - A private ZIP with `package.json`, a TSX/JSX entrypoint and relative modules.
@@ -75,6 +80,17 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   range and actual sampled frame count; `fps` remains the composition frame rate.
   Decoded artifacts verify moving transparency without trails, opaque colors,
   frame delays, repeat metadata, one-frame ranges and byte-identical replay.
+- Opt-in `format: "mov"` exports use FFmpeg's ProRes encoder with
+  `proresProfile: "422hq"` (default), `"4444"`, or `"4444xq"`. HQ is opaque;
+  4444/XQ retain full and partial transparency. Explicit soundtracks use
+  uncompressed PCM16, 48-kHz stereo, not AAC. Profiles, frames, range and output
+  bytes are receipt-bound. The same even-dimension, frame, pixel-frame, time,
+  memory and 64-MB artifact limits apply; large intermediate files must use
+  bounded ranges and can still exceed the output limit. This is an 8-bit SDR
+  browser capture encoded into a higher-precision editing codec, not recovered
+  source precision, HDR, a lossless claim or a browser-playable replacement for
+  MP4/WebM. Compatibility with external editing applications requires separate
+  field qualification. Encoder vendor identity is not spoofed as Apple's encoder.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
   WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
