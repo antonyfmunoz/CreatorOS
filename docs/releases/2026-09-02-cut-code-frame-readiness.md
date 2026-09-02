@@ -49,6 +49,15 @@ Candidate: `sha256:5903142385d4d8ea34c98f65ffdc344156a45a635369584650d54cede718c
 Both images produced the same async sequence SHA-256:
 `d89379802e319fe6df92025029b5199afb6b8e23c3a13042c7229c1ffbe24d0d`.
 
+The combined candidate also includes the primary-sequence preview and WebM
+replay changes. Full application verification passed 585 tests in 143 files,
+TypeScript checking, production build/bundle checks and worker dry runs.
+The desktop and mobile primary-timeline browser journeys both passed (2 tests,
+1.5 minutes), covering actual preview pixels, transport/seeking, speed/trim and
+exported gap/tail audio/video. Logs are `frame-readiness-combined-verify.log`
+and `frame-readiness-combined-browser.log` in the retained task directory.
+This local combined check does not replace protected CI or deployment evidence.
+
 ## Authoring and remaining boundaries
 
 Acquire a hold before starting async work; update the component state before
