@@ -39,6 +39,11 @@ function storedZip(entries: Record<string, string>) {
 
 test("CutStudio persists and enforces the programmable motion and cinematic production lifecycle", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
+  const previewErrors: string[] = [];
+  page.on("pageerror", (error) => previewErrors.push(`page: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") previewErrors.push(`console: ${message.text()}`);
+  });
   const owner = ownerFor(testInfo);
   const peer = owner === 1 ? 2 : 1;
   const peerUsername = peer === 1 ? "owner" : "sarahmitchell";
@@ -337,7 +342,12 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expect(riveLayer).toBeVisible();
   const rivePreview = riveLayer.locator("canvas");
   await expect(rivePreview).toBeVisible();
-  await expect(rivePreview).toHaveAttribute("data-rive-loaded", "true", { timeout: 15_000 });
+  try {
+    await expect(rivePreview).toHaveAttribute("data-rive-loaded", "true", { timeout: 15_000 });
+  } catch (error) {
+    await testInfo.attach("rive-preview-errors", { body: JSON.stringify(previewErrors), contentType: "application/json" });
+    throw error;
+  }
   await expect.poll(async () => rivePreview.evaluate((element) => {
     const canvas = element as HTMLCanvasElement;
     const context = canvas.getContext("2d");

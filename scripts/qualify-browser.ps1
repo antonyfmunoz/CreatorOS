@@ -33,6 +33,7 @@ $priorTemp = $env:TEMP
 $priorTmp = $env:TMP
 $priorTmpDir = $env:TMPDIR
 $postgresStarted = $false
+$qualificationSucceeded = $false
 
 if (-not $qualificationPath.StartsWith($qualificationPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unexpected qualification path"
@@ -78,6 +79,7 @@ try {
   if ($Grep) { $playwrightArguments += @("--grep", $Grep) }
   & npx.cmd playwright test @playwrightArguments
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification failed" }
+  $qualificationSucceeded = $true
 } finally {
   if ($postgresStarted) { & pg_ctl -D $databasePath -m fast -w stop }
   $env:DATABASE_URL = $priorDatabaseUrl
@@ -93,6 +95,25 @@ try {
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith($qualificationPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      # Keep only synthetic browser evidence on failure, never the disposable
+      # database, upload store, or runtime directory. Do not hide the failure.
+      $browserEvidence = Join-Path $resolvedPath "playwright-results"
+      if (-not $qualificationSucceeded -and (Test-Path -LiteralPath $browserEvidence)) {
+        $evidenceRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "test-results"
+        New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+        $evidenceRoot = (Resolve-Path -LiteralPath $evidenceRoot).Path.TrimEnd("\")
+        $evidenceDestination = Join-Path $evidenceRoot $qualificationName
+        if (-not ([System.IO.Path]::GetFullPath($evidenceDestination)).StartsWith("$evidenceRoot\creativesos-browser-qualification-", [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw "Refusing an unexpected browser evidence destination"
+        }
+        try {
+          Copy-Item -LiteralPath $browserEvidence -Destination $evidenceDestination -Recurse
+          Write-Host "Failed browser evidence retained at $evidenceDestination"
+        } catch {
+          # A disk/copy failure must not strand the disposable database/uploads.
+          Write-Warning "Could not retain browser evidence; qualification remains failed."
+        }
+      }
       Remove-Item -LiteralPath $resolvedPath -Recurse -Force
     }
   }

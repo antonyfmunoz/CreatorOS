@@ -7,6 +7,7 @@ import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import { cutPlayerFrame, cutPlayerGain, cutPlayerRate } from "@shared/cut-studio-player";
 import type { AnimationItem } from "lottie-web";
 import type { Rive as RiveInstance } from "@rive-app/canvas-lite";
+import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -140,13 +141,11 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
   const assetUrl = useContext(AssetUrlContext);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const animation = useRef<RiveInstance | null>(null);
+  const preview = useRef<ReturnType<typeof createCutRivePreviewController> | null>(null);
+  const latestSeconds = useRef(0);
+  latestSeconds.current = Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps;
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const scrub = (instance: RiveInstance) => {
-    const firstAnimation = instance.animationNames[0];
-    if (firstAnimation) instance.scrub(firstAnimation, Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps);
-    instance.drawFrame();
-  };
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -154,6 +153,16 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
     setLoaded(false);
     animation.current?.cleanup(); animation.current = null;
     if (!layer.assetId || !canvas.current) return () => controller.abort();
+    const playback = createCutRivePreviewController({
+      instance: () => animation.current,
+      seconds: () => latestSeconds.current,
+      loaded: () => setLoaded(true),
+      failed: () => setError("The Rive animation could not be prepared for preview"),
+      schedule: (callback) => requestAnimationFrame(callback),
+      cancel: (id) => cancelAnimationFrame(id),
+      defer: (callback) => queueMicrotask(callback),
+    });
+    preview.current = playback;
     void (async () => {
       try {
         const response = await fetch(assetUrl(layer.assetId!), { credentials: "include", signal: controller.signal });
@@ -164,8 +173,7 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
         if (!active || !canvas.current) return;
         RuntimeLoader.setWasmUrl("/api/runtime-assets/rive-2.41.0.wasm");
         RuntimeLoader.setWasmFallbackUrl(null);
-        let instance: RiveInstance;
-        instance = new Rive({
+        const instance = new Rive({
           buffer,
           canvas: canvas.current,
           autoplay: false,
@@ -173,28 +181,17 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
           enableRiveAssetCDN: false,
           shouldDisableRiveListeners: true,
           automaticallyHandleEvents: false,
-          onLoad: () => {
-            if (!active) return;
-            const firstAnimation = instance.animationNames[0];
-            if (firstAnimation) instance.play(firstAnimation);
-            instance.resizeDrawingSurfaceToCanvas(1);
-            requestAnimationFrame(() => {
-              if (!active) return;
-              if (firstAnimation) instance.pause(firstAnimation);
-              scrub(instance);
-              requestAnimationFrame(() => { if (active) setLoaded(true); });
-            });
-          },
-          onLoadError: () => { if (active) setError("The Rive animation could not be decoded"); },
+          onLoad: playback.load,
+          onLoadError: playback.fail,
         });
         animation.current = instance;
       } catch (caught) {
         if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Rive preview failed");
       }
     })();
-    return () => { active = false; controller.abort(); animation.current?.cleanup(); animation.current = null; };
+    return () => { active = false; playback.dispose(); preview.current = null; controller.abort(); animation.current?.cleanup(); animation.current = null; };
   }, [assetUrl, layer.assetId]);
-  useEffect(() => { if (animation.current) scrub(animation.current); }, [frame, fps, layer.from, layer.sourceStartFrame]);
+  useEffect(() => { preview.current?.seek(); }, [frame, fps, layer.from, layer.sourceStartFrame]);
   if (error) return <div className="grid h-full w-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</div>;
   return <canvas ref={canvas} width={640} height={360} data-rive-loaded={loaded ? "true" : "false"} aria-label={`${layer.name} Rive preview`} className="h-full w-full"/>;
 }
