@@ -1,0 +1,23 @@
+# Candidate only: qualification is not approval for public untrusted execution.
+# Rebuild and scan before promotion; the final image digest binds OS packages.
+FROM node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS dependencies
+WORKDIR /opt/cut-code
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium ffmpeg ca-certificates fonts-liberation fonts-noto-color-emoji libstdc++6 libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 1000 renderer && useradd --uid 1000 --gid renderer --no-create-home --shell /usr/sbin/nologin renderer
+WORKDIR /opt/cut-code
+COPY --from=dependencies /usr/local/bin/node /usr/local/bin/node
+COPY --from=dependencies /opt/cut-code/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY bundle.mjs sdk.jsx motion.mjs audio.mjs request.mjs browser.mjs render.mjs ./
+RUN dpkg-query -W > /opt/cut-code/os-packages.txt \
+    && node --version > /opt/cut-code/node-version.txt \
+    && chromium --version > /opt/cut-code/chromium-version.txt
+ENV CUT_CODE_CONTAINER=1 CUT_CODE_BROWSER=debian-chromium HOME=/tmp
+USER renderer
+ENTRYPOINT ["node", "render.mjs"]

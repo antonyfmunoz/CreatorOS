@@ -102,6 +102,26 @@ isolated compute/network/IAM, durable dispatch/cancellation, private asset excha
 per-tenant cost admission, vulnerability scanning, receipts, recovery and red-team
 qualification. Never execute capsule code inside the API worker or app origin.
 
+`Dockerfile.production` is an additional **candidate**, based on digest-pinned
+Debian 13 and official Node build stages with Debian Chromium, FFmpeg and fonts.
+Only Node and locked runtime dependencies enter the final image; npm, Yarn and
+Corepack are build tooling and are not shipped in the execution image. It is not yet
+approved for public execution. Unlike the development image it has no bundled
+Firefox/WebKit/test browsers. The image owns the fixed Chromium executable;
+capsules cannot supply binary paths or flags. Both variants require the same
+non-root Chromium sandbox and host isolation with no fallback.
+
+Build it with `docker build -f Dockerfile.production -t
+creativesos-cut-code:production-candidate .`, then run the unchanged full suite
+with `CUT_CODE_IMAGE_VARIANT=production-candidate npm run qualify` (set the
+environment variable using the syntax for your shell). Evidence is separated
+under `qualification-output/<variant>/`. Installed OS/browser/Node versions are
+recorded inside the candidate image; the resulting immutable image digest, not
+just the base digest, must bind scans and qualification before promotion.
+Rebuild and scan OS and npm dependencies for every release. A custom Dockerfile
+does not remove the need for dedicated execution-host isolation, tenant budgets,
+dispatch/cancellation, security review or production field evidence.
+
 Qualification asserts real pixels, moving geometry, relative module imports,
 input binding, alpha, a probed MP4 frame count, denied internet/metadata/local-file
 reads, actual watchdog timeout and actual abort, and no leftover containers.

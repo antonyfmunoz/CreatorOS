@@ -10,6 +10,7 @@ import { chromium } from 'playwright-core';
 import { readCapsule, bundleCapsule } from './bundle.mjs';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
 import { audioPlan, mixAudioTracks } from './audio.mjs';
+import { browserLaunchOptions } from './browser.mjs';
 
 let browser;
 let encoder;
@@ -28,7 +29,7 @@ try {
   const capsule = readCapsule(source, request.entrypoint);
   const bundle = await bundleCapsule(capsule, request.entrypoint);
   phase = 'browser_start';
-  browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage'], timeout: 20_000 });
+  browser = await chromium.launch(browserLaunchOptions(process.env.CUT_CODE_BROWSER));
   const context = await browser.newContext({ viewport: { width: request.width, height: request.height }, deviceScaleFactor: 1, serviceWorkers: 'block', acceptDownloads: false, reducedMotion: 'reduce', locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light' });
   await context.route('**/*', (route) => route.abort('blockedbyclient'));
   await context.routeWebSocket(/.*/, (socket) => socket.close());

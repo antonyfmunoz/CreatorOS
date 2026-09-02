@@ -1,5 +1,6 @@
 *
 !Dockerfile
+!Dockerfile.production
 !package.json
 !package-lock.json
 !bundle.mjs
@@ -7,4 +8,5 @@
 !motion.mjs
 !audio.mjs
 !request.mjs
+!browser.mjs
 !render.mjs
