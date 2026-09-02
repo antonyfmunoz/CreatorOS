@@ -6,8 +6,10 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { createHash } from 'node:crypto';
 import { renderIsolated } from './host.mjs';
 
-const image = execFileSync('docker', ['image', 'inspect', 'creativesos-cut-code:qualification', '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
-const directory = fileURLToPath(new URL('./qualification-output/', import.meta.url));
+const imageVariant = process.env.CUT_CODE_IMAGE_VARIANT ?? 'qualification';
+assert.ok(['qualification', 'production-candidate'].includes(imageVariant), 'Unknown qualification image variant');
+const image = execFileSync('docker', ['image', 'inspect', `creativesos-cut-code:${imageVariant}`, '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
+const directory = fileURLToPath(new URL(`./qualification-output/${imageVariant}/`, import.meta.url));
 await mkdir(directory, { recursive: true });
 const request = { version: 1, mode: 'still', width: 320, height: 180, fps: 30, durationInFrames: 30, frame: 0, entrypoint: 'src/main.tsx', input: { title: 'CreativesOS' } };
 const capsule = (code, extras = {}) => Buffer.from(zipSync({ 'package.json': strToU8('{"dependencies":{"react":"18.3.1"}}'), 'src/main.tsx': strToU8(code), ...extras }));
