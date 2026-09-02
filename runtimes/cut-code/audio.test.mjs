@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRequest } from './request.mjs';
-import { audioPlan, volumeAutomationFilter } from './audio.mjs';
+import { audioPlan, volumeAutomationFilter, soundtrackInputOptions, validateSoundtrackProbe } from './audio.mjs';
 const base = { version: 1, mode: 'video', width: 320, height: 180, fps: 30, durationInFrames: 60, entrypoint: 'index.tsx', input: {} };
 test('audio planning retains absolute trim, speed and sample-accurate offsets across range exports', () => {
   const request = validateRequest({ ...base, frameRange: [15, 44], audioTracks: [
@@ -42,4 +42,18 @@ test('audio admission rejects external files, unsupported decoders and unbounded
   for (const track of [{ file: '../sound.wav' }, { file: 'https://example.com/a.wav' }, { file: 'sound.m3u8' }, { file: 'sound.wav', startFrame: -1 }, { file: 'sound.wav', endFrame: 61 }, { file: 'sound.wav', startFrame: 2, endFrame: 2 }, { file: 'sound.wav', sourceStartSeconds: 120 }, { file: 'sound.wav', speed: 0 }, { file: 'sound.wav', volume: 3 }]) assert.throws(() => validateRequest({ ...base, audioTracks: [track] }));
   assert.throws(() => validateRequest({ ...base, mode: 'still', audioTracks: [{ file: 'a.wav' }] }));
   assert.throws(() => validateRequest({ ...base, audioTracks: Array.from({ length: 9 }, () => ({ file: 'a.wav' })) }));
+});
+test('video soundtrack admission pins demuxers, denies external references and selects bounded audio streams', () => {
+  assert.deepEqual(soundtrackInputOptions('clip.MP4'), ['-protocol_whitelist', 'file,pipe', '-f', 'mov', '-enable_drefs', '0', '-use_absolute_path', '0']);
+  assert.deepEqual(soundtrackInputOptions('clip.webm'), ['-protocol_whitelist', 'file,pipe', '-f', 'matroska']);
+  assert.throws(() => soundtrackInputOptions('playlist.m3u8'));
+  for (const audioStream of [-1, 8, .5, '0', NaN]) assert.throws(() => validateRequest({ ...base, audioTracks: [{ file: 'clip.mp4', audioStream }] }));
+  const request = validateRequest({ ...base, audioTracks: [{ file: 'clip.mp4', audioStream: 1 }] });
+  assert.deepEqual(validateRequest(request), request);
+  const [track] = audioPlan(request);
+  const first = { codec_type: 'audio', channels: 2, sample_rate: '48000', duration: '3' };
+  const second = { codec_type: 'audio', channels: 1, sample_rate: '44100', duration: '2' };
+  const probe = { streams: [{ codec_type: 'video' }, first, second], format: { duration: '120' } };
+  assert.equal(validateSoundtrackProbe(probe, track), second);
+  for (const bad of [{ streams: [] }, { streams: [first], format: { duration: 4 } }, { ...probe, streams: [first, { ...second, duration: '1' }] }, { ...probe, streams: [first, { ...second, channels: 16 }] }, { ...probe, streams: Array(9).fill(first) }]) assert.throws(() => validateSoundtrackProbe(bad, track));
 });

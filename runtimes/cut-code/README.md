@@ -25,7 +25,8 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   frame, with source offset, speed, repetition and end-frame freeze. It uses
   `startFrom` in composition-frame units, `speed` in `(0, 8]`, and `repeat` as a
   boolean. Up to eight simultaneous, at-most-120-second/4K sources are admitted.
-  Embedded video remains muted; source audio is not included in exports yet.
+  Embedded video remains muted by default. To include its source sound, name
+  the same capsule-local MP4/WebM in an explicit `audioTracks` request.
   No external media URL or network permission is introduced.
 - Stateless motion math: numeric keyframes with clamp/extend/wrap behavior,
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
@@ -45,12 +46,19 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
-  WAV/MP3/FLAC/Ogg files into stereo AAC. Tracks have a composition start frame,
+  WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC. Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
   Range exports retain original audio timing rather than restarting soundtracks.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects
   summing, without normalizing quiet material upward. No network input is allowed.
+- `audioStream` selects a zero-based audio stream (not the overall video stream
+  index), defaulting to the first. At most eight audio streams are admitted per
+  file. Missing streams fail; they never silently deliver a mute artifact.
+  The selected stream's decode limits and duration are checked. Video soundtrack
+  trim is relative to that audio stream's beginning, including containers with
+  non-zero starting timestamps. MP4 external-track and absolute-path references
+  are explicitly disabled; demuxers and protocol permissions stay fixed.
 - A soundtrack may have 1..32 `volumeKeyframes` with integral, strictly increasing
   track-local `frame`, `value` in 0..2, and `interpolation` of `linear` (default)
   or `hold`. The outgoing interval uses the left point's interpolation. The
@@ -82,7 +90,7 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Video codec/VFR
 compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
-automatic video-audio extraction, arbitrary dependencies, PDF output,
+automatic React video-audio lifecycle mixing, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Typed source authoring

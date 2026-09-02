@@ -205,6 +205,26 @@ assert.ok(Math.abs(rms(automatedRangePath, .05, .15) / rms(automatedPath, .25, .
 assert.ok(rms(automatedRangePath, .64, .69) < .001, 'Ranged held mute must use the original track clock.');
 records.push({ test: 'private-audio-gain-keyframes-and-range', ...automated.receipt, fadeStartRms: fadeStart, plateauRms: gainPlateau, mutedRms: gainEnd, rangeReceipt: automatedRange.receipt });
 console.log('PASS actual encoded soundtrack fades, held gain, mute and range continuity');
+for (const format of ['mp4', 'webm']) {
+  const privateVideoPath = `${directory}private-audio-streams.${format}`;
+  const codecs = format === 'mp4' ? ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac'] : ['-c:v', 'libvpx-vp9', '-c:a', 'libopus'];
+  execFileSync('ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=red:s=160x90:r=30:d=1','-i',`${directory}tone-440.wav`,'-i',`${directory}tone-660.wav`,'-map','0:v:0','-map','1:a:0','-map','2:a:0',...codecs,'-filter:a:1','volume=0.25','-threads','1','-t','1',privateVideoPath], { windowsHide:true, timeout:20_000 });
+  const mediaSource = capsule(`import {FullFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:'#0000ff'}}/>`, { [`src/voice.${format}`]: await readFile(privateVideoPath) });
+  const mediaRequest = { ...request, mode:'video', audioTracks:[{ file:`src/voice.${format}`, audioStream:1, startFrame:3, endFrame:27, sourceStartSeconds:.1 }] };
+  const mediaSound = await renderIsolated({ request:mediaRequest, source:mediaSource, image });
+  const mediaSoundPath = `${directory}code-${format}-selected-audio.mp4`; await writeFile(mediaSoundPath,mediaSound.artifact);
+  const selectedRms = rms(mediaSoundPath,.25,.45);
+  assert.ok(selectedRms > .015 && selectedRms < .028, 'The quieter second audio stream must be selected, not the first or a mixture.');
+  assert.ok(rms(mediaSoundPath,.01,.07) < .001 && rms(mediaSoundPath,.94,.99) < .001, 'Embedded audio must retain the explicit offset and end.');
+  const sample = execFileSync('ffmpeg',['-v','error','-i',mediaSoundPath,'-ss','0.25','-t','0.2','-vn','-ac','1','-ar','48000','-f','f32le','pipe:1'], { maxBuffer:100_000,windowsHide:true });
+  const energy = frequency => { let real=0,imaginary=0;for(let index=0;index<sample.length/4;index++){const value=sample.readFloatLE(index*4),angle=2*Math.PI*frequency*index/48000;real+=value*Math.cos(angle);imaginary+=value*Math.sin(angle);}return Math.hypot(real,imaginary); };
+  assert.ok(energy(660)>energy(440)*10,'The selected soundtrack must contain the second stream frequency.');
+  records.push({ test:`private-${format}-selected-audio-stream`,...mediaSound.receipt,selectedRms });
+  await assert.rejects(renderIsolated({ request:{...mediaRequest,audioTracks:[{file:`src/voice.${format}`,audioStream:2}]},source:mediaSource,image }), error => /\(audio_probe\)/.test(error.stderr));
+}
+await assert.rejects(renderIsolated({request:{...request,mode:'video',audioTracks:[{file:'src/clip.mp4'}]},source:videoSource,image}), error => /\(audio_probe\)/.test(error.stderr));
+await assert.rejects(renderIsolated({request:{...request,mode:'video',audioTracks:[{file:'src/missing.wav'}]},source:capsule('while(true){};export default ()=>null;'),image}), error => /\(audio_probe\)/.test(error.stderr));
+console.log('PASS actual private MP4/WebM audio selection, trim/offset and missing-stream rejection');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);

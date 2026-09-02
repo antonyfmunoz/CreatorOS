@@ -38,28 +38,55 @@ export function audioTrackFilters(track, fps) {
   const gain = track.volumeKeyframes
     ? `aresample=48000,aformat=channel_layouts=stereo,asetpts=N/SR/TB,${volumeAutomationFilter(track, fps)}`
     : `volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo`;
-  return `atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
+  const sourceClock = /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
+  return `${sourceClock}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
+}
+
+export function soundtrackInputOptions(file) {
+  const extension = file.split('.').at(-1).toLowerCase();
+  if (!['wav', 'mp3', 'flac', 'ogg', 'mp4', 'webm'].includes(extension)) throw new Error('Unsupported private soundtrack container.');
+  return ['-protocol_whitelist', 'file,pipe', '-f', extension === 'mp4' ? 'mov' : extension === 'webm' ? 'matroska' : extension,
+    ...(extension === 'mp4' ? ['-enable_drefs', '0', '-use_absolute_path', '0'] : [])];
+}
+
+export function validateSoundtrackProbe(probe, track) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams.filter((stream) => stream.codec_type === 'audio') : [];
+  const selected = streams[track.audioStream ?? 0];
+  const streamSeconds = Number(selected?.duration);
+  const seconds = Number.isFinite(streamSeconds) && streamSeconds > 0 ? streamSeconds : Number(probe?.format?.duration);
+  if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
+  return selected;
 }
 
 // Container-only media work. File names, decoders and process arguments are
 // owned by the runtime, never interpreted as commands or provider URLs.
-export async function mixAudioTracks(request, capsule, inputVideo, outputVideo) {
+export async function prepareAudioTracks(request, capsule) {
   for (const track of request.audioTracks) if (!capsule[track.file]?.length) throw new Error('A private soundtrack file is missing.');
   const plan = audioPlan(request);
-  if (!plan.length) return 0;
-  const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', '-i', inputVideo];
-  const filters = [];
   for (let index = 0; index < plan.length; index++) {
     const track = plan[index];
     const extension = track.file.split('.').at(-1).toLowerCase();
     const filename = `/tmp/soundtrack-${index}.${extension}`;
     await writeFile(filename, capsule[track.file], { flag: 'wx' });
-    const probe = JSON.parse((await execute('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-f', extension, '-show_entries', 'stream=codec_type,sample_rate,channels:format=duration', '-of', 'json', filename], { timeout: 8000, maxBuffer: 16384 })).stdout);
-    const streams = probe.streams.filter((stream) => stream.codec_type === 'audio');
-    const seconds = Number(probe.format.duration);
-    if (streams.length !== 1 || !Number.isFinite(Number(streams[0].sample_rate)) || Number(streams[0].sample_rate) < 1 || Number(streams[0].sample_rate) > 192000 || !Number.isInteger(Number(streams[0].channels)) || Number(streams[0].channels) < 1 || Number(streams[0].channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('A soundtrack exceeds its decode or source timing limits.');
-    args.push('-threads', '1', '-protocol_whitelist', 'file,pipe', '-f', extension, '-i', filename);
-    filters.push(`[${index + 1}:a:0]${audioTrackFilters(track, request.fps)}[a${index}]`);
+    const inputOptions = soundtrackInputOptions(track.file);
+    const probe = JSON.parse((await execute('ffprobe', ['-v', 'error', ...inputOptions, '-show_entries', 'stream=codec_type,sample_rate,channels,duration:format=duration', '-of', 'json', filename], { timeout: 8000, maxBuffer: 16384 })).stdout);
+    validateSoundtrackProbe(probe, track);
+    Object.assign(track, { filename, inputOptions });
+  }
+  return plan;
+}
+
+export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, preparedTracks) {
+  // preparedTracks is a trusted in-process result of prepareAudioTracks, never
+  // accepted from the request or capsule. It avoids re-reading media after frames.
+  const plan = preparedTracks ?? await prepareAudioTracks(request, capsule);
+  if (!plan.length) return 0;
+  const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', '-i', inputVideo];
+  const filters = [];
+  for (let index = 0; index < plan.length; index++) {
+    const track = plan[index];
+    args.push('-threads', '1', ...track.inputOptions, '-i', track.filename);
+    filters.push(`[${index + 1}:a:${track.audioStream ?? 0}]${audioTrackFilters(track, request.fps)}[a${index}]`);
   }
   const duration = outputContract(request).frames / request.fps;
   filters.push(`${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`);

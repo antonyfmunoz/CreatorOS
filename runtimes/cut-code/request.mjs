@@ -24,7 +24,8 @@ export function validateRequest(request) {
   const tracks = request.audioTracks ?? [];
   if (!Array.isArray(tracks) || tracks.length > 8 || (tracks.length && request.mode !== 'video')) throw new Error('Up to eight private soundtracks are supported on video exports only.');
   const audioTracks = tracks.map((track) => {
-    if (!track || typeof track !== 'object' || typeof track.file !== 'string' || track.file.length > 200 || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg)$/i.test(track.file)) throw new Error('A soundtrack must identify a private capsule WAV/MP3/FLAC/Ogg file.');
+    if (!track || typeof track !== 'object' || typeof track.file !== 'string' || track.file.length > 200 || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg|mp4|webm)$/i.test(track.file)) throw new Error('A soundtrack must identify a supported private capsule audio or video file.');
+    if (track.audioStream !== undefined && (!Number.isInteger(track.audioStream) || track.audioStream < 0 || track.audioStream > 7)) throw new Error('Audio stream must be an index within 0..7.');
     const { startFrame = 0, endFrame = durationInFrames, sourceStartSeconds = 0, speed = 1, volume = 1 } = track;
     if (![startFrame, endFrame].every(Number.isInteger) || startFrame < 0 || endFrame <= startFrame || endFrame > durationInFrames || !Number.isFinite(sourceStartSeconds) || sourceStartSeconds < 0 || sourceStartSeconds >= 120 || !Number.isFinite(speed) || speed < .5 || speed > 2 || !Number.isFinite(volume) || volume < 0 || volume > 2) throw new Error('Invalid soundtrack timing or gain.');
     const points = track.volumeKeyframes;
@@ -33,7 +34,7 @@ export function validateRequest(request) {
       if (!point || typeof point !== 'object' || !Number.isInteger(point.frame) || point.frame < 0 || point.frame > endFrame - startFrame || (index > 0 && point.frame <= points[index - 1].frame) || !Number.isFinite(point.value) || point.value < 0 || point.value > 2 || !['linear', 'hold'].includes(point.interpolation ?? 'linear')) throw new Error('Volume keyframes must be ordered, bounded track-local frames and gains.');
       return { frame: point.frame, value: point.value, interpolation: point.interpolation ?? 'linear' };
     });
-    return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume, ...(volumeKeyframes ? { volumeKeyframes } : {}) };
+    return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume, ...(volumeKeyframes ? { volumeKeyframes } : {}), ...(track.audioStream !== undefined ? { audioStream: track.audioStream } : {}) };
   });
   return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }) };
 }

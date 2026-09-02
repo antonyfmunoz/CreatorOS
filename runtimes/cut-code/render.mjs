@@ -9,7 +9,7 @@ import { networkInterfaces } from 'node:os';
 import { chromium } from 'playwright-core';
 import { readCapsule, bundleCapsule } from './bundle.mjs';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
-import { audioPlan, mixAudioTracks } from './audio.mjs';
+import { audioPlan, mixAudioTracks, prepareAudioTracks } from './audio.mjs';
 
 let browser;
 let encoder;
@@ -26,6 +26,9 @@ try {
   const requestSha256 = createHash('sha256').update(JSON.stringify(request)).digest('hex');
   const source = await readFile('/input/source.zip');
   const capsule = readCapsule(source, request.entrypoint);
+  phase = 'audio_probe';
+  const preparedAudio = request.mode === 'video' ? await prepareAudioTracks(request, capsule) : [];
+  phase = 'bundle';
   const bundle = await bundleCapsule(capsule, request.entrypoint);
   phase = 'browser_start';
   browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage'], timeout: 20_000 });
@@ -139,7 +142,7 @@ try {
   await browser.close();
   browser = undefined;
   phase = 'audio_mix';
-  const audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath) : 0;
+  const audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath, preparedAudio) : 0;
   phase = 'receipt';
   const size = (await stat(outputPath)).size;
   if (!size || size >= MAX_ARTIFACT_BYTES) throw new Error('Artifact output limit exceeded.');
