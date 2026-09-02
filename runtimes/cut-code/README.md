@@ -31,8 +31,14 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
   springs, explicit sRGB hex/alpha transitions and keyed repeatable variation.
   `seededRandom` is creative variation, not cryptographic randomness. Spring
-  mass/stiffness/damping are direct physical parameters; duration remapping and
-  spring-settling measurement are not implemented by this API.
+  mass/stiffness/damping are direct physical parameters. `measureSpring` returns
+  a conservative continuous-time settling frame using an analytic error envelope,
+  not a sampled first crossing. Its threshold is relative to the 0..1 response;
+  undamped springs and results beyond the explicit frame budget are rejected.
+  `spring` can fit this response to `durationInFrames`, reverse it, and delay it.
+  Fitted/reversed motion holds exact endpoints outside its active interval;
+  ordinary unfitted motion retains its original physical response. This is our
+  own timing contract, not a claim of identical Remotion sample values.
 - Direct frame-driven PNG (including transparency), JPEG or WebP; JPEG/WebP
   expose bounded 1..100 quality. JPEG and MP4 cannot carry transparency.
 - H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
@@ -67,6 +73,26 @@ state and arbitrary timers are not a reproducibility contract. Video codec/VFR
 compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
 automatic video-audio extraction, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
+
+## Typed source authoring
+
+The checked-in `sdk.d.ts` describes the actual `@creativesos/cut` exports and
+the capsule-local asset imports. Include it in your local TypeScript project
+alongside your TSX source, with React JSX, strict checking, and `noEmit` enabled.
+It provides editor completion and catches wrong prop names, missing timing
+inputs, and ordinary external video URLs before a render request is submitted.
+`useComposition()` requires the runtime's provider and fails explicitly outside
+it; `useInputs<YourInputs>()` supplies an author-selected input shape.
+
+Types do **not** validate untrusted JSON, numeric bounds, source files or URLs at
+runtime. Admission, bundling, input/media validation and isolation remain
+mandatory. There is no public npm SDK or general app-side code execution in this
+change, and the declarations are not a Remotion compatibility layer.
+
+`npm test` typechecks a valid TSX composition and negative examples using the
+pinned TypeScript compiler. It also compares declaration exports to the actual
+SDK source and checks the configuration hook inside/outside its provider. These
+tests complement, rather than replace, the decoded-pixel container qualification.
 
 ## Isolation and qualification
 
