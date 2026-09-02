@@ -7,11 +7,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
-import { validateRequest, MAX_ARTIFACT_BYTES } from './request.mjs';
+import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
 
 const execute = promisify(execFile);
 const root = path.dirname(fileURLToPath(import.meta.url));
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+export function assertArtifactReceipt(artifact, receipt, request, source) {
+  const output = outputContract(request);
+  if (!Buffer.isBuffer(artifact) || !artifact.length || artifact.length >= MAX_ARTIFACT_BYTES || !receipt || receipt.version !== 1 || receipt.runtime !== 'cut-code-prototype-v1' || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.requestSha256 !== hash(JSON.stringify(request)) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.fps !== request.fps || receipt.format !== request.format || receipt.quality !== request.quality || receipt.start !== output.start || receipt.end !== output.end || receipt.mediaType !== output.mediaType || receipt.frames !== output.frames || (request.mode === 'still' && receipt.frame !== request.frame)) throw new Error('Artifact did not match its request and receipt.');
+}
 async function docker(args, options = {}) {
   return execute('docker', args, { timeout: 15_000, maxBuffer: 128 * 1024, windowsHide: true, ...options });
 }
@@ -71,7 +75,7 @@ export async function renderIsolated({ request: rawRequest, source, image, signa
     const payload = JSON.parse(result.stdout);
     const artifact = Buffer.from(payload.artifact, 'base64');
     const receipt = payload.receipt;
-    if (!artifact.length || artifact.length >= MAX_ARTIFACT_BYTES || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.frames !== (request.mode === 'still' ? 1 : request.durationInFrames)) throw new Error('Artifact did not match its request and receipt.');
+    assertArtifactReceipt(artifact, receipt, request, source);
     return { artifact, receipt, isolation: { network: 'none', rootFilesystem: 'readonly', user, cpu: 1, memoryBytes: descriptor.HostConfig.Memory, inputReadOnly: true, image } };
   } finally {
     // A killed Docker client does not imply a stopped container. Remove the
