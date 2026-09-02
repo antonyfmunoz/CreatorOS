@@ -40,7 +40,7 @@ the native screenshot exceeded its unchanged ten-second limit after fonts
 loaded. Both cinema workflows, desktop text, proxy/multitrack and snapshot
 workflows passed. Evidence: `creativesos-browser-qualification-40ffba65a748423cbda4ade89a086b17`,
 `cut-preparation-browser-20260902T133049.log`, and
-`native-session-20260902203258009` (see retained native receipt for exact path).
+`native-session-20260902203221188`.
 Later resource inspection observed only 1,318 MB free out of 16,235 MB, and an
 owned single-input FFmpeg process using about 2,921 MB alongside the main render.
 This observation does not establish the cause of the earlier screenshot failure;
