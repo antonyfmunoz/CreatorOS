@@ -49,7 +49,11 @@ describe("native declarative graphic curves", () => {
     expect(expression).toContain("floor((t-1+0.000001)*30)");
     expect(expression).toContain("exp(-7*");
     expect(expression).not.toMatch(/https?:|movie=|process|fetch/);
+    expect(expression).not.toMatch(/(?<!\\),/);
     expect(() => cutGraphicCurveExpression(curves, "x", Infinity, "T")).toThrow(/finite/);
+    for (const clock of ["t\\,movie=network", "T;movie=network", "t'", "N"]) {
+      expect(() => cutGraphicCurveExpression(curves, "x", 0, clock as "t")).toThrow(/clock/);
+    }
   });
 
   it("budgets against authored scale extrema rather than only sparse samples", () => {

@@ -14,6 +14,7 @@ function eased(progress: string, easing: CutGraphicCurves["curves"][number]["key
 /** Call only with schema-validated declarative metadata; never accepts code. */
 export function cutGraphicCurveExpression(model: CutGraphicCurves, property: CutGraphicCurveProperty, timelineStart: number, timeVariable: "t" | "T", multiplier = 1, offset = 0) {
   if (![timelineStart, multiplier, offset].every(Number.isFinite)) throw new Error("Graphic expression parameters must be finite");
+  if (timeVariable !== "t" && timeVariable !== "T") throw new Error("Graphic clock must be a supported native time variable");
   const curve = model.curves.find((item) => item.property === property);
   if (!curve) return undefined;
   const points = curve.keyframes;
@@ -49,5 +50,7 @@ export function cutGraphicCurveExpression(model: CutGraphicCurves, property: Cut
   // for that bounded quantization before flooring to the authored frame grid;
   // an FP-only epsilon can otherwise select the preceding frame at 30/60 fps.
   const frame = `clip(floor((${timeVariable}-${timelineStart}+0.000001)*${model.fps}),0,${model.durationInFrames - 1})`;
-  return `(st(0,${frame});(${expression})*${multiplier}+${offset})`.replace(/,/g, "\\,");
+  // Escape the escape character before separators. All operands above remain
+  // generated from declarative numbers/enums, never public expression strings.
+  return `(st(0,${frame});(${expression})*${multiplier}+${offset})`.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
 }
