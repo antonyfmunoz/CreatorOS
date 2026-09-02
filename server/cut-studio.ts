@@ -27,6 +27,7 @@ import {
   applyTranscriptStoryOrder,
   cutDuration,
   cutTrackEffectiveGain,
+  cutClipVolumePoints,
   cutAudioRoutingTemplatePayloadSchema,
   cutRenderRequestSchema,
   cutTranscriptSchema,
@@ -265,9 +266,7 @@ async function bakeGraphicGlowAndShadow(graphic: RenderGraphic, inputPath: strin
 }
 
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
-  const points = [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe.volume, easing: keyframe.easing ?? "linear" }))]
-    .sort((left, right) => left.at - right.at)
-    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
+  const points = cutClipVolumePoints(clip);
   const gain = (value: number) => Number((value * multiplier).toFixed(5));
   if (points.length === 1) return String(gain(points[0].value));
   let expression = String(gain(points.at(-1)!.value));

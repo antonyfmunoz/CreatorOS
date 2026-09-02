@@ -381,6 +381,28 @@ export function cutTrackEffectiveGain(track: string, tracks: CutTrackSettings[] 
   return (setting?.gain ?? 1) * (bus?.muted ? 0 : bus?.gain ?? 1);
 }
 
+/** Shared automation points keep native export and audible monitoring on the
+ * same gain curve. A keyframe at zero overrides the clip's initial volume. */
+export function cutClipVolumePoints(clip: CutClip) {
+  return [{ at: 0, value: clip.volume ?? 1, easing: "linear" as const }, ...(clip.volumeKeyframes ?? []).map((point) => ({ at: point.at, value: point.volume, easing: point.easing ?? "linear" }))]
+    .sort((left, right) => left.at - right.at)
+    .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > .0005);
+}
+
+export function cutClipVolumeAt(clip: CutClip, localSeconds: number, multiplier = 1) {
+  const points = cutClipVolumePoints(clip);
+  const time = Math.max(0, Number.isFinite(localSeconds) ? localSeconds : 0);
+  const gain = (value: number) => Number((value * multiplier).toFixed(5));
+  for (let index = 0; index < points.length - 1; index++) {
+    const left = points[index], right = points[index + 1];
+    if (time >= right.at) continue;
+    const progress = Math.max(0, Math.min(1, (time - left.at) / (right.at - left.at)));
+    const eased = right.easing === "ease_in_out" ? progress * progress * (3 - 2 * progress) : progress;
+    return gain(left.value) + Number((gain(right.value) - gain(left.value)).toFixed(5)) * eased;
+  }
+  return gain(points.at(-1)!.value);
+}
+
 export function updateCutTrackSettings(edl: CutEdl, track: string, patch: Partial<CutTrackSettings>, duration: number): CutEdl {
   // Legacy sequential edits expose the primary mixer too. Upgrade on the first
   // track edit, preserving their speed-adjusted concatenation order and trims.
