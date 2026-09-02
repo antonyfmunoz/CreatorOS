@@ -59,6 +59,16 @@ production topology approval or enable public code execution.
 - H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
+- Optional `videoEncoding` controls for MP4/WebM select either constant quality
+  (`crf`, H.264 1..51 or VP9 0..63) or a target `bitrateKbps` in 64..100000, never
+  both. H.264 exposes the nine `preset` speeds from `ultrafast` to `veryslow`;
+  VP9 exposes `cpuUsed` in 0..8. Codec-incompatible settings fail admission.
+  Omitting the object preserves the existing encoder defaults. Explicit defaults
+  are H.264 CRF 23 / fast and VP9 CRF 30 / CPU-used 4. Lower CRF usually retains
+  more detail at greater size; target bitrate is not an exact constant-rate or
+  quality guarantee. The same one-thread, deadline and byte caps apply. Receipts
+  bind normalized quality and speed controls. Actual decoded noise-fixture
+  artifacts prove a quality/size tradeoff, not generalized competitor superiority.
 - Opt-in `format: "webm"` video exports use VP9 with an alpha channel and, when
   requested, an Opus soundtrack. Transparent areas of the composition remain
   transparent; an authored opaque background remains opaque. This is a bounded

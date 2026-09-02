@@ -1,3 +1,4 @@
+import { normalizeVideoEncoding } from './video-encoding.mjs';
 export const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 export function validateRequest(request) {
   if (!request || request.version !== 1 || !['still', 'video', 'sequence', 'audio'].includes(request.mode)) throw new Error('Unsupported code-render request.');
@@ -19,6 +20,7 @@ export function validateRequest(request) {
   if (request.mode === 'audio' && (frameRange[1] - frameRange[0] + 1) / fps > 120) throw new Error('Audio-only exports are limited to 120 seconds per request.');
   const format = request.format ?? (request.mode === 'video' ? 'mp4' : request.mode === 'audio' ? 'wav' : 'png');
   if (!(request.mode === 'video' ? ['mp4', 'webm', 'gif', 'mov'] : request.mode === 'audio' ? ['wav', 'mp3', 'm4a'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');
+  const videoEncoding = normalizeVideoEncoding(request.videoEncoding, request.mode, format);
   const proresProfile = format === 'mov' ? request.proresProfile ?? '422hq' : undefined;
   if (format === 'mov' ? !['422hq', '4444', '4444xq'].includes(proresProfile) : request.proresProfile !== undefined) throw new Error('ProRes profile requires a supported MOV export.');
   let gifOptions;
@@ -52,7 +54,7 @@ export function validateRequest(request) {
     });
     return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume, ...(volumeKeyframes ? { volumeKeyframes } : {}), ...(track.audioStream !== undefined ? { audioStream: track.audioStream } : {}) };
   });
-  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}), ...(proresProfile ? { proresProfile } : {}) };
+  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }), ...(gifOptions ? { gifOptions } : {}), ...(proresProfile ? { proresProfile } : {}), ...(videoEncoding ? { videoEncoding } : {}) };
 }
 
 export function outputContract(request) {
