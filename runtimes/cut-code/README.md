@@ -36,6 +36,10 @@ non-root, no capabilities, no network, no ports, no host IPC/PID namespace,
 no-new-privileges, filtered syscalls, read-only root and a single read-only input
 mount. There is no host output mount, Docker socket, credential mount or app
 environment. Artifacts return through bounded stdout after a successful render.
+On Linux the child uses the host caller's non-root UID/GID, so its private 0700
+input directory stays private and remains readable without widening filesystem
+permissions. Windows uses the non-root 1000:1000 identity. Root host invocation
+is rejected.
 The parent removes the exact container on success, failure, timeout or abort.
 The child independently checks its effective capabilities, syscall filtering,
 no-new-privileges and loopback-only network before loading a capsule. Chromium
