@@ -90,7 +90,8 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
   }
   const duration = outputContract(request).frames / request.fps;
   filters.push(`${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`);
-  args.push('-filter_complex', filters.join(';'), '-map', '0:v:0', '-map', '[mix]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-threads', '1', '-t', String(duration), '-movflags', '+faststart', '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
+  const encoding = request.format === 'webm' ? ['-c:a', 'libopus', '-b:a', '160k'] : ['-c:a', 'aac', '-b:a', '192k'];
+  args.push('-filter_complex', filters.join(';'), '-map', '0:v:0', '-map', '[mix]', '-c:v', 'copy', ...encoding, '-threads', '1', '-t', String(duration), ...(request.format === 'webm' ? [] : ['-movflags', '+faststart']), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
   await execute('ffmpeg', args, { timeout: 20_000, maxBuffer: 16384 });
   if ((await stat(outputVideo)).size >= MAX_ARTIFACT_BYTES) throw new Error('Soundtrack output exceeds the artifact limit.');
   return plan.length;

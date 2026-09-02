@@ -6,6 +6,12 @@ test('accepts bounded frame-driven render requests', () => assert.deepEqual(vali
 test('rejects malformed, oversized and escaping requests before execution', () => {
   for (const change of [{ mode: 'video', frame: 0, width: 1921 }, { height: 0 }, { fps: 0 }, { fps: 61 }, { frame: 60 }, { frame: -1 }, { durationInFrames: 108001 }, { entrypoint: '../main.tsx' }, { entrypoint: '/main.tsx' }, { input: [] }, { input: { oversized: 'x'.repeat(65000) } }, { mode: 'shell' }, { version: 2 }, { mode: 'video', width: 3840, height: 2160, durationInFrames: 600 }]) assert.throws(() => validateRequest({ ...valid, ...change }));
 });
+test('WebM video has an explicit format contract without bypassing existing budgets', () => {
+  const video = validateRequest({ ...valid, frame: 0, mode: 'video', format: 'webm', frameRange: [10, 19] });
+  assert.deepEqual(outputContract(video), { start: 10, end: 19, frames: 10, extension: 'webm', mediaType: 'video/webm' });
+  assert.deepEqual(validateRequest(video), video);
+  for (const change of [{ mode: 'still' }, { mode: 'sequence' }, { quality: 90 }, { width: 321 }, { height: 181 }, { width: 3840, height: 2160, durationInFrames: 600, frameRange: [0, 599] }]) assert.throws(() => validateRequest({ ...video, ...change }));
+});
 test('long timelines and odd-sized stills do not bypass per-render compute limits', () => {
   const poster = validateRequest({ ...valid, width: 321, height: 181, durationInFrames: 108000, frame: 107999 });
   assert.equal(outputContract(poster).frames, 1);

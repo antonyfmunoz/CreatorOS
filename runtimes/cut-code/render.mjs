@@ -50,13 +50,16 @@ try {
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
   const outputPath = `/tmp/artifact.${output.extension}`;
   const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;
-  const videoPath = hasAudio ? '/tmp/silent.mp4' : outputPath;
+  const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
   const sequence = Object.create(null);
   const sequenceFrames = [];
   let sequenceBytes = 0;
   let encoderDone;
   if (request.mode === 'video') {
-    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', String(request.fps), '-i', 'pipe:0', '-an', '-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-fs', String(MAX_ARTIFACT_BYTES), videoPath], { stdio: ['pipe', 'ignore', 'ignore'] });
+    const encoding = request.format === 'webm'
+      ? ['-c:v', 'libvpx-vp9', '-threads', '1', '-b:v', '0', '-crf', '30', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-metadata:s:v:0', 'alpha_mode=1']
+      : ['-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', String(request.fps), '-i', 'pipe:0', '-an', ...encoding, '-fs', String(MAX_ARTIFACT_BYTES), videoPath], { stdio: ['pipe', 'ignore', 'ignore'] });
     encoder.stdin.on('error', () => {});
     encoderDone = once(encoder, 'close');
   }
@@ -108,7 +111,7 @@ try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, { frame, config, input: request.input });
     if (pageFailed) throw new Error('Composition execution failed.');
-    let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: request.mode !== 'video' && request.format !== 'jpeg', timeout: 10_000 });
+    let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || request.format === 'webm') && request.format !== 'jpeg', timeout: 10_000 });
     if (pageFailed) throw new Error('Composition execution failed.');
     if (png.length > MAX_ARTIFACT_BYTES) throw new Error('Frame output limit exceeded.');
     if (request.format === 'webp') {

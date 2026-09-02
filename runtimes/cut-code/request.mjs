@@ -16,7 +16,7 @@ export function validateRequest(request) {
   if (request.mode !== 'still' && frameRange[1] - frameRange[0] + 1 > 600) throw new Error('Select a range of at most 600 frames per render.');
   if (request.mode !== 'still' && width * height * (frameRange[1] - frameRange[0] + 1) > 500_000_000) throw new Error('Render exceeds the pixel-frame budget.');
   const format = request.format ?? (request.mode === 'video' ? 'mp4' : 'png');
-  if (!(request.mode === 'video' ? ['mp4'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');
+  if (!(request.mode === 'video' ? ['mp4', 'webm'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');
   const quality = request.quality ?? (['jpeg', 'webp'].includes(format) ? 90 : null);
   if (['jpeg', 'webp'].includes(format) ? !Number.isInteger(quality) || quality < 1 || quality > 100 : quality !== null) throw new Error('Quality is supported only for JPEG/WebP and must be within 1..100.');
   if (typeof request.entrypoint !== 'string' || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(tsx|jsx|ts|js)$/.test(request.entrypoint)) throw new Error('Invalid source entrypoint.');
@@ -42,6 +42,6 @@ export function validateRequest(request) {
 export function outputContract(request) {
   const start = request.mode === 'still' ? request.frame : request.frameRange[0];
   const end = request.mode === 'still' ? start : request.frameRange[1];
-  const mediaType = request.mode === 'sequence' ? 'application/zip' : { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4' }[request.format];
+  const mediaType = request.mode === 'sequence' ? 'application/zip' : { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm' }[request.format];
   return { start, end, frames: end - start + 1, mediaType, extension: request.mode === 'sequence' ? 'zip' : request.format };
 }

@@ -45,6 +45,13 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 - H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
+- Opt-in `format: "webm"` video exports use VP9 with an alpha channel and, when
+  requested, an Opus soundtrack. Transparent areas of the composition remain
+  transparent; an authored opaque background remains opaque. This is a bounded
+  single-pass export, not distributed alpha chunk stitching. MP4 stays the
+  default opaque output. WebM preserves the same even-size, frame, pixel-frame,
+  CPU, memory, deadline and byte limits. It is not ProRes, HDR or universal-device
+  playback support. Private WebM overlays can be reused through `FrameVideo`.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
   WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC. Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
