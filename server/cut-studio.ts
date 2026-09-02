@@ -2,6 +2,7 @@ import type { Express, RequestHandler, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
+import { cutFitVideoFilters, cutSourceVideoFilters } from "./cut-video-geometry";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -675,7 +676,7 @@ async function renderMultitrack(
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
     const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), `scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease`, `pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black`, `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
+    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
@@ -1053,12 +1054,12 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
       if (request.aspect === "source" && compositionManifest) {
         const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
-        filters.push(`[${videoLabel}]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed]`);
+        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
       } else if (request.aspect === "source") {
-        filters.push(`[${videoLabel}]scale=-2:${height},fps=${request.fps}[framed]`);
+        filters.push(`[${videoLabel}]${cutSourceVideoFilters(height).join(",")},fps=${request.fps}[framed]`);
       } else {
         const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
-        filters.push(`[${videoLabel}]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed]`);
+        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
       }
       videoLabel = "framed";
     }

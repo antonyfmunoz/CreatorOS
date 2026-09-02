@@ -72,6 +72,15 @@ test("CutStudio exports exact private finished frames with permission and format
   await preview.getByRole("button", { name: "Retry preview" }).click();
   await expect(preview.getByRole("status")).toContainText("Private video ready");
   await preview.getByRole("button", { name: "Close", exact: true }).click();
+  const portraitQueued = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "9:16", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
+  expect(portraitQueued.ok()).toBeTruthy();
+  const portraitJob = await portraitQueued.json();
+  await expect.poll(async () => (await (await page.request.get(`/api/cut/jobs/${portraitJob.id}`)).json()).state, { timeout: 60000 }).toBe("done");
+  await page.reload();
+  await page.getByRole("button", { name: /^Preview rendered video / }).first().click();
+  await expect(preview.getByRole("status")).toContainText("Private video ready");
+  expect(await preview.getByLabel("Rendered video preview").evaluate((element) => ({ width: (element as HTMLVideoElement).videoWidth, height: (element as HTMLVideoElement).videoHeight, duration: (element as HTMLVideoElement).duration }))).toEqual({ width: 406, height: 720, duration: 2 });
+  await preview.getByRole("button", { name: "Close", exact: true }).click();
   const grant = await page.request.post(`/api/cut/projects/${project.id}/collaborators`, { data: { username: "buyer", role: "reviewer" } });
   expect(grant.ok()).toBeTruthy();
   expect((await page.request.get(`${endpoint}?frame=30`, { headers: { "x-creativesos-demo-user": String(peer) } })).ok()).toBeTruthy();
