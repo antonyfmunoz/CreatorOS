@@ -119,6 +119,20 @@ for (const [x, y] of [[20, 20], [60, 20], [140, 90], [300, 20]]) assert.deepEqua
 await writeFile(`${directory}motion-controls.png`, motion.artifact);
 records.push({ test: 'nested-repeat-freeze-global-frame-bezier-spring-color', ...motion.receipt });
 console.log('PASS actual nested timing, global frame, easing, spring and color output');
+const fittedSpringSource = capsule(`import {FullFrame,useFrame,spring,measureSpring} from '@creativesos/cut';
+export default function Scene(){const f=useFrame(),options={frame:f,fps:30,damping:20,durationInFrames:20,delay:5,from:20,to:220};
+return <FullFrame style={{background:'#000000'}}><div style={{position:'absolute',left:spring(options),top:20,width:20,height:20,background:'#00ff00'}}/><div style={{position:'absolute',left:spring({...options,reverse:true}),top:70,width:20,height:20,background:'#0000ff'}}/><div style={{position:'absolute',left:0,top:130,width:20,height:20,background:measureSpring({fps:30,damping:20})>0?'#ffffff':'#ff0000'}}/></FullFrame>}`);
+for (const frame of [0, 5, 25, 29]) {
+  const rendered = await renderIsolated({ request: { ...request, frame }, source: fittedSpringSource, image });
+  const start = frame <= 5;
+  assert.deepEqual(pixel(rendered.artifact, start ? 30 : 230, 30), [0,255,0,255]);
+  assert.deepEqual(pixel(rendered.artifact, start ? 230 : 30, 80), [0,0,255,255]);
+  assert.deepEqual(pixel(rendered.artifact, start ? 230 : 30, 30), [0,0,0,255]);
+  assert.deepEqual(pixel(rendered.artifact, 10, 140), [255,255,255,255]);
+  await writeFile(`${directory}fitted-spring-${frame}.png`, rendered.artifact);
+  records.push({ test: 'duration-fitted-spring-delay-reverse', frame, ...rendered.receipt });
+}
+console.log('PASS actual duration-fitted spring, delayed/reversed endpoints and holding pixels');
 await assert.rejects(renderIsolated({ request, source: capsule(`import {useEffect} from 'react';export default function Scene(){useEffect(()=>{throw new Error('private source must not be logged')},[]);return <div/>}`), image }));
 records.push({ test: 'react-effect-failure-is-not-success', passed: true });
 console.log('PASS asynchronous composition failure rejects artifact completion');

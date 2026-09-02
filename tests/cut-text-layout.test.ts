@@ -20,6 +20,9 @@ describe("shared native composition text layout", () => {
     expect(() => cutTextLayoutSchema.parse({ fontWeight: 701 })).toThrow();
     expect(() => cutTextLayoutSchema.parse({ align: "justify" })).toThrow();
     expect(resolveCutTextLayout({ fontStyle: "italic" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "normal" });
+    expect(resolveCutTextLayout({ fontStyle: "italic" }, { weight: 400, style: "normal" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "normal", fontFaceWeight: 400 });
+    expect(resolveCutTextLayout({}, { weight: 400, style: "italic" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "italic" });
+    expect(resolveCutTextLayout({ fontStyle: "normal" }, { weight: 400, style: "italic" })).toMatchObject({ fontStyle: "normal", fontFaceStyle: "italic" });
   });
   it("retains line breaks, full authoring size and an absent background at compile time", () => {
     const result = compileCompositionToEdl({ version: 1, name: "Text", width: 1920, height: 1080, fps: 30, durationInFrames: 30, layers: [
@@ -32,5 +35,11 @@ describe("shared native composition text layout", () => {
     const bytes = readFileSync("shared/assets/cut-fonts/NotoSans-Variable.ttf");
     expect(createHash("sha256").update(bytes).digest("hex")).toBe("bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d");
     expect(readFileSync("shared/assets/cut-fonts/OFL.txt", "utf8")).toContain("SIL OPEN FONT LICENSE Version 1.1");
+  });
+  it("bounds opt-in fitting without changing legacy layout defaults", () => {
+    expect(resolveCutTextLayout({})).toMatchObject({ autoFit: false, minimumFontSize: 8, maxLines: 0 });
+    expect(resolveCutTextLayout({ autoFit: true, minimumFontSize: 200, fontSize: 48, maxLines: 300 })).toMatchObject({ autoFit: true, minimumFontSize: 48, maxLines: 20 });
+    expect(() => cutTextLayoutSchema.parse({ autoFit: "true" })).toThrow();
+    expect(() => cutTextLayoutSchema.parse({ maxLines: 1.5 })).toThrow();
   });
 });

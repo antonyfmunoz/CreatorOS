@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpolate, cubicBezier, easing, spring, seededRandom, interpolateColor } from './motion.mjs';
+import { interpolate, cubicBezier, easing, spring, measureSpring, seededRandom, interpolateColor } from './motion.mjs';
 const near = (a, b, tolerance = 1e-7) => assert.ok(Math.abs(a - b) < tolerance, `${a} != ${b}`);
 
 test('numeric keyframes preserve boundaries, easing and explicit extrapolation', () => {
@@ -47,6 +47,41 @@ test('physical springs cover under, critical and over damping with frame-order i
   for (const damping of [0, 10, 19.9999999, 20, 20.0000001, 40, 10000]) assert.ok(Number.isFinite(spring({ ...options, frame: 300, damping })));
   near(spring({ ...options, frame: 300, damping: 20, from: 100, to: -20 }), -20);
   for (const change of [{ mass: 0 }, { damping: -1 }, { stiffness: Infinity }, { fps: 0 }, { frame: NaN }, { delay: -1 }]) assert.throws(() => spring({ ...options, frame: 10, ...change }));
+});
+
+test('settling measurements cover the future continuous response, including near-critical springs', () => {
+  for (const fps of [24, 30, 60, 120]) for (const damping of [.5, 5, 10, 19.99999, 20, 20.00001, 40, 500]) {
+    const options = { fps, mass: 1, stiffness: 100, damping };
+    const measured = measureSpring({ ...options, threshold: .005 });
+    assert.ok(Number.isInteger(measured) && measured > 0 && measured <= 216000);
+    // Fractional-frame probes also exercise peaks between frame boundaries.
+    for (let index = 0; index <= 1000; index++) {
+      const frame = measured + index * .37;
+      assert.ok(Math.abs(spring({ ...options, frame }) - 1) <= .005 + 1e-12, `Unsettled ${damping} at ${frame}`);
+    }
+    assert.ok(measureSpring({ ...options, threshold: .001 }) >= measured);
+    assert.equal(measureSpring({ ...options, threshold: .005 }), measured);
+  }
+  for (const change of [{ damping: 0 }, { threshold: 0 }, { threshold: NaN }, { threshold: .6 }, { maxFrames: 0 }, { maxFrames: 864001 }, { maxFrames: 1 }, { fps: 0 }]) {
+    assert.throws(() => measureSpring({ fps: 30, ...change }));
+  }
+});
+
+test('fixed-duration springs preserve delay, reversed timing, endpoint holding and arbitrary frame order', () => {
+  const options = { fps: 30, mass: 1, stiffness: 100, damping: 10, durationInFrames: 45, delay: 10, from: 20, to: 100 };
+  assert.equal(spring({ ...options, frame: -1 }), 20);
+  assert.equal(spring({ ...options, frame: 10 }), 20);
+  assert.equal(spring({ ...options, frame: 55 }), 100);
+  assert.equal(spring({ ...options, frame: 1000 }), 100);
+  assert.equal(spring({ ...options, frame: 10, reverse: true }), 100);
+  assert.equal(spring({ ...options, frame: 55, reverse: true }), 20);
+  const frames = [10, 10.25, 17, 30, 54.5, 55];
+  for (const frame of frames) near(spring({ ...options, frame }), spring({ ...options, frame: 65 - frame, reverse: true }));
+  const duration = measureSpring({ fps: 30 });
+  assert.equal(spring({ fps: 30, frame: duration, reverse: true }), 0);
+  for (const change of [{ durationInFrames: 0 }, { durationInFrames: 1.5 }, { durationInFrames: 216001 }, { reverse: 'yes' }, { threshold: 0 }, { damping: 0 }]) assert.throws(() => spring({ ...options, frame: 20, ...change }));
+  // Existing undamped/unfitted oscillation remains supported.
+  near(spring({ fps: 30, frame: 3, damping: 0 }), 1 - Math.cos(1));
 });
 
 test('seeded variation is repeatable, stateless and distinguishes seed types', () => {

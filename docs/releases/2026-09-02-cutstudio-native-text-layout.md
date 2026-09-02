@@ -54,7 +54,21 @@ The first dedicated test used an incorrect multipart field and failed at the
 upload boundary; that fixture was corrected, not the application boundary.
 Both mobile and desktop typography journeys then passed in 1.7 minutes. Both
 existing exact-frame/portrait journeys also passed with the new native renderer.
-The final expanded authoring changes still require the complete fresh rerun.
+The final expanded authoring rerun passed all six mobile/desktop journeys
+(wrapped controls, exact private frames/portrait geometry, and the full
+programmable-cinema lifecycle) in 6.7 minutes. Full local verification passed
+571 unit tests, type checking, the app build, bundle checks and worker dry-run.
+
+Protected Verify `33595596978` passed 571 unit tests and all 244 browser journeys
+with 24 explicit skips; native Android/iOS, database and CodeQL gates also
+passed. PR128 merged as `e41f1d9da774a483b63e5c7727ef92271af8a347`.
+These results must not be confused with a completed production deployment.
+
+The intermediate responsive-size/alpha patch alone failed both local broad
+cinema tests: drawing a background only around the resized glyphs did not
+preserve the authored full text-layer rectangle. The shared native layout
+passed those unchanged pixel assertions. No pixel threshold or test deadline
+was relaxed to merge it.
 
 The standalone native renderer qualification produced three inspected PNGs:
 wrapped three-line centered type, the complete portrait headline and literal
@@ -77,3 +91,15 @@ human-reviewed competitor superiority. The default Noto Sans file covers its
 own glyph repertoire, not every Noto family. Reapply a saved composition to
 use this new text contract. Public code execution still requires its separate
 production/security qualification.
+
+## Private-font control follow-up
+
+Explicit normal/italic styling now takes precedence over the private font's
+face descriptor; the descriptor remains intact for loading the actual file.
+Choosing the default detaches only the current layer from its private family,
+and selecting an existing family preserves its registered face metadata.
+Browser qualification also requires decoded `IIII` strokes to lean right after
+selecting a private upright font, saving, reloading and rendering italic text.
+The existing 120-second test deadline and all previous wrapping/access checks
+remain. Failed CI browser artifacts are retained for seven days, limited to the
+synthetic Playwright outputs and report, not databases or production uploads.

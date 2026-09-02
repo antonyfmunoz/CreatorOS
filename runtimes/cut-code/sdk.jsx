@@ -1,10 +1,14 @@
 import React, { createContext, useContext } from 'react';
-export { interpolate, spring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
+export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 
 export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
 export const useFrame = () => useContext(FrameContext).frame;
 export const useGlobalFrame = () => useContext(FrameContext).globalFrame;
-export const useComposition = () => useContext(FrameContext).config;
+export const useComposition = () => {
+  const config = useContext(FrameContext).config;
+  if (!config) throw new Error('useComposition requires the native composition provider.');
+  return config;
+};
 export const useInputs = () => useContext(FrameContext).input;
 
 export function FullFrame({ style, children, ...props }) {

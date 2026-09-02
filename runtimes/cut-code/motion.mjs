@@ -54,10 +54,11 @@ export function interpolate(value, input, output, { left = 'clamp', right = 'cla
   return output[index - 1] + (output[index] - output[index - 1]) * weight;
 }
 
-export function spring({ frame, fps, from = 0, to = 1, mass = 1, stiffness = 100, damping = 10, delay = 0, clampOvershoot = false }) {
+function validateSpring({ frame, fps, from, to, mass, stiffness, damping, delay, clampOvershoot }) {
   if (![frame, fps, from, to, mass, stiffness, damping, delay].every(finite) || fps <= 0 || fps > 240 || mass < .001 || mass > 1000 || stiffness < .001 || stiffness > 100000 || damping < 0 || damping > 10000 || delay < 0 || typeof clampOvershoot !== 'boolean') throw new Error('Invalid physical spring parameters.');
-  if (frame <= delay || from === to) return from;
-  const t = (frame - delay) / fps;
+}
+
+function springDisplacement(t, mass, stiffness, damping) {
   const omega = Math.sqrt(stiffness / mass), alpha = damping / (2 * mass);
   // Solve m*x'' + c*x' + k*(x-1) = 0 with x(0)=x'(0)=0.
   // The three damping regimes use closed forms, not frame-order-dependent steps.
@@ -73,6 +74,54 @@ export function spring({ frame, fps, from = 0, to = 1, mass = 1, stiffness = 100
     const slow = -omega * omega / (alpha + radical), fast = -alpha - radical;
     displacement = (-fast * Math.exp(slow * t) + slow * Math.exp(fast * t)) / (slow - fast);
   }
+  return displacement;
+}
+
+const springMeasurements = new Map();
+/** Conservative continuous-time settling bound, not a sampled first crossing. */
+export function measureSpring({ fps, mass = 1, stiffness = 100, damping = 10, threshold = .005, maxFrames = 216000 }) {
+  validateSpring({ frame: 0, fps, from: 0, to: 1, mass, stiffness, damping, delay: 0, clampOvershoot: false });
+  if (!finite(threshold) || threshold < .000001 || threshold > .5 || !Number.isInteger(maxFrames) || maxFrames < 1 || maxFrames > 864000) throw new Error('Invalid spring measurement bounds.');
+  if (damping === 0) throw new Error('An undamped spring does not settle.');
+  const key = [fps, mass, stiffness, damping, threshold, maxFrames].join(':');
+  if (springMeasurements.has(key)) return springMeasurements.get(key);
+  const omega = Math.sqrt(stiffness / mass), alpha = damping / (2 * mass);
+  const bound = (frame) => {
+    const t = frame / fps;
+    if (Math.abs(alpha - omega) <= omega * 1e-7) return springDisplacement(t, mass, stiffness, damping);
+    if (alpha < omega) {
+      const frequency = Math.sqrt(omega * omega - alpha * alpha);
+      return Math.exp(-alpha * t) * Math.hypot(1, alpha / frequency);
+    }
+    // The overdamped displacement is positive and monotonically decreasing.
+    return springDisplacement(t, mass, stiffness, damping);
+  };
+  if (bound(maxFrames) > threshold) throw new Error('Spring does not settle within the measurement frame budget.');
+  let low = 0, high = maxFrames;
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (bound(middle) <= threshold) high = middle; else low = middle;
+  }
+  // A small bounded cache avoids repeating the search for every rendered frame.
+  if (springMeasurements.size >= 256) springMeasurements.delete(springMeasurements.keys().next().value);
+  springMeasurements.set(key, high);
+  return high;
+}
+
+export function spring({ frame, fps, from = 0, to = 1, mass = 1, stiffness = 100, damping = 10, delay = 0, clampOvershoot = false, durationInFrames, reverse = false, threshold = .005 }) {
+  validateSpring({ frame, fps, from, to, mass, stiffness, damping, delay, clampOvershoot });
+  if (typeof reverse !== 'boolean' || !finite(threshold) || threshold < .000001 || threshold > .5 || (durationInFrames !== undefined && (!Number.isInteger(durationInFrames) || durationInFrames < 1 || durationInFrames > 216000))) throw new Error('Invalid spring timing parameters.');
+  if (from === to) return from;
+  let localFrame = frame - delay;
+  let naturalDuration;
+  if (durationInFrames !== undefined || reverse) {
+    naturalDuration = measureSpring({ fps, mass, stiffness, damping, threshold });
+    const duration = durationInFrames ?? naturalDuration;
+    if (localFrame <= 0) return reverse ? to : from;
+    if (localFrame >= duration) return reverse ? from : to;
+    localFrame = (reverse ? duration - localFrame : localFrame) * naturalDuration / duration;
+  } else if (localFrame <= 0) return from;
+  const displacement = springDisplacement(localFrame / fps, mass, stiffness, damping);
   const amount = clampOvershoot ? clamp(1 - displacement) : 1 - displacement;
   const result = from + (to - from) * amount;
   if (!finite(result)) throw new Error('Spring calculation exceeded numeric bounds.');
