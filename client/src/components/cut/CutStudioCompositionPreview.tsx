@@ -13,6 +13,8 @@ import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
 import { CutStudioTextPreview } from "./CutStudioTextPreview";
 import { createCutPreviewReadiness } from "@/lib/cut-preview-readiness";
 import { CutPreviewReadinessContext, useCutPreviewResource } from "./CutStudioPreviewReadiness";
+import { cutLayerMaskAsset } from "@shared/cut-mask";
+import { CutStudioMaskFailure, CutStudioPrivateMask } from "./CutStudioPrivateMask";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -280,7 +282,9 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
   const visual = effectStyles(state);
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity,
-    transform: `${state.perspective > 0 ? `perspective(${state.perspective}px) ` : ""}translate(${-layer.anchorX * 100}%, ${-layer.anchorY * 100}%) rotateX(${state.rotationX}deg) rotateY(${state.rotationY}deg) rotateZ(${state.rotation}deg) scale(${state.scale})`,
+    // x/y are top-left coordinates in manifests, templates and native exports.
+    // The anchor controls the transform pivot, not a second position offset.
+    transform: `${state.perspective > 0 ? `perspective(${state.perspective}px) ` : ""}rotateX(${state.rotationX}deg) rotateY(${state.rotationY}deg) rotateZ(${state.rotation}deg) scale(${state.scale})`,
     transformOrigin: `${layer.anchorX * 100}% ${layer.anchorY * 100}%`, transformStyle: "preserve-3d", mixBlendMode: layer.blendMode.replace("_", "-") as CSSProperties["mixBlendMode"], filter: visual.filter, ...revealStyle(state),
   };
   let content = null;
@@ -301,7 +305,10 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
   else if (layer.kind === "rive") content = <RiveLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
   if (!content) return null;
-  return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
+  let maskAsset: string | null = null; let maskError = "";
+  try { maskAsset = cutLayerMaskAsset(layer); } catch (error) { maskError = error instanceof Error ? error.message : "Invalid private mask"; }
+  const contents = <>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</>;
+  return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{maskError ? <CutStudioMaskFailure message={maskError}/> : maskAsset ? <CutStudioPrivateMask key={assetUrl(maskAsset)} url={assetUrl(maskAsset)}>{contents}</CutStudioPrivateMask> : contents}</div>;
 }
 
 export type CutStudioCompositionPlayerProps = {

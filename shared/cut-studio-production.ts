@@ -3,6 +3,7 @@ import { normalizeCutClips, type CutEdl } from "./cut-studio";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
+import { cutLayerMaskAsset } from "./cut-mask";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -506,6 +507,9 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const fps = manifest.fps;
+  // Reject unsupported or conflicting masks before admitting a native render,
+  // rather than silently dropping them from media layers or failing much later.
+  for (const layer of manifest.layers) cutLayerMaskAsset(layer);
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
     if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
@@ -582,7 +586,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       revealKind: initialState?.reveal?.kind ?? null,
       revealDirection: initialState?.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(initialState.reveal.direction) ? initialState.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null,
       revealProgress: initialState?.reveal?.progress ?? 1,
-      revealMaskAssetId: transitionMaskIds[0] ?? null,
+      revealMaskAssetId: cutLayerMaskAsset(layer),
       effects: layer.effects.filter((effect) => effect.enabled).slice(0, 20).map((effect) => ({ kind: effect.kind, parameters: effect.parameters })),
       motionKeyframes: sampledGraphicMotion(manifest, layer),
     }];
