@@ -79,11 +79,13 @@ export class PrivateVideoFrames {
     let png = this.#cache.get(key);
     if (!png) {
       const pts = entry.index.pts[frame];
-      // Seek before the selected frame, retaining the original PTS. The exact
-      // integer selection below is authoritative, including B-frame ordering.
+      // Seek before the selected frame, retaining the original PTS. Disable
+      // FFmpeg's additional accurate-seek trimming: with copyts and non-zero
+      // origins it can discard the target. Exact integer select (not the seek
+      // hint) is authoritative, including B-frame reordering and preroll.
       const seek = Math.max(entry.index.pts[0] * entry.index.tick, pts * entry.index.tick - .1);
       const decoder = entry.index.alpha && entry.index.codec === 'vp9' ? ['-c:v', 'libvpx-vp9'] : [];
-      const result = await execute('ffmpeg', ['-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-copyts', '-seek_timestamp', '1', '-ss', String(seek), ...soundtrackInputOptions(entry.file), ...decoder, '-i', entry.path, '-map', '0:v:0', '-an', '-sn', '-dn', '-vf', `select=eq(pts\\,${pts})`, '-frames:v', '1', '-fps_mode', 'passthrough', '-c:v', 'png', '-threads', '1', '-pix_fmt', 'rgba', '-f', 'image2pipe', 'pipe:1'], { timeout: 8_000, maxBuffer: MAX_CACHE_BYTES, encoding: 'buffer' });
+      const result = await execute('ffmpeg', ['-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-copyts', '-noaccurate_seek', '-seek_timestamp', '1', '-ss', String(seek), ...soundtrackInputOptions(entry.file), ...decoder, '-i', entry.path, '-map', '0:v:0', '-an', '-sn', '-dn', '-vf', `select=eq(pts\\,${pts})`, '-frames:v', '1', '-fps_mode', 'passthrough', '-c:v', 'png', '-threads', '1', '-pix_fmt', 'rgba', '-f', 'image2pipe', 'pipe:1'], { timeout: 8_000, maxBuffer: MAX_CACHE_BYTES, encoding: 'buffer' });
       png = result.stdout;
       if (png.length < 24 || !png.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || png.readUInt32BE(16) * png.readUInt32BE(20) > 3840 * 2160) throw new Error('Private video did not decode its selected frame.');
       while (this.#cacheBytes + png.length > MAX_CACHE_BYTES && this.#cache.size) {
