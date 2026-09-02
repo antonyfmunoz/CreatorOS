@@ -17,5 +17,6 @@ test('encoding arguments bind requested values without relaxing fixed limits or 
   assert.deepEqual(videoEncodingArgs('mp4', { crf: 8, preset: 'slow' }), ['-c:v', 'libx264', '-threads', '1', '-preset', 'slow', '-crf', '8', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']);
   const webm = videoEncodingArgs('webm', { bitrateKbps: 1000, cpuUsed: 8 });
   assert.ok(webm.includes('1000k')); assert.ok(webm.includes('yuva420p')); assert.ok(webm.includes('alpha_mode=1')); assert.equal(webm.includes('-crf'), false);
+  assert.ok(webm.includes('+bitexact')); assert.ok(videoEncodingArgs('webm').includes('+bitexact'));
   assert.deepEqual(videoEncodingArgs('mp4'), ['-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']);
 });

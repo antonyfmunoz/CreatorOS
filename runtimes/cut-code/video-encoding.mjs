@@ -16,6 +16,6 @@ export function videoEncodingArgs(format, settings) {
   const options = normalizeVideoEncoding(settings, 'video', format);
   const rate = options?.bitrateKbps !== undefined ? ['-b:v', `${options.bitrateKbps}k`] : format === 'webm' ? ['-b:v', '0', '-crf', String(options?.crf ?? 30)] : options ? ['-crf', String(options.crf)] : [];
   return format === 'webm'
-    ? ['-c:v', 'libvpx-vp9', '-threads', '1', ...rate, '-deadline', 'good', '-cpu-used', String(options?.cpuUsed ?? 4), '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-metadata:s:v:0', 'alpha_mode=1']
+    ? ['-c:v', 'libvpx-vp9', '-threads', '1', ...rate, '-deadline', 'good', '-cpu-used', String(options?.cpuUsed ?? 4), '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-metadata:s:v:0', 'alpha_mode=1', '-fflags', '+bitexact']
     : ['-c:v', 'libx264', '-threads', '1', '-preset', options?.preset ?? 'fast', ...rate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
 }

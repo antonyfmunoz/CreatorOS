@@ -274,6 +274,8 @@ assert.ok(partial[0]>235&&Math.abs(partial[3]-128)<=3,'Semi-transparent authored
 assert.equal(alphaPixel(alphaPath,4,30,30)[3],0); assert.ok(alphaPixel(alphaPath,4,110,30)[1]>235,'Actual transparent motion must advance to the later frame.');
 execFileSync('ffmpeg',['-v','error','-y','-nostdin','-c:v','libvpx-vp9','-i',alphaPath,'-frames:v','1',`${directory}transparent-motion-frame-0.png`],{windowsHide:true});
 const alphaWithSound=await renderIsolated({request:{...alphaRequest,audioTracks:[{file:'src/tone-440.wav',volume:.5}]},source:alphaSource,image});
+assert.deepEqual((await renderIsolated({request:alphaRequest,source:alphaSource,image})).artifact,alphaVideo.artifact,'Transparent WebM must replay byte-for-byte.');
+assert.deepEqual((await renderIsolated({request:{...alphaRequest,audioTracks:[{file:'src/tone-440.wav',volume:.5}]},source:alphaSource,image})).artifact,alphaWithSound.artifact,'Transparent WebM with Opus must replay byte-for-byte.');
 const alphaSoundPath=`${directory}transparent-motion-with-audio.webm`;await writeFile(alphaSoundPath,alphaWithSound.artifact);
 const alphaSoundProbe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','stream=codec_type,codec_name','-of','json',alphaSoundPath],{encoding:'utf8',windowsHide:true}));
 assert.ok(alphaSoundProbe.streams.some(stream=>stream.codec_type==='audio'&&stream.codec_name==='opus'));assert.ok(rms(alphaSoundPath,.1,.4)>.03);assert.equal(alphaPixel(alphaSoundPath,0,300,160)[3],0,'Muxing Opus must not flatten video alpha.');

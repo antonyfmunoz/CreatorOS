@@ -76,6 +76,10 @@ production topology approval or enable public code execution.
   default opaque output. WebM preserves the same even-size, frame, pixel-frame,
   CPU, memory, deadline and byte limits. It is not ProRes, HDR or universal-device
   playback support. Private WebM overlays can be reused through `FrameVideo`.
+  Both silent and Opus muxing use reproducible container metadata. Owned alpha
+  and quality-control fixtures replay byte-for-byte in both qualified images;
+  this does not make arbitrary wall-clock or random capsule code deterministic.
+  See the [WebM replay receipt](../../docs/releases/2026-09-02-cut-code-webm-replay.md).
 - Opt-in `format: "gif"` video exports use a shared 255-color palette plus a
   reserved transparent entry. Transparency is binary (alpha threshold 128), not
   the partial alpha available in WebM/PNG. `gifOptions.frameStep` in 1..30 samples

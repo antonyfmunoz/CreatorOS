@@ -19,6 +19,10 @@ export async function qualifyVideoEncoding({ image, directory }) {
     for (const crf of [8, 48]) {
       const videoEncoding = format === 'mp4' ? { crf, preset: 'fast' } : { crf, cpuUsed: 4 };
       const rendered = await renderIsolated({ request: { ...request, format, videoEncoding }, source, image });
+      if (format === 'webm') {
+        const repeated = await renderIsolated({ request: { ...request, format, videoEncoding }, source, image });
+        assert.deepEqual(repeated.artifact, rendered.artifact, 'The same deterministic WebM request must replay identical encoded/container bytes.');
+      }
       const output = `${directory}encoding-${crf}.${format}`;
       await writeFile(output, rendered.artifact);
       const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries', 'stream=codec_name,width,height,nb_read_frames:format=duration', '-of', 'json', output], { encoding: 'utf8', windowsHide: true }));

@@ -7,11 +7,14 @@ qualification, released application behavior and competitive parity are distinct
 ## Current boundary
 
 The public application remains on source
-`41e6ca1efe725b87ba43c7b664dc5f17badf5a63` at this checkpoint. Its private native
-rendering path has actual GCP/R2 artifact evidence, including private fonts and
-automatic two-line text fitting. The dated production receipt records the exact
-job, image, output hash and decoded frame. Later candidates require their own
-protected release and production receipts before this statement is advanced.
+`7785912c74404b653ed64faba1ebe45b7b5a4fb8` at this checkpoint. Its private native
+rendering path has actual GCP/R2 artifact evidence, including private fonts,
+automatic two-line text fitting and preservation of submitted gain while the
+project changes. The snapshot receipt records the release, output hash and
+decoded audio/frame. Its exact Cloud Run execution/image receipt is still pending
+Google management reauthentication; verified job configuration is not execution
+proof. Later merged candidates require their own protected release and production
+receipts before public capability claims advance.
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
 not a public executable-capsule service. A saved code package is not an executable
@@ -50,9 +53,17 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 4. Existing public capsule CPU/memory/output declarations do not yet match the
    prototype's fixed enforced limits. A dispatcher must reject unsupported
    requests explicitly rather than silently promise or ignore those limits.
-5. Current ordinary render work includes immutable submitted timelines and
-   revision-safe autosave; these are actual native implementation gaps, not
-   external provider activation.
+5. Submitted native timeline snapshots now have an actual private production
+   output test. Primary gaps/tails and draft-navigation/background-refresh guards
+   passed protected PR 143 checks and merged; exact-source deployment and field
+   qualification remain. PR 145's primary timing preview is scoped to primary
+   clips, not all graphics, tracks, effects or final-frame composition.
+6. WebM container replay initially failed despite equal decoded pixels. The
+   reproducible-metadata fix passed all local isolated/candidate tests and a
+   zero HIGH/CRITICAL scan; independent protected CI remains a separate gate.
+7. Google management reauthentication is required for the pending execution
+   receipt and subsequent worker promotion. This is a credential gate, not
+   evidence that all remaining implementation is external.
 
 ## Completion rule
 
@@ -65,4 +76,6 @@ standalone quality meets the agreed comparison bar.
 Sources: [Remotion encoding](https://www.remotion.dev/docs/encoding),
 [existing programmable-cinema standard](../CUT_STUDIO_PROGRAMMABLE_CINEMA_STANDARD.md),
 [locked creation benchmark](CREATION_STUDIOS_GOLDEN_BENCHMARK.md),
-[private typography production receipt](../releases/2026-09-02-cutstudio-fitting-production.md).
+[private typography production receipt](../releases/2026-09-02-cutstudio-fitting-production.md),
+[submitted snapshot production receipt](../releases/2026-09-02-cutstudio-snapshot-production.md),
+[WebM replay receipt](../releases/2026-09-02-cut-code-webm-replay.md).
