@@ -7,7 +7,8 @@ function archive(source, extra = {}) { return zipSync({ 'package.json': strToU8(
 test('bundles real TSX and the clean-room frame SDK without running source code', async () => {
   const source = `import {FullFrame,useFrame,interpolate} from '@creativesos/cut'; export default function Scene(){const f=useFrame();return <FullFrame style={{left:interpolate(f,[0,30],[0,100])}}>Frame {f}</FullFrame>}`;
   const bundle = await bundleCapsule(readCapsule(archive(source), 'src/index.tsx'), 'src/index.tsx');
-  assert.ok(bundle.includes('__cutRenderFrame'));
+  assert.ok(bundle.javascript.includes('__cutRenderFrame'));
+  assert.equal(bundle.stylesheet, '');
 });
 test('rejects host, network and unapproved dependency imports', async () => {
   for (const specifier of ['node:fs', 'child_process', 'https://example.com/code.js', '/etc/passwd', '../../host.ts', 'unapproved-package', 'three/addons/loaders/GLTFLoader.js', 'three/src/Three.js']) {
@@ -36,12 +37,21 @@ test('bundles nested private styles, local module names, composition and image U
     'assets/logo.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><path fill="blue" d="M0 0h2v2H0z"/></svg>'),
   }), 'src/index.tsx');
   const bundle = await bundleCapsule(files, 'src/index.tsx');
-  assert.ok(bundle.startsWith('(()=>{const style=document.createElement'));
-  assert.ok(bundle.includes('title_title'));
-  assert.ok(bundle.includes('base_base'));
-  assert.ok(bundle.includes('data:image/svg+xml'));
-  assert.ok(bundle.includes('--brand'));
-  assert.ok(bundle.includes('#shadow'));
+  assert.ok(bundle.javascript.includes('title_title'));
+  assert.ok(bundle.stylesheet.includes('base_base'));
+  assert.ok(bundle.stylesheet.includes('data:image/svg+xml'));
+  assert.ok(bundle.stylesheet.includes('--brand'));
+  assert.ok(bundle.stylesheet.includes('#shadow'));
+  assert.ok(!bundle.javascript.includes('data:image/svg+xml'), 'Stylesheet resource text must not be embedded in generated JavaScript.');
+});
+
+test('markup-like private stylesheet content is returned as data, not constructed code', async () => {
+  const files = readCapsule(archive(`import './literal.css'; export default () => <div/>`, {
+    'src/literal.css': strToU8('.literal::after{content:"</SCRIPT><div id=css-injection>not markup</div>";}'),
+  }), 'src/index.tsx');
+  const bundle = await bundleCapsule(files, 'src/index.tsx');
+  assert.ok(bundle.stylesheet.includes('css-injection'));
+  assert.ok(!bundle.javascript.includes('css-injection'));
 });
 
 test('rejects network, host, missing and unsupported stylesheet dependencies', async () => {

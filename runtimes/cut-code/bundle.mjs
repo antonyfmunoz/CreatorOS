@@ -83,10 +83,9 @@ export async function bundleCapsule(files, entrypoint) {
   const javascript = result.outputFiles.filter((file) => file.path.endsWith('.js'));
   const stylesheets = result.outputFiles.filter((file) => file.path.endsWith('.css'));
   if (javascript.length !== 1 || stylesheets.length > 1 || result.outputFiles.length !== javascript.length + stylesheets.length) throw new Error('Unexpected compiled capsule outputs.');
-  // Text insertion cannot parse markup from authored CSS. It happens before
-  // source execution and before the renderer waits for capsule-local fonts.
-  const styles = stylesheets.length ? `(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(stylesheets[0].text)};document.head.appendChild(style);})();\n` : '';
-  const compiled = styles + javascript[0].text;
-  if (Buffer.byteLength(compiled, 'utf8') > 25 * 1024 * 1024) throw new Error('Compiled capsule exceeds its output limit.');
+  // CSS remains data, never JavaScript source or HTML markup. The isolated
+  // renderer transfers both fields through Playwright's structured arguments.
+  const compiled = { javascript: javascript[0].text, stylesheet: stylesheets[0]?.text ?? '' };
+  if (Buffer.byteLength(compiled.javascript, 'utf8') + Buffer.byteLength(compiled.stylesheet, 'utf8') > 25 * 1024 * 1024) throw new Error('Compiled capsule exceeds its output limit.');
   return compiled;
 }

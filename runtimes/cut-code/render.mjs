@@ -57,7 +57,20 @@ try {
   page.setDefaultTimeout(10_000);
   const nonce = randomBytes(20).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
-  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replace(/<\/script/gi, '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
+  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div></body></html>`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(({ javascript, stylesheet, nonce }) => {
+    if (stylesheet) {
+      const style = document.createElement('style');
+      style.textContent = stylesheet;
+      document.head.appendChild(style);
+    }
+    // Capsule JavaScript intentionally executes only inside this no-network,
+    // sandboxed browser. Neither source nor CSS passes through an HTML parser.
+    const script = document.createElement('script');
+    script.nonce = nonce;
+    script.textContent = javascript;
+    document.body.appendChild(script);
+  }, { ...bundle, nonce });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
   const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;
   const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
