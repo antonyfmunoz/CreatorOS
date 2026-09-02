@@ -31,3 +31,15 @@ full browser/render repeat, full root and protected qualification are still
 required before integration. No deadline, resolution, frame count, quality
 setting or admission capacity was lowered. This does not establish Remotion
 parity or a production deployment.
+
+Combined source `8e27be2880154453bace27c222a208d20b5b0aae` passed the full root:
+664 unit tests across 158 files, type checks, build, bundle budgets and Worker
+dry-run. Its 16-case native/mobile/desktop browser suite passed in 5.2 minutes,
+with no retries or relaxed bounds. It includes both complete cinema workflows,
+actual preview/export base and ordered colors, raw color/alpha, filter-pool and
+all three frame-rate cache comparisons. Evidence:
+`creativesos-browser-qualification-45778054c61c456b9a5343fda1778a51`,
+`cut-scalars-root-20260902T131933.log` and `cut-scalars-browser-20260902T131933.log`.
+The previous filter-pool-only failures remain retained. Exact protected source
+and normal-user production proof remain required; no broad speed superiority is
+inferred from this single full-workflow pass.

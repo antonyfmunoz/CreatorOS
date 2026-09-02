@@ -62,3 +62,10 @@ checks and zero fixture leakage. Full root passed 662 tests across 158 files,
 types, build, budgets and Worker dry-run. Retained receipts are the
 `cut-worker-admission-{database,root}-20260902T130246.log` files. This does not
 waive the earlier browser failure; the combined native repeat is still required.
+
+The combined filter-pool repeat on `c463bfd` retained six passes and two cinema
+deadline failures (5.8 minutes overall). Evidence:
+`creativesos-browser-qualification-12580c331f51431e9de7a09a73ed56c0` and
+`cut-worker-admission-browser-20260902T131304.log`. The graph-pool cap alone is
+not an adequate resolution. Compiler scalar caching and job-scoped native
+browser reuse are separate follow-up candidates; those require their own proof.
