@@ -57,6 +57,7 @@ import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs } from "./cut-render-duration";
+import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -996,9 +997,9 @@ function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
   return filters;
 }
 
-async function renderJob(jobId: string, leaseToken: string, baseProject: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
+function projectForCutRender(baseProject: typeof cutStudioProjects.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
   const compositionManifest = request.composition ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
-  const project = compositionManifest ? {
+  return compositionManifest ? {
     ...baseProject,
     name: request.composition!.name,
     duration: compositionManifest.durationInFrames / compositionManifest.fps,
@@ -1007,7 +1008,12 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       compileCompositionToEdl(compositionManifest, { version: 3, clips: [] }),
       compositionManifest.durationInFrames / compositionManifest.fps,
     ),
-  } : baseProject;
+  } : request.timeline ? resolveCutRenderTimeline(baseProject, request.timeline) : baseProject;
+}
+
+async function renderJob(jobId: string, leaseToken: string, baseProject: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
+  const compositionManifest = request.composition ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
+  const project = projectForCutRender(baseProject, request);
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
   const { outputName, outputPath, sourcePath } = cutRenderWorkspacePaths(temp, project.name, source.originalFilename);
   try {
@@ -1196,6 +1202,7 @@ export async function processCutStudioJob(jobId: string) {
     } else if (claimed.kind === "render") {
       const request = cutRenderRequestSchema.parse(claimed.request);
       const result = await renderJob(jobId, leaseToken, project, source, request);
+      Object.assign(result.output, request.timeline ? { timelineRevision: request.timeline.revision, timelineSha256: request.timeline.sha256, timelineSnapshot: "captured" } : { timelineSnapshot: request.composition ? "composition" : "legacy_live" });
       const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
         .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning();
       if (!completed) {
@@ -1615,7 +1622,8 @@ export function registerCutStudioRoutes(app: Express) {
     const [artifact] = await db.select().from(assets).where(and(eq(assets.id, render.artifactAssetId), eq(assets.ownerUserId, req.dbUser!.id), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
     if (!artifact) return res.status(409).json({ message: "The private review render is unavailable" });
     const versionNumber = await db.select({ count: sql<number>`count(*)::int` }).from(cutStudioVersions).where(eq(cutStudioVersions.projectId, project.id));
-    const [version] = await db.insert(cutStudioVersions).values({ projectId: project.id, ownerUserId: req.dbUser!.id, revision: project.revision, label: `Version ${(versionNumber[0]?.count ?? 0) + 1}`, edl: project.edl, transcript: project.transcript, artifactAssetId: artifact.id }).returning();
+    const reviewProject = projectForCutRender(project, cutRenderRequestSchema.parse(render.request));
+    const [version] = await db.insert(cutStudioVersions).values({ projectId: project.id, ownerUserId: req.dbUser!.id, revision: reviewProject.revision, label: `Version ${(versionNumber[0]?.count ?? 0) + 1}`, edl: reviewProject.edl, transcript: reviewProject.transcript, artifactAssetId: artifact.id }).returning();
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + parsed.data.expiresDays * 86_400_000);
     const [link] = await db.insert(cutStudioReviewLinks).values({ versionId: version.id, projectId: project.id, ownerUserId: req.dbUser!.id, tokenHash: reviewTokenHash(token), label: parsed.data.label, expiresAt }).returning();
@@ -1823,13 +1831,29 @@ export function registerCutStudioRoutes(app: Express) {
     const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind, request: {} }).returning(); queueJob(job.id); res.status(202).json(job);
   });
   cut.post("/api/cut/projects/:id/render", attachUser, async (req, res) => {
-    if (req.body?.composition !== undefined) return res.status(400).json({ message: "Composition snapshots are server-owned; use composition-render-batches" });
+    if (req.body?.composition !== undefined || req.body?.timeline !== undefined) return res.status(400).json({ message: "Render snapshots are server-owned; use composition-render-batches for compositions" });
     noStore(res); const parsed = cutRenderRequestSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: "Render settings are invalid" });
     const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
-    const requestedDuration = parsed.data.clip ? Math.max(0, parsed.data.clip.end - parsed.data.clip.start) : cutDuration(project.edl);
-    if (requestedDuration > 7_200) return res.status(413).json({ message: "A single render can be up to two hours" });
-    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind: "render", request: parsed.data }).returning(); queueJob(job.id); res.status(202).json(job);
+    const expectedHeader = req.get("if-match");
+    const expected = expectedHeader === undefined ? undefined : Number(expectedHeader.replace(/\"/g, ""));
+    if (expected !== undefined && (!Number.isInteger(expected) || expected < 1)) return res.status(400).json({ message: "The requested edit revision is invalid" });
+    const admitted = await db.transaction(async (transaction) => {
+      // Share the owner's batch-admission lock so ordinary exports and batches
+      // cannot independently pass the same active-job cap.
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.render-batch.owner.${project.ownerUserId}`}))`);
+      const [current] = await transaction.select().from(cutStudioProjects).where(and(eq(cutStudioProjects.id, project.id), eq(cutStudioProjects.ownerUserId, req.dbUser!.id))).for("share");
+      if (!current) return { status: 404, message: "Project not found" } as const;
+      if (expected !== undefined && current.revision !== expected) return { status: 409, message: "The edit changed before rendering. Reload or finish saving, then try again." } as const;
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(eq(cutStudioJobs.ownerUserId, current.ownerUserId), sql`${cutStudioJobs.state} in ('queued', 'running')`));
+      if ((active?.count ?? 0) >= 2) return { status: 429, message: "Wait for an active CutStudio job to finish before starting another" } as const;
+      const requestedDuration = parsed.data.clip ? Math.max(0, parsed.data.clip.end - parsed.data.clip.start) : cutDuration(current.edl);
+      if (requestedDuration > 7_200) return { status: 413, message: "A single render can be up to two hours" } as const;
+      const timeline = captureCutRenderTimeline(current);
+      const [job] = await transaction.insert(cutStudioJobs).values({ projectId: current.id, ownerUserId: current.ownerUserId, kind: "render", request: { ...parsed.data, timeline } }).returning();
+      return { job };
+    });
+    if (!admitted.job) return res.status(admitted.status).json({ message: admitted.message });
+    queueJob(admitted.job.id); res.status(202).json(admitted.job);
   });
   cut.get("/api/cut/jobs/:id", attachUser, async (req, res) => {
     noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job) return res.status(404).json({ message: "Job not found" });

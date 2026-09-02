@@ -55,7 +55,7 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, onRenderBatchQueued }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void }) {
+export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, onRenderBatchQueued, onTimelineBusyChange }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void }) {
   const [runtime, setRuntime] = useState<RuntimePayload | null>(null);
   const [section, setSection] = useState<"motion" | "cinema" | "workflows">("motion");
   const [expanded, setExpanded] = useState(true);
@@ -102,9 +102,10 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
   const hasRenderedAnimationLayers = useMemo(() => runtime?.compositions.some((composition) => composition.manifest.layers.some((layer) => layer.kind === "lottie" || layer.kind === "rive")) ?? false, [runtime]);
 
   const act = async (key: string, action: () => Promise<void>) => {
+    onTimelineBusyChange?.(true);
     setBusy(key); setMessage("");
     try { await action(); } catch (error) { setMessage(error instanceof Error ? error.message : "That action could not be completed"); }
-    finally { setBusy(""); }
+    finally { setBusy(""); onTimelineBusyChange?.(false); }
   };
 
   const createComposition = (template: "kinetic" | "lower_third" | "product") => act(`composition:${template}`, async () => {

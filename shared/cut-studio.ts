@@ -261,8 +261,21 @@ export const cutRenderSettingsSchema = z.object({
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(50), z.literal(60)]).default(30),
 });
 
+export const cutRenderTimelineDataSchema = z.object({
+  version: z.literal(1),
+  projectId: z.string().uuid(),
+  sourceAssetId: z.string().uuid(),
+  revision: z.number().int().positive(),
+  name: z.string().trim().min(1).max(160),
+  duration: z.number().finite().positive().max(43_200),
+  edl: cutEdlSchema,
+  transcript: cutTranscriptSchema.nullable(),
+});
+export const cutRenderTimelineSnapshotSchema = cutRenderTimelineDataSchema.extend({ sha256: z.string().regex(/^[a-f0-9]{64}$/) });
+
 export const cutRenderRequestSchema = cutRenderSettingsSchema.extend({
   clip: z.object({ start: z.number().min(0), end: z.number().positive() }).optional(),
+  timeline: cutRenderTimelineSnapshotSchema.optional(),
   composition: z.object({
     id: z.string().uuid(),
     revision: z.number().int().positive(),
@@ -272,6 +285,7 @@ export const cutRenderRequestSchema = cutRenderSettingsSchema.extend({
     manifest: z.unknown(),
   }).optional(),
 }).superRefine((value, context) => {
+  if (value.composition && value.timeline) context.addIssue({ code: z.ZodIssueCode.custom, path: ["timeline"], message: "Choose a timeline or composition snapshot, not both" });
   if (value.composition && value.clip) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["clip"], message: "Composition snapshots cannot be combined with a timeline clip range" });
   }
