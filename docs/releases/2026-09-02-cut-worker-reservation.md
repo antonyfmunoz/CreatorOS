@@ -19,3 +19,30 @@ worker process; duplicated operator-configured worker IDs across processes,
 cluster-wide tenant quotas, memory/CPU enforcement and scaled scheduling still
 need their own guarantees. Full root, protected workflows and deployment remain
 pending at this checkpoint.
+
+## Local qualification
+
+Source `bdd24ed` passed 660 unit checks across 157 files, type checking, the
+production build, bundle budgets and Worker dry-run. A disposable PostgreSQL
+database applied all 120 migrations and exercised the actual job processor:
+six requests were held on real row locks; only two claims blocked and the other
+four returned without acquiring a lease. All six subsequently completed through
+the native highlights path. Duplicate/missing claims, a deliberate transcript
+failure, later successful admission and draining refusal also passed. The
+existing cross-worker lease/recovery checks passed and no fixture users leaked.
+
+Receipts: `cut-worker-admission-database-20260902T123607.log` and
+`cut-worker-admission-root-20260902T123607.log` in the owned task artifact folder.
+The original wrapper run was interrupted by Windows PowerShell promoting the
+deliberate error-path stderr record to a fatal launcher exception. Its isolated
+database was stopped explicitly; that run is not a successful qualification.
+The corrected wrapper preserves stdout/stderr independently and checks both
+the actual child exit code and admission receipt. It does not suppress the
+intentional failure log. Negative-control, browser and protected checks remain.
+
+The negative control restored only the old duplicate-only reservation in a
+separate detached worktree. The identical database proof failed at the intended
+capacity assertion: **six blocked claims instead of two**. Its original nonzero
+exit and assertion are retained in
+`cut-worker-admission-negative-20260902T124030.log.errors`. The candidate worktree
+was not changed by this experiment. Browser/protected/deployment gates remain.

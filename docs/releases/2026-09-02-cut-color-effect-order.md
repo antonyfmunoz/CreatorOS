@@ -75,3 +75,11 @@ matching player. Both compositions and the rejection/revision checks remain.
 This is a test-target correction, not a successful color comparison; the exact
 candidate must pass again. Root qualification passed 657 tests before this
 locator-only correction.
+
+The corrected candidate `9595c8b992c39327371aa32ab6ddf2c9dcf1ffe2` passed all
+twelve cases in 7.4 minutes with no retries, timeout changes or tolerance changes.
+Evidence: `creativesos-browser-qualification-dcc9ed9e2a87461faf1ef6d4526d61f8`.
+Each device retained 32 base samples (maximum channel difference 3) and 32
+ordered-effect samples (maximum 4, within the unchanged encoded-output bound).
+The actual mobile preview and native frame 44 were also viewed. Exact protected
+checks and production promotion remain distinct requirements.
