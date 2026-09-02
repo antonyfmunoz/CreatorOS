@@ -29,7 +29,9 @@ export function volumeAutomationFilter(track, fps) {
   expression = `${track.volume}*if(lt(${frame},${points[0].frame}),${points[0].value},${expression})`;
   // aeval evaluates each output sample; volume:eval=frame would step by audio
   // decode packets and lose precision at fades and exact held-keyframe edges.
-  return `aeval=exprs='val(0)*(${expression})|val(1)*(${expression})':channel_layout=stereo`;
+  // Some supported FFmpeg versions retain an unspecified two-channel layout
+  // after aeval. Negotiate named stereo explicitly before amix/AAC encoding.
+  return `aeval=exprs='val(0)*(${expression})|val(1)*(${expression})':channel_layout=stereo,aformat=channel_layouts=stereo`;
 }
 
 export function audioTrackFilters(track, fps) {

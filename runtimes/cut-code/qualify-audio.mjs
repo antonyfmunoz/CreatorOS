@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { audioPlan, audioTrackFilters } from './audio.mjs';
 import { validateRequest } from './request.mjs';
 
@@ -15,7 +17,14 @@ const decode = (track, extra = {}) => {
   const args = ['-v', 'error', '-nostdin', '-threads', '1', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=4', '-af', audioTrackFilters(plan, request.fps), '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'];
   // Fixed synthetic input only: no user source, files, credentials or mounts.
   // This checks the actual image's FFmpeg, in addition to the host version.
-  return execFileSync(inContainer ? 'docker' : 'ffmpeg', inContainer ? ['run', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--user', '1000:1000', '--cpus', '1', '--memory', '2g', '--memory-swap', '2g', '--pids-limit', '256', '--log-driver', 'none', '--entrypoint', 'ffmpeg', image, ...args] : args, { windowsHide: true, timeout: 20_000, maxBuffer: 2_000_000 });
+  if (!inContainer) return execFileSync('ffmpeg', args, { windowsHide: true, timeout: 20_000, maxBuffer: 2_000_000 });
+  const name = `creativesos-cut-audio-probe-${randomUUID()}`;
+  try {
+    return execFileSync('docker', ['run', '--rm', '--name', name, '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--security-opt', `seccomp=${fileURLToPath(new URL('./seccomp.json', import.meta.url))}`, '--user', '1000:1000', '--cpus', '1', '--memory', '2g', '--memory-swap', '2g', '--pids-limit', '256', '--log-driver', 'none', '--entrypoint', 'ffmpeg', image, ...args], { windowsHide: true, timeout: 20_000, maxBuffer: 2_000_000 });
+  } finally {
+    try { execFileSync('docker', ['rm', '--force', name], { windowsHide: true, timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (error) { if (!/No such container/.test(String(error.stderr))) throw new Error('Could not confirm exact audio probe cleanup.'); }
+  }
 };
 const rms = (bytes, start, end) => {
   const first = Math.round(start * 48000), last = Math.round(end * 48000);
