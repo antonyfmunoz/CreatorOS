@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
 import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
@@ -276,7 +276,17 @@ export type CutStudioCompositionPlayerProps = {
   onFrameChange?: (frame: number) => void;
 };
 
-export function CutStudioCompositionPlayer({ manifest, autoPlay = false, controls = true, initialFrame = 0, loop = true, playbackRate = 1, muted: initialMuted = true, assetUrlTemplate = "/api/assets/{assetId}/stream", onFrameChange }: CutStudioCompositionPlayerProps) {
+export type CutStudioCompositionPlayerHandle = {
+  play(): void;
+  pause(): void;
+  seekTo(frame: number): void;
+  getCurrentFrame(): number;
+  isPlaying(): boolean;
+  setMuted(muted: boolean): void;
+  setPlaybackRate(rate: number): void;
+};
+
+export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerHandle, CutStudioCompositionPlayerProps>(function CutStudioCompositionPlayer({ manifest, autoPlay = false, controls = true, initialFrame = 0, loop = true, playbackRate = 1, muted: initialMuted = true, assetUrlTemplate = "/api/assets/{assetId}/stream", onFrameChange }, ref) {
   const assetUrl = useMemo(() => {
     const template = /^\/api\/[A-Za-z0-9/{}_-]+$/.test(assetUrlTemplate) && assetUrlTemplate.includes("{assetId}") ? assetUrlTemplate : "/api/assets/{assetId}/stream";
     return (assetId: string) => template.replace("{assetId}", encodeURIComponent(assetId));
@@ -284,6 +294,9 @@ export function CutStudioCompositionPlayer({ manifest, autoPlay = false, control
   const boundedInitialFrame = cutPlayerFrame(initialFrame, manifest.durationInFrames);
   const [frame, setFrame] = useState(boundedInitialFrame);
   const [playing, setPlaying] = useState(autoPlay);
+  const stateRef = useRef({ frame, playing });
+  stateRef.current = { frame, playing };
+  const keyboardHelpId = useId();
   const [muted, setMuted] = useState(initialMuted);
   const [masterVolume, setMasterVolume] = useState(1);
   const [speed, setSpeed] = useState(cutPlayerRate(playbackRate));
@@ -296,6 +309,24 @@ export function CutStudioCompositionPlayer({ manifest, autoPlay = false, control
     }
     if (audioContextRef.current?.state === "suspended") void audioContextRef.current.resume().catch(() => undefined);
   };
+  const seekTo = (next: number) => {
+    const bounded = cutPlayerFrame(next, manifest.durationInFrames);
+    stateRef.current = { frame: bounded, playing: false };
+    setPlaying(false); setFrame(bounded);
+  };
+  const play = () => {
+    if (!muted) enableAudio();
+    if (stateRef.current.frame === manifest.durationInFrames - 1) { stateRef.current.frame = 0; setFrame(0); }
+    stateRef.current.playing = true; setPlaying(true);
+  };
+  const pause = () => { stateRef.current.playing = false; setPlaying(false); };
+  useImperativeHandle(ref, () => ({
+    play, pause, seekTo,
+    getCurrentFrame: () => stateRef.current.frame,
+    isPlaying: () => stateRef.current.playing,
+    setMuted: (value) => { if (!value) enableAudio(); setMuted(Boolean(value)); },
+    setPlaybackRate: (rate) => setSpeed(cutPlayerRate(rate)),
+  }));
   useEffect(() => { setSpeed(cutPlayerRate(playbackRate)); }, [playbackRate]);
   useEffect(() => { setMuted(initialMuted); }, [initialMuted]);
   useEffect(() => () => { void audioContextRef.current?.close().catch(() => undefined); audioContextRef.current = null; }, []);
@@ -328,13 +359,21 @@ export function CutStudioCompositionPlayer({ manifest, autoPlay = false, control
   }, [loop, manifest.durationInFrames, manifest.fps, speed, playing]);
   useEffect(() => { onFrameChange?.(frame); }, [frame, onFrameChange]);
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
-  return <AssetUrlContext.Provider value={assetUrl}><div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="CutStudio composition player" data-player-state={playing ? "playing" : "paused"} data-current-frame={frame}>
+  return <AssetUrlContext.Provider value={assetUrl}><div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1d9bf0]" role="region" tabIndex={controls ? 0 : undefined} aria-label="CutStudio composition player" aria-describedby={keyboardHelpId} data-player-state={playing ? "playing" : "paused"} data-current-frame={frame} onKeyDown={(event) => {
+    if (!controls || event.altKey || event.ctrlKey || event.metaKey || (event.target instanceof Element && event.target.closest('input,select,textarea,button,a,[contenteditable="true"]'))) return;
+    if (event.key === " ") { event.preventDefault(); if (event.repeat) return; if (stateRef.current.playing) pause(); else play(); }
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); seekTo(stateRef.current.frame + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 1)); }
+    else if (event.key === "Home" || event.key === "End") { event.preventDefault(); seekTo(event.key === "Home" ? 0 : manifest.durationInFrames - 1); }
+  }}>
+    <p id={keyboardHelpId} className="sr-only">Focus the player: Space plays or pauses. Left and right step one frame; Shift steps ten. Home and End jump to the first and last frame. Stepping pauses playback.</p>
     <CompositionFonts manifest={manifest}/>
     <div aria-label="Composition canvas" className="relative overflow-hidden rounded-md" style={{ aspectRatio: `${manifest.width} / ${manifest.height}`, containerType: "inline-size", background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} canvasWidth={manifest.width} playing={playing} playbackRate={speed} muted={muted} masterVolume={masterVolume} audioContext={audioContext} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
     {controls && <div className="mt-2 flex items-center gap-2">
-      <button type="button" aria-label={playing ? "Pause composition" : "Play composition"} className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => { if (!muted) enableAudio(); if (!playing && frame === manifest.durationInFrames - 1) setFrame(0); setPlaying((current) => !current); }}>{playing ? "Pause" : "Play"}</button>
-      <label className="min-w-0 flex-1 text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => { setPlaying(false); setFrame(Number(event.target.value)); }}/></label>
-      <button type="button" aria-label="Restart composition" className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => setFrame(0)}>Restart</button>
+      <button type="button" aria-label={playing ? "Pause composition" : "Play composition"} className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => { if (playing) pause(); else play(); }}>{playing ? "Pause" : "Play"}</button>
+      <button type="button" aria-label="Previous composition frame" className="h-7 rounded border border-zinc-700 px-2 text-[10px] hover:bg-zinc-900" onClick={() => seekTo(frame - 1)}>←</button>
+      <label className="min-w-0 flex-1 text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => seekTo(Number(event.target.value))}/></label>
+      <button type="button" aria-label="Next composition frame" className="h-7 rounded border border-zinc-700 px-2 text-[10px] hover:bg-zinc-900" onClick={() => seekTo(frame + 1)}>→</button>
+      <button type="button" aria-label="Restart composition" className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => { stateRef.current.frame = 0; setFrame(0); }}>Restart</button>
     </div>}
     {controls && <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-zinc-400">
       <button type="button" aria-label={muted ? "Unmute composition" : "Mute composition"} aria-pressed={!muted} className="rounded border border-zinc-700 px-2 py-1" onClick={() => { if (muted) enableAudio(); setMuted((current) => !current); }}>{muted ? "Unmute" : "Mute"}</button>
@@ -342,7 +381,7 @@ export function CutStudioCompositionPlayer({ manifest, autoPlay = false, control
       <label>Speed <select aria-label="Composition playback speed" value={speed} onChange={(event) => setSpeed(cutPlayerRate(Number(event.target.value)))} className="rounded border border-zinc-700 bg-zinc-950 px-1 py-1">{[.25, .5, .75, 1, 1.25, 1.5, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}</select></label>
     </div>}
   </div></AssetUrlContext.Provider>;
-}
+});
 
 export function CutStudioCompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
   const initialFrame = Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6);
