@@ -18,3 +18,13 @@ shutdown, failed launch cleanup and bounded progress. Actual text/font/animation
 pixel equivalence, context cleanup, full root, repeated workflow, exact protected
 and production proof remain pending. No claim is made that startup reuse alone
 solves the retained cinema render deadlines or establishes Remotion parity.
+
+Initial root source `90dfbcf` passed 668 tests across 159 files, types, build,
+budgets and Worker dry-run. The actual pixel comparison matched all 12 frames
+but failed its anti-vacuity assertion: the older shared Lottie fixture produced
+only two unique frames. Its non-held keyframe omitted required easing handles.
+Both synthetic rotation and cinema-position fixtures now include the explicit
+linear i/o handles required by the [Lottie property specification](https://lottie.github.io/lottie-spec/latest/specs/properties/).
+The stronger motion assertion remains unchanged. Original failure:
+`native-session-20260902202848929`; `cut-preparation-native-20260902T132702.log`.
+Full rerun is required; matching static output is not animation parity.
