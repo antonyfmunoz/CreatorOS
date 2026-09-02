@@ -102,8 +102,10 @@ isolated compute/network/IAM, durable dispatch/cancellation, private asset excha
 per-tenant cost admission, vulnerability scanning, receipts, recovery and red-team
 qualification. Never execute capsule code inside the API worker or app origin.
 
-`Dockerfile.production` is an additional **candidate**, based on a digest-pinned
-official Node Debian image with Debian Chromium, FFmpeg and fonts. It is not yet
+`Dockerfile.production` is an additional **candidate**, based on digest-pinned
+Debian 13 and official Node build stages with Debian Chromium, FFmpeg and fonts.
+Only Node and locked runtime dependencies enter the final image; npm, Yarn and
+Corepack are build tooling and are not shipped in the execution image. It is not yet
 approved for public execution. Unlike the development image it has no bundled
 Firefox/WebKit/test browsers. The image owns the fixed Chromium executable;
 capsules cannot supply binary paths or flags. Both variants require the same
