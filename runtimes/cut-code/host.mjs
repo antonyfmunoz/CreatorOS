@@ -17,6 +17,7 @@ export function assertArtifactReceipt(artifact, receipt, request, source) {
   const output = outputContract(request);
   if (JSON.stringify(receipt?.gifOptions) !== JSON.stringify(request.gifOptions)) throw new Error('Artifact GIF sampling did not match its request.');
   if (receipt?.proresProfile !== request.proresProfile) throw new Error('Artifact ProRes profile did not match its request.');
+  if (JSON.stringify(receipt?.videoEncoding) !== JSON.stringify(request.videoEncoding)) throw new Error('Artifact video encoding did not match its request.');
   const hasSoundtrack = ['video', 'audio'].includes(request.mode);
   const audioTrackCount = hasSoundtrack ? audioPlan(request).length : 0;
   if (receipt?.audioTrackCount !== audioTrackCount || receipt?.silent !== (hasSoundtrack && audioTrackCount === 0)) throw new Error('Artifact audio did not match its request.');
