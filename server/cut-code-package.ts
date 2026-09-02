@@ -10,7 +10,7 @@ const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {
 });
 function crc32(input: Buffer) {
   let value = 0xffffffff;
-  for (const byte of input) value = (value >>> 8) ^ crcTable[(value ^ byte) & 255];
+  for (let index = 0; index < input.length; index++) value = (value >>> 8) ^ crcTable[(value ^ input[index]) & 255];
   return (value ^ 0xffffffff) >>> 0;
 }
 function archiveName(input: Buffer) {

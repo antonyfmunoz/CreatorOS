@@ -24,8 +24,13 @@ service. No runtime or dependency installation policy is relaxed.
 
 Eight focused unit tests pass, including real deflation, streamed descriptors,
 tampered contents, forged inflation sizes, extra compressed bytes, overlapping
-local records, invalid Unicode and archive comments. The full root and browser
-qualification remain pending. The existing programmable-cinema journey now also
+local records, invalid Unicode and archive comments. The combined candidate's
+619 root tests, types, build, bundle budget and Worker dry-run passed. The initial
+type check caught Buffer iteration incompatible with the application's target;
+an indexed CRC loop fixed that without relaxing compiler settings. Both actual
+programmable-cinema browser journeys passed within the 35/36 combined run; that
+run remains failed because the first mobile image-framing page did not finish
+loading within the unchanged assertion deadline. The journey now also
 uploads a damaged private capsule, expects HTTP 400 with no composition persisted,
 then explicitly selects and saves the valid capsule. Protected merge/deployment
 and actual public executable-code workflows are not claimed.

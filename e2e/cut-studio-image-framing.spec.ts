@@ -7,6 +7,7 @@ import { waitForCutRender } from './helpers/cut-render';
 test('image framing controls preserve crop, transparent fit and stretch in actual export', async ({ page }, info) => {
   test.setTimeout(120_000);
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });
   const directory = info.outputPath('image-framing'); mkdirSync(directory, { recursive: true });
   const sourcePath = `${directory}/source.mp4`;
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=480x270:r=30:d=1', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', sourcePath]);
