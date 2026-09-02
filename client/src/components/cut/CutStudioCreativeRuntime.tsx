@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, CompositionVariantBatchControls, cutStudioPrivateFontFamily, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
+import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
+import { motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
@@ -30,22 +32,6 @@ type RuntimePayload = {
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 
-function motionTemplate(project: ProjectInput, template: "kinetic" | "lower_third" | "product"): CutCompositionManifest {
-  const fps = 30 as const;
-  const durationInFrames = Math.max(30, Math.round(project.duration * fps));
-  const titleText = template === "lower_third" ? "Name · Role" : template === "product" ? "Make the outcome unmistakable" : "Turn attention into momentum";
-  const shared = { version: 1 as const, name: `${project.name} · ${template.replace("_", " ")}`, width: 1920, height: 1080, fps, durationInFrames, background: "#000000", parameters: [{ key: "headline", label: "Headline", type: "text" as const, defaultValue: titleText, required: true }], fonts: [], audioReactiveSignals: [], metadata: { template } };
-  const source = { id: "source", kind: project.mediaKind, name: "Source", from: 0, durationInFrames, assetId: project.sourceAssetId, sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal" as const, style: {}, dataBindings: {}, effects: [], animations: [] };
-  const graphicDuration = Math.min(durationInFrames, template === "lower_third" ? 150 : 240);
-  const graphic = {
-    id: "hero_title", kind: "text" as const, name: template === "product" ? "Product promise" : "Hero title", from: Math.min(15, durationInFrames - 1), durationInFrames: Math.max(1, Math.min(graphicDuration, durationInFrames - Math.min(15, durationInFrames - 1))), sourceStartFrame: 0,
-    text: titleText, x: template === "lower_third" ? .08 : .15, y: template === "lower_third" ? .72 : .42, width: .72, height: .2, opacity: 1, rotation: 0, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal" as const,
-    style: { fontSize: template === "lower_third" ? 44 : 72, color: "#ffffff", backgroundColor: template === "kinetic" ? "#1d9bf0" : "#000000", backgroundOpacity: template === "kinetic" ? .88 : .72 }, dataBindings: { text: "headline" }, effects: template === "product" ? [{ id: "title_glow", kind: "glow" as const, enabled: true, parameters: { intensity: .4 } }] : [],
-    enter: { kind: template === "kinetic" ? "zoom" as const : "slide" as const, durationInFrames: 15, easing: "spring" as const, direction: template === "kinetic" ? "in" as const : "right" as const }, exit: { kind: "fade" as const, durationInFrames: 12, easing: "ease_out" as const },
-    animations: [{ property: "opacity" as const, keyframes: [{ frame: 0, value: 0, easing: "ease_out" as const }, { frame: Math.min(12, graphicDuration - 1), value: 1, easing: "ease_out" as const }] }, ...(template === "kinetic" ? [{ property: "scale" as const, keyframes: [{ frame: 0, value: .72, easing: "spring" as const }, { frame: Math.min(18, graphicDuration - 1), value: 1, easing: "spring" as const }] }] : [])],
-  };
-  return { ...shared, layers: [source, graphic] };
-}
 
 function starterBrief(project: ProjectInput): CutProductionBrief {
   return { version: 1, title: project.name, objective: "", audience: "", genre: "general", era: "contemporary", tone: [], required: [], forbidden: [], referenceAssetIds: [], defaultAspect: "16:9", defaultResolution: "1080p", defaultFps: 24, pacing: "custom" };
@@ -55,13 +41,33 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, onRenderBatchQueued, onTimelineBusyChange }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void }) {
-  const [runtime, setRuntime] = useState<RuntimePayload | null>(null);
+export function CutStudioCreativeRuntime({ project, media, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
+  const [serverRuntime, setRuntime] = useState<RuntimePayload | null>(null);
+  const compositions = useRef(new CutCreativeDrafts<CompositionRow, "manifest">("manifest"));
+  const workflows = useRef(new CutCreativeDrafts<WorkflowRow, "workflow">("workflow"));
+  const briefs = useRef(new CutCreativeDrafts<PlanRow, "brief">("brief"));
+  const [, rerenderDrafts] = useState(0);
+  const alive = useRef(true);
+  const refreshGeneration = useRef(0);
+  const actionPending = useRef(false);
+  const serverBrief: PlanRow = { id: "brief", revision: serverRuntime?.plan?.revision ?? 0, brief: serverRuntime?.plan?.brief ?? starterBrief(project) };
+  const briefRow = briefs.current.view([serverBrief])[0];
+  const brief = briefRow.brief;
+  const runtime = serverRuntime ? { ...serverRuntime, compositions: compositions.current.view(serverRuntime.compositions), workflows: workflows.current.view(serverRuntime.workflows) } : null;
+  const unsavedCount = compositions.current.size + workflows.current.size + briefs.current.size;
+  const conflictCount = compositions.current.conflicts(serverRuntime?.compositions ?? []) + workflows.current.conflicts(serverRuntime?.workflows ?? []) + briefs.current.conflicts([serverBrief]);
+  const notifyDrafts = () => {
+    if (!alive.current) return;
+    rerenderDrafts((value) => value + 1);
+    onUnsavedChange?.(compositions.current.size + workflows.current.size + briefs.current.size > 0);
+  };
+  const setBrief = (value: CutProductionBrief) => { briefs.current.edit(briefRow, value, serverBrief); notifyDrafts(); };
+  const onTimelineApplied: typeof applyTimeline = (result) => { if (alive.current) applyTimeline(result); };
+  const onRenderBatchQueued = () => { if (alive.current) renderBatchQueued(); };
   const [section, setSection] = useState<"motion" | "cinema" | "workflows">("motion");
   const [expanded, setExpanded] = useState(true);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
-  const [brief, setBrief] = useState<CutProductionBrief>(starterBrief(project));
   const [shotName, setShotName] = useState("Opening shot");
   const [shotPrompt, setShotPrompt] = useState("A cinematic opening that establishes the subject, environment, and creative promise");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
@@ -72,12 +78,19 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
 
   const refresh = async () => {
+    const generation = ++refreshGeneration.current;
     const next = await (await apiRequest("GET", `/api/cut/projects/${project.id}/creative-runtime`)).json() as RuntimePayload;
+    if (!alive.current || generation !== refreshGeneration.current) return;
     setRuntime(next);
-    setBrief(next.plan?.brief ?? starterBrief(project));
   };
 
-  useEffect(() => { setRuntime(null); setMessage(""); void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Creative runtime could not load")); }, [project.id]);
+  useEffect(() => {
+    alive.current = true;
+    setRuntime(null); setMessage("");
+    onUnsavedChange?.(false);
+    void refresh().catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
+    return () => { alive.current = false; ++refreshGeneration.current; };
+  }, [project.id]);
   useEffect(() => {
     setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
     setCodeLockfileAssetId((current) => current || media.find((item) => item.mediaKind === "code_lockfile")?.assetId || "");
@@ -102,10 +115,16 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
   const hasRenderedAnimationLayers = useMemo(() => runtime?.compositions.some((composition) => composition.manifest.layers.some((layer) => layer.kind === "lottie" || layer.kind === "rive")) ?? false, [runtime]);
 
   const act = async (key: string, action: () => Promise<void>) => {
+    if (actionPending.current || !alive.current) return;
+    actionPending.current = true;
     onTimelineBusyChange?.(true);
     setBusy(key); setMessage("");
     try { await action(); } catch (error) { setMessage(error instanceof Error ? error.message : "That action could not be completed"); }
-    finally { setBusy(""); onTimelineBusyChange?.(false); }
+    finally {
+      actionPending.current = false;
+      compositions.current.endPending(); workflows.current.endPending(); briefs.current.endPending();
+      if (alive.current) { setBusy(""); onTimelineBusyChange?.(false); notifyDrafts(); }
+    }
   };
 
   const createComposition = (template: "kinetic" | "lower_third" | "product") => act(`composition:${template}`, async () => {
@@ -115,18 +134,28 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
   });
 
   const applyComposition = (composition: CompositionRow) => act(`apply:${composition.id}`, async () => {
+    if (compositions.current.has(composition.id)) throw new Error("Save this composition before applying it to the timeline.");
     const result = await (await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/apply`, {}, { "If-Match": String(project.revision) })).json() as { edl: CutEdl; duration: number; revision: number };
     onTimelineApplied(result); setMessage("The motion composition is now on the editable timeline.");
   });
 
-  const updateCompositionDraft = (compositionId: string, update: (manifest: CutCompositionManifest) => CutCompositionManifest) => setRuntime((current) => current ? { ...current, compositions: current.compositions.map((row) => row.id === compositionId ? { ...row, manifest: update(row.manifest) } : row) } : current);
+  const updateCompositionDraft = (compositionId: string, update: (manifest: CutCompositionManifest) => CutCompositionManifest) => {
+    const row = runtime?.compositions.find((item) => item.id === compositionId);
+    if (!row) return;
+    compositions.current.edit(row, update(row.manifest), serverRuntime?.compositions.find((item) => item.id === row.id) ?? null); notifyDrafts();
+  };
 
   const saveComposition = (composition: CompositionRow) => act(`save:${composition.id}`, async () => {
-    await apiRequest("PUT", `/api/cut/projects/${project.id}/compositions/${composition.id}`, { name: composition.name, mode: "declarative", manifest: composition.manifest, codeCapsule: null }, { "If-Match": String(composition.revision) });
+    compositions.current.beginSave(composition);
+    const saved = await (await apiRequest("PUT", `/api/cut/projects/${project.id}/compositions/${composition.id}`, { name: composition.name, mode: "declarative", manifest: composition.manifest, codeCapsule: null }, { "If-Match": String(composition.revision) })).json() as CompositionRow;
+    compositions.current.saved(composition, saved);
+    if (alive.current) setRuntime((current) => current ? { ...current, compositions: current.compositions.map((row) => row.id === saved.id ? saved : row) } : current);
+    notifyDrafts();
     await refresh(); setMessage("Composition controls saved.");
   });
 
   const createCompositionVariants = (composition: CompositionRow, variants: Array<{ name: string; parameterValues: Record<string, string | number | boolean | null> }>, render = false) => act(`variants:${composition.id}`, async () => {
+    if (compositions.current.has(composition.id)) throw new Error("Save this composition before creating variants.");
     const variantBatchId = `variants.${composition.id}.${crypto.randomUUID()}`;
     const response = await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/variants`, { idempotencyKey: variantBatchId, variants });
     const result = await response.json() as { count: number; variants: CompositionRow[] };
@@ -161,8 +190,12 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
   });
 
   const saveBrief = () => act("brief", async () => {
-    const headers = runtime?.plan ? { "If-Match": String(runtime.plan.revision) } : undefined;
-    await apiRequest("PUT", `/api/cut/projects/${project.id}/production-brief`, brief, headers);
+    briefs.current.beginSave(briefRow);
+    const headers = briefRow.revision > 0 ? { "If-Match": String(briefRow.revision) } : undefined;
+    const saved = await (await apiRequest("PUT", `/api/cut/projects/${project.id}/production-brief`, brief, headers)).json() as PlanRow;
+    briefs.current.saved(briefRow, { ...saved, id: "brief" });
+    if (alive.current) setRuntime((current) => current ? { ...current, plan: saved } : current);
+    notifyDrafts();
     await refresh(); setMessage("Production brief saved.");
   });
 
@@ -203,19 +236,32 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
     await refresh(); setMessage("Reusable generation workflow saved.");
   });
 
-  const updateWorkflowDraft = (workflowId: string, workflow: CutGenerativeWorkflow) => setRuntime((current) => current ? { ...current, workflows: current.workflows.map((row) => row.id === workflowId ? { ...row, workflow } : row) } : current);
+  const updateWorkflowDraft = (workflowId: string, workflow: CutGenerativeWorkflow) => {
+    const row = runtime?.workflows.find((item) => item.id === workflowId);
+    if (!row) return;
+    workflows.current.edit(row, workflow, serverRuntime?.workflows.find((item) => item.id === row.id) ?? null); notifyDrafts();
+  };
 
   const saveWorkflow = (row: WorkflowRow) => act(`workflow:${row.id}`, async () => {
-    await apiRequest("PUT", `/api/cut/projects/${project.id}/generative-workflows/${row.id}`, { workflow: row.workflow }, { "If-Match": String(row.revision) });
+    workflows.current.beginSave(row);
+    const saved = await (await apiRequest("PUT", `/api/cut/projects/${project.id}/generative-workflows/${row.id}`, { workflow: row.workflow }, { "If-Match": String(row.revision) })).json() as WorkflowRow;
+    workflows.current.saved(row, saved);
+    if (alive.current) setRuntime((current) => current ? { ...current, workflows: current.workflows.map((item) => item.id === saved.id ? saved : item) } : current);
+    notifyDrafts();
     await refresh(); setMessage("Workflow graph saved.");
   });
 
   return <div className="rounded-2xl border border-[#1d9bf0]/35 bg-zinc-950 p-4" aria-label="CutStudio creative runtime">
+    {unsavedCount > 0 && <div aria-label="Unsaved creative edits" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+      <p>{unsavedCount} unsaved creative {unsavedCount === 1 ? "draft" : "drafts"}. Save each composition, workflow or brief to keep it.</p>
+      {conflictCount > 0 && <p className="mt-1">Some saved records changed elsewhere or were removed. Your edits are preserved; their original revision still protects against overwriting someone else's work.</p>}
+      <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Discard all unsaved creative edits and use the latest loaded saved versions?")) { compositions.current.clear(); workflows.current.clear(); briefs.current.clear(); notifyDrafts(); } }}>Discard creative edits</Button>
+    </div>}
     <button className="flex w-full items-start justify-between gap-3 text-left" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
       <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#1d9bf0]">Creative runtime</p><h2 className="mt-1 font-bold">Motion graphics + cinema studio</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Parameterized compositions, shot continuity, camera direction, variants, and reusable model workflows.</p></div>{expanded ? <ChevronUp className="mt-1 h-4 w-4 text-zinc-500"/> : <ChevronDown className="mt-1 h-4 w-4 text-zinc-500"/>}
     </button>
     {expanded && <>
-      <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-black p-1">{([['motion','Motion',Boxes],['cinema','Cinema',Clapperboard],['workflows','Flows',Workflow]] as const).map(([id,label,Icon]) => <button key={id} className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold ${section === id ? "bg-[#1d9bf0] text-black" : "text-zinc-500"}`} onClick={() => setSection(id)}><Icon className="h-3.5 w-3.5"/>{label}</button>)}</div>
+      <div className="sticky top-14 z-20 mt-4 grid grid-cols-3 gap-1 rounded-xl bg-black p-1">{([['motion','Motion',Boxes],['cinema','Cinema',Clapperboard],['workflows','Flows',Workflow]] as const).map(([id,label,Icon]) => <button key={id} className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold ${section === id ? "bg-[#1d9bf0] text-black" : "text-zinc-500"}`} onClick={() => setSection(id)}><Icon className="h-3.5 w-3.5"/>{label}</button>)}</div>
       {!runtime ? <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#1d9bf0]"/></div> : section === "motion" ? <div className="mt-4 space-y-3">
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
@@ -226,12 +272,12 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, on
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} value={codeSourceAssetId} onChange={(event) => setCodeSourceAssetId(event.target.value)}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
           <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
         </div>
-        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>Package saved; isolated code execution still requires implementation and qualification.</p></div>}</div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>Package saved; isolated code execution still requires implementation and qualification.</p></div>}</div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">
         <label className="block text-[10px] font-bold text-zinc-500">Production title<input className={field} value={brief.title} onChange={(event) => setBrief({ ...brief, title: event.target.value })}/></label>
-        <label className="block text-[10px] font-bold text-zinc-500">Objective<textarea className={`${field} min-h-20 resize-none`} value={brief.objective} onChange={(event) => setBrief({ ...brief, objective: event.target.value })} placeholder="What should this production accomplish?"/></label>
+        <label className="block text-[10px] font-bold text-zinc-500">Objective<textarea aria-label="Objective" className={`${field} min-h-20 resize-none`} value={brief.objective} onChange={(event) => setBrief({ ...brief, objective: event.target.value })} placeholder="What should this production accomplish?"/></label>
         <label className="block text-[10px] font-bold text-zinc-500">Audience<input className={field} value={brief.audience} onChange={(event) => setBrief({ ...brief, audience: event.target.value })}/></label>
         <Button size="sm" variant="outline" className="w-full" disabled={Boolean(busy)} onClick={() => void saveBrief()}>{busy === "brief" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Check className="mr-1 h-3.5 w-3.5"/>}Save brief</Button>
         <div className="border-t border-zinc-800 pt-3"><div className="flex items-center gap-2"><Camera className="h-4 w-4 text-[#1d9bf0]"/><p className="text-xs font-bold">Shot builder</p></div><input aria-label="Shot name" className={field} value={shotName} onChange={(event) => setShotName(event.target.value)}/><textarea aria-label="Shot prompt" className={`${field} min-h-20 resize-none`} value={shotPrompt} onChange={(event) => setShotPrompt(event.target.value)}/><label className="mt-2 flex items-start gap-2 text-[10px] leading-4 text-zinc-400"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} className="mt-0.5 accent-[#1d9bf0]"/>I control the media/model rights for this shot. Likeness consent is separately enforced when cast elements are used.</label><Button className="mt-3 w-full" size="sm" disabled={!shotName.trim() || !shotPrompt.trim() || Boolean(busy)} onClick={() => void createShot()}>{busy === "shot" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Plus className="mr-1 h-3.5 w-3.5"/>}Add shot</Button></div>
