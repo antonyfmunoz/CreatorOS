@@ -152,7 +152,7 @@ try {
         if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 120 || video.videoWidth < 1 || video.videoHeight < 1 || video.videoWidth * video.videoHeight > 3840 * 2160) throw new Error('Private video exceeds decode limits.');
         const time = Number(canvas.dataset.cutVideoTime);
         if (!Number.isFinite(time) || time < 0) throw new Error('Invalid video seek.');
-        const requested = canvas.dataset.cutVideoRepeat === 'yes' ? time % video.duration : time;
+        const requested = window.__cutVideoSourceTime(time, video.duration, canvas.dataset.cutVideoRepeat === 'yes');
         const target = Math.min(requested, Math.max(0, video.duration - 0.000001));
         if (Math.abs(video.currentTime - target) > 0.0000001) await waitForMedia(video, 'seeked', () => { video.currentTime = target; });
         // Decoded-frame custody must not depend on the video's asynchronous

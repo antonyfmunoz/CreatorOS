@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs receipt.test.mjs audio.test.mjs video-encoding.test.mjs frame-readiness.test.mjs frame-audio.test.mjs video-source-audio.test.mjs text-layout.test.mjs sdk-types.test.mjs", "qualify": "node qualify.mjs", "qualify:audio": "node qualify-audio.mjs" },
+  "scripts": { "test": "node --test bundle.test.mjs request.test.mjs motion.test.mjs receipt.test.mjs audio.test.mjs video-encoding.test.mjs frame-readiness.test.mjs frame-audio.test.mjs video-source-audio.test.mjs media-clock.test.mjs text-layout.test.mjs sdk-types.test.mjs", "qualify": "node qualify.mjs", "qualify:audio": "node qualify-audio.mjs" },
   "devDependencies": { "typescript": "5.9.3", "@types/react": "18.3.31" },
   "dependencies": {
     "esbuild": "0.28.2",

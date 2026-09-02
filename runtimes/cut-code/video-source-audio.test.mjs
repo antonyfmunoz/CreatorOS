@@ -39,3 +39,12 @@ test('pads only the fractional source tail without replaying its final sound', (
   assert.doesNotThrow(() => validateSoundtrackProbe({ ...probe, streams: [{ codec_type: 'audio', sample_rate: 48000, channels: 2, duration: .05 }] }, plan[0]));
   assert.throws(() => validateSoundtrackProbe({ ...probe, streams: [{ codec_type: 'audio', sample_rate: 48000, channels: 2, duration: .01 }] }, plan[0]));
 });
+
+test('embedded soundtrack repeats at the same corrected source boundary as video', () => {
+  const short = { ...entry, audioDurations: [.6] };
+  for (const frame of [2, 32, 50, 65, 80, 86, 101, 116]) {
+    const sample = videoSourceAudioSample(short, { ...input, time: (2 + frame * 2) / 10, duration: .6, repeat: true, speed: 2, fps: 10 });
+    assert.equal(sample.sourceSeconds, 0);
+    assert.equal(sample.sourceEndSeconds, .6);
+  }
+});

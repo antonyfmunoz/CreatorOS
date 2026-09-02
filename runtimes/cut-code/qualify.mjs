@@ -200,9 +200,22 @@ records.push({ test: 'private-video-layer-render', ...encodedClip.receipt, probe
 const retimedSource = capsule(`import {FrameVideo,FullFrame} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FullFrame><FrameVideo src={clip} startFrom={2} speed={2} repeat style={{width:'100%',height:'100%'}}/></FullFrame>`, { 'src/clip.mp4': clip });
 for (const [frame, channel] of [[1, 2], [2, 0]]) {
   const retimed = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, frame }, source: retimedSource, image });
-  assert.ok(pixel(retimed.artifact)[channel] > 240, 'Offset/speed/repeat must select the correct source frame.');
+  await writeFile(`${directory}retimed-private-video-${frame}.png`, retimed.artifact);
+  const decodedPixel = pixel(retimed.artifact);
+  assert.ok(decodedPixel[channel] > 240, `Offset/speed/repeat must select frame ${frame}; decoded pixel ${decodedPixel.join(',')}.`);
   records.push({ test: `retimed-private-video-${frame}`, ...retimed.receipt });
 }
+const looped = await renderIsolated({ request: { ...request, mode: 'sequence', fps: 10, durationInFrames: 120, frameRange: [0, 119] }, source: retimedSource, image });
+await writeFile(`${directory}retimed-private-video-120-frames.zip`, looped.artifact);
+const loopFiles = unzipSync(looped.artifact);
+const loopManifest = JSON.parse(strFromU8(loopFiles['manifest.json']));
+assert.equal(loopManifest.frames.length, 120);
+for (const { frame, filename } of loopManifest.frames) {
+  const channel = ((2 + frame * 2) % 6) < 3 ? 0 : 2;
+  const decodedPixel = pixel(Buffer.from(loopFiles[filename]));
+  assert.ok(decodedPixel[channel] > 240, `Repeated private video frame ${frame}; decoded pixel ${decodedPixel.join(',')}.`);
+}
+records.push({ test: 'retimed-private-video-120-frames', ...looped.receipt });
 console.log('PASS capsule-local video seeking and six-frame code video render (silent)');
 const sounds = {};
 for (const frequency of [440, 660]) {
