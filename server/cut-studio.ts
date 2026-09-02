@@ -1,4 +1,5 @@
 import type { Express, RequestHandler, Response } from "express";
+import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -656,7 +657,8 @@ async function renderMultitrack(
   const filters: string[] = [];
   const primaryDurations: number[] = [];
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
-  const size = request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
+  const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
   for (let index = 0; index < primaryClips.length; index += 1) {
     const clip = primaryClips[index];
     const assetId = clip.assetId ?? source.id;
@@ -1045,7 +1047,10 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     let audioLabel = "audio";
     if (media.hasVideo) {
       const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
-      if (request.aspect === "source") {
+      if (request.aspect === "source" && compositionManifest) {
+        const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
+        filters.push(`[${videoLabel}]scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2:black,fps=${request.fps}[framed]`);
+      } else if (request.aspect === "source") {
         filters.push(`[${videoLabel}]scale=-2:${height},fps=${request.fps}[framed]`);
       } else {
         const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
