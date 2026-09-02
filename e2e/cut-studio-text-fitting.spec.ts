@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import sharp from "sharp";
-import { test, expect } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
+
+const test = base.extend({ extraHTTPHeaders: async ({}, use, info) => {
+  await use({ "x-creativesos-demo-user": info.project.name.startsWith("mobile") ? "8" : "9" });
+} });
 
 test("automatic text fitting preserves complete headlines and rejects impossible bounds", async ({ page }, info) => {
   test.setTimeout(120_000);

@@ -19,6 +19,10 @@ historical screenshot or CI failure.
 
 Protected Verify 33681084260 also failed. Its original failed and retried browser
 evidence remains required; no timeout, fixture quality or pixel gate is waived.
+Inspection identified HTTP 429 for both still-export tests and the retried text
+fitting tests: unrelated suites spent the same user's 12/minute export allowance.
+The still-export and text-fitting suites now use separate ordinary qualification
+accounts per browser project. Production limits and authorization are unchanged.
 
 ## Changes
 
