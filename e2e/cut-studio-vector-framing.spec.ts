@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
-import { waitForCutRender } from './helpers/cut-render';
+import { decodeCutRenderFrame, downloadCutRender, waitForCutRender } from './helpers/cut-render';
 
 test('SVG and primitive framing leave transparent gutters over the source', async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -32,8 +32,8 @@ test('SVG and primitive framing leave transparent gutters over the source', asyn
   expect(rendered.ok()).toBeTruthy(); const job = await rendered.json();
   await waitForCutRender(page.request, job.id, info);
   const completed = await (await page.request.get(`/api/cut/jobs/${job.id}`)).json(); expect(completed, completed.detail).toMatchObject({ state: 'done' });
-  const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=6`); expect(still.ok()).toBeTruthy();
-  const output = await still.body(); writeFileSync(`${directory}/export.png`, output);
+  const exportPath = await downloadCutRender(page.request, job.id, `${directory}/render.mp4`);
+  const output = decodeCutRenderFrame(exportPath, 6); writeFileSync(`${directory}/export.png`, output);
   const points = [
     { x: .25, y: .12, rgb: [0, 0, 255] }, { x: .25, y: .58, rgb: [0, 0, 255] },
     { x: .52, y: .3, rgb: [0, 0, 255] }, { x: .93, y: .3, rgb: [0, 0, 255] },

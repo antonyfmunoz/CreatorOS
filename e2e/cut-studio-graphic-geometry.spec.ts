@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
-import { waitForCutRender } from './helpers/cut-render';
+import { decodeCutRenderFrame, downloadCutRender, waitForCutRender } from './helpers/cut-render';
 
 test('authored graphic pivots, animated scale and off-frame clipping match native frames', async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -36,10 +36,10 @@ test('authored graphic pivots, animated scale and off-frame clipping match nativ
   expect(rendered.ok()).toBeTruthy(); const job = await rendered.json();
   await waitForCutRender(page.request, job.id, info);
   expect(await (await page.request.get(`/api/cut/jobs/${job.id}`)).json()).toMatchObject({ state: 'done' });
+  const exportPath = await downloadCutRender(page.request, job.id, `${directory}/render.mp4`);
   const receipts: unknown[] = [];
   for (const [frame, preview] of previews) {
-    const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=${frame}`); expect(still.ok()).toBeTruthy();
-    const output = await still.body(); writeFileSync(`${directory}/export-${frame}.png`, output);
+    const output = decodeCutRenderFrame(exportPath, frame); writeFileSync(`${directory}/export-${frame}.png`, output);
     const left = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     const right = await sharp(output).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     const pixel = (image: typeof left, x: number, y: number) => { const offset = (y * image.info.width + x) * 3; return Array.from(image.data.subarray(offset, offset + 3)); };

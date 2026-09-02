@@ -1,4 +1,20 @@
 import { expect, type APIRequestContext, type TestInfo } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+
+/** Pixel studies inspect one real private export; still-API tests own its quota. */
+export async function downloadCutRender(request: APIRequestContext, jobId: string, destination: string, headers: Record<string, string> = {}) {
+  const response = await request.get(`/api/cut/jobs/${encodeURIComponent(jobId)}/media-file`, { headers });
+  expect(response.ok(), `Private render download HTTP ${response.status()}`).toBeTruthy();
+  writeFileSync(destination, await response.body());
+  return destination;
+}
+
+export function decodeCutRenderFrame(file: string, frame: number) {
+  if (!Number.isSafeInteger(frame) || frame < 0) throw new Error("A decoded frame index must be a nonnegative integer");
+  return execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"],
+    { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+}
 
 /** Retain bounded job-state evidence without copying private artifact/source URLs. */
 export async function waitForCutRender(request: APIRequestContext, jobId: string, info: TestInfo, headers: Record<string, string> = {}) {

@@ -57,3 +57,27 @@ rejected option prevented those Linux renders from starting, the finite-input
 correction's original Linux EOF claim remains unproven as well.
 
 Reference: [FFmpeg file-argument options](https://ffmpeg.org/ffmpeg.html#Options).
+
+## Cross-version and fixture-rate correction
+
+The supported-prefix candidate `bc9e27be24d271b36d4391cbe3e28a87dab4b892`
+passed its 647-test local root suite. Protected run `33664284589` passed desktop,
+core, database, Android, iOS and CodeQL. Mobile had 173 passes and one failure:
+the final vector-framing fixture exhausted the shared actor's normal still-image
+quota after preceding image tests. Both the original and retry returned HTTP 429;
+neither failed rendering. The previously stalled cinematic render passed on both
+devices in this Linux run. The candidate still did not qualify as a whole.
+
+Pixel-only geometry, motion, image-fit and vector-gutter studies now download one
+real private MP4 and decode their selected frames locally. Every existing pixel
+assertion remains. Dedicated still-export format, bounds, authorization and
+quota coverage is unchanged, as is the production rate limit.
+
+The deployed Bookworm worker also has an older FFmpeg CLI than current CI.
+Before writing a graph, the worker now inspects its own bounded full-help output
+once per process. An advertised legacy file option is used on older engines;
+the supported slash-prefix option is selected after the legacy option's removal.
+Unrecognized help fails closed and a failed probe can retry; no media-engine
+downgrade or command-line-size fallback is introduced. Five focused helper
+tests and the local actual-output test passed. Production's exact older image
+and the corrected combined candidate still require independent qualification.

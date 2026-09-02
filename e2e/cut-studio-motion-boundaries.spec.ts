@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
 import { evaluateCompositionFrame } from '../shared/cut-studio-production';
-import { waitForCutRender } from './helpers/cut-render';
+import { decodeCutRenderFrame, downloadCutRender, waitForCutRender } from './helpers/cut-render';
 
 test('native motion retains twenty authored controls and held step frames', async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -35,10 +35,10 @@ test('native motion retains twenty authored controls and held step frames', asyn
   expect(rendered.ok()).toBeTruthy(); const job = await rendered.json();
   await waitForCutRender(page.request, job.id, info);
   expect(await (await page.request.get(`/api/cut/jobs/${job.id}`)).json()).toMatchObject({ state: 'done' });
+  const exportPath = await downloadCutRender(page.request, job.id, `${directory}/render.mp4`);
   const receipts: unknown[] = [];
   for (const [frame, preview] of previews) {
-    const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=${frame}`); expect(still.ok()).toBeTruthy();
-    const output = await still.body(); writeFileSync(`${directory}/export-${frame}.png`, output);
+    const output = decodeCutRenderFrame(exportPath, frame); writeFileSync(`${directory}/export-${frame}.png`, output);
     const states = evaluateCompositionFrame(manifest, frame).filter((state) => state.kind === 'shape');
     for (const [kind, bytes] of [['preview', preview], ['export', output]] as const) {
       const image = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
