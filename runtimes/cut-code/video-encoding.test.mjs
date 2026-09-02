@@ -20,3 +20,15 @@ test('encoding arguments bind requested values without relaxing fixed limits or 
   assert.ok(webm.includes('+bitexact')); assert.ok(videoEncodingArgs('webm').includes('+bitexact'));
   assert.deepEqual(videoEncodingArgs('mp4'), ['-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']);
 });
+
+test('lossless RGB is an explicit opaque MP4 master with no conflicting quality controls', () => {
+  assert.deepEqual(normalizeVideoEncoding({ losslessRgb: true }, 'video', 'mp4'), { losslessRgb: true, preset: 'fast' });
+  assert.deepEqual(normalizeVideoEncoding({ losslessRgb: false }, 'video', 'mp4'), { crf: 23, preset: 'fast' });
+  assert.deepEqual(videoEncodingArgs('mp4', { losslessRgb: true, preset: 'medium' }), ['-c:v', 'libx264rgb', '-threads', '1', '-preset', 'medium', '-crf', '0', '-pix_fmt', 'rgb24', '-color_range', 'pc', '-colorspace', 'rgb', '-movflags', '+faststart']);
+  for (const settings of [{ losslessRgb: 'true' }, { losslessRgb: 1 }, { losslessRgb: null }, { losslessRgb: true, crf: 0 }, { losslessRgb: true, bitrateKbps: 1000 }, { losslessRgb: true, cpuUsed: 0 }, { losslessRgb: true, preset: 'fast;echo' }]) assert.throws(() => normalizeVideoEncoding(settings, 'video', 'mp4'));
+  for (const format of ['webm', 'mov', 'gif']) assert.throws(() => normalizeVideoEncoding({ losslessRgb: true }, 'video', format));
+  const request = validateRequest({ version: 1, mode: 'video', width: 96, height: 64, fps: 12, durationInFrames: 6, entrypoint: 'main.tsx', input: {}, videoEncoding: { losslessRgb: true } });
+  assert.deepEqual(validateRequest(request), request);
+  assert.throws(() => validateRequest({ ...request, width: 95 }));
+  assert.throws(() => validateRequest({ ...request, durationInFrames: 601, frameRange: [0, 600] }));
+});

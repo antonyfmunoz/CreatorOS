@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { CompositionAuthoringControls, CompositionVariantBatchControls, cutStudioPrivateFontFamily, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
+import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { motionTemplate } from "@/lib/cut-motion-templates";
@@ -95,22 +95,9 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied: ap
     setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
     setCodeLockfileAssetId((current) => current || media.find((item) => item.mediaKind === "code_lockfile")?.assetId || "");
   }, [media]);
-  useEffect(() => {
-    const loaded: FontFace[] = [];
-    let cancelled = false;
-    for (const asset of media.filter((item) => item.mediaKind === "font")) {
-      const face = new FontFace(cutStudioPrivateFontFamily(asset.assetId), `url(/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(asset.id)}/media)`);
-      void face.load().then((ready) => {
-        if (cancelled) return;
-        document.fonts.add(ready);
-        loaded.push(ready);
-      }).catch(() => undefined);
-    }
-    return () => {
-      cancelled = true;
-      loaded.forEach((face) => document.fonts.delete(face));
-    };
-  }, [media, project.id]);
+  // CompositionFonts owns the active manifest's font loading and visible
+  // readiness/error state. Do not eagerly fetch every library font here (the
+  // media descriptor route returns JSON, not a font, and failures were hidden).
   const waitingJobs = useMemo(() => runtime?.jobs.filter((job) => job.state === "provider_pending").length ?? 0, [runtime]);
   const hasRenderedAnimationLayers = useMemo(() => runtime?.compositions.some((composition) => composition.manifest.layers.some((layer) => layer.kind === "lottie" || layer.kind === "rive")) ?? false, [runtime]);
 

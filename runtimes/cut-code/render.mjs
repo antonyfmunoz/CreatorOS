@@ -45,7 +45,10 @@ try {
   phase = 'bundle';
   const bundle = await bundleCapsule(capsule, request.entrypoint);
   phase = 'browser_start';
-  browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage'], timeout: 20_000 });
+  // Use grayscale text coverage instead of LCD subpixel coverage: opacity and
+  // transformed layers otherwise allow prior compositor paint state to change
+  // a later frame's edge pixels. This does not relax Chromium's sandbox.
+  browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage', '--disable-lcd-text'], timeout: 20_000 });
   const context = await browser.newContext({ viewport: { width: request.width, height: request.height }, deviceScaleFactor: 1, serviceWorkers: 'block', acceptDownloads: false, reducedMotion: 'reduce', locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light' });
   await context.route('**/*', (route) => route.abort('blockedbyclient'));
   await context.routeWebSocket(/.*/, (socket) => socket.close());
@@ -145,6 +148,19 @@ try {
         if (!drawing) throw new Error('Video frame canvas is unavailable.');
         drawing.drawImage(video, 0, 0);
       }));
+      // Invalidate retained layout/paint layers without remounting authored
+      // React components or discarding their prepared media. Otherwise moving
+      // rounded/translucent layers can reuse a prior subpixel raster, making
+      // a sequential frame differ from the same independently rendered still.
+      const stage = document.getElementById('stage');
+      if (!stage) throw new Error('Composition stage is unavailable.');
+      const stageDisplay = stage.style.getPropertyValue('display');
+      const stageDisplayPriority = stage.style.getPropertyPriority('display');
+      stage.style.setProperty('display', 'none', 'important');
+      stage.getBoundingClientRect();
+      if (stageDisplay) stage.style.setProperty('display', stageDisplay, stageDisplayPriority);
+      else stage.style.removeProperty('display');
+      stage.getBoundingClientRect();
       // Time-dependent animation is not part of the frame-driven SDK contract.
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

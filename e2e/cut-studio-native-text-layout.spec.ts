@@ -87,10 +87,29 @@ test("native text layout preserves wrapped lines and authoring controls in priva
   const fontAsset = (await fontUpload.json()).asset;
   const registration = await page.request.post(`/api/cut/projects/${project.id}/media-library`, { data: { assetId: fontAsset.id, name: "Private Noto", duration: 1, mediaKind: "font" } });
   expect(registration.ok(), await registration.text()).toBeTruthy();
+  const fontMedia = await registration.json();
+  const unusedFontRequests: string[] = [];
+  const observeUnusedFont = (request: { url(): string }) => {
+    if (request.url().includes(`/api/assets/${fontAsset.id}/`) || request.url().includes(`/media-library/${fontMedia.id}/`)) unusedFontRequests.push(request.url());
+  };
+  page.on("request", observeUnusedFont);
   await page.reload();
   await studio.getByLabel("Selected layer", { exact: true }).selectOption("title");
+  await expect(studio.locator('[data-composition-fonts="ready"]')).toHaveCount(1);
+  expect(unusedFontRequests, "Unused private library fonts must not be eagerly downloaded or decoded from JSON descriptors").toEqual([]);
+  page.off("request", observeUnusedFont);
   const privateFont = studio.getByLabel("Layer private font", { exact: true });
+  const selectedFont = page.waitForResponse((response) => response.url().endsWith(`/api/assets/${fontAsset.id}/stream`));
   await privateFont.selectOption(fontAsset.id);
+  const fontResponse = await selectedFont;
+  expect(fontResponse.ok()).toBeTruthy();
+  expect(fontResponse.headers()["content-type"]).not.toContain("json");
+  const privateFamily = `CreativesOS_${fontAsset.id.replaceAll("-", "")}`;
+  await expect.poll(() => page.evaluate((family) => [...document.fonts].some((face) => face.family.includes(family) && face.status === "loaded"), privateFamily)).toBe(true);
+  const deniedFont = await page.request.get(`/api/assets/${fontAsset.id}/stream`, { headers: { "x-creativesos-demo-user": String(peer) } });
+  expect(deniedFont.status()).toBe(403);
+  expect(await deniedFont.json()).toEqual({ message: "You do not have access to this private asset" });
+  expect(deniedFont.headers()["cache-control"]).toBe("no-store");
   await studio.getByLabel("Text font style", { exact: true }).selectOption("italic");
   await expect(previewText).toHaveCSS("font-style", "italic");
   // Choosing the default must actually detach this layer, without deleting the

@@ -1,5 +1,19 @@
 # CutStudio creative-draft custody
 
+## Protected merge receipt
+
+PR [149](https://github.com/antonyfmunoz/CreatorOS/pull/149) merged at
+`2026-09-02T13:34:41Z` as
+`970dec3d6d873e1d5503dcea5fbe93c9e90a9568`. Exact reviewed head
+`043dac73f90ad0438755b1fe08825e6aacd4c2d2` passed Verify
+[33633729064](https://github.com/antonyfmunoz/CreatorOS/actions/runs/33633729064)
+(276 browser journeys passed, 24 intentionally skipped, plus core/database/native
+shell checks) and CodeQL
+[33633729281](https://github.com/antonyfmunoz/CreatorOS/actions/runs/33633729281).
+No protection or retry setting changed. A merge is not a deployment: the public
+readiness receipt still identifies source `7785912c74404b653ed64faba1ebe45b7b5a4fb8`;
+Google management reauthentication remains required for coordinated promotion.
+
 ## Implemented scope
 
 Composition manifests, generation workflow graphs and production briefs now keep
