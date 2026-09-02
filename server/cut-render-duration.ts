@@ -14,5 +14,9 @@ export function cutRasterInputArgs(input: { path: string; animated: boolean }, f
   // Round up to the next whole delivery frame, never truncate a needed final
   // source frame. Output duration still has its separate unchanged boundary.
   const inputDuration = (frames / fps).toFixed(9);
-  return [...(input.animated ? [] : ["-loop", "1"]), "-framerate", String(fps), "-t", inputDuration, "-i", input.path];
+  // Every PNG input otherwise creates its own automatic decoder pool. A scene
+  // with many independent rasters can start hundreds of threads before the
+  // filter graph/encoder do any work. Scope this limit to the raster decoder;
+  // source-video decoding, graph scheduling and output encoding are unchanged.
+  return [...(input.animated ? [] : ["-loop", "1"]), "-framerate", String(fps), "-t", inputDuration, "-threads:v", "1", "-i", input.path];
 }

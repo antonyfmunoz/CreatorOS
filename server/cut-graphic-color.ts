@@ -3,17 +3,19 @@
  * additive brightness. Expressions here are compiler-generated numeric data;
  * never pass user-authored FFmpeg/filter text to this internal helper.
  */
-export function cutGraphicColorFilters(brightness: string, saturation: string, label = "graphiccolor"): string[] {
+export function cutGraphicColorFilters(brightness: string, saturation: string, label = "graphiccolor", contrast = 1): string[] {
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(label)) throw new Error("Invalid graphic color filter label");
+  if (!Number.isFinite(contrast) || contrast < 0 || contrast > 8) throw new Error("Graphic contrast must be between zero and eight");
   if (!brightness.trim() || !saturation.trim()) throw new Error("Graphic color expressions must not be empty");
   for (const expression of [brightness, saturation]) {
     const value = Number(expression);
     if (Number.isFinite(value) && (value < 0 || value > 8)) throw new Error("Graphic color multipliers must be between zero and eight");
   }
   const constantBrightness = Number(brightness), constantSaturation = Number(saturation);
-  if (constantBrightness === 1 && constantSaturation === 1) return ["format=rgba"];
+  const contrasted = (value: string, maximum: number) => contrast === 1 ? value : `clip((${value}-${maximum / 2})*${contrast}+${maximum / 2},0,${maximum})`;
+  if (constantBrightness === 1 && constantSaturation === 1 && contrast === 1) return ["format=rgba"];
   if (constantSaturation === 1 && Number.isFinite(constantBrightness)) {
-    const value = `round(clip(val*${constantBrightness},0,255))`;
+    const value = `round(clip(${contrasted("val", 255)}*${constantBrightness},0,255))`;
     return ["format=rgba", `lutrgb=r='${value}':g='${value}':b='${value}'`];
   }
   if (Number.isFinite(constantBrightness) && Number.isFinite(constantSaturation)) {
@@ -30,8 +32,8 @@ export function cutGraphicColorFilters(brightness: string, saturation: string, l
       // Preserve the original 8-bit alpha separately: RGB depth conversions
       // can round an otherwise unchanged alpha byte on the way back to RGBA.
       const filters = ["format=rgba", `split[${label}source][${label}alpha];[${label}alpha]alphaextract[${label}preserved];[${label}source]format=rgb48le`];
-      if (constantBrightness !== 1) {
-        const value = `round(clip(val*${constantBrightness},0,65535))`;
+      if (constantBrightness !== 1 || contrast !== 1) {
+        const value = `round(clip(${contrasted("val", 65535)}*${constantBrightness},0,65535))`;
         filters.push(`lutrgb=r='${value}':g='${value}':b='${value}'`);
       }
       const keys = ["rr", "rg", "rb", "gr", "gg", "gb", "br", "bg", "bb"];
@@ -41,12 +43,12 @@ export function cutGraphicColorFilters(brightness: string, saturation: string, l
     }
   }
   if (constantSaturation === 1) {
-    const channels = ["r", "g", "b"].map((channel) => `${channel}='round(clip(${channel}(X,Y)*(${brightness}),0,255))'`);
+    const channels = ["r", "g", "b"].map((channel) => `${channel}='round(clip(${contrasted(`${channel}(X,Y)`, 255)}*(${brightness}),0,255))'`);
     return ["format=rgba", `geq=${channels.join(":")}:a='alpha(X,Y)'`];
   }
   // Slots 0/1 belong to the authored-curve evaluator; 2..6 are reset for every
   // output channel/pixel. Each filter function clamps before the next function.
-  const prepare = `st(2,${brightness});st(3,${saturation});st(4,clip(r(X,Y)*ld(2),0,255));st(5,clip(g(X,Y)*ld(2),0,255));st(6,clip(b(X,Y)*ld(2),0,255));`;
+  const prepare = `st(2,${brightness});st(3,${saturation});st(4,clip(${contrasted("r(X,Y)", 255)}*ld(2),0,255));st(5,clip(${contrasted("g(X,Y)", 255)}*ld(2),0,255));st(6,clip(${contrasted("b(X,Y)", 255)}*ld(2),0,255));`;
   const matrix = [
     "(0.213+0.787*ld(3))*ld(4)+(0.715-0.715*ld(3))*ld(5)+(0.072-0.072*ld(3))*ld(6)",
     "(0.213-0.213*ld(3))*ld(4)+(0.715+0.285*ld(3))*ld(5)+(0.072-0.072*ld(3))*ld(6)",

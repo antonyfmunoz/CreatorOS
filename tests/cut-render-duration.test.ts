@@ -14,8 +14,8 @@ describe("CutStudio FFmpeg duration boundary", () => {
   });
 
   it("bounds looped raster inputs before the input file without losing a fractional final frame", () => {
-    expect(cutRasterInputArgs({ path: "private image.png", animated: false }, 24, 2)).toEqual(["-loop", "1", "-framerate", "24", "-t", "2.000000000", "-i", "private image.png"]);
-    expect(cutRasterInputArgs({ path: "frame-%06d.png", animated: true }, 30, .101)).toEqual(["-framerate", "30", "-t", "0.133333333", "-i", "frame-%06d.png"]);
+    expect(cutRasterInputArgs({ path: "private image.png", animated: false }, 24, 2)).toEqual(["-loop", "1", "-framerate", "24", "-t", "2.000000000", "-threads:v", "1", "-i", "private image.png"]);
+    expect(cutRasterInputArgs({ path: "frame-%06d.png", animated: true }, 30, .101)).toEqual(["-framerate", "30", "-t", "0.133333333", "-threads:v", "1", "-i", "frame-%06d.png"]);
     expect(() => cutRasterInputArgs({ path: "x.png", animated: false }, 0, 1)).toThrow(/timing/);
     expect(() => cutRasterInputArgs({ path: "x.png", animated: false }, 30, Infinity)).toThrow(/timing/);
   });

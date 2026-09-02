@@ -3,12 +3,18 @@ import { cutTextLayoutSchema, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { CUT_IMAGE_FITS } from "./cut-image-fit";
 import { cutGraphicCurvesSchema } from "./cut-graphic-curves";
+import { cutColorMatrixControls } from "./cut-color-effects";
 
 const cutGraphicEffectSchema = z.object({
   kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
   parameters: z.record(z.string().max(80), z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()])).superRefine((value, context) => {
     if (Object.keys(value).length > 20) context.addIssue({ code: z.ZodIssueCode.custom, message: "A graphic effect may contain at most 20 parameters" });
   }).default({}),
+}).superRefine((effect, context) => {
+  if (effect.kind !== "color_matrix") return;
+  for (const [key, value] of Object.entries(cutColorMatrixControls(effect.parameters))) {
+    if (value > 8) context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters", key], message: `Native color ${key} cannot exceed eight` });
+  }
 });
 
 export const cutClipSchema = z.object({

@@ -3,6 +3,33 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { cutRasterInputArgs, cutRenderDurationArgs } from '../server/cut-render-duration';
 import { cutGraphicOpacityFilters } from '../server/cut-graphic-opacity';
+import sharp from 'sharp';
+
+test('bounded raster decoder pools preserve every decoded frame and alpha byte', async ({}, info) => {
+  const directory = info.outputPath('raster-decode'); mkdirSync(directory, { recursive: true });
+  const source = Buffer.alloc(16 * 16 * 4);
+  for (let pixel = 0; pixel < 256; pixel++) source.set([pixel, 255 - pixel, pixel * 7 % 256, pixel], pixel * 4);
+  const png = `${directory}/all-alpha.png`;
+  await sharp(source, { raw: { width: 16, height: 16, channels: 4 } }).png().toFile(png);
+  const decoded = new Map<string, string[]>(); const receipts: unknown[] = [];
+  for (const bounded of [false, true]) {
+    const inputs = Array.from({ length: 8 }, () => {
+      const args = cutRasterInputArgs({ path: png, animated: false }, 24, 1);
+      if (!bounded) args.splice(args.indexOf('-threads:v'), 2);
+      return args;
+    }).flat();
+    const graph = `${Array.from({ length: 8 }, (_, index) => `[${index}:v]`).join('')}hstack=inputs=8[stacked]`;
+    const started = Date.now();
+    const result = execFileSync('ffmpeg', ['-v', 'error', ...inputs, '-filter_complex', graph, '-map', '[stacked]', '-pix_fmt', 'rgba', '-f', 'framemd5', 'pipe:1'], { windowsHide: true, timeout: 20_000, maxBuffer: 1024 * 1024 }).toString();
+    const mode = bounded ? 'bounded' : 'automatic';
+    writeFileSync(`${directory}/${mode}.framemd5`, result);
+    const frames = result.split('\n').filter((line) => line.trim() && !line.startsWith('#'));
+    expect(frames).toHaveLength(24); decoded.set(mode, frames);
+    receipts.push({ mode, elapsedMs: Date.now() - started, inputs: 8, frames: frames.length });
+  }
+  expect(decoded.get('bounded')).toEqual(decoded.get('automatic'));
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ receipts, decodedRgbaIdentical: true }, null, 2));
+});
 
 test('finite raster sources flush delayed alpha overlays and preserve the final encoded frame', async ({}, info) => {
   const directory = info.outputPath('raster-eof'); mkdirSync(directory, { recursive: true });
