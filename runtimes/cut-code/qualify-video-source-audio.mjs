@@ -69,6 +69,23 @@ export default ()=> <FullFrame><Sequence at={3} duration={18}><Voice/></Sequence
   const fastPcm = decode(fastFile);
   assert.ok(energy(fastPcm, .04, .12, 880) > energy(fastPcm, .04, .12, 1760) * 50, 'Retimed source sound preserves pitch.');
   records.push({ test: 'video-source-audio-pitch-preserving-speed', ...fast.receipt });
+  const shortFile = `${directory}source-video-short-audio.mp4`;
+  execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-i', clipFile, '-c:v', 'copy', '-af', 'atrim=duration=0.05', '-c:a', 'aac', '-b:a', '192k', shortFile], { windowsHide: true, timeout: 10_000 });
+  const short = await renderIsolated({ request: { ...base, durationInFrames: 6, audioTracks: [] }, source: capsule('export default ()=> <FrameVideo src={clip}/>', await readFile(shortFile)), image });
+  const shortOutput = `${directory}video-source-audio-fractional-tail.mov`; await writeFile(shortOutput, short.artifact);
+  const shortPcm = decode(shortOutput);
+  assert.equal(shortPcm.length / 4, 9600);
+  assert.ok(rms(shortPcm, .01, .04) > .05, 'The short source must actually contribute sound.');
+  assert.ok(rms(shortPcm, .055, .19) < .0001, 'A fractional source EOF must pad silence, not replay or extend its final sound.');
+  assert.equal(short.receipt.compositionAudio.trackCount, 1);
+  records.push({ test: 'video-source-audio-fractional-source-tail', ...short.receipt });
+  const selectedFile = `${directory}source-video-two-streams.mp4`;
+  execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-i', clipFile, '-f', 'lavfi', '-i', 'sine=frequency=660:sample_rate=48000:duration=2', '-map', '0:v:0', '-map', '0:a:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', selectedFile], { windowsHide: true, timeout: 10_000 });
+  const selected = await renderIsolated({ request: { ...base, durationInFrames: 9, audioTracks: [] }, source: capsule('export default ()=> <FrameVideo src={clip} audioStream={1}/>', await readFile(selectedFile)), image });
+  const selectedOutput = `${directory}video-source-audio-selected-stream.mov`; await writeFile(selectedOutput, selected.artifact);
+  const selectedPcm = decode(selectedOutput);
+  assert.ok(energy(selectedPcm, .05, .25, 660) > energy(selectedPcm, .05, .25, 440) * 50, 'Automatic source audio must select the requested stream, not its first stream.');
+  records.push({ test: 'video-source-audio-selected-stream', ...selected.receipt });
   const silentFile = `${directory}source-video-silent.mp4`;
   execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-i', clipFile, '-c:v', 'copy', '-an', silentFile], { windowsHide: true, timeout: 10_000 });
   for (const [name, code, video, enabled] of [['muted', 'export default ()=> <FrameVideo src={clip} muted/>', clip, true], ['no-audio-stream', 'export default ()=> <FrameVideo src={clip}/>', await readFile(silentFile), true], ['legacy-opt-out', 'export default ()=> <FrameVideo src={clip}/>', clip, undefined]]) {
@@ -77,7 +94,7 @@ export default ()=> <FullFrame><Sequence at={3} duration={18}><Voice/></Sequence
     records.push({ test: `video-source-audio-${name}`, ...silent.receipt });
   }
   for (const code of ['export default ()=> <FrameVideo src={clip} speed={3}/>', 'export default ()=> <FrameVideo src={clip} audioStream={7}/>', 'export default ()=> <FrameVideo src={clip} startFrom={1} speed={2} repeat/>']) {
-    await assert.rejects(renderIsolated({ request: { ...base, durationInFrames: 3, audioTracks: [] }, source: capsule(code), image }), (error) => error.code !== 'CUT_RENDER_TIMEOUT');
+    await assert.rejects(renderIsolated({ request: { ...base, durationInFrames: 3, audioTracks: [] }, source: capsule(code), image }), (error) => /\(render\)/.test(String(error.stderr ?? error.message)) && error.code !== 'CUT_RENDER_TIMEOUT');
   }
   console.log('PASS imported source sound: private binding, local trim/gain/mute, repeat, freeze, reverse silence, pitch, ranges, explicit mix and silent-video/legacy behavior');
   return records;
