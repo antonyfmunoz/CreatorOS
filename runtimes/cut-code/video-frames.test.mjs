@@ -17,6 +17,14 @@ test('private video frame selection follows variable presentation intervals and 
   const index = videoFrameIndex(input);
   assert.deepEqual([0, .069, .07, .239, .24, .5, .6].map(t => selectVideoFrame(index, t, true)), [0,0,1,1,2,3,0]);
 });
+test('the final decoded presentation interval cannot be truncated by VFR header duration', () => {
+  const input = probe();
+  input.format.duration = '.4';
+  input.frames.at(-1).pkt_duration = 100;
+  const index = videoFrameIndex(input);
+  assert.equal(index.duration, .6);
+  assert.equal(selectVideoFrame(index, .5, true), 5);
+});
 test('private video rejects ambiguous, unbounded or malformed metadata and bindings', async () => {
   for (const modify of [p=>p.frames[1].best_effort_timestamp=0,p=>p.frames[0].best_effort_timestamp='bad',p=>p.format.duration=121,p=>p.streams[0].width=100000,p=>p.streams[0].time_base='1/0',p=>p.frames=[]]) {
     const input = probe(); modify(input); assert.throws(() => videoFrameIndex(input));

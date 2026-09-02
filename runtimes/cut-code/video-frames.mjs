@@ -15,13 +15,20 @@ export function videoFrameIndex(probe) {
   const ratio = typeof stream?.time_base === 'string' && /^(\d+)\/(\d+)$/.exec(stream.time_base);
   const tick = ratio ? Number(ratio[1]) / Number(ratio[2]) : NaN;
   const origin = Number(probe?.format?.start_time ?? stream?.start_time ?? 0);
-  const duration = Number(probe?.format?.duration ?? stream?.duration);
+  let duration = Number(probe?.format?.duration ?? stream?.duration);
   const width = Number(stream?.width), height = Number(stream?.height);
   if (!Number.isFinite(tick) || tick <= 0 || tick > 1 || !Number.isFinite(origin) || Math.abs(origin) > 120 || !Number.isFinite(duration) || duration <= 0 || duration > 120 || !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > 3840 * 2160) throw new Error('Private video exceeds decode limits.');
   const frames = probe?.frames;
   if (!Array.isArray(frames) || !frames.length || frames.length > MAX_FRAMES) throw new Error('Private video frame index exceeds its limit.');
   const pts = frames.map((frame) => Number(frame.best_effort_timestamp));
   if (pts.some((value, i) => !Number.isSafeInteger(value) || Math.abs(value * tick - origin) > 120 || (i > 0 && value <= pts[i - 1]))) throw new Error('Private video needs strictly ordered presentation timestamps.');
+  // Some VFR/B-frame containers report a shorter header duration than their
+  // actual final presented frame. Do not wrap while that frame is still due.
+  const lastFrame = frames.at(-1);
+  const lastDuration = Number(lastFrame.duration ?? lastFrame.pkt_duration ?? 0);
+  if (!Number.isSafeInteger(lastDuration) || lastDuration < 0) throw new Error('Invalid private video frame duration.');
+  duration = Math.max(duration, (pts.at(-1) + lastDuration) * tick - origin);
+  if (duration > 120 || duration <= pts.at(-1) * tick - origin) throw new Error('Private video presentation endpoint is unavailable or unbounded.');
   return { pts, tick, origin, duration, codec: stream.codec_name, alpha: stream.tags?.alpha_mode === '1' };
 }
 
@@ -58,7 +65,7 @@ export class PrivateVideoFrames {
     if (!entry.index) {
       entry.path = `/tmp/video-frames-${importIndex}.${entry.file.toLowerCase().endsWith('.mp4') ? 'mp4' : 'webm'}`;
       await writeFile(entry.path, entry.bytes, { flag: 'wx' });
-      const probe = await execute('ffprobe', ['-v', 'error', '-threads', '1', ...soundtrackInputOptions(entry.file), '-select_streams', 'v:0', '-show_frames', '-show_entries', 'frame=best_effort_timestamp:stream=codec_name,width,height,time_base,start_time,duration:stream_tags=alpha_mode:format=start_time,duration', '-of', 'json', entry.path], { timeout: 8_000, maxBuffer: 4 * 1024 * 1024 });
+      const probe = await execute('ffprobe', ['-v', 'error', '-threads', '1', ...soundtrackInputOptions(entry.file), '-select_streams', 'v:0', '-show_frames', '-show_entries', 'frame=best_effort_timestamp,duration,pkt_duration:stream=codec_name,width,height,time_base,start_time,duration:stream_tags=alpha_mode:format=start_time,duration', '-of', 'json', entry.path], { timeout: 8_000, maxBuffer: 4 * 1024 * 1024 });
       entry.index = videoFrameIndex(JSON.parse(probe.stdout));
     }
     const frame = selectVideoFrame(entry.index, time, repeat);
