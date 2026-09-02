@@ -13,5 +13,8 @@ allows later production evidence to bind a particular claimed job to a logged
 execution directly, rather than relying only on the dispatch operation.
 
 Reference: [Google Cloud Run job environment contract](https://docs.cloud.google.com/run/docs/container-contract#jobs-env-vars).
-Focused tests, actual database qualification, protected source and deployed
-worker identity must all pass before this candidate closes the production gap.
+Three focused tests passed, including distinct execution/task/attempt/process
+identities and fail-closed malformed metadata. The actual SQL lease contention
+fixture now uses two independent cloud execution identities and requires its
+winner to retain that identity. Database qualification, protected source and
+deployed worker identity remain required before this closes the production gap.

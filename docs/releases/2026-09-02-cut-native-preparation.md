@@ -28,3 +28,20 @@ linear i/o handles required by the [Lottie property specification](https://lotti
 The stronger motion assertion remains unchanged. Original failure:
 `native-session-20260902202848929`; `cut-preparation-native-20260902T132702.log`.
 Full rerun is required; matching static output is not animation parity.
+
+Corrected source `700315a` passed root (668 tests/159 files, types/build/budgets/
+Worker) and the actual native session proof in 37.7 seconds: all 12 animation
+frames and both font layouts matched independently launched renderers byte for
+byte, more than six distinct frames were required, only one shared browser was
+launched, and success/error contexts and final shutdown were checked.
+
+Its ten-case browser suite retained nine passes and one mobile text failure:
+the native screenshot exceeded its unchanged ten-second limit after fonts
+loaded. Both cinema workflows, desktop text, proxy/multitrack and snapshot
+workflows passed. Evidence: `creativesos-browser-qualification-40ffba65a748423cbda4ade89a086b17`,
+`cut-preparation-browser-20260902T133049.log`, and
+`native-session-20260902203258009` (see retained native receipt for exact path).
+Later resource inspection observed only 1,318 MB free out of 16,235 MB, and an
+owned single-input FFmpeg process using about 2,921 MB alongside the main render.
+This observation does not establish the cause of the earlier screenshot failure;
+it requires a measured repeat. No timeout or image tolerance is waived.

@@ -42,12 +42,17 @@ try {
   const [contendedMedia] = await db.insert(mediaProcessingJobs).values({ assetId: asset.id, ownerUserId: user.id, businessId: business.id, kind: "transcode", state: "queued", idempotencyKey: "contended-media-job" }).returning();
   const [contendedCut] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: user.id, kind: "render", state: "queued", detail: "contended" }).returning();
   const mediaContenders = ["iad-claimant", "sjc-claimant"].map((id) => ({ id, region: id.slice(0, 3), capabilities: ["transcode"], maxConcurrency: 1, version: "qualification" }));
-  const cutContenders = ["iad-cut-claimant", "sjc-cut-claimant"].map((id) => ({ id, region: id.slice(0, 3), capabilities: ["cut_render"], maxConcurrency: 1, version: "qualification" }));
+  const cutContenders = ["creativesos-qualification-first", "creativesos-qualification-second"].map((execution) => cutWorkerIdentity({
+    CLOUD_RUN_EXECUTION: execution, CLOUD_RUN_TASK_INDEX: "0", CLOUD_RUN_TASK_ATTEMPT: "0", CUT_WORKER_REGION: "us-central1", CUT_WORKER_CONCURRENCY: "1", CUT_WORKER_CAPABILITIES: "cut_render", RELEASE_COMMIT: "qualification",
+  }));
+  if (cutContenders[0].id === cutContenders[1].id) throw new Error("Independent cloud executions share a worker identity");
   const [mediaClaims, cutClaims] = await Promise.all([
     Promise.all(mediaContenders.map((identity) => claimMediaJob(contendedMedia.id, identity, crypto.randomUUID()))),
     Promise.all(cutContenders.map((identity) => claimCutStudioJob(contendedCut.id, identity, crypto.randomUUID()))),
   ]);
   if (mediaClaims.filter(Boolean).length !== 1 || cutClaims.filter(Boolean).length !== 1) throw new Error("Concurrent worker claims were not serialized");
+  const claimedCut = cutClaims.find(Boolean);
+  if (!claimedCut || !cutContenders.some((identity) => identity.id === claimedCut.workerId)) throw new Error("Cloud claim lost its execution-specific identity");
   await Promise.all([
     db.update(mediaProcessingJobs).set({ state: "cancelled", leaseExpiresAt: null }).where(eq(mediaProcessingJobs.id, contendedMedia.id)),
     db.update(cutStudioJobs).set({ state: "cancelled", leaseExpiresAt: null }).where(eq(cutStudioJobs.id, contendedCut.id)),
@@ -93,7 +98,7 @@ try {
       .where(eq(users.clerkId, "worker_resilience"));
     if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
     if (qualificationPassed) {
-      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt }));
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt }));
     }
   } finally {
     await closeDatabase();
