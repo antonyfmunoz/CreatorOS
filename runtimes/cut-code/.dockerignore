@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!package.json
+!package-lock.json
+!bundle.mjs
+!sdk.jsx
+!request.mjs
+!render.mjs
