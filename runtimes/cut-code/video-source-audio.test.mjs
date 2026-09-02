@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { videoAudioCatalogEntry, videoSourceAudioSample } from './video-source-audio.mjs';
-import { FrameAudioCollector } from './frame-audio.mjs';
+import { FrameAudioCollector, validateFrameAudio } from './frame-audio.mjs';
 import { audioPlan, audioTrackFilters, validateSoundtrackProbe } from './audio.mjs';
 
 const probe = { streams: [{ codec_type: 'video' }, { codec_type: 'audio', duration: '2', sample_rate: '48000', channels: 2 }], format: { duration: '2' } };
@@ -69,4 +69,12 @@ test('unknown-duration streams use the format endpoint and invalid container clo
   const offset = { streams: [{ codec_type: 'audio', start_time: '-.007', sample_rate: '48000', channels: 2 }], format: { start_time: '-.007', duration: '2.007' } };
   assert.equal(videoAudioCatalogEntry('clip.webm', Buffer.from([0]), offset).audioDurations[0], 2);
   assert.throws(() => videoAudioCatalogEntry('clip.webm', Buffer.from([0]), { ...offset, format: { start_time: 'broken', duration: 1 } }));
+});
+
+test('container clock mode stays bounded data and does not accept authored probe offsets', () => {
+  const sample = { id: 'video1', file: 'clip.mp4', sourceSeconds: 0, sourceEndSeconds: 1, sourceTimebase: 'container', speed: 1, volume: 1, audioStream: 0 };
+  assert.deepEqual(validateFrameAudio({ ...sample, containerStartSeconds: 'injected expression' }), sample);
+  assert.throws(() => validateFrameAudio({ ...sample, sourceTimebase: 'anything' }));
+  assert.throws(() => validateFrameAudio({ ...sample, file: 'sound.wav' }));
+  assert.throws(() => audioTrackFilters({ ...sample, containerStartSeconds: Infinity }, 30));
 });
