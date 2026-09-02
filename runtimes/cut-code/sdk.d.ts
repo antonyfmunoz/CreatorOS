@@ -46,8 +46,11 @@ declare module '@creativesos/cut' {
   export interface SpringOptions {
     frame: number; fps: number; from?: number; to?: number; mass?: number;
     stiffness?: number; damping?: number; delay?: number; clampOvershoot?: boolean;
+    durationInFrames?: number; reverse?: boolean; threshold?: number;
   }
   export function spring(options: SpringOptions): number;
+  /** Conservative settling frame for the continuous response; rejects unbounded motion. */
+  export function measureSpring(options: { fps: number; mass?: number; stiffness?: number; damping?: number; threshold?: number; maxFrames?: number }): number;
   export function seededRandom(seed: string | number): number;
   /** Runtime validates six/eight-digit hex colors and matching ordered ranges. */
   export function interpolateColor(value: number, input: readonly number[], colors: readonly string[], options?: InterpolationOptions): string;

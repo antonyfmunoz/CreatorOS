@@ -31,8 +31,14 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
   springs, explicit sRGB hex/alpha transitions and keyed repeatable variation.
   `seededRandom` is creative variation, not cryptographic randomness. Spring
-  mass/stiffness/damping are direct physical parameters; duration remapping and
-  spring-settling measurement are not implemented by this API.
+  mass/stiffness/damping are direct physical parameters. `measureSpring` returns
+  a conservative continuous-time settling frame using an analytic error envelope,
+  not a sampled first crossing. Its threshold is relative to the 0..1 response;
+  undamped springs and results beyond the explicit frame budget are rejected.
+  `spring` can fit this response to `durationInFrames`, reverse it, and delay it.
+  Fitted/reversed motion holds exact endpoints outside its active interval;
+  ordinary unfitted motion retains its original physical response. This is our
+  own timing contract, not a claim of identical Remotion sample values.
 - Direct frame-driven PNG (including transparency), JPEG or WebP; JPEG/WebP
   expose bounded 1..100 quality. JPEG and MP4 cannot carry transparency.
 - H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame

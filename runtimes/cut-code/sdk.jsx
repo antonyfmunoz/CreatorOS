@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from 'react';
-export { interpolate, spring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
+export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 
 export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
 export const useFrame = () => useContext(FrameContext).frame;
