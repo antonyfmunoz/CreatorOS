@@ -68,6 +68,26 @@ compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes
 automatic video-audio extraction, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
+## Typed source authoring
+
+The checked-in `sdk.d.ts` describes the actual `@creativesos/cut` exports and
+the capsule-local asset imports. Include it in your local TypeScript project
+alongside your TSX source, with React JSX, strict checking, and `noEmit` enabled.
+It provides editor completion and catches wrong prop names, missing timing
+inputs, and ordinary external video URLs before a render request is submitted.
+`useComposition()` requires the runtime's provider and fails explicitly outside
+it; `useInputs<YourInputs>()` supplies an author-selected input shape.
+
+Types do **not** validate untrusted JSON, numeric bounds, source files or URLs at
+runtime. Admission, bundling, input/media validation and isolation remain
+mandatory. There is no public npm SDK or general app-side code execution in this
+change, and the declarations are not a Remotion compatibility layer.
+
+`npm test` typechecks a valid TSX composition and negative examples using the
+pinned TypeScript compiler. It also compares declaration exports to the actual
+SDK source and checks the configuration hook inside/outside its provider. These
+tests complement, rather than replace, the decoded-pixel container qualification.
+
 ## Isolation and qualification
 
 Build from this directory with `docker build -t creativesos-cut-code:qualification .`.
