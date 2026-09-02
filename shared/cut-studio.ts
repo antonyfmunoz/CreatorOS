@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cutTextLayoutSchema, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
+import { CUT_IMAGE_FITS } from "./cut-image-fit";
 
 const cutGraphicEffectSchema = z.object({
   kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
@@ -75,6 +76,9 @@ export const cutGraphicSchema = z.object({
   // Composition fonts are measured in their authored canvas, not delivery pixels.
   // Absent on legacy/manual graphics: preserve their existing pixel sizing.
   fontReferenceWidth: z.number().int().min(240).max(7_680).optional(),
+  // Keep absent on legacy data: injecting a default would invalidate immutable
+  // queued snapshot hashes. The renderer supplies its historical contain fallback.
+  imageFit: z.enum(CUT_IMAGE_FITS).optional(),
   textLayout: cutTextLayoutSchema.optional(),
   fontAssetId: z.string().uuid().optional(),
   fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),

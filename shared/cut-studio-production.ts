@@ -4,6 +4,7 @@ import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { cutLayerMaskAsset } from "./cut-mask";
+import { cutImageFit } from "./cut-image-fit";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -562,6 +563,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       fontReferenceWidth: manifest.width,
+      imageFit: layer.kind === "image" ? cutImageFit(layer.style.objectFit) : "contain" as const,
       textLayout: ["text", "caption"].includes(layer.kind) ? resolveCutTextLayout(layer.style, selectedFont?.assetId ? selectedFont : undefined) : undefined,
       fontAssetId: selectedFont?.assetId,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",

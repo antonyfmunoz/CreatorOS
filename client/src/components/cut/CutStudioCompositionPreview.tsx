@@ -14,6 +14,7 @@ import { CutStudioTextPreview } from "./CutStudioTextPreview";
 import { createCutPreviewReadiness } from "@/lib/cut-preview-readiness";
 import { CutPreviewReadinessContext, useCutPreviewResource } from "./CutStudioPreviewReadiness";
 import { cutLayerMaskAsset } from "@shared/cut-mask";
+import { cutImageFit } from "@shared/cut-image-fit";
 import { CutStudioMaskFailure, CutStudioPrivateMask } from "./CutStudioPrivateMask";
 
 type Layer = CutCompositionManifest["layers"][number];
@@ -218,11 +219,19 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
 
 type MediaPlayback = { playing: boolean; playbackRate: number; muted: boolean; masterVolume: number; audioContext: AudioContext | null };
 
+function ImageFramingError({ message }: { message: string }) {
+  const readiness = useCutPreviewResource("Image framing", message);
+  useEffect(() => { readiness("error", message); }, [message, readiness]);
+  return <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">{message}</span>;
+}
+
 function ImageLayer({ layer }: { layer: Layer }) {
   const assetUrl = useContext(AssetUrlContext);
   const readiness = useCutPreviewResource(`${layer.name} image`, assetUrl(layer.assetId!));
   const [failed, setFailed] = useState(false);
-  return <><img alt={layer.name} src={assetUrl(layer.assetId!)} className="h-full w-full object-cover" onLoad={() => { setFailed(false); readiness("ready"); }} onError={() => { setFailed(true); readiness("error", "This private image could not be displayed."); }}/>{failed && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">This private image could not be displayed.</span>}</>;
+  let fit: ReturnType<typeof cutImageFit>;
+  try { fit = cutImageFit(layer.style.objectFit); } catch (error) { return <ImageFramingError message={error instanceof Error ? error.message : "Invalid image framing"}/>; }
+  return <><img alt={layer.name} src={assetUrl(layer.assetId!)} className="h-full w-full" style={{ objectFit: fit }} onLoad={() => { setFailed(false); readiness("ready"); }} onError={() => { setFailed(true); readiness("error", "This private image could not be displayed."); }}/>{failed && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">This private image could not be displayed.</span>}</>;
 }
 
 function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVolume, audioContext, volume }: MediaPlayback & { layer: Layer; frame: number; fps: number; volume: number }) {

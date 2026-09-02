@@ -835,7 +835,9 @@ async function renderMultitrack(
     } else if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
-      await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      // Match CSS framing, respect EXIF orientation and preserve transparent
+      // letterboxing instead of painting an opaque black box behind the image.
+      await sharp(privateImage.url).rotate().resize(width, height, { fit: graphic.imageFit ?? "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "svg") {
       await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "three") {
