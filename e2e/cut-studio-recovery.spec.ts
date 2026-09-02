@@ -102,6 +102,25 @@ test("two tabs retain separate drafts and opt-out deletes only device copies", a
   } finally { await second.close(); }
 });
 
+test("a different signed-in account never inherits device recovery preferences or drafts", async ({ page, context }, info) => {
+  const original = await projectFixture(page, info); await holdDraft(page, original);
+  const originalCopies = await localCopies(page);
+  expect(originalCopies).toHaveLength(1);
+  await page.close();
+  const peer = info.project.name === "mobile-chromium" ? 2 : 1;
+  await context.setExtraHTTPHeaders({ "x-creativesos-demo-user": String(peer) });
+  const next = await context.newPage();
+  try {
+    const peerProject = await projectFixture(next, info);
+    await next.goto(`/cut-studio?project=${peerProject.id}`);
+    await expect(next.getByRole("switch", { name: "Keep timeline recovery copies on this device", exact: true })).not.toBeChecked();
+    await expect(next.getByRole("button", { name: "Restore and save timeline copy", exact: true })).toHaveCount(0);
+    await next.getByRole("slider", { name: "V1 track gain", exact: true }).press("ArrowLeft");
+    await expect(next.getByText("Saved", { exact: true })).toBeVisible();
+    expect(await localCopies(next)).toEqual(originalCopies);
+  } finally { await next.close(); }
+});
+
 test("unavailable browser storage never claims a device recovery save", async ({ page }, info) => {
   const project = await projectFixture(page, info);
   await page.addInitScript(() => { Storage.prototype.setItem = function () { throw new DOMException("Synthetic full device storage", "QuotaExceededError"); }; });
