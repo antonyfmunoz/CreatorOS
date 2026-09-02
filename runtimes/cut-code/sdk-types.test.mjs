@@ -32,7 +32,7 @@ interface Inputs { title: string; color: string }
 export default function Scene(){const frame=useFrame();const global=useGlobalFrame();const {fps,width}=useComposition();const input=useInputs<Inputs>();
 const opacity=interpolate(frame,[0,30] as const,[0,1],{ease:easing.inOut(cubicBezier(.2,0,.8,1)),left:'wrap'});
 const position=spring({frame,fps,stiffness:80,clampOvershoot:true,durationInFrames:measureSpring({fps}),reverse:true});const color=interpolateColor(global,[0,30],['#000000','#ffffff']);
-return <FullFrame className={styles.title} style={{opacity,left:position,background:color,width}}><Sequence at={10} duration={30}><Repeat duration={5} count={6} alternate><Freeze frame={2}><FrameVideo src={clip} speed={1.5} startFrom={10}/></Freeze></Repeat></Sequence><img src={logo}/><span>{input.title}{seededRandom('seed')}{font}</span></FullFrame>}`);
+return <FullFrame className={styles.title} style={{opacity,left:position,background:color,width}}><Sequence at={10} duration={30}><Repeat duration={5} count={6} alternate><Freeze frame={2}><FrameVideo src={clip} speed={1.5} startFrom={10} muted={false} volume={.5} audioStream={0}/></Freeze></Repeat></Sequence><img src={logo}/><span>{input.title}{seededRandom('seed')}{font}</span></FullFrame>}`);
 });
 
 test('rejects invalid timing/media/motion inputs and catches unused error expectations', () => {
@@ -45,6 +45,8 @@ const b=<Freeze/>;
 const c=<Repeat count={2}/>;
 // @ts-expect-error remote URLs are not private capsule videos
 const d=<FrameVideo src="https://example.invalid/movie.mp4"/>;
+// @ts-expect-error video mute is a boolean
+const muted=<FrameVideo src="data:video/mp4;base64,AAAA" muted="yes"/>;
 // @ts-expect-error fps is required
 spring({frame:1});
 // @ts-expect-error an unknown extrapolation mode

@@ -9,7 +9,8 @@ import { networkInterfaces } from 'node:os';
 import { chromium } from 'playwright-core';
 import { readCapsule, bundleCapsule } from './bundle.mjs';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
-import { audioPlan, mixAudioTracks, prepareAudioTracks } from './audio.mjs';
+import { audioPlan, mixAudioTracks, prepareAudioTracks, soundtrackInputOptions } from './audio.mjs';
+import { videoAudioCatalogEntry, videoSourceAudioSample } from './video-source-audio.mjs';
 import { videoEncodingArgs } from './video-encoding.mjs';
 import { FrameAudioCollector } from './frame-audio.mjs';
 
@@ -44,6 +45,17 @@ try {
   } else {
   phase = 'bundle';
   const bundle = await bundleCapsule(capsule, request.entrypoint);
+  const videoAudioCatalog = [];
+  if (request.compositionAudio) {
+    if (bundle.videoImports.length > 8) throw new Error('At most eight private video imports support automatic source sound.');
+    for (const file of bundle.videoImports) {
+      const extension = file.toLowerCase().endsWith('.mp4') ? 'mp4' : 'webm';
+      const filename = `/tmp/video-audio-import-${videoAudioCatalog.length}.${extension}`;
+      await writeFile(filename, capsule[file], { flag: 'wx' });
+      const probe = JSON.parse((await promisify(execFile)('ffprobe', ['-v', 'error', ...soundtrackInputOptions(file), '-show_entries', 'stream=codec_type,sample_rate,channels,duration:format=duration', '-of', 'json', filename], { timeout: 8_000, maxBuffer: 16_384 })).stdout);
+      videoAudioCatalog.push(videoAudioCatalogEntry(file, capsule[file], probe));
+    }
+  }
   phase = 'browser_start';
   // Use grayscale text coverage instead of LCD subpixel coverage: opacity and
   // transformed layers otherwise allow prior compositor paint state to change
@@ -70,7 +82,8 @@ try {
   const nonce = randomBytes(20).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div></body></html>`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(({ javascript, stylesheet, nonce }) => {
+  await page.evaluate(({ javascript, stylesheet, nonce, videoAudioSources }) => {
+    window.__cutVideoAudioSources = videoAudioSources;
     if (stylesheet) {
       const style = document.createElement('style');
       style.textContent = stylesheet;
@@ -82,8 +95,8 @@ try {
     script.nonce = nonce;
     script.textContent = javascript;
     document.body.appendChild(script);
-  }, { ...bundle, nonce });
-  const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
+  }, { ...bundle, nonce, videoAudioSources: videoAudioCatalog.map((entry) => entry.src) });
+  const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames, compositionAudio: Boolean(request.compositionAudio) };
   const hasAudio = request.mode === 'video' && (request.compositionAudio || audioPlan(request).length > 0);
   const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
   const frameAudio = request.compositionAudio ? new FrameAudioCollector(request) : null;
@@ -104,7 +117,7 @@ try {
     encoderDone = once(encoder, 'close');
   }
   for (let frame = first; frame < last; frame += frameStep) {
-    const frameSounds = await page.evaluate(async ({ frame, config, input }) => {
+    const soundData = await page.evaluate(async ({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
       // Preparation may introduce new images/fonts/media or effects. Recheck
       // after browser settlement instead of capturing an early placeholder.
@@ -122,6 +135,7 @@ try {
         try { action?.(); } catch { failed(); }
       });
       const videos = [...document.querySelectorAll('canvas[data-cut-video-time]')];
+      const videoSounds = [];
       if (videos.length > 8) throw new Error('Too many simultaneous code video layers.');
       await Promise.all(videos.map(async (canvas) => {
         const source = canvas.dataset.cutVideoSrc;
@@ -147,6 +161,11 @@ try {
         const drawing = canvas.getContext('2d');
         if (!drawing) throw new Error('Video frame canvas is unavailable.');
         drawing.drawImage(video, 0, 0);
+        if (config.compositionAudio && canvas.dataset.cutVideoAudioId) {
+          const importIndex = window.__cutVideoAudioSources.indexOf(source);
+          if (importIndex < 0) throw new Error('Source sound requires an imported private video.');
+          videoSounds.push({ importIndex, id: canvas.dataset.cutVideoAudioId, time, duration: video.duration, repeat: canvas.dataset.cutVideoRepeat === 'yes', speed: Number(canvas.dataset.cutVideoSpeed), volume: Number(canvas.dataset.cutVideoVolume), audioStream: Number(canvas.dataset.cutVideoAudioStream) });
+        }
       }));
       // Invalidate retained layout/paint layers without remounting authored
       // React components or discarding their prepared media. Otherwise moving
@@ -170,13 +189,18 @@ try {
         const sounds = [...nodes].map((node) => ({ id: node.dataset.cutAudioId, file: node.dataset.cutAudioFile,
           sourceSeconds: Number(node.dataset.cutAudioTime), speed: Number(node.dataset.cutAudioSpeed),
           volume: Number(node.dataset.cutAudioVolume), audioStream: Number(node.dataset.cutAudioStream) }));
-        if (JSON.stringify(sounds).length > 8192) throw new Error('Frame soundtrack data limit exceeded.');
-        return sounds;
+        if (sounds.length + videoSounds.length > 8 || JSON.stringify({ sounds, videoSounds }).length > 8192) throw new Error('Frame soundtrack data limit exceeded.');
+        return { sounds, videoSounds };
       }
       }
       throw new Error('Composition frame preparation did not settle.');
     }, { frame, config, input: request.input });
     if (pageFailed) throw new Error('Composition execution failed.');
+    const frameSounds = [...soundData.sounds, ...soundData.videoSounds.flatMap((sample) => {
+      if (!Number.isInteger(sample.importIndex) || sample.importIndex < 0 || sample.importIndex >= videoAudioCatalog.length) throw new Error('Invalid private video soundtrack binding.');
+      const sound = videoSourceAudioSample(videoAudioCatalog[sample.importIndex], { ...sample, fps: request.fps });
+      return sound ? [sound] : [];
+    })];
     if (frameAudio) frameAudio.capture(frame, frameSounds);
     else if (request.mode === 'video' && frameSounds.length) throw new Error('Enable compositionAudio to export a composition soundtrack.');
     let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || ['webm', 'gif'].includes(request.format) || (request.format === 'mov' && request.proresProfile !== '422hq')) && request.format !== 'jpeg', timeout: 10_000 });

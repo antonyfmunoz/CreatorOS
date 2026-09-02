@@ -11,7 +11,10 @@ export function audioPlan(request) {
     const start = Math.max(track.startFrame, output.start);
     const end = Math.min(track.endFrame, output.end + 1);
     if (end <= start) return [];
-    return [{ ...track, localStartFrame: start - track.startFrame, sourceStart: track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps, sourceDuration: (end - start) * track.speed / request.fps, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
+    const sourceStart = track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps;
+    const sourceDuration = Math.min((end - start) * track.speed / request.fps, track.sourceEndSeconds === undefined ? Infinity : track.sourceEndSeconds - sourceStart);
+    if (sourceDuration <= 0) return [];
+    return [{ ...track, localStartFrame: start - track.startFrame, sourceStart, sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });
 }
 
@@ -60,6 +63,7 @@ export function validateSoundtrackProbe(probe, track) {
   const streamSeconds = Number(selected?.duration);
   const seconds = Number.isFinite(streamSeconds) && streamSeconds > 0 ? streamSeconds : Number(probe?.format?.duration);
   if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
+  if (track.sourceEndSeconds !== undefined && track.sourceEndSeconds > seconds + .01) throw new Error('Private source sound tail exceeds the selected stream.');
   return selected;
 }
 

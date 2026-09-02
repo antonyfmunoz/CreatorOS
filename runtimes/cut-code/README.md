@@ -69,6 +69,19 @@ production topology approval or enable public code execution.
   Embedded video remains muted by default. To include its source sound, name
   the same capsule-local MP4/WebM in an explicit `audioTracks` request.
   No external media URL or network permission is introduced.
+
+  With `compositionAudio: true`, imported `FrameVideo` source sound is a candidate
+  capability: `volume` (0–2), `muted` and `audioStream` (0–7) share its local
+  trim/forward-speed clock. Freeze and backward alternate-repeat phases are
+  silent. Audible speed is 0.5–2; explicitly muted video retains visual speed
+  support. Native video repeat requires frame-aligned duration/speed/phase.
+  Audio ending before the video becomes silence rather than repeating its tail.
+  Silent imports stay silent. An explicit replacement soundtrack should mute the
+  video to avoid mixing the source twice. Legacy requests without the soundtrack
+  opt-in remain silent. The runtime permits at most eight imported video files
+  for automatic sound and retains its eight combined soundtrack-interval cap.
+  These changes still require actual isolated-output and protected qualification;
+  they are not a deployed public source-code editor or service.
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
