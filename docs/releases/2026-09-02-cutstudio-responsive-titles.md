@@ -35,9 +35,14 @@ checks background color through the transparent raster and bounds the actual
 encoded glyph height. Existing permission, format, pixel identity and decoded
 video-dimension checks remain, without increasing the test deadline.
 
-Local full/browser qualification, protected qualification and deployment are
-recorded separately as they finish. A fresh live render after reapplying the
-composition is required before calling the production text defect corrected.
+Local full verification passed after rebasing on the protected Rive readiness
+release (567 tests, typecheck, build, bundle budget and worker dry run). Both
+mobile and desktop exact-frame/portrait journeys passed in 3.6 minutes before
+that rebase. The initial security check flagged incomplete path escaping in the
+new test helper; the helper now uses the same bounded path grammar as production
+and rejects unsupported characters. No alert was waived. Protected checks and
+a fresh live render after reapplying the composition remain required before
+calling the production text defect corrected.
 
 ## Still outside this correction
 

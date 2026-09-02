@@ -8,7 +8,11 @@ import { cutGraphicSchema } from "../shared/cut-studio";
 import { cutTextRasterFilter, cutTextRasterMetrics, cutTextRasterSource } from "../server/cut-text-raster";
 
 const graphic = cutGraphicSchema.parse({ id: "headline", text: "Turn attention into momentum", timelineStart: 0, duration: 3, fontSize: 72, fontReferenceWidth: 1920, backgroundOpacity: 0 });
-const escapedPath = (value: string) => value.split(path.sep).join("/").replace(/:/g, "\\:");
+function escapedPath(value: string) {
+  const normalized = path.resolve(value).split(path.sep).join("/");
+  if (!/^[A-Za-z0-9_./: ()~-]+$/.test(normalized)) throw new Error("Unsupported qualification path");
+  return Array.from(normalized, (character) => character === ":" ? "\\:" : character).join("");
+}
 
 async function raster(canvasWidth: number, width: number, backgroundOpacity = 0, text = graphic.text) {
   const directory = mkdtempSync(path.join(os.tmpdir(), "cut-text-pixels-"));
