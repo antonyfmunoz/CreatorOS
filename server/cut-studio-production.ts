@@ -1,4 +1,7 @@
 import type { RequestHandler } from "express";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
@@ -8,6 +11,7 @@ import {
   cutStudioCompositions,
   cutStudioGenerationJobs,
   cutStudioGenerativeWorkflows,
+  cutStudioJobs,
   cutStudioProjectMedia,
   cutStudioProductionElements,
   cutStudioProductionPlans,
@@ -28,10 +32,12 @@ import {
   cutShotSpecSchema,
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
-import { validateCutEdl } from "@shared/cut-studio";
+import { cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
+import { materializePrivateAsset } from "./asset-storage";
+import { validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
 
 const uuid = z.string().uuid();
 const compositionInput = z.object({
@@ -49,6 +55,14 @@ const variantImportInput = z.object({
   label: z.string().trim().min(1).max(160).default("Imported candidate"),
 }).strict();
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
+const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false });
+const compositionRenderBatchInput = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
+  compositionIds: z.array(z.string().uuid()).min(1).max(20),
+  render: cutRenderSettingsSchema,
+}).superRefine((value, context) => {
+  if (new Set(value.compositionIds).size !== value.compositionIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionIds"], message: "Composition identifiers must be unique" });
+});
 
 async function projectAccess(userId: number, projectId: string) {
   if (!uuid.safeParse(projectId).success) return null;
@@ -140,6 +154,41 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   if (riveIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-rive" || !asset.mimeType || !/^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(asset.mimeType); })) throw new Error("Every Rive layer must reference ready private validated Rive media");
 }
 
+async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>) {
+  const capsuleIds = [capsule.sourceAssetId, capsule.lockfileAssetId];
+  const rows = await db.select({
+    assetId: assets.id,
+    kind: assets.kind,
+    mimeType: assets.mimeType,
+    filename: assets.originalFilename,
+    storageKey: assets.storageKey,
+    mediaKind: cutStudioProjectMedia.mediaKind,
+  }).from(cutStudioProjectMedia).innerJoin(assets, eq(assets.id, cutStudioProjectMedia.assetId)).where(and(
+    eq(cutStudioProjectMedia.projectId, project.id),
+    inArray(cutStudioProjectMedia.assetId, capsuleIds),
+    eq(assets.ownerUserId, project.ownerUserId),
+    eq(assets.businessId, project.businessId),
+    eq(assets.visibility, "private"),
+    eq(assets.status, "ready"),
+  ));
+  if (rows.length !== capsuleIds.length) throw new Error("Code source and lockfile must be ready private assets attached to this project");
+  const source = rows.find((row) => row.assetId === capsule.sourceAssetId);
+  const lockfile = rows.find((row) => row.assetId === capsule.lockfileAssetId);
+  if (!source || source.mediaKind !== "code_source" || source.kind !== "cut-code-source" || !source.mimeType || !/^(application\/(zip|x-zip-compressed)|multipart\/x-zip)$/i.test(source.mimeType) || !source.filename?.toLowerCase().endsWith(".zip")) throw new Error("The code source must be a private ZIP source capsule");
+  const lockfileName = lockfile?.filename?.toLowerCase() ?? "";
+  if (!lockfile || lockfile.mediaKind !== "code_lockfile" || lockfile.kind !== "cut-code-lockfile" || !lockfile.mimeType || !/^(application\/(json|octet-stream)|text\/(plain|yaml|x-yaml))$/i.test(lockfile.mimeType) || !["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"].includes(lockfileName)) throw new Error("The code capsule requires an npm, pnpm, or Yarn lockfile");
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-code-capsule-"));
+  try {
+    const sourcePath = path.join(temporaryDirectory, "source.zip");
+    const lockfilePath = path.join(temporaryDirectory, lockfileName);
+    await Promise.all([materializePrivateAsset(source.storageKey, sourcePath), materializePrivateAsset(lockfile.storageKey, lockfilePath)]);
+    validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint);
+    validateCutCodeLockfile(lockfileName, await fs.readFile(lockfilePath));
+  } finally {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
 async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
   const [plan, compositions, workflows] = await Promise.all([
     productionPlan(project),
@@ -157,6 +206,7 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
     compositionRuntime: {
       mode: "clean_room",
       declarative: "configured",
+      packageAuthoring: "configured",
       isolatedCode: process.env.CUT_COMPOSITION_SANDBOX_URL ? "provider_configured" : "provider_pending",
       networkPolicy: "deny",
     },
@@ -181,7 +231,7 @@ type CutRouteRegistry = {
   delete(path: string, ...handlers: RequestHandler[]): unknown;
 };
 
-export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
+export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, dependencies: { queueRenderJob(jobId: string): void }) {
   cut.get("/api/cut/projects/:id/creative-runtime", attachUser, async (req, res) => {
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access) return res.status(404).json({ message: "Project not found" });
@@ -195,11 +245,56 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
     const parsed = compositionInput.safeParse(req.body ?? { name: `${access.project.name} composition`, manifest: defaultComposition(access.project) });
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
-    if (parsed.data.mode === "sandboxed_tsx" && !process.env.CUT_COMPOSITION_SANDBOX_URL) return res.status(409).json({ message: "The isolated composition runtime is not activated" });
-    try { await assertCompositionAssets(access.project, parsed.data.manifest); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
+    try {
+      await assertCompositionAssets(access.project, parsed.data.manifest);
+      if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
+    } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [composition] = await db.insert(cutStudioCompositions).values({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule }).returning();
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.created", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, mode: composition.mode }, idempotencyKey: `cutstudio:${composition.id}:composition.created` });
     res.status(201).json(composition);
+  });
+
+  cut.get("/api/cut/projects/:id/compositions/:compositionId/player", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    const [composition] = await db.select({
+      id: cutStudioCompositions.id,
+      name: cutStudioCompositions.name,
+      mode: cutStudioCompositions.mode,
+      manifest: cutStudioCompositions.manifest,
+      revision: cutStudioCompositions.revision,
+      updatedAt: cutStudioCompositions.updatedAt,
+    }).from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+    )).limit(1);
+    if (!composition) return res.status(404).json({ message: "Composition not found" });
+    if (composition.mode !== "declarative") return res.status(409).json({ message: "Code compositions require the isolated player runtime" });
+    const manifest = cutCompositionManifestSchema.parse(composition.manifest);
+    const referencedAssetIds = [
+      ...manifest.fonts.map((font) => font.assetId),
+      ...manifest.audioReactiveSignals.map((signal) => signal.assetId),
+      ...manifest.layers.flatMap((layer) => [
+        layer.assetId,
+        layer.enter?.maskAssetId,
+        layer.exit?.maskAssetId,
+        ...layer.effects.map((effect) => typeof effect.parameters.maskAssetId === "string" ? effect.parameters.maskAssetId : undefined),
+      ]),
+    ].filter((assetId): assetId is string => Boolean(assetId));
+    const assetIds = Array.from(new Set(referencedAssetIds));
+    const etag = `"cut-composition-${composition.id}-${composition.revision}"`;
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("ETag", etag);
+    res.setHeader("Last-Modified", composition.updatedAt.toUTCString());
+    if (req.header("If-None-Match") === etag) return res.status(304).end();
+    res.json({
+      playerVersion: "cutstudio-composition-player-v1",
+      composition: { id: composition.id, name: composition.name, revision: composition.revision, manifest },
+      durationSeconds: manifest.durationInFrames / manifest.fps,
+      assetIds,
+      assetUrlTemplate: "/api/assets/{assetId}/stream",
+    });
   });
 
   cut.put("/api/cut/projects/:id/compositions/:compositionId", attachUser, async (req, res) => {
@@ -210,8 +305,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     if (!expected) return res.status(428).json({ message: "Composition revision is required" });
     const parsed = compositionInput.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
-    if (parsed.data.mode === "sandboxed_tsx" && !process.env.CUT_COMPOSITION_SANDBOX_URL) return res.status(409).json({ message: "The isolated composition runtime is not activated" });
-    try { await assertCompositionAssets(access.project, parsed.data.manifest); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
+    try {
+      await assertCompositionAssets(access.project, parsed.data.manifest);
+      if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
+    } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [updated] = await db.update(cutStudioCompositions).set({ name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule, revision: sql`${cutStudioCompositions.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.revision, expected), eq(cutStudioCompositions.status, "active"))).returning();
     if (!updated) return res.status(409).json({ message: "The composition changed elsewhere" });
     res.setHeader("ETag", String(updated.revision));
@@ -248,6 +345,60 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry) {
     });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.variants_created", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, sourceCompositionId: source.id, compositionIds: created.map((composition) => composition.id), count: created.length }, idempotencyKey: `cutstudio:${access.project.id}:variants:${parsed.data.idempotencyKey}` });
     res.status(201).json({ variants: created, count: created.length, idempotencyKey: parsed.data.idempotencyKey });
+  });
+
+  cut.post("/api/cut/projects/:id/composition-render-batches", attachUser, compositionRenderLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const parsed = compositionRenderBatchInput.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The composition render batch is invalid", issues: parsed.error.issues });
+    const compositions = await db.select().from(cutStudioCompositions).where(and(
+      inArray(cutStudioCompositions.id, parsed.data.compositionIds),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+    ));
+    if (compositions.length !== parsed.data.compositionIds.length) return res.status(404).json({ message: "One or more compositions are unavailable" });
+    if (compositions.some((composition) => composition.mode !== "declarative")) return res.status(409).json({ message: "Code compositions must render through the isolated runtime" });
+    try {
+      for (const composition of compositions) await assertCompositionAssets(access.project, composition.manifest);
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" });
+    }
+    const ordered = parsed.data.compositionIds.map((compositionId) => compositions.find((composition) => composition.id === compositionId)!);
+    const jobs = await db.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.render-batch.${access.project.id}.${parsed.data.idempotencyKey}`}))`);
+      const existing = await transaction.select().from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.projectId, access.project.id),
+        eq(cutStudioJobs.ownerUserId, req.dbUser!.id),
+        eq(cutStudioJobs.kind, "render"),
+        sql`${cutStudioJobs.request}->'composition'->>'renderBatchId' = ${parsed.data.idempotencyKey}`,
+      )).orderBy(asc(cutStudioJobs.createdAt));
+      if (existing.length) {
+        if (existing.length !== ordered.length) throw new Error("An incomplete render batch already uses this idempotency key");
+        return existing;
+      }
+      return transaction.insert(cutStudioJobs).values(ordered.map((composition, variantIndex) => ({
+        projectId: access.project.id,
+        ownerUserId: req.dbUser!.id,
+        kind: "render",
+        detail: "Composition batch render queued",
+        request: {
+          ...parsed.data.render,
+          composition: {
+            id: composition.id,
+            revision: composition.revision,
+            name: composition.name,
+            renderBatchId: parsed.data.idempotencyKey,
+            variantIndex,
+            manifest: composition.manifest,
+          },
+        },
+      }))).returning();
+    });
+    for (const job of jobs) dependencies.queueRenderJob(job.id);
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.render_batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, renderBatchId: parsed.data.idempotencyKey, compositionIds: ordered.map((composition) => composition.id), jobIds: jobs.map((job) => job.id), count: jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:render-batch:${parsed.data.idempotencyKey}` });
+    res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: jobs.length, jobs });
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {

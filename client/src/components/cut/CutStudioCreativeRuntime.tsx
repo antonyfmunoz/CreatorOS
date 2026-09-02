@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, CompositionVariantBatchControls, cutStudioPrivateFontFamily, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import type { CutEdl } from "@shared/cut-studio";
-import { type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
+import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
-type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" };
-type CompositionRow = { id: string; name: string; mode: string; manifest: CutCompositionManifest; revision: number };
+type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile" };
+type CompositionRow = { id: string; name: string; mode: "declarative" | "sandboxed_tsx"; manifest: CutCompositionManifest; codeCapsule: CutCodeCapsule | null; revision: number };
 type PlanRow = { id: string; brief: CutProductionBrief; revision: number };
 type ShotRow = { id: string; sequence: number; spec: CutShotSpec; revision: number; status: string; selectedVariantId?: string | null };
 type JobRow = { id: string; shotId: string; provider: string; model: string; state: string; detail: string; createdAt: string };
@@ -17,7 +17,7 @@ type VariantRow = { id: string; shotId: string; generationJobId?: string | null;
 type WorkflowRow = { id: string; workflow: CutGenerativeWorkflow; revision: number };
 type ProviderRow = { id: string; label: string; configured: boolean; capabilities: readonly string[] };
 type RuntimePayload = {
-  compositionRuntime: { declarative: string; isolatedCode: string; networkPolicy: string };
+  compositionRuntime: { declarative: string; packageAuthoring: string; isolatedCode: string; networkPolicy: string };
   generationRuntime: { dispatchEnabled: boolean; providers: ProviderRow[] };
   compositions: CompositionRow[];
   plan: PlanRow | null;
@@ -55,7 +55,7 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void }) {
+export function CutStudioCreativeRuntime({ project, media, onTimelineApplied, onRenderBatchQueued }: { project: ProjectInput; media: ProjectMediaInput[]; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void }) {
   const [runtime, setRuntime] = useState<RuntimePayload | null>(null);
   const [section, setSection] = useState<"motion" | "cinema" | "workflows">("motion");
   const [expanded, setExpanded] = useState(true);
@@ -66,6 +66,10 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
   const [shotPrompt, setShotPrompt] = useState("A cinematic opening that establishes the subject, environment, and creative promise");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [candidateAssetByShot, setCandidateAssetByShot] = useState<Record<string, string>>({});
+  const [codeName, setCodeName] = useState(`${project.name} · code composition`);
+  const [codeEntrypoint, setCodeEntrypoint] = useState("src/index.tsx");
+  const [codeSourceAssetId, setCodeSourceAssetId] = useState("");
+  const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
 
   const refresh = async () => {
     const next = await (await apiRequest("GET", `/api/cut/projects/${project.id}/creative-runtime`)).json() as RuntimePayload;
@@ -74,6 +78,10 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
   };
 
   useEffect(() => { setRuntime(null); setMessage(""); void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Creative runtime could not load")); }, [project.id]);
+  useEffect(() => {
+    setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
+    setCodeLockfileAssetId((current) => current || media.find((item) => item.mediaKind === "code_lockfile")?.assetId || "");
+  }, [media]);
   useEffect(() => {
     const loaded: FontFace[] = [];
     let cancelled = false;
@@ -117,10 +125,38 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
     await refresh(); setMessage("Composition controls saved.");
   });
 
-  const createCompositionVariants = (composition: CompositionRow, variants: Array<{ name: string; parameterValues: Record<string, string | number | boolean | null> }>) => act(`variants:${composition.id}`, async () => {
-    const response = await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/variants`, { idempotencyKey: `variants.${composition.id}.${crypto.randomUUID()}`, variants });
-    const result = await response.json() as { count: number };
-    await refresh(); setMessage(`${result.count} parameterized composition variants created.`);
+  const createCompositionVariants = (composition: CompositionRow, variants: Array<{ name: string; parameterValues: Record<string, string | number | boolean | null> }>, render = false) => act(`variants:${composition.id}`, async () => {
+    const variantBatchId = `variants.${composition.id}.${crypto.randomUUID()}`;
+    const response = await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/variants`, { idempotencyKey: variantBatchId, variants });
+    const result = await response.json() as { count: number; variants: CompositionRow[] };
+    if (render) {
+      await apiRequest("POST", `/api/cut/projects/${project.id}/composition-render-batches`, {
+        idempotencyKey: `${variantBatchId}.render`,
+        compositionIds: result.variants.map((variant) => variant.id),
+        render: {
+          aspect: "source",
+          captions: false,
+          captionStyle: 1,
+          cleanAudio: false,
+          audioPreset: "original",
+          masterGainDb: 0,
+          quality: "social",
+          resolution: composition.manifest.height > 1080 ? "2160p" : composition.manifest.height > 720 ? "1080p" : "720p",
+          fps: composition.manifest.fps,
+        },
+      });
+      onRenderBatchQueued();
+    }
+    await refresh(); setMessage(render ? `${result.count} parameterized variants created and queued for independent rendering.` : `${result.count} parameterized composition variants created.`);
+  });
+
+  const createCodeComposition = () => act("composition:code", async () => {
+    if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
+    const manifest = { ...motionTemplate(project, "kinetic"), name: codeName.trim() };
+    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
+    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
+    await refresh();
+    setMessage(runtime?.compositionRuntime.isolatedCode === "provider_configured" ? "Pinned code composition saved for isolated execution." : "Pinned code composition saved. Isolated execution will activate when its provider is connected.");
   });
 
   const saveBrief = () => act("brief", async () => {
@@ -182,9 +218,16 @@ export function CutStudioCreativeRuntime({ project, media, onTimelineApplied }: 
       {!runtime ? <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#1d9bf0]"/></div> : section === "motion" ? <div className="mt-4 space-y-3">
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
-        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.manifest.layers.length} layers · {composition.manifest.fps} fps · revision {composition.revision}</p></div><Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button></div><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy)} onCreate={(variants) => void createCompositionVariants(composition, variants)}/></div>)}
+        <div className="rounded-xl border border-zinc-800 bg-black p-3" aria-label="Code composition package">
+          <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. CreativesOS stores and validates it now; execution stays network-denied in the isolated provider.</p></div>
+          <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
+          <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
+          <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} value={codeSourceAssetId} onChange={(event) => setCodeSourceAssetId(event.target.value)}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
+          <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
+        </div>
+        {runtime.compositions.map((composition) => <div key={composition.id} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>{runtime.compositionRuntime.isolatedCode === "provider_configured" ? "Isolated execution provider is configured." : "Package ready; isolated execution provider remains the external activation gate."}</p></div>}</div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
-        <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · executable code: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
+        <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">
         <label className="block text-[10px] font-bold text-zinc-500">Production title<input className={field} value={brief.title} onChange={(event) => setBrief({ ...brief, title: event.target.value })}/></label>
         <label className="block text-[10px] font-bold text-zinc-500">Objective<textarea className={`${field} min-h-20 resize-none`} value={brief.objective} onChange={(event) => setBrief({ ...brief, objective: event.target.value })} placeholder="What should this production accomplish?"/></label>

@@ -177,7 +177,21 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
   return <canvas ref={canvas} width={640} height={360} data-rive-loaded={loaded ? "true" : "false"} aria-label={`${layer.name} Rive preview`} className="h-full w-full"/>;
 }
 
-function PreviewLayer({ layer, state, frame, fps }: { layer: Layer; state: FrameState; frame: number; fps: number }) {
+function VideoLayer({ layer, frame, fps, playing, playbackRate }: { layer: Layer; frame: number; fps: number; playing: boolean; playbackRate: number }) {
+  const video = useRef<HTMLVideoElement | null>(null);
+  const targetTime = Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps;
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    element.playbackRate = playbackRate;
+    if (Math.abs(element.currentTime - targetTime) > Math.max(.04, 1 / fps)) element.currentTime = targetTime;
+    if (playing) void element.play().catch(() => undefined);
+    else element.pause();
+  }, [fps, playbackRate, playing, targetTime]);
+  return <video ref={video} aria-label={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId!)}/stream`} muted playsInline preload="metadata" className="h-full w-full object-cover"/>;
+}
+
+function PreviewLayer({ layer, state, frame, fps, playing, playbackRate }: { layer: Layer; state: FrameState; frame: number; fps: number; playing: boolean; playbackRate: number }) {
   const visual = effectStyles(state);
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity,
@@ -188,7 +202,7 @@ function PreviewLayer({ layer, state, frame, fps }: { layer: Layer; state: Frame
   if (layer.kind === "text" || layer.kind === "caption") content = <div className="h-full w-full overflow-hidden rounded px-2 py-1 font-bold" style={{ color: String(layer.style.color ?? "#ffffff"), background: layer.style.backgroundColor ? colorWithOpacity(layer.style.backgroundColor, layer.style.backgroundOpacity) : "transparent", fontFamily: typeof layer.style.fontFamily === "string" ? `${layer.style.fontFamily}, sans-serif` : undefined, fontSize: `${Math.max(8, Math.min(42, Number(layer.style.fontSize ?? 48) / 3))}px` }}>{layer.text}</div>;
   else if (layer.kind === "shape") content = <div className="h-full w-full" style={{ background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
   else if (layer.kind === "image" && layer.assetId) content = <img alt={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} className="h-full w-full object-cover"/>;
-  else if (layer.kind === "video" && layer.assetId) content = <video aria-label={layer.name} src={`/api/assets/${encodeURIComponent(layer.assetId)}/stream`} muted playsInline preload="metadata" className="h-full w-full object-cover"/>;
+  else if (layer.kind === "video" && layer.assetId) content = <VideoLayer layer={layer} frame={frame} fps={fps} playing={playing} playbackRate={playbackRate}/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
   else if (layer.kind === "lottie") content = <LottieLayer layer={layer} frame={frame}/>;
@@ -198,11 +212,60 @@ function PreviewLayer({ layer, state, frame, fps }: { layer: Layer; state: Frame
   return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
 }
 
-export function CutStudioCompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
-  const [frame, setFrame] = useState(Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6));
+export type CutStudioCompositionPlayerProps = {
+  manifest: CutCompositionManifest;
+  autoPlay?: boolean;
+  controls?: boolean;
+  initialFrame?: number;
+  loop?: boolean;
+  playbackRate?: number;
+  onFrameChange?: (frame: number) => void;
+};
+
+export function CutStudioCompositionPlayer({ manifest, autoPlay = false, controls = true, initialFrame = 0, loop = true, playbackRate = 1, onFrameChange }: CutStudioCompositionPlayerProps) {
+  const boundedInitialFrame = Math.min(manifest.durationInFrames - 1, Math.max(0, Math.floor(initialFrame)));
+  const [frame, setFrame] = useState(boundedInitialFrame);
+  const [playing, setPlaying] = useState(autoPlay);
+  useEffect(() => {
+    setFrame((current) => Math.min(manifest.durationInFrames - 1, Math.max(0, current)));
+  }, [manifest.durationInFrames]);
+  useEffect(() => {
+    if (!playing) return;
+    let requestId = 0;
+    let previous = performance.now();
+    let remainder = 0;
+    const tick = (now: number) => {
+      remainder += ((now - previous) * manifest.fps * playbackRate) / 1_000;
+      previous = now;
+      const advance = Math.floor(remainder);
+      if (advance > 0) {
+        remainder -= advance;
+        setFrame((current) => {
+          const next = current + advance;
+          if (next < manifest.durationInFrames) return next;
+          if (loop) return next % manifest.durationInFrames;
+          setPlaying(false);
+          return manifest.durationInFrames - 1;
+        });
+      }
+      requestId = requestAnimationFrame(tick);
+    };
+    requestId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(requestId);
+  }, [loop, manifest.durationInFrames, manifest.fps, playbackRate, playing]);
+  useEffect(() => { onFrameChange?.(frame); }, [frame, onFrameChange]);
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
-  return <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Deterministic composition preview">
-    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
-    <label className="mt-2 block text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => setFrame(Number(event.target.value))}/></label>
+  return <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="CutStudio composition player" data-player-state={playing ? "playing" : "paused"} data-current-frame={frame}>
+    <div className="relative aspect-video overflow-hidden rounded-md" style={{ background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} playing={playing} playbackRate={playbackRate} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
+    {controls && <div className="mt-2 flex items-center gap-2">
+      <button type="button" aria-label={playing ? "Pause composition" : "Play composition"} className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => setPlaying((current) => !current)}>{playing ? "Pause" : "Play"}</button>
+      <label className="min-w-0 flex-1 text-[10px] text-zinc-500">Frame {frame + 1} / {manifest.durationInFrames}<input aria-label="Preview frame" className="mt-1 w-full accent-[#1d9bf0]" type="range" min={0} max={manifest.durationInFrames - 1} value={frame} onChange={(event) => { setPlaying(false); setFrame(Number(event.target.value)); }}/></label>
+      <button type="button" aria-label="Restart composition" className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => setFrame(0)}>Restart</button>
+    </div>}
   </div>;
+}
+
+export function CutStudioCompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
+  const initialFrame = Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6);
+  return <div className="mt-3" aria-label="Deterministic composition preview"><CutStudioCompositionPlayer manifest={manifest} initialFrame={initialFrame}/></div>;
 }

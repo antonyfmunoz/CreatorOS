@@ -114,6 +114,28 @@ describe("CutStudio edit decision list", () => {
     expect(() => cutRenderRequestSchema.parse({ audioPreset: "unsafe-filter" })).toThrow();
   });
 
+  it("accepts deterministic composition render snapshots and cinema frame rates", () => {
+    const request = cutRenderRequestSchema.parse({
+      aspect: "source",
+      captions: false,
+      fps: 25,
+      composition: {
+        id: "00000000-0000-4000-8000-000000000001",
+        revision: 3,
+        name: "Launch variant",
+        renderBatchId: "launch.batch.render.1",
+        variantIndex: 0,
+        manifest: { version: 1 },
+      },
+    });
+    expect(request).toMatchObject({ fps: 25, composition: { revision: 3, renderBatchId: "launch.batch.render.1" } });
+    expect(cutRenderRequestSchema.parse({ fps: 50 }).fps).toBe(50);
+    expect(() => cutRenderRequestSchema.parse({
+      clip: { start: 0, end: 1 },
+      composition: { id: "00000000-0000-4000-8000-000000000001", revision: 1, name: "Variant", renderBatchId: "launch.batch.render.1", variantIndex: 0, manifest: {} },
+    })).toThrow(/clip range/i);
+  });
+
   it("routes tracks through named audio buses with render-effective gain and mute", () => {
     const tracks = [{ track: "a1", locked: false, hidden: false, muted: false, solo: false, gain: .8, bus: "music" as const }];
     const buses = [{ id: "music" as const, name: "Music bed", gain: .5, muted: false }];

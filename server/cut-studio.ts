@@ -10,6 +10,7 @@ import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
 import { CUT_STUDIO_RIVE_MAX_BYTES, validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
+import { compileCompositionToEdl, cutCompositionManifestSchema } from "@shared/cut-studio-production";
 import { z } from "zod";
 import { assets, cutStudioAudioTemplates, cutStudioCollaborators, cutStudioJobs, cutStudioProjectMedia, cutStudioProjects, cutStudioReviewComments, cutStudioReviewDecisions, cutStudioReviewLinks, cutStudioVersions, cutStudioWorkspaceNotes, mediaWorkerNodes, notifications, users } from "@shared/schema";
 import { normalizeMediaWorkerConfiguration } from "@shared/media-workers";
@@ -62,12 +63,14 @@ const projectMediaSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
   duration: z.number().finite().positive().max(43_200),
-  mediaKind: z.enum(["video", "audio", "image", "font", "lottie", "rive"]),
+  mediaKind: z.enum(["video", "audio", "image", "font", "lottie", "rive", "code_source", "code_lockfile"]),
 });
 
 const cutStudioFontMime = /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i;
 const cutStudioLottieMime = /^(application\/(json|lottie\+json)|text\/json)$/i;
 const cutStudioRiveMime = /^application\/(octet-stream|x-rive|vnd\.rive)$/i;
+const cutStudioCodeSourceMime = /^(application\/(zip|x-zip-compressed)|multipart\/x-zip)$/i;
+const cutStudioCodeLockfileMime = /^(application\/(json|octet-stream)|text\/(plain|yaml|x-yaml))$/i;
 
 async function validatePrivateLottieAsset(asset: typeof assets.$inferSelect) {
   if (asset.kind !== "cut-lottie" || !asset.mimeType || !cutStudioLottieMime.test(asset.mimeType) || asset.sizeBytes === null || asset.sizeBytes > 5 * 1024 * 1024) throw new Error("The private Lottie asset is invalid");
@@ -623,13 +626,13 @@ async function renderMultitrack(
     const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
     const inputPath = path.join(temp, `source-${index}${extension}`);
     await materializePrivateAsset(asset.storageKey, inputPath);
-    const rendererResource = ["cut-font", "cut-lottie", "cut-rive"].includes(asset.kind);
+    const rendererResource = ["cut-font", "cut-lottie", "cut-rive", "cut-code-source", "cut-code-lockfile"].includes(asset.kind);
     return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false } : await probeMedia(inputPath) };
   }));
   // Fonts and validated animation documents are renderer resources rather
   // than audiovisual demuxer inputs. Keep them addressable while excluding
   // them from the FFmpeg input list so generated-raster indexes remain stable.
-  const mediaInputs = inputs.filter((input) => !["cut-font", "cut-lottie", "cut-rive"].includes(input.asset.kind));
+  const mediaInputs = inputs.filter((input) => !["cut-font", "cut-lottie", "cut-rive", "cut-code-source", "cut-code-lockfile"].includes(input.asset.kind));
   const inputIndex = new Map(mediaInputs.map((input, index) => [input.asset.id, index]));
   const inputById = new Map(inputs.map((input) => [input.asset.id, input]));
   const settings = new Map(trackSettings.map((track) => [track.track, track]));
@@ -963,7 +966,18 @@ function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
   return filters;
 }
 
-async function renderJob(jobId: string, leaseToken: string, project: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
+async function renderJob(jobId: string, leaseToken: string, baseProject: typeof cutStudioProjects.$inferSelect, source: typeof assets.$inferSelect, request: z.infer<typeof cutRenderRequestSchema>) {
+  const compositionManifest = request.composition ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
+  const project = compositionManifest ? {
+    ...baseProject,
+    name: request.composition!.name,
+    duration: compositionManifest.durationInFrames / compositionManifest.fps,
+    transcript: null,
+    edl: validateCutEdl(
+      compileCompositionToEdl(compositionManifest, { version: 3, clips: [] }),
+      compositionManifest.durationInFrames / compositionManifest.fps,
+    ),
+  } : baseProject;
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
   const { outputName, outputPath, sourcePath } = cutRenderWorkspacePaths(temp, project.name, source.originalFilename);
   try {
@@ -982,9 +996,10 @@ async function renderJob(jobId: string, leaseToken: string, project: typeof cutS
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
       const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
-      const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true } }).returning();
+      const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
+      const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true, ...compositionMetadata } }).returning();
       await registerCutArtifact(source.id, artifact, "rendered_from");
-      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true } };
+      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
     }
     await materializePrivateAsset(source.storageKey, sourcePath);
     const media = await probeMedia(sourcePath);
@@ -1042,9 +1057,10 @@ async function renderJob(jobId: string, leaseToken: string, project: typeof cutS
     await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
     await runProcess("ffmpeg", args, 30 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
-    const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId } }).returning();
+    const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
+    const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, ...compositionMetadata } }).returning();
     await registerCutArtifact(source.id, artifact, "rendered_from");
-    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb } };
+    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }
@@ -1259,7 +1275,7 @@ export function registerCutStudioRoutes(app: Express) {
     put: (path: string, ...handlers: RequestHandler[]) => app.put(path, ...handlers.map(wrap)),
     delete: (path: string, ...handlers: RequestHandler[]) => app.delete(path, ...handlers.map(wrap)),
   };
-  registerCutStudioProductionRoutes(cut);
+  registerCutStudioProductionRoutes(cut, { queueRenderJob: queueJob });
   cut.get("/api/cut/reviews/:token", async (req, res) => {
     noStore(res);
     const review = await activeReview(req.params.token);
@@ -1610,11 +1626,11 @@ export function registerCutStudioRoutes(app: Express) {
   cut.post("/api/cut/projects/:id/media-library", attachUser, async (req, res) => {
     noStore(res);
     const parsed = projectMediaSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Valid private video, audio, image, font, Lottie, or Rive metadata is required" });
+    if (!parsed.success) return res.status(400).json({ message: "Valid private media or code-capsule metadata is required" });
     const project = await ownedProject(req.dbUser!.id, req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
     const asset = await ownedAsset(req.dbUser!.id, parsed.data.assetId);
-    const kindMatches = Boolean(asset && (parsed.data.mediaKind === "font" ? asset.kind === "cut-font" && asset.mimeType && cutStudioFontMime.test(asset.mimeType) : parsed.data.mediaKind === "lottie" ? asset.kind === "cut-lottie" && asset.mimeType && cutStudioLottieMime.test(asset.mimeType) : parsed.data.mediaKind === "rive" ? asset.kind === "cut-rive" && asset.mimeType && cutStudioRiveMime.test(asset.mimeType) : asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)));
+    const kindMatches = Boolean(asset && (parsed.data.mediaKind === "font" ? asset.kind === "cut-font" && asset.mimeType && cutStudioFontMime.test(asset.mimeType) : parsed.data.mediaKind === "lottie" ? asset.kind === "cut-lottie" && asset.mimeType && cutStudioLottieMime.test(asset.mimeType) : parsed.data.mediaKind === "rive" ? asset.kind === "cut-rive" && asset.mimeType && cutStudioRiveMime.test(asset.mimeType) : parsed.data.mediaKind === "code_source" ? asset.kind === "cut-code-source" && asset.mimeType && cutStudioCodeSourceMime.test(asset.mimeType) : parsed.data.mediaKind === "code_lockfile" ? asset.kind === "cut-code-lockfile" && asset.mimeType && cutStudioCodeLockfileMime.test(asset.mimeType) : asset.mimeType?.startsWith(`${parsed.data.mediaKind}/`)));
     if (!asset || asset.businessId !== project.businessId || asset.visibility !== "private" || asset.status !== "ready" || !kindMatches) return res.status(400).json({ message: "The private media asset is not ready" });
     let canonicalDuration = parsed.data.duration;
     if (parsed.data.mediaKind === "lottie") {

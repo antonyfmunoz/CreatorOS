@@ -197,6 +197,9 @@ describe("production safety boundaries", () => {
     expect(validateAssetUpload({ kind: "cut-lottie", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
     expect(validateAssetUpload({ kind: "cut-rive", mimeType: "application/octet-stream", sizeBytes: 20_000, visibility: "private" })).toBeNull();
     expect(validateAssetUpload({ kind: "cut-rive", mimeType: "text/html", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
+    expect(validateAssetUpload({ kind: "cut-code-source", mimeType: "application/zip", sizeBytes: 20_000, visibility: "private" })).toBeNull();
+    expect(validateAssetUpload({ kind: "cut-code-source", mimeType: "text/javascript", sizeBytes: 20_000, visibility: "private" })).toMatch(/not allowed/i);
+    expect(validateAssetUpload({ kind: "cut-code-lockfile", mimeType: "application/json", sizeBytes: 20_000, visibility: "private" })).toBeNull();
     expect(monthlyAssetQuotaFor("video").maxAssets).toBeLessThan(monthlyAssetQuotaFor("photo").maxAssets);
     expect(monthlyAssetQuotaFor("video")).toEqual({ maxBytes: 25 * 1024 * 1024 * 1024, maxAssets: 200 });
   });

@@ -9,6 +9,7 @@ const audioTemplateMigration = readFileSync(new URL("../migrations/0077_cut_stud
 const programmableCinemaMigration = readFileSync(new URL("../migrations/0114_cut_studio_programmable_cinema.sql", import.meta.url), "utf8");
 const lottieMediaMigration = readFileSync(new URL("../migrations/0117_cut_studio_lottie_media.sql", import.meta.url), "utf8");
 const riveMediaMigration = readFileSync(new URL("../migrations/0118_cut_studio_rive_media.sql", import.meta.url), "utf8");
+const codeCapsuleMigration = readFileSync(new URL("../migrations/0119_cut_studio_code_capsules.sql", import.meta.url), "utf8");
 
 describe("CutStudio persistence migration", () => {
   it("creates owner-scoped projects and durable jobs", () => {
@@ -72,5 +73,10 @@ describe("CutStudio persistence migration", () => {
   it("adds Rive after Lottie without broadening any other media contract", () => {
     expect(riveMediaMigration).toContain('DROP CONSTRAINT IF EXISTS "cut_studio_project_media_kind_check"');
     expect(riveMediaMigration).toContain("'video', 'audio', 'image', 'font', 'lottie', 'rive'");
+  });
+
+  it("adds only pinned code source and lockfiles to the project media contract", () => {
+    expect(codeCapsuleMigration).toContain('DROP CONSTRAINT IF EXISTS "cut_studio_project_media_kind_check"');
+    expect(codeCapsuleMigration).toContain("'code_source', 'code_lockfile'");
   });
 });

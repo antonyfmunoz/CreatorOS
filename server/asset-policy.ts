@@ -21,6 +21,8 @@ const policies: Record<string, { maxBytes: number; mime: (value: string) => bool
   "cut-font": { maxBytes: 12 * MEBIBYTE, mime: (value) => /^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(value) },
   "cut-lottie": { maxBytes: 5 * MEBIBYTE, mime: (value) => /^(application\/(json|lottie\+json)|text\/json)$/i.test(value) },
   "cut-rive": { maxBytes: 5 * MEBIBYTE, mime: (value) => /^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(value) },
+  "cut-code-source": { maxBytes: 25 * MEBIBYTE, mime: (value) => /^(application\/(zip|x-zip-compressed)|multipart\/x-zip)$/i.test(value) },
+  "cut-code-lockfile": { maxBytes: 2 * MEBIBYTE, mime: (value) => /^(application\/(json|octet-stream)|text\/(plain|yaml|x-yaml))$/i.test(value) },
   download: { maxBytes: 500 * MEBIBYTE, mime: () => true },
 };
 
@@ -48,5 +50,7 @@ export function monthlyAssetQuotaFor(kind: string) {
   if (kind === "cut-font") return { maxBytes: 256 * MEBIBYTE, maxAssets: 200 };
   if (kind === "cut-lottie") return { maxBytes: 256 * MEBIBYTE, maxAssets: 500 };
   if (kind === "cut-rive") return { maxBytes: 256 * MEBIBYTE, maxAssets: 500 };
+  if (kind === "cut-code-source") return { maxBytes: 2 * 1024 * MEBIBYTE, maxAssets: 200 };
+  if (kind === "cut-code-lockfile") return { maxBytes: 128 * MEBIBYTE, maxAssets: 500 };
   return { maxBytes: 10 * 1024 * MEBIBYTE, maxAssets: 2_000 };
 }
