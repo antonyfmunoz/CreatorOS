@@ -66,6 +66,7 @@ import { cutGraphicColorFilters } from "./cut-graphic-color";
 import { reserveCutWorkerSlot } from "./cut-worker-admission";
 import { cutColorMatrixControls } from "../shared/cut-color-effects";
 import { cutFilterGraphArgs } from "./cut-filter-graph";
+import { cutFilterThreadArgs } from "./cut-filter-budget";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -1024,7 +1025,7 @@ async function renderMultitrack(
   // Authored curves can exceed OS argument-length limits. This is generated
   // filter data in the job's private temporary directory, not executable input.
   const filterGraphArgs = await cutFilterGraphArgs(temp, filters);
-  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
+  const args = ["-y", ...cutFilterThreadArgs(), ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }
