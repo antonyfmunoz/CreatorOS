@@ -63,10 +63,16 @@ test('saved nonlinear compositions retain two-pixel preview and native position 
   }
   await waitForCutRender(page.request, job.id, info);
   const completed = await (await page.request.get(`/api/cut/jobs/${job.id}`)).json(); expect(completed, completed.detail).toMatchObject({ state: 'done' });
+  // Decode the actual private export once locally. Eight frame comparisons are
+  // not eight user still-export actions and must not consume that API's quota.
+  const media = await page.request.get(`/api/cut/jobs/${job.id}/media-file`);
+  expect(media.ok(), `Private export HTTP ${media.status()}`).toBeTruthy();
+  const exportPath = `${directory}/render.mp4`; writeFileSync(exportPath, await media.body());
   const receipts: unknown[] = [];
   for (const [frame, preview] of previews) {
-    const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=${frame}`); expect(still.ok()).toBeTruthy();
-    const output = await still.body(); writeFileSync(`${directory}/export-${frame}.png`, output);
+    const output = execFileSync('ffmpeg', ['-v', 'error', '-i', exportPath, '-vf', `select=eq(n\\,${frame})`, '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
+      { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+    writeFileSync(`${directory}/export-${frame}.png`, output);
     const expected = evaluateCompositionFrame(manifest, frame).filter((layer) => layer.kind === 'shape');
     for (const [kind, bytes] of [['preview', preview], ['native', output]] as const) {
       const image = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
