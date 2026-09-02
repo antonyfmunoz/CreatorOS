@@ -24,7 +24,7 @@ test('native RGB color controls match CSS channel equations and preserve every a
   }
   const receipts: unknown[] = [];
   const controls: Array<[string, string, number?]> = [['0', '1'], ['0.5', '1'], ['1', '1'], ['1.5', '1'], ['4', '1'], ['1', '0'], ['1', '0.5'], ['1', '2'], ['1', '4'], ['1.5', '0.5'], ['.9', '.7'], ['0.5+T', '1'], ['0.5+T', '2*T'],
-    ['1', '1', 0], ['1', '1', .5], ['1', '1', 2], ['.8', '.7', 2], ['1.5', '.5', .5], ['.9', '4', 1.5], ['0.5+T', '2*T', .5]];
+    ['1', '1', 0], ['1', '1', .5], ['1', '1', 2], ['.8', '.7', 2], ['1.5', '.5', .5], ['.9', '4', 1.5], ['0.5+T', '2*T', .5], ['.25', '8', 8], ['8', '1', 8]];
   for (const [brightness, saturation, contrast = 1] of controls) {
     const output = execFileSync('ffmpeg', ['-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${width}x${height}`, '-r', '6', '-i', 'pipe:0',
       '-vf', ['settb=AVTB', ...cutGraphicColorFilters(brightness, saturation, 'graphiccolor', contrast)].join(','), '-frames:v', String(frames), '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1'],
