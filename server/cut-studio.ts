@@ -2,6 +2,7 @@ import type { Express, RequestHandler, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
+import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutFitVideoFilters, cutSourceVideoFilters, cutSourceRenditionSize } from "./cut-video-geometry";
 import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
@@ -661,7 +662,8 @@ async function renderMultitrack(
   const soloAudioTracks = new Set(audioTracks.filter((track) => settings.get(track)?.solo));
   const audioTrackEnabled = (track: string) => !settings.get(track)?.muted && (!soloAudioTracks.size || soloAudioTracks.has(track));
   const trackGain = (track: string) => cutTrackEffectiveGain(track, trackSettings, audioBuses);
-  const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
+  const primaryPlan = cutPrimaryTimeline({ version: 3, clips, graphics });
+  const primaryClips = primaryPlan.segments.flatMap((segment) => segment.clip ? [segment.clip] : []);
   if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
   const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.some((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
   const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
@@ -670,18 +672,22 @@ async function renderMultitrack(
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
-  for (let index = 0; index < primaryClips.length; index += 1) {
-    const clip = primaryClips[index];
+  for (let index = 0; index < primaryPlan.segments.length; index += 1) {
+    const { clip, duration: outputDuration } = primaryPlan.segments[index];
+    primaryDurations.push(outputDuration);
+    if (!clip) {
+      filters.push(`color=c=black:s=${size[0]}x${size[1]}:r=${request.fps}:d=${outputDuration},format=yuv420p,settb=AVTB[basev${index}]`);
+      if (primaryHasAudio) filters.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${outputDuration},asetpts=PTS-STARTPTS[basea${index}]`);
+      continue;
+    }
     const assetId = clip.assetId ?? source.id;
     const media = inputById.get(assetId)?.media;
     const sourceIndex = inputIndex.get(assetId);
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
-    const outputDuration = (clip.end - clip.start) / speed;
-    primaryDurations.push(outputDuration);
     const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
     const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
-    const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryClips.length - 1 ? transitionFade : 0), outputDuration / 2);
+    const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryPlan.segments.length - 1 ? transitionFade : 0), outputDuration / 2);
     const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
@@ -700,8 +706,8 @@ async function renderMultitrack(
   let primaryVideoLabel = "basev0";
   let primaryAudioLabel = primaryHasAudio ? "basea0" : null;
   let primaryDuration = primaryDurations[0];
-  for (let index = 1; index < primaryClips.length; index += 1) {
-    const dissolve = primaryClips[index].transition === "cross_dissolve";
+  for (let index = 1; index < primaryPlan.segments.length; index += 1) {
+    const dissolve = primaryPlan.segments[index].clip?.transition === "cross_dissolve";
     if (dissolve) {
       const duration = Math.min(0.35, primaryDurations[index - 1] / 2, primaryDurations[index] / 2);
       filters.push(`[${primaryVideoLabel}]tpad=stop_mode=clone:stop_duration=${duration}[dissolvepadv${index}]`);
@@ -1031,7 +1037,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     const lutPaths = await materializeCutLuts(project, clips, temp);
-    if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
+    if (project.edl.version === 3 && project.mediaKind === "video" && (cutPrimaryTimeline({ ...project.edl, clips }).requiresTimeline || clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
@@ -1850,6 +1856,10 @@ export function registerCutStudioRoutes(app: Express) {
       const [current] = await transaction.select().from(cutStudioProjects).where(and(eq(cutStudioProjects.id, project.id), eq(cutStudioProjects.ownerUserId, req.dbUser!.id))).for("share");
       if (!current) return { status: 404, message: "Project not found" } as const;
       if (expected !== undefined && current.revision !== expected) return { status: 409, message: "The edit changed before rendering. Reload or finish saving, then try again." } as const;
+      if (current.edl.version === 3 && current.mediaKind === "video") {
+        try { cutPrimaryTimeline(current.edl); }
+        catch (error) { return { status: 400, message: error instanceof Error ? error.message : "Invalid primary timeline" } as const; }
+      }
       const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(eq(cutStudioJobs.ownerUserId, current.ownerUserId), sql`${cutStudioJobs.state} in ('queued', 'running')`));
       if ((active?.count ?? 0) >= 2) return { status: 429, message: "Wait for an active CutStudio job to finish before starting another" } as const;
       const requestedDuration = parsed.data.clip ? Math.max(0, parsed.data.clip.end - parsed.data.clip.start) : cutDuration(current.edl);
