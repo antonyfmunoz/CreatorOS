@@ -39,11 +39,11 @@ const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);
 records.push({ test: 'network-metadata-file-denied', ...boundary.receipt, isolation: boundary.isolation });
 console.log('PASS external network, cloud metadata and local-file attempts denied');
-await assert.rejects(renderIsolated({ request, source: capsule('while(true){};export default ()=>null;'), image, timeoutMs: 7000 }), (error) => error.killed === true && error.signal === 'SIGTERM' && error.cmd.includes('start --attach'));
+await assert.rejects(renderIsolated({ request, source: capsule('while(true){};export default ()=>null;'), image, timeoutMs: 7000 }), (error) => error.code === 'CUT_RENDER_TIMEOUT');
 console.log('PASS infinite-loop termination');
 const abort = new AbortController();
 const cancellation = setTimeout(() => abort.abort(), 7000);
-try { await assert.rejects(renderIsolated({ request, source: capsule('while(true){};export default ()=>null;'), image, signal: abort.signal }), (error) => error.name === 'AbortError' && error.code === 'ABORT_ERR'); }
+try { await assert.rejects(renderIsolated({ request, source: capsule('while(true){};export default ()=>null;'), image, signal: abort.signal }), (error) => error.code === 'CUT_RENDER_CANCELLED'); }
 finally { clearTimeout(cancellation); }
 const remaining = execFileSync('docker', ['ps', '-a', '--filter', 'name=creativesos-cut-code-', '--format', '{{.Names}}'], { encoding: 'utf8', windowsHide: true }).trim();
 assert.equal(remaining, '', 'No code-render container may remain after cancellation.');

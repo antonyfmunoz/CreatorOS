@@ -52,7 +52,20 @@ export async function renderIsolated({ request: rawRequest, source, image, signa
     const actualSeccomp = descriptor.HostConfig.SecurityOpt.find((option) => option.startsWith('seccomp={')).slice('seccomp='.length);
     if (JSON.stringify(JSON.parse(actualSeccomp)) !== JSON.stringify(JSON.parse(await readFile(path.join(root, 'seccomp.json'), 'utf8')))) throw new Error('Unexpected seccomp policy.');
     signal?.throwIfAborted();
-    const result = await docker(['start', '--attach', name], { timeout: timeoutMs, signal, maxBuffer: Math.ceil(MAX_ARTIFACT_BYTES * 4 / 3) + 16_384 });
+    const deadline = new AbortController();
+    const deadlineTimer = setTimeout(() => deadline.abort(), timeoutMs);
+    let result;
+    try {
+      result = await docker(['start', '--attach', name], { timeout: 0, signal: signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal, maxBuffer: Math.ceil(MAX_ARTIFACT_BYTES * 4 / 3) + 16_384 });
+    } catch (error) {
+      // Docker's termination signal differs across Windows/Linux (including
+      // SIGPIPE). Report the actual controller event, not the incidental signal.
+      if (deadline.signal.aborted) throw Object.assign(new Error('The isolated render exceeded its deadline.'), { code: 'CUT_RENDER_TIMEOUT' });
+      if (signal?.aborted) throw Object.assign(new Error('The isolated render was cancelled.'), { code: 'CUT_RENDER_CANCELLED' });
+      throw error;
+    } finally {
+      clearTimeout(deadlineTimer);
+    }
     const state = JSON.parse((await docker(['inspect', name])).stdout)[0].State;
     if (state.Running || state.ExitCode !== 0 || state.OOMKilled) throw new Error(`Isolated render failed (exit ${state.ExitCode}, memory limit ${state.OOMKilled}). ${result.stderr.trim().slice(0, 400)}`);
     const payload = JSON.parse(result.stdout);
