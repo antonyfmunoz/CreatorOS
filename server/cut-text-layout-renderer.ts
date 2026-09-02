@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Browser } from "playwright-core";
 import { cutTextLayoutSchema, cutTextStyles, CUT_NATIVE_TEXT_MAX_CHARACTERS, type CutTextLayout } from "../shared/cut-text-layout";
 import { launchCutNativeRenderer } from "./cut-animation-renderer";
+import { fitCutTextBox } from "../shared/cut-text-fit";
 
 export const cutDefaultFontPath = () => path.resolve("shared/assets/cut-fonts/NotoSans-Variable.ttf");
 
@@ -49,7 +50,10 @@ export function createCutTextRasterizer() {
         content.textContent = text;
         await document.fonts.ready;
       }, { text: input.text, style: styles, encodedFont: fontBytes.toString("base64"), weight: layout.fontFaceWeight === undefined ? "100 900" : String(layout.fontFaceWeight), fontStyle: layout.fontFaceStyle });
+      const fitted = layout.autoFit ? await page.evaluate(fitCutTextBox, { boxId: "box", contentId: "content", maximum: `${layout.fontSize * input.canvasWidth / input.referenceWidth}px`, minimum: `${Math.min(layout.minimumFontSize, layout.fontSize) * input.canvasWidth / input.referenceWidth}px`, maxLines: layout.maxLines }) : null;
+      if (fitted && !fitted.fits) throw new Error("Text cannot fit within its layer at the minimum font size; enlarge the layer, shorten the text or lower the minimum size.");
       await page.screenshot({ path: input.outputPath, type: "png", omitBackground: true, clip: { x: 0, y: 0, width: input.width, height: input.height }, timeout: 10_000 });
+      return fitted;
     } finally {
       if (deadline) clearTimeout(deadline);
       await context?.close().catch(() => undefined);

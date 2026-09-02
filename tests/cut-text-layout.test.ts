@@ -36,4 +36,10 @@ describe("shared native composition text layout", () => {
     expect(createHash("sha256").update(bytes).digest("hex")).toBe("bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d");
     expect(readFileSync("shared/assets/cut-fonts/OFL.txt", "utf8")).toContain("SIL OPEN FONT LICENSE Version 1.1");
   });
+  it("bounds opt-in fitting without changing legacy layout defaults", () => {
+    expect(resolveCutTextLayout({})).toMatchObject({ autoFit: false, minimumFontSize: 8, maxLines: 0 });
+    expect(resolveCutTextLayout({ autoFit: true, minimumFontSize: 200, fontSize: 48, maxLines: 300 })).toMatchObject({ autoFit: true, minimumFontSize: 48, maxLines: 20 });
+    expect(() => cutTextLayoutSchema.parse({ autoFit: "true" })).toThrow();
+    expect(() => cutTextLayoutSchema.parse({ maxLines: 1.5 })).toThrow();
+  });
 });

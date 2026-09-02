@@ -15,6 +15,9 @@ export const cutTextLayoutSchema = z.object({
   paddingX: z.number().finite().min(0).max(200).default(12),
   paddingY: z.number().finite().min(0).max(200).default(8),
   radius: z.number().finite().min(0).max(100).default(4),
+  autoFit: z.boolean().default(false),
+  minimumFontSize: z.number().finite().min(8).max(400).default(8),
+  maxLines: z.number().int().min(0).max(20).default(0),
 });
 export type CutTextLayout = z.infer<typeof cutTextLayoutSchema>;
 
@@ -33,6 +36,9 @@ export function resolveCutTextLayout(style: Record<string, unknown>, font?: { we
     letterSpacing: bounded(style.letterSpacing, 0, -5, 20),
     paddingX: bounded(style.paddingX, 12, 0, 200), paddingY: bounded(style.paddingY, 8, 0, 200),
     radius: bounded(style.textRadius, 4, 0, 100),
+    autoFit: style.autoFit === true,
+    minimumFontSize: Math.min(bounded(style.minimumFontSize, 8, 8, 400), bounded(style.fontSize, 48, 8, 400)),
+    maxLines: Math.round(bounded(style.maxLines, 0, 0, 20)),
   });
 }
 
