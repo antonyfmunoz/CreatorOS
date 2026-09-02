@@ -84,7 +84,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: fontAsset.id, name: "Editorial Serif", duration: 2, mediaKind: "font" }));
   const lottieDocument = {
     v: "5.13.0", fr: 30, ip: 0, op: 60, w: 100, h: 100, assets: [],
-    layers: [{ ddd: 0, ind: 1, ty: 1, nm: "Moving brand block", sr: 1, ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 1, k: [{ t: 0, s: [25, 50, 0], e: [75, 50, 0] }, { t: 60, s: [75, 50, 0] }] }, a: { a: 0, k: [50, 50, 0] }, s: { a: 0, k: [50, 50, 100] } }, ao: 0, sw: 100, sh: 100, sc: "#00ff88", ip: 0, op: 60, st: 0, bm: 0 }],
+    layers: [{ ddd: 0, ind: 1, ty: 1, nm: "Moving brand block", sr: 1, ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 1, k: [{ t: 0, s: [25, 50, 0], e: [75, 50, 0], i: { x: [1, 1, 1], y: [1, 1, 1] }, o: { x: [0, 0, 0], y: [0, 0, 0] } }, { t: 60, s: [75, 50, 0] }] }, a: { a: 0, k: [50, 50, 0] }, s: { a: 0, k: [50, 50, 100] } }, ao: 0, sw: 100, sh: 100, sc: "#00ff88", ip: 0, op: 60, st: 0, bm: 0 }],
   };
   const lottieUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-lottie", visibility: "private", lottie: { name: "moving-brand.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(lottieDocument)) } } });
   await expectOk(lottieUpload);

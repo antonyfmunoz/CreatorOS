@@ -11,6 +11,7 @@ import { materializeStoredAsset, persistManagedFile, persistManagedFileAtKey } f
 import { db } from "./db";
 import { recordOperationalServiceEvent } from "./operations";
 import { estimatedComputeCostMicros } from "@shared/operations";
+import { reserveWorkerSlot } from "./worker-admission";
 
 type Probe = {
   durationMs: number;
@@ -334,8 +335,7 @@ export function cancelMediaProcess(jobId: string) {
 }
 
 export async function processMediaJob(jobId: string) {
-  if (running.has(jobId)) return false;
-  running.add(jobId);
+  if (!reserveWorkerSlot(running, jobId, worker.maxConcurrency, workerStopping)) return false;
   try {
     const now = new Date();
     const leaseToken = randomUUID();

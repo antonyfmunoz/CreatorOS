@@ -1,13 +1,19 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, closeDatabase } from "../server/db";
-import { claimCutStudioJob, recoverInterruptedCutStudioJobs } from "../server/cut-studio";
-import { claimMediaJob, recoverInterruptedMediaJobs } from "../server/media-processing";
+import { claimCutStudioJob, cutWorkerIdentity, recoverInterruptedCutStudioJobs } from "../server/cut-studio";
+import { qualifyCutWorkerAdmission } from "./qualify-cut-worker-admission";
+import { qualifyMediaWorkerAdmission } from "./qualify-media-worker-admission";
+import { qualifyCutJobCancellation } from "./qualify-cut-job-cancellation";
+import { claimMediaJob, mediaWorkerIdentity, recoverInterruptedMediaJobs } from "../server/media-processing";
 import { assets, businesses, cutStudioJobs, cutStudioProjects, mediaProcessingJobs, mediaWorkerNodes, users } from "../shared/schema";
 
 const expired = new Date(Date.now() - 60_000);
 const active = new Date(Date.now() + 5 * 60_000);
-const workerNodeIds = ["iad-active", "sjc-stale"];
+const workerNodeIds = ["iad-active", "sjc-stale", cutWorkerIdentity().id, mediaWorkerIdentity().id];
 let qualificationPassed = false;
+let admissionReceipt: Awaited<ReturnType<typeof qualifyCutWorkerAdmission>> | undefined;
+let mediaAdmissionReceipt: Awaited<ReturnType<typeof qualifyMediaWorkerAdmission>> | undefined;
+let cancellationReceipt: Awaited<ReturnType<typeof qualifyCutJobCancellation>> | undefined;
 
 if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
   throw new Error("Worker resilience qualification requires an isolated disposable database");
@@ -18,6 +24,10 @@ try {
   const [business] = await db.insert(businesses).values({ ownerUserId: user.id, name: "Worker resilience", handle: "worker-resilience", isDefault: true }).returning();
   const [asset] = await db.insert(assets).values({ ownerUserId: user.id, businessId: business.id, kind: "video", storageProvider: "local", storageKey: "qualification/source.mp4", mimeType: "video/mp4", sizeBytes: 1, visibility: "private", status: "ready", originalFilename: "source.mp4" }).returning();
   const [project] = await db.insert(cutStudioProjects).values({ ownerUserId: user.id, businessId: business.id, sourceAssetId: asset.id, name: "Lease recovery", duration: 10, mediaKind: "video", edl: { version: 3, clips: [{ id: "clip", start: 0, end: 10, timelineStart: 0, trackId: "video-1", assetId: asset.id }], tracks: [{ id: "video-1", kind: "video", name: "Video 1", order: 0, locked: false, hidden: false, muted: false, solo: false, gain: 1 }], graphics: [], audioBuses: [], markers: [] } }).returning();
+
+  admissionReceipt = await qualifyCutWorkerAdmission(project);
+  mediaAdmissionReceipt = await qualifyMediaWorkerAdmission(asset);
+  cancellationReceipt = await qualifyCutJobCancellation(project);
 
   await db.insert(mediaWorkerNodes).values([
     { id: "iad-active", region: "iad", capabilities: ["transcode"], maxConcurrency: 2, activeJobs: 1, status: "active", heartbeatAt: new Date() },
@@ -35,12 +45,17 @@ try {
   const [contendedMedia] = await db.insert(mediaProcessingJobs).values({ assetId: asset.id, ownerUserId: user.id, businessId: business.id, kind: "transcode", state: "queued", idempotencyKey: "contended-media-job" }).returning();
   const [contendedCut] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: user.id, kind: "render", state: "queued", detail: "contended" }).returning();
   const mediaContenders = ["iad-claimant", "sjc-claimant"].map((id) => ({ id, region: id.slice(0, 3), capabilities: ["transcode"], maxConcurrency: 1, version: "qualification" }));
-  const cutContenders = ["iad-cut-claimant", "sjc-cut-claimant"].map((id) => ({ id, region: id.slice(0, 3), capabilities: ["cut_render"], maxConcurrency: 1, version: "qualification" }));
+  const cutContenders = ["creativesos-qualification-first", "creativesos-qualification-second"].map((execution) => cutWorkerIdentity({
+    CLOUD_RUN_EXECUTION: execution, CLOUD_RUN_TASK_INDEX: "0", CLOUD_RUN_TASK_ATTEMPT: "0", CUT_WORKER_REGION: "us-central1", CUT_WORKER_CONCURRENCY: "1", CUT_WORKER_CAPABILITIES: "cut_render", RELEASE_COMMIT: "qualification",
+  }));
+  if (cutContenders[0].id === cutContenders[1].id) throw new Error("Independent cloud executions share a worker identity");
   const [mediaClaims, cutClaims] = await Promise.all([
     Promise.all(mediaContenders.map((identity) => claimMediaJob(contendedMedia.id, identity, crypto.randomUUID()))),
     Promise.all(cutContenders.map((identity) => claimCutStudioJob(contendedCut.id, identity, crypto.randomUUID()))),
   ]);
   if (mediaClaims.filter(Boolean).length !== 1 || cutClaims.filter(Boolean).length !== 1) throw new Error("Concurrent worker claims were not serialized");
+  const claimedCut = cutClaims.find(Boolean);
+  if (!claimedCut || !cutContenders.some((identity) => identity.id === claimedCut.workerId)) throw new Error("Cloud claim lost its execution-specific identity");
   await Promise.all([
     db.update(mediaProcessingJobs).set({ state: "cancelled", leaseExpiresAt: null }).where(eq(mediaProcessingJobs.id, contendedMedia.id)),
     db.update(cutStudioJobs).set({ state: "cancelled", leaseExpiresAt: null }).where(eq(cutStudioJobs.id, contendedCut.id)),
@@ -86,7 +101,7 @@ try {
       .where(eq(users.clerkId, "worker_resilience"));
     if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
     if (qualificationPassed) {
-      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true, fixtureLeakage: 0 }));
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt, cancellation: cancellationReceipt }));
     }
   } finally {
     await closeDatabase();

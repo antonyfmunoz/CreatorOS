@@ -4,6 +4,14 @@ import { cutColorMatrixControls } from "../shared/cut-color-effects";
 import { cutGraphicSchema } from "../shared/cut-studio";
 
 describe("native CSS graphic color compilation", () => {
+  it("caches only opted-in compiler scalars, leaving pixel samples and alpha independent", () => {
+    const dynamic = cutGraphicColorFilters("1+T", "T", "cached", 1, { frameUniform: true }).join(",");
+    expect(dynamic).toContain("if(eq(ld(7),N+1),0,st(2,1+T);st(3,T);st(7,N+1));st(4,clip(r(X,Y)*ld(2)");
+    expect(dynamic).toContain("a='alpha(X,Y)'");
+    expect(cutGraphicColorFilters("1+T", "1", "cached", 1, { frameUniform: true }).join(",")).toContain("st(7,N+1));round(clip(r(X,Y)*ld(2)");
+    expect(cutGraphicColorFilters("X/W", "1").join(",")).not.toContain("st(7");
+    expect(cutGraphicColorFilters("1", "1", "cached", 1, { frameUniform: true })).toEqual(["format=rgba"]);
+  });
   it("leaves neutral RGB unchanged and avoids expensive per-pixel expressions", () => {
     expect(cutGraphicColorFilters("1", "1")).toEqual(["format=rgba"]);
     expect(cutGraphicColorFilters("0.5", "1").join(",")).toContain("lutrgb=");

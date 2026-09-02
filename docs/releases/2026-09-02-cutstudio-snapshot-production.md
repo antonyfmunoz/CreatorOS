@@ -40,7 +40,7 @@ source contents are not included in the committed receipt. Local video, frames
 and machine-readable receipt are retained at
 `B:/CreativesOS-task-artifacts/production-snapshot-7785912`.
 
-## Unclosed execution-identity gate
+## Original execution-identity gate and recovered management evidence
 
 Google's human management credentials expired during this run; both existing
 Cloud sign-in tabs require a password. The app's independent service-account
@@ -50,3 +50,19 @@ been inspected. The earlier verified job configuration is not a substitute for
 that execution receipt. Management reauthentication is required to finish this
 check and promote later worker source. This document does not claim full
 production-chain closure, public TSX execution or general Remotion parity.
+
+Management access succeeded again on 2026-09-02 at approximately 20:32 UTC.
+The dispatch log binds this owned job to operation
+`6e8e57ef-468f-4eb8-a6d6-dc1f4ff58e76`. The completed operation response identifies
+execution `creativesos-cut-worker-bv7tv`, the exact image digest above, one
+successful task and completion at `2026-09-02T10:32:31.875437Z`. Its worker log
+records one processed job at `10:32:26.883473Z`, with the same source label.
+The sanitized independent receipt is retained as
+`production-snapshot-7785912/execution-receipt.json`. This closes the missing
+dispatch-to-execution/image inspection; it is not a new deployment or render.
+
+The historical worker did not emit individual claim IDs and reported the
+nonunique fallback `localhost:1:cut`. A follow-up adds execution/task/attempt
+identity and per-claim correlation for future releases. Those improvements
+still need exact-source production proof; the historical receipt is not
+retroactively upgraded to a claim-level trace.

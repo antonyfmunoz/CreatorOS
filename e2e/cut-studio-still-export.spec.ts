@@ -1,11 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
-import { expect, test } from "@playwright/test";
+import { expect, test as base } from "@playwright/test";
+
+// Independent ordinary accounts keep unrelated export tests from consuming
+// this permission/format test's unchanged production rate allowance.
+const test = base.extend({ extraHTTPHeaders: async ({}, use, info) => {
+  await use({ "x-creativesos-demo-user": info.project.name.startsWith("mobile") ? "6" : "7" });
+} });
 
 test("CutStudio exports exact private finished frames with permission and format enforcement", async ({ page }, info) => {
   test.setTimeout(120_000);
-  const owner = info.project.name.startsWith("mobile") ? 1 : 2;
+  const owner = info.project.name.startsWith("mobile") ? 6 : 7;
   // Use a dedicated reviewer so mobile requests cannot spend the desktop
   // owner's frame-export allowance (or vice versa).
   const peer = 4;

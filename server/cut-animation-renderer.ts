@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { chromium, type Browser, type Page } from "playwright-core";
+import type { CutNativeBrowserSession } from "./cut-native-browser-session";
 
 const require = createRequire(import.meta.url);
 const MAX_ANIMATION_FRAMES = 3_600;
@@ -129,6 +130,8 @@ export async function renderCutAnimationFrames(input: {
   height: number;
   fps: number;
   duration: number;
+  onProgress?: (completedFrames: number, totalFrames: number) => Promise<void>;
+  session?: CutNativeBrowserSession;
 }) {
   if (!Number.isInteger(input.width) || !Number.isInteger(input.height) || input.width < 2 || input.height < 2 || input.width * input.height > MAX_ANIMATION_PIXELS) {
     throw new Error("Animation render dimensions exceed the isolated renderer budget");
@@ -136,9 +139,10 @@ export async function renderCutAnimationFrames(input: {
   const frameCount = cutAnimationFrameCount(input.duration, input.fps);
   await fs.mkdir(input.outputDirectory, { recursive: true });
   let browser: Browser | null = null;
+  let context: Awaited<ReturnType<Browser["newContext"]>> | undefined;
   try {
-    browser = await launchCutNativeRenderer();
-    const context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block" });
+    browser = input.session ? await input.session.browser() : await launchCutNativeRenderer();
+    context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block" });
     const page = await context.newPage();
     await page.route("**/*", async (route) => {
       if (route.request().url() === "https://cutstudio.invalid/rive.wasm") return route.continue();
@@ -152,10 +156,11 @@ export async function renderCutAnimationFrames(input: {
       // for two paint frames; repeating locator visibility/stability waits for
       // every exported frame slows all animation-heavy variant batches.
       await page.screenshot({ path: path.join(input.outputDirectory, `frame-${String(frame).padStart(6, "0")}.png`), clip: { x: 0, y: 0, width: input.width, height: input.height }, omitBackground: true });
+      if ((frame + 1) % 10 === 0 || frame + 1 === frameCount) await input.onProgress?.(frame + 1, frameCount);
     }
-    await context.close();
     return { frameCount, pattern: path.join(input.outputDirectory, "frame-%06d.png") };
   } finally {
-    await browser?.close().catch(() => undefined);
+    await context?.close().catch(() => undefined);
+    if (!input.session) await browser?.close().catch(() => undefined);
   }
 }

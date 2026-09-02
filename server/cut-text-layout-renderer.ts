@@ -2,19 +2,18 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Browser } from "playwright-core";
 import { cutTextLayoutSchema, cutTextStyles, CUT_NATIVE_TEXT_MAX_CHARACTERS, type CutTextLayout } from "../shared/cut-text-layout";
-import { launchCutNativeRenderer } from "./cut-animation-renderer";
+import { createCutNativeBrowserSession, type CutNativeBrowserSession } from "./cut-native-browser-session";
 import { fitCutTextBox } from "../shared/cut-text-fit";
 
 export const cutDefaultFontPath = () => path.resolve("shared/assets/cut-fonts/NotoSans-Variable.ttf");
 
 // Native, data-only text, not a code-capsule executor. One browser per job,
 // isolated contexts per title, no external requests or user HTML/JavaScript.
-export function createCutTextRasterizer() {
-  let browserPromise: Promise<Browser> | undefined;
+export function createCutTextRasterizer(session: CutNativeBrowserSession = createCutNativeBrowserSession()) {
   let closed = false;
   const close = async () => {
     closed = true;
-    if (browserPromise) await browserPromise.then((browser) => browser.close()).catch(() => undefined);
+    await session.close();
   };
   const render = async (input: { text: string; layout: CutTextLayout; width: number; height: number; canvasWidth: number; referenceWidth: number; textColor: string; backgroundColor: string; backgroundOpacity: number; fontPath?: string; outputPath: string }) => {
     if (closed) throw new Error("Text renderer is closed");
@@ -32,8 +31,7 @@ export function createCutTextRasterizer() {
     let context: Awaited<ReturnType<Browser["newContext"]>> | undefined;
     try {
       deadline = setTimeout(() => { void close(); }, 30_000);
-      browserPromise ??= launchCutNativeRenderer();
-      const browser = await browserPromise;
+      const browser = await session.browser();
       context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block", offline: true });
       await context.route("**/*", (route) => route.abort("blockedbyclient"));
       const page = await context.newPage();

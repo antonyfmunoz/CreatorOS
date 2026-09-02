@@ -25,6 +25,10 @@ const [owner, peer, moderator, buyer, learner] = await db.insert(users).values([
   { clerkId: "qualification_moderator", authEmail: "moderator@example.invalid", username: "moderator", displayName: "Community Moderator", bio: "Keeps community conversations useful and safe.", role: "admin" },
   { clerkId: "qualification_buyer", authEmail: "buyer@example.invalid", username: "buyer", displayName: "Marketplace Buyer", bio: "Discovers independent creative products." },
   { clerkId: "qualification_learner", authEmail: "learner@example.invalid", username: "learner", displayName: "Course Learner", bio: "Learns from working creatives." },
+  { clerkId: "qualification_still_mobile", authEmail: "still-mobile@example.invalid", username: "still_mobile", displayName: "Still Mobile Creative" },
+  { clerkId: "qualification_still_desktop", authEmail: "still-desktop@example.invalid", username: "still_desktop", displayName: "Still Desktop Creative" },
+  { clerkId: "qualification_fitting_mobile", authEmail: "fitting-mobile@example.invalid", username: "fitting_mobile", displayName: "Fitting Mobile Creative" },
+  { clerkId: "qualification_fitting_desktop", authEmail: "fitting-desktop@example.invalid", username: "fitting_desktop", displayName: "Fitting Desktop Creative" },
 ]).returning();
 
 const actorIds = [owner.id, peer.id, moderator.id, buyer.id, learner.id];
