@@ -49,6 +49,12 @@ idempotent admission-slot release.
 Protected CI, deployment and a live private-artifact field test are separate
 qualification gates.
 
+Full protected qualification exposed an existing shared-IP render-budget bug:
+an editor's authorization probes and render requests exhausted the owner's
+five-request limit. The composition batch limiter now keys the same unchanged
+ceiling to the authenticated account. The owner/editor/revocation journey
+exercises both accounts on one network; no qualification bypass was added.
+
 Local evidence: 134 test files / 550 unit tests and TypeScript pass. Both mobile
 and desktop frame-export journeys pass (2/2), including actual encoded-video
 pixels and normal-user downloads. The generated Worker declaration now checks

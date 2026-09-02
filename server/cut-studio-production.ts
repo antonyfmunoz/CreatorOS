@@ -55,7 +55,9 @@ const variantImportInput = z.object({
   label: z.string().trim().min(1).max(160).default("Imported candidate"),
 }).strict();
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
-const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false });
+// Teammates behind the same office/NAT address have independent render budgets.
+// attachUser runs before this limiter; keep the existing five-request ceiling.
+const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionMediaLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderBatchInput = z.object({
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
