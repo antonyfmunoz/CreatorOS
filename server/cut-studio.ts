@@ -958,7 +958,7 @@ async function renderMultitrack(
     }
     const brightness = graphicMotionExpression(graphic, "brightness", 1, "T");
     const saturation = graphicMotionExpression(graphic, "saturation", 1, "T");
-    rasterFilters.push(...cutGraphicColorFilters(brightness, saturation, `graphiccolor${index}`));
+    rasterFilters.push(...cutGraphicColorFilters(brightness, saturation, `graphiccolor${index}`, 1, { frameUniform: true }));
     // Color-only stacks follow the preview: base controls, then every authored
     // color effect in order. Other spatial/compositing effects retain their
     // separate pipeline and require their own ordering/fidelity qualification.
@@ -1007,7 +1007,7 @@ async function renderMultitrack(
     const y = `(${graphicMotionExpression(graphic, "y", size[1])})+${Number((anchorY * height - rasterHeight / 2).toFixed(5))}${pivotShiftY}`;
     const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
     filters.push(`[${input}:v]${rasterFilters.join(",")}[preparedgraphic${index}]`);
-    filters.push(...cutGraphicOpacityFilters(`preparedgraphic${index}`, `rastergraphic${index}`, opacity));
+    filters.push(...cutGraphicOpacityFilters(`preparedgraphic${index}`, `rastergraphic${index}`, opacity, { frameUniform: true }));
     filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
     videoLabel = nextLabel;
   }

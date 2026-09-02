@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { cutGraphicOpacityFilters } from "../server/cut-graphic-opacity";
 
 describe("graphic opacity work", () => {
+  it("caches opted-in frame curves per slice without touching other alpha/RGB samples", () => {
+    expect(cutGraphicOpacityFilters("source", "result", "T/2", { frameUniform: true })[1]).toContain("if(eq(ld(7),N+1),0,st(2,T/2);st(7,N+1));lum(X,Y)*ld(2)");
+    expect(cutGraphicOpacityFilters("source", "result", "X/W")[1]).not.toContain("st(7");
+    expect(cutGraphicOpacityFilters("source", "result", "1", { frameUniform: true })).toEqual(["[source]format=rgba[result]"]);
+  });
   it("does no per-pixel expression work for opaque content", () => {
     expect(cutGraphicOpacityFilters("source", "result", "1")).toEqual(["[source]format=rgba[result]"]);
   });

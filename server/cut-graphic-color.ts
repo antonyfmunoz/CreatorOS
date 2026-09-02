@@ -3,7 +3,7 @@
  * additive brightness. Expressions here are compiler-generated numeric data;
  * never pass user-authored FFmpeg/filter text to this internal helper.
  */
-export function cutGraphicColorFilters(brightness: string, saturation: string, label = "graphiccolor", contrast = 1): string[] {
+export function cutGraphicColorFilters(brightness: string, saturation: string, label = "graphiccolor", contrast = 1, options: { frameUniform?: boolean } = {}): string[] {
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(label)) throw new Error("Invalid graphic color filter label");
   if (!Number.isFinite(contrast) || contrast < 0 || contrast > 8) throw new Error("Graphic contrast must be between zero and eight");
   if (!brightness.trim() || !saturation.trim()) throw new Error("Graphic color expressions must not be empty");
@@ -43,12 +43,18 @@ export function cutGraphicColorFilters(brightness: string, saturation: string, l
     }
   }
   if (constantSaturation === 1) {
-    const channels = ["r", "g", "b"].map((channel) => `${channel}='round(clip(${contrasted(`${channel}(X,Y)`, 255)}*(${brightness}),0,255))'`);
+    const prepare = options.frameUniform ? `if(eq(ld(7),N+1),0,st(2,${brightness});st(7,N+1));` : "";
+    const multiplier = options.frameUniform ? "ld(2)" : `(${brightness})`;
+    const channels = ["r", "g", "b"].map((channel) => `${channel}='${prepare}round(clip(${contrasted(`${channel}(X,Y)`, 255)}*${multiplier},0,255))'`);
     return ["format=rgba", `geq=${channels.join(":")}:a='alpha(X,Y)'`];
   }
-  // Slots 0/1 belong to the authored-curve evaluator; 2..6 are reset for every
-  // output channel/pixel. Each filter function clamps before the next function.
-  const prepare = `st(2,${brightness});st(3,${saturation});st(4,clip(${contrasted("r(X,Y)", 255)}*ld(2),0,255));st(5,clip(${contrasted("g(X,Y)", 255)}*ld(2),0,255));st(6,clip(${contrasted("b(X,Y)", 255)}*ld(2),0,255));`;
+  // Slots 0/1 belong to the authored-curve evaluator; 4..6 are pixel scratch.
+  // Only compiler-proven frame-uniform curves may opt into caching slots 2/3.
+  // Every geq channel/slice has its own state. N+1 distinguishes the first frame
+  // from zero-initialized slot 7 and invalidates the scalars on every next frame.
+  const scalars = `st(2,${brightness});st(3,${saturation});`;
+  const cachedScalars = options.frameUniform ? `if(eq(ld(7),N+1),0,${scalars}st(7,N+1));` : scalars;
+  const prepare = `${cachedScalars}st(4,clip(${contrasted("r(X,Y)", 255)}*ld(2),0,255));st(5,clip(${contrasted("g(X,Y)", 255)}*ld(2),0,255));st(6,clip(${contrasted("b(X,Y)", 255)}*ld(2),0,255));`;
   const matrix = [
     "(0.213+0.787*ld(3))*ld(4)+(0.715-0.715*ld(3))*ld(5)+(0.072-0.072*ld(3))*ld(6)",
     "(0.213-0.213*ld(3))*ld(4)+(0.715+0.285*ld(3))*ld(5)+(0.072-0.072*ld(3))*ld(6)",
