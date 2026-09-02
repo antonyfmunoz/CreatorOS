@@ -94,3 +94,11 @@ fixture tone and requires the preview baseline to reach within one dB of that
 source, before retaining it. The existing 10–14 dB attenuation, mute and restore
 bounds are unchanged. Repeat qualification is required; no production audio
 gain behavior is changed by this test correction.
+
+The first calibrated six-case repeat passed five cases but the first mobile
+case reached the end of the old 12-second fixture before its gain assertions
+finished. Its trace shows -21.1 dBFS baseline followed by -60 at `0:12 / 0:12`.
+The timeline correctly stops at its end; forcing the media element's loop flag
+does not override that contract. The fixture now lasts 60 seconds, longer than
+the unchanged 45-second test deadline, without forcing loop. Evidence remains
+at `creativesos-browser-qualification-3964eab1c2554ebea0909330b4f0e7de`.
