@@ -93,6 +93,24 @@ only for the exact tested scope. Public source, service topology, long-media and
 decoder coverage, transformed composition matching, reliable scaled admission,
 normal-user field tests and direct competitor comparisons remain open.
 
+## September 2 native motion and color checkpoint
+
+- PR 155 passed protected Verify `33666683909` and CodeQL `33666683932`, including
+  324 browser passes, 24 existing desktop skips and no reported retries. It merged
+  at `d0ecb189649ff6ece5e7469da8b1ee2daf411c0b`. Scope includes private image/vector
+  framing, 2D pivots, exact declarative scalar curves, raster EOF, compatible
+  filter-file commands, archive integrity and query-parser hardening.
+- PR 156 passed Verify `33668906342` and CodeQL `33668906319`: 328 browser passes,
+  24 existing desktop skips and no reported retries. It merged at
+  `5d023f40dd3df13b237278e2b544ef7b3ef4d976`. Base sRGB brightness/saturation and
+  alpha-preserving constant-color optimization are qualified at source level.
+- The separate color-effect-order candidate has passing raw/color comparisons
+  but an original full-workflow timeout. Its bounded raster-decoder follow-up and
+  explicit native-range rejection still need broad/protected qualification.
+- A fresh public readiness read still identifies source `7785912c74404b653ed64faba1ebe45b7b5a4fb8`,
+  build `20260902T102159Z-791e2941c783`, and 120/120 migration parity. New source
+  merges are not deployments. Google management reauthentication is still needed.
+
 ## Completion rule (unchanged)
 
 A row closes only with source and test links, exact release identity where

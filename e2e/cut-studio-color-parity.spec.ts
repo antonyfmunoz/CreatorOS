@@ -113,12 +113,14 @@ for (const workload of ['base', 'effects'] as const) test(workload === 'base'
     writeFileSync(`${directory}/export-${frame}.png`, output);
     const images = await Promise.all([preview, output].map((bytes) => sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true })));
     const states = evaluateCompositionFrame(manifest, frame);
+    const frameSamples = new Map<string, number[][]>();
     for (const card of cards) {
       const colors = images.map((image) => {
         const offset = (Math.floor((card.y + .075) * image.info.height) * image.info.width + Math.floor((card.x + .1) * image.info.width)) * 3;
         return [...image.data.subarray(offset, offset + 3)];
       });
       const error = Math.max(...colors[0].map((channel, index) => Math.abs(channel - colors[1][index])));
+      frameSamples.set(card.id, colors);
       const state = states.find((layer) => layer.id === card.id)!;
       let expected = colorOracle([64, 128, 192], state.brightness, state.saturation);
       if (workload === 'effects') for (const parameters of effectParameters[cards.indexOf(card)]) {
@@ -129,6 +131,10 @@ for (const workload of ['base', 'effects'] as const) test(workload === 'base'
       expect(Math.max(...colors[0].map((channel, index) => Math.abs(channel - expected[index]))), `${card.id} preview implements authored controls at ${frame}`).toBeLessThanOrEqual(2);
       expect(error, `${card.id} preview/export RGB at frame ${frame}: ${JSON.stringify(colors)}`).toBeLessThanOrEqual(4);
       receipts.push({ frame, card: card.id, preview: colors[0], native: colors[1], maximumChannelError: error });
+    }
+    if (workload === 'effects') for (const outputIndex of [0, 1]) {
+      const first = frameSamples.get('card3')![outputIndex], reversed = frameSamples.get('card4')![outputIndex];
+      expect(Math.max(...first.map((channel, index) => Math.abs(channel - reversed[index]))), 'reversing effects on identical input changes both preview and export').toBeGreaterThan(10);
     }
   }
   writeFileSync(`${directory}/colors.json`, JSON.stringify(receipts, null, 2));
