@@ -77,6 +77,9 @@ export default function CutStudioPage() {
   const initialProjectOpened = useRef(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
+  const currentProjectRef = useRef<Project | null>(null);
+  currentProjectRef.current = project;
+  const [pendingProjectRefresh, setPendingProjectRefresh] = useState<string | null>(null);
   const [edl, setEdl] = useState<CutEdl | null>(null);
   const edlRef = useRef<CutEdl | null>(null);
   const [history, setHistory] = useState<CutEdl[]>([]);
@@ -139,7 +142,34 @@ export default function CutStudioPage() {
 
   useEffect(() => { void refreshProjects().catch((error) => setMessage(error.message)); }, [refreshProjects]);
 
+  const hasUnsavedTimeline = useCallback(() => Boolean(currentProjectRef.current && edlRef.current && (saveInFlight.current || JSON.stringify(currentProjectRef.current.edl) !== JSON.stringify(edlRef.current))), []);
+  const confirmLeavingTimeline = useCallback(() => !hasUnsavedTimeline() || window.confirm("This edit has not finished saving. Leave without saving your latest changes?"), [hasUnsavedTimeline]);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedTimeline()) return;
+      event.preventDefault(); event.returnValue = "";
+    };
+    const beforeLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!anchor || anchor.hasAttribute("download") || (anchor.target && anchor.target !== "_self")) return;
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+      if (!confirmLeavingTimeline()) { event.preventDefault(); event.stopImmediatePropagation(); }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", beforeLink, true);
+    return () => { window.removeEventListener("beforeunload", beforeUnload); document.removeEventListener("click", beforeLink, true); };
+  }, [hasUnsavedTimeline, confirmLeavingTimeline]);
+
   const openProject = useCallback(async (id: string) => {
+    if (currentProjectRef.current?.id === id && hasUnsavedTimeline()) {
+      setPendingProjectRefresh(id);
+      setMessage("A background update is ready. Your current edit will stay here until it has saved.");
+      return;
+    }
+    if (currentProjectRef.current && currentProjectRef.current.id !== id && !confirmLeavingTimeline()) return;
     const opening = ++openGeneration.current;
     ++saveGeneration.current;
     clearTimeout(saveTimer.current);
@@ -157,11 +187,22 @@ export default function CutStudioPage() {
       const nextWorkspace = await workspaceResponse.json() as WorkspacePayload;
       const nextTemplates = await templateResponse.json() as AudioRoutingTemplate[];
       if (opening !== openGeneration.current) return;
+      // An edit made while a same-project refresh was in flight also wins over
+      // that older response. Retry the metadata refresh only after saving it.
+      if (currentProjectRef.current?.id === id && hasUnsavedTimeline()) { setPendingProjectRefresh(id); return; }
       edlRef.current = next.edl;
+      setPendingProjectRefresh(null);
       setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(nextReviews); setWorkspace(nextWorkspace); setAudioTemplates(nextTemplates); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
     } catch (error) { if (opening === openGeneration.current) setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { if (opening === openGeneration.current) setBusy(""); }
-  }, []);
+  }, [hasUnsavedTimeline, confirmLeavingTimeline]);
+
+  useEffect(() => {
+    if (!pendingProjectRefresh || busy || hasUnsavedTimeline()) return;
+    if (project?.id !== pendingProjectRefresh) { setPendingProjectRefresh(null); return; }
+    setPendingProjectRefresh(null);
+    void openProject(pendingProjectRefresh);
+  }, [pendingProjectRefresh, busy, project, edl, saveStatus, hasUnsavedTimeline, openProject]);
 
   useEffect(() => () => {
     ++saveGeneration.current;
@@ -406,6 +447,7 @@ export default function CutStudioPage() {
   const render = async (clip?: { start: number; end: number }) => { await startJob("render", { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps, clip }); };
   const sendRenderToDistribution = async (job: Job) => {
     if (!project) return;
+    if (!confirmLeavingTimeline()) return;
     setBusy(`distribution:${job.id}`);
     setMessage("");
     try {
@@ -1023,7 +1065,7 @@ export default function CutStudioPage() {
   const renderEstimate = estimateCutRenderSeconds(cutDuration(edl), { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps } as CutRenderRequest);
   return (
     <main className="min-h-screen bg-black pb-24 text-white">
-      <header className="sticky top-0 z-30 flex h-14 items-center border-b border-zinc-800 bg-black px-3"><Button variant="ghost" size="icon" onClick={() => { ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><Scissors className="ml-1 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 min-w-0 flex-1 truncate font-bold">{project.name}</h1><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="ml-1 rounded-lg border border-zinc-700 p-2" href={`/api/cut/projects/${project.id}/export.edl`} aria-label="Export EDL"><Download className="h-4 w-4"/></a></header>
+      <header className="sticky top-0 z-30 flex h-14 items-center border-b border-zinc-800 bg-black px-3"><Button variant="ghost" size="icon" onClick={() => { if (!confirmLeavingTimeline()) return; ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setPendingProjectRefresh(null); setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><Scissors className="ml-1 h-5 w-5 text-[#1d9bf0]"/><h1 className="ml-2 min-w-0 flex-1 truncate font-bold">{project.name}</h1><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="ml-1 rounded-lg border border-zinc-700 p-2" href={`/api/cut/projects/${project.id}/export.edl`} download aria-label="Export EDL"><Download className="h-4 w-4"/></a></header>
       <div className="mx-auto grid max-w-[1500px] gap-4 p-3 lg:grid-cols-[1fr_360px]">
         <section className="min-w-0 space-y-4">
           <div className="grid gap-3 xl:grid-cols-2">
