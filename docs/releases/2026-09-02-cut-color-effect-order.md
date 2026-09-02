@@ -65,3 +65,13 @@ preview and export. These additional checks and the final root are pending.
 
 References: [per-input option scope](https://ffmpeg.org/ffmpeg.html#Description),
 [decoder thread option](https://ffmpeg.org/ffmpeg-codecs.html#Codec-Options).
+
+The expanded twelve-case run passed ten checks and failed both ordered-effect
+checks before pixel comparison: saving the additional unsupported composition
+made the test's unscoped player locator match two independent players. Evidence
+is retained at `creativesos-browser-qualification-f36c01eeae4b49dc9767a6022330c492`.
+The test now selects the explicitly named RGB proof composition, not the first
+matching player. Both compositions and the rejection/revision checks remain.
+This is a test-target correction, not a successful color comparison; the exact
+candidate must pass again. Root qualification passed 657 tests before this
+locator-only correction.

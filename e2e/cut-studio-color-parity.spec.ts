@@ -95,7 +95,7 @@ for (const workload of ['base', 'effects'] as const) test(workload === 'base'
   const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: '16:9', resolution: '720p', fps: 30, captions: false, quality: 'draft' } });
   expect(submitted.ok(), await submitted.text()).toBeTruthy(); const job = await submitted.json();
   await page.goto(`/cut-studio?project=${project.id}`);
-  const player = page.getByLabel('CutStudio creative runtime').getByLabel('CutStudio composition player');
+  const player = page.getByLabel('CutStudio creative runtime').getByLabel('Composition RGB proof', { exact: true }).getByLabel('CutStudio composition player');
   const previews = new Map<number, Buffer>();
   for (const frame of [0, 14, 44, 59]) {
     await player.getByLabel('Preview frame', { exact: true }).fill(String(frame));
