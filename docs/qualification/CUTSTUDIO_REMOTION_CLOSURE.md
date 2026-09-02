@@ -82,9 +82,11 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 - PR 152's native resource buffering/retry and numeric encoder progress passed
   protected Verify `33643528748`: 603 root tests, 300 browser passes and 24 existing
   skips, no reported retries. Main is `831ab2f0b3186a94ae85c4baad9f722d39791af1`.
-- The private mask/preview-origin correction has focused local artifact checks;
-  its combined/protected/deployed gates are pending. See the corresponding
-  [mask receipt](../releases/2026-09-02-cut-private-mask-parity.md).
+- PR 154's private mask/preview-origin correction passed protected Verify
+  `33647407018`: 607 root tests and 304 browser passes with 24 existing desktop
+  skips, no reported retries. CodeQL `33647406926` passed. It merged to main
+  `50855c0e2721c5d59c1ac02804e400770b0c8b34`. Deployment is still pending.
+  See the corresponding [mask receipt](../releases/2026-09-02-cut-private-mask-parity.md).
 
 These newer receipts supersede the table's older candidate-pending descriptions
 only for the exact tested scope. Public source, service topology, long-media and

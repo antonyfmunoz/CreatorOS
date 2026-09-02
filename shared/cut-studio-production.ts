@@ -4,6 +4,8 @@ import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { cutLayerMaskAsset } from "./cut-mask";
+import { cutImageFit } from "./cut-image-fit";
+import { CUT_GRAPHIC_CURVE_PROPERTIES, cutGraphicCurvesSchema, type CutGraphicCurves } from "./cut-graphic-curves";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -453,33 +455,37 @@ function transitionAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, loc
   return { opacity, x, y, scale, rotationY, reveal };
 }
 
+// Internal fast path: callers must first validate the complete manifest.
+// Sampling one layer must not reparse/evaluate every other layer for each point.
+function evaluateValidatedLayerFrame(layer: CutCompositionManifest["layers"][number], localFrame: number) {
+  const transition = transitionAtFrame(layer, localFrame);
+  return {
+    id: layer.id,
+    kind: layer.kind,
+    localFrame,
+    sourceFrame: layer.sourceStartFrame + localFrame,
+    x: valueAtFrame(layer, "x", localFrame, layer.x) + transition.x,
+    y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
+    scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
+    rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
+    rotationX: valueAtFrame(layer, "rotationX", localFrame, layer.rotationX),
+    rotationY: valueAtFrame(layer, "rotationY", localFrame, layer.rotationY) + transition.rotationY,
+    perspective: Math.max(0, valueAtFrame(layer, "perspective", localFrame, layer.perspective)),
+    opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
+    volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
+    blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
+    brightness: Math.max(0, valueAtFrame(layer, "brightness", localFrame, 1)),
+    saturation: Math.max(0, valueAtFrame(layer, "saturation", localFrame, 1)),
+    reveal: transition.reveal,
+    effects: layer.effects.filter((effect) => effect.enabled),
+  };
+}
+
 export function evaluateCompositionFrame(manifestInput: unknown, frame: number) {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const boundedFrame = Math.max(0, Math.min(manifest.durationInFrames - 1, Math.floor(frame)));
-  return manifest.layers.filter((layer) => boundedFrame >= layer.from && boundedFrame < layer.from + layer.durationInFrames).map((layer) => {
-    const localFrame = boundedFrame - layer.from;
-    const transition = transitionAtFrame(layer, localFrame);
-    return {
-      id: layer.id,
-      kind: layer.kind,
-      localFrame,
-      sourceFrame: layer.sourceStartFrame + localFrame,
-      x: valueAtFrame(layer, "x", localFrame, layer.x) + transition.x,
-      y: valueAtFrame(layer, "y", localFrame, layer.y) + transition.y,
-      scale: valueAtFrame(layer, "scale", localFrame, 1) * transition.scale,
-      rotation: valueAtFrame(layer, "rotation", localFrame, layer.rotation),
-      rotationX: valueAtFrame(layer, "rotationX", localFrame, layer.rotationX),
-      rotationY: valueAtFrame(layer, "rotationY", localFrame, layer.rotationY) + transition.rotationY,
-      perspective: Math.max(0, valueAtFrame(layer, "perspective", localFrame, layer.perspective)),
-      opacity: Math.max(0, Math.min(1, valueAtFrame(layer, "opacity", localFrame, layer.opacity) * transition.opacity)),
-      volume: Math.max(0, Math.min(2, valueAtFrame(layer, "volume", localFrame, layer.volume))),
-      blur: Math.max(0, valueAtFrame(layer, "blur", localFrame, 0)),
-      brightness: Math.max(0, valueAtFrame(layer, "brightness", localFrame, 1)),
-      saturation: Math.max(0, valueAtFrame(layer, "saturation", localFrame, 1)),
-      reveal: transition.reveal,
-      effects: layer.effects.filter((effect) => effect.enabled),
-    };
-  });
+  return manifest.layers.filter((layer) => boundedFrame >= layer.from && boundedFrame < layer.from + layer.durationInFrames)
+    .map((layer) => evaluateValidatedLayerFrame(layer, boundedFrame - layer.from));
 }
 
 function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompositionManifest["layers"][number]) {
@@ -487,21 +493,46 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   const important = new Set<number>([0, finalFrame]);
   for (const animation of layer.animations) {
     if (["x", "y", "scale", "rotation", "rotationX", "rotationY", "perspective", "opacity", "blur", "brightness", "saturation"].includes(animation.property)) {
-      for (const keyframe of animation.keyframes) important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
+      for (const keyframe of animation.keyframes) {
+        important.add(Math.max(0, Math.min(finalFrame, keyframe.frame)));
+        // Preserve the last held composition frame before a step changes.
+        // A sparse linear sample must not turn an authored cut into a glide.
+        if (keyframe.easing === "step" && keyframe.frame > 0 && keyframe.frame <= finalFrame) important.add(keyframe.frame - 1);
+      }
     }
   }
   if (layer.enter) important.add(Math.max(0, Math.min(finalFrame, layer.enter.durationInFrames)));
   if (layer.exit) important.add(Math.max(0, Math.min(finalFrame, layer.durationInFrames - layer.exit.durationInFrames)));
+  if (important.size > 50) throw new Error(`Layer ${layer.name} exceeds the native limit of 50 motion boundary frames; split the layer instead of dropping authored keyframes`);
   const candidate = Array.from(important).sort((left, right) => left - right);
   for (let index = 0; candidate.length < 12 && index < 10; index += 1) candidate.push(Math.round(finalFrame * index / 9));
   const ordered = Array.from(new Set(candidate)).sort((left, right) => left - right);
-  const frames = ordered.length <= 12 ? ordered : Array.from({ length: 12 }, (_, index) => ordered[Math.round(index * (ordered.length - 1) / 11)]);
+  // Keep every authored boundary. Extra samples still approximate nonlinear
+  // easing; this is not a claim of general frame-exact curve interpolation.
+  const frames = ordered;
   return Array.from(new Set(frames)).map((frame) => {
-    const evaluated = evaluateCompositionFrame(manifest, layer.from + frame).find((item) => item.id === layer.id);
-    if (!evaluated) throw new Error(`Composition layer ${layer.id} could not be evaluated for final rendering`);
+    const evaluated = evaluateValidatedLayerFrame(layer, frame);
     const revealKind = evaluated.reveal?.kind ?? null;
     return { at: frame / manifest.fps, x: evaluated.x, y: evaluated.y, scale: evaluated.scale, rotation: evaluated.rotation, rotationX: evaluated.rotationX, rotationY: evaluated.rotationY, perspective: evaluated.perspective, blur: evaluated.blur, brightness: evaluated.brightness, saturation: evaluated.saturation, opacity: evaluated.opacity, revealKind, revealDirection: evaluated.reveal?.direction && ["left", "right", "up", "down", "clockwise", "counterclockwise"].includes(evaluated.reveal.direction) ? evaluated.reveal.direction as "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" : null, revealProgress: evaluated.reveal?.progress ?? 1, revealMaskAssetId: evaluated.reveal?.maskAssetId ?? null, easing: "linear" as const };
   });
+}
+
+function graphicCurves(manifest: CutCompositionManifest, layer: CutCompositionManifest["layers"][number]): CutGraphicCurves | undefined {
+  // The legacy projected-3D path has different scale timing. Do not imply that
+  // exact scalar curves repair perspective/3D frame fidelity in that path.
+  if (layer.rotationX || layer.rotationY || layer.animations.some((animation) => ["rotationX", "rotationY"].includes(animation.property)) || layer.enter?.kind === "flip" || layer.exit?.kind === "flip") return undefined;
+  const transitions: CutGraphicCurves["transitions"] = [];
+  for (const phase of ["enter", "exit"] as const) {
+    const transition = layer[phase];
+    if (!transition || !transition.durationInFrames || !["fade", "custom_mask", "slide", "zoom"].includes(transition.kind)) continue;
+    transitions.push({ phase, kind: transition.kind === "custom_mask" ? "fade" : transition.kind as "fade" | "slide" | "zoom", durationInFrames: transition.durationInFrames, easing: transition.easing,
+      ...(transition.direction && ["left", "right", "up", "down"].includes(transition.direction) ? { direction: transition.direction as "left" | "right" | "up" | "down" } : {}) });
+  }
+  return cutGraphicCurvesSchema.parse({ version: 1, fps: manifest.fps, durationInFrames: layer.durationInFrames,
+    curves: CUT_GRAPHIC_CURVE_PROPERTIES.map((property) => ({ property,
+      base: property === "x" ? layer.x : property === "y" ? layer.y : property === "rotation" ? layer.rotation : property === "opacity" ? layer.opacity : 1,
+      keyframes: (layer.animations.find((animation) => animation.property === property)?.keyframes ?? []).filter((point) => typeof point.value === "number").sort((left, right) => left.frame - right.frame),
+    })), transitions });
 }
 
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
@@ -542,13 +573,12 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
   });
   const graphics = manifest.layers.flatMap((layer) => {
     if (!["text", "caption", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
-    const graphicX = Math.max(0, Math.min(0.95, layer.x));
-    const graphicY = Math.max(0, Math.min(0.95, layer.y));
-    const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
+    const initialState = evaluateValidatedLayerFrame(layer, 0);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
     const three = layer.kind === "three" ? parseCutThreePrimitiveStyle(layer.style) : null;
+    const motionKeyframes = sampledGraphicMotion(manifest, layer);
     return [{
       id: layer.id,
       kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "lottie" ? "lottie" as const : layer.kind === "rive" ? "rive" as const : layer.kind === "three" ? "three" as const : "title" as const,
@@ -556,12 +586,15 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
-      x: graphicX,
-      y: graphicY,
-      width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
-      height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
+      x: layer.x,
+      y: layer.y,
+      width: layer.width,
+      height: layer.height,
+      anchorX: layer.anchorX,
+      anchorY: layer.anchorY,
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       fontReferenceWidth: manifest.width,
+      imageFit: layer.kind === "image" ? cutImageFit(layer.style.objectFit) : "contain" as const,
       textLayout: ["text", "caption"].includes(layer.kind) ? resolveCutTextLayout(layer.style, selectedFont?.assetId ? selectedFont : undefined) : undefined,
       fontAssetId: selectedFont?.assetId,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",
@@ -588,7 +621,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       revealProgress: initialState?.reveal?.progress ?? 1,
       revealMaskAssetId: cutLayerMaskAsset(layer),
       effects: layer.effects.filter((effect) => effect.enabled).slice(0, 20).map((effect) => ({ kind: effect.kind, parameters: effect.parameters })),
-      motionKeyframes: sampledGraphicMotion(manifest, layer),
+      motionKeyframes,
+      compositionCurves: graphicCurves(manifest, layer),
     }];
   });
   if (!clips.length) throw new Error("A composition must contain at least one video or audio layer before it can be applied to the timeline");

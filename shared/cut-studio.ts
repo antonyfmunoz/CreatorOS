@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { cutTextLayoutSchema, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
+import { CUT_IMAGE_FITS } from "./cut-image-fit";
+import { cutGraphicCurvesSchema } from "./cut-graphic-curves";
 
 const cutGraphicEffectSchema = z.object({
   kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
@@ -69,20 +71,28 @@ export const cutGraphicSchema = z.object({
   text: z.string().max(20_000),
   timelineStart: z.number().finite().min(0).max(43_200),
   duration: z.number().finite().min(0.25).max(3_600),
-  x: z.number().finite().min(0).max(0.95).default(0.1),
-  y: z.number().finite().min(0).max(0.95).default(0.75),
+  x: z.number().finite().min(-4).max(4).default(0.1),
+  y: z.number().finite().min(-4).max(4).default(0.75),
   fontSize: z.number().int().min(12).max(160).default(48),
   // Composition fonts are measured in their authored canvas, not delivery pixels.
   // Absent on legacy/manual graphics: preserve their existing pixel sizing.
   fontReferenceWidth: z.number().int().min(240).max(7_680).optional(),
+  // Keep absent on legacy data: injecting a default would invalidate immutable
+  // queued snapshot hashes. The renderer supplies its historical contain fallback.
+  imageFit: z.enum(CUT_IMAGE_FITS).optional(),
   textLayout: cutTextLayoutSchema.optional(),
   fontAssetId: z.string().uuid().optional(),
   fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#000000"),
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
-  width: z.number().finite().positive().max(1).default(0.25),
-  height: z.number().finite().positive().max(1).default(0.25),
+  width: z.number().finite().positive().max(8).default(0.25),
+  height: z.number().finite().positive().max(8).default(0.25),
+  // Optional to preserve the content hashes of older queued render snapshots.
+  anchorX: z.number().finite().min(-4).max(4).optional(),
+  anchorY: z.number().finite().min(-4).max(4).optional(),
+  // Optional: old immutable snapshots must not acquire new default fields.
+  compositionCurves: cutGraphicCurvesSchema.optional(),
   fillColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
   strokeWidth: z.number().finite().positive().max(20).default(2),
   primitive: z.enum(["cube", "pyramid", "plane"]).nullable().default(null),

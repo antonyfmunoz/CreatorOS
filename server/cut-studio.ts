@@ -1,4 +1,5 @@
 import type { Express, RequestHandler, Response } from "express";
+import { cutGraphicCurveExpression } from "./cut-curve-expression";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
@@ -59,8 +60,11 @@ import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { cutMaskAlpha } from "@shared/cut-mask";
+import { planCutGraphicRasters } from "./cut-graphic-geometry";
+import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
+import { cutFilterGraphArgs } from "./cut-filter-graph";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
-import { cutRenderDurationArgs } from "./cut-render-duration";
+import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
 
 const createProjectSchema = z.object({
@@ -164,18 +168,23 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
 }
 
 function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "rotation" | "opacity" | "blur" | "brightness" | "saturation", multiplier: number, timeVariable = "t", offset = 0) {
+  if (graphic.compositionCurves && property !== "blur") {
+    if (timeVariable !== "t" && timeVariable !== "T") throw new Error("Unsupported graphic time variable");
+    const exact = cutGraphicCurveExpression(graphic.compositionCurves, property, graphic.timelineStart, timeVariable, multiplier, offset);
+    if (exact !== undefined) return exact;
+  }
   const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : property === "rotation" ? graphic.rotation : property === "blur" ? graphic.blur : property === "brightness" ? graphic.brightness : property === "saturation" ? graphic.saturation : 1;
   const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
   const output = (value: number) => Number((value * multiplier + offset).toFixed(5));
-  if (points.length === 1) return String(output(points[0].value));
+  if (points.every((point) => point.value === points[0].value)) return String(output(points[0].value));
   let expression = String(output(points.at(-1)!.value));
   for (let index = points.length - 2; index >= 0; index -= 1) {
     const left = points[index]; const right = points[index + 1];
-    const start = Number((graphic.timelineStart + left.at).toFixed(3));
-    const end = Number((graphic.timelineStart + right.at).toFixed(3));
-    const duration = Number((right.at - left.at).toFixed(3));
+    const start = Number((graphic.timelineStart + left.at).toFixed(6));
+    const end = Number((graphic.timelineStart + right.at).toFixed(6));
+    const duration = Number((right.at - left.at).toFixed(6));
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5));
     const progress = `(${timeVariable}-${start})/${duration}`;
     expression = `if(lt(${timeVariable}\\,${end})\\,${from}+${delta}*(${progress})\\,${expression})`;
@@ -698,6 +707,7 @@ async function renderMultitrack(
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  const graphicPlans = planCutGraphicRasters(graphics, size[0], size[1]);
   for (let index = 0; index < primaryPlan.segments.length; index += 1) {
     const { clip, duration: outputDuration } = primaryPlan.segments[index];
     primaryDurations.push(outputDuration);
@@ -835,11 +845,13 @@ async function renderMultitrack(
     } else if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
-      await sharp(privateImage.url).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      // Match CSS framing, respect EXIF orientation and preserve transparent
+      // letterboxing instead of painting an opaque black box behind the image.
+      await sharp(privateImage.url).rotate().resize(width, height, { fit: graphic.imageFit ?? "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "svg") {
-      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      await sharp(Buffer.from(sanitizeCutStudioSvg(graphic.text)), { density: 300 }).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "three") {
-      await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain" }).png().toFile(baseRasterPath);
+      await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
@@ -877,16 +889,12 @@ async function renderMultitrack(
     const nextLabel = `graphic${index}`;
     const input = rasterGraphicInputIndexes.get(graphic.id);
     if (input === undefined) throw new Error("A raster graphic input could not be prepared");
-    const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
-    const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
-    const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
-    const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
+    const plan = graphicPlans[index];
+    const { width, height, minimumScale, maximumScale } = plan;
     const animatedScale = Math.abs(maximumScale - minimumScale) > .0001 || Math.abs(maximumScale - 1) > .0001;
-    const maximumAnimatedWidth = Math.max(2, Math.round(width * maximumScale / 2) * 2);
-    const maximumAnimatedHeight = Math.max(2, Math.round(height * maximumScale / 2) * 2);
-    const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
-    const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
-    const rasterFilters = animatedScale
+    const maximumAnimatedWidth = plan.maximumWidth; const maximumAnimatedHeight = plan.maximumHeight;
+    const { virtualWidth, virtualHeight } = plan;
+    const rasterFilters = plan.has3d && animatedScale
       ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
       : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
     const blurEffect = graphicEffect(graphic, "blur");
@@ -965,20 +973,33 @@ async function renderMultitrack(
       const alpha = geometricRevealAlpha(point.kind, point.direction, point.progress);
       rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}':enable='between(t,${start},${end})'`);
     }
-    const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
-    const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
+    const rotated = plan.rotated;
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
     let rasterHeight = animatedScale ? maximumAnimatedHeight : height;
-    if (rotated) {
+    const scaleExpression = graphicMotionExpression(graphic, "scale", 1);
+    const rotationExpression = graphicMotionExpression(graphic, "rotation", Math.PI / 180);
+    if (!plan.has3d) {
+      // Reveal/effects operate on the authored layer before its CSS-like 2D
+      // transform. Scale the real content, center it in a bounded fixed canvas,
+      // then rotate that canvas; do not simulate scaling by cropping zoompan.
+      if (animatedScale) rasterFilters.push(`scale=w='max(2\\,round(${width}*(${scaleExpression})/2)*2)':h='max(2\\,round(${height}*(${scaleExpression})/2)*2)':eval=frame`);
+      rasterWidth = plan.canvasWidth; rasterHeight = plan.canvasHeight;
+      if (rotated || animatedScale) rasterFilters.push(`pad=${rasterWidth}:${rasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`);
+      if (rotated) rasterFilters.push(`rotate=angle='${rotationExpression}':ow=iw:oh=ih:c=none`);
+    } else if (rotated) {
       const diagonal = Math.max(2, Math.ceil(Math.hypot(rasterWidth, rasterHeight) / 2) * 2);
       rasterFilters.push(`pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${graphicMotionExpression(graphic, "rotation", Math.PI / 180)}':ow=iw:oh=ih:c=none`);
       rasterWidth = diagonal; rasterHeight = diagonal;
     }
-    const x = `(${graphicMotionExpression(graphic, "x", size[0])})-${Number(((rasterWidth - width) / 2).toFixed(3))}`;
-    const y = `(${graphicMotionExpression(graphic, "y", size[1])})-${Number(((rasterHeight - height) / 2).toFixed(3))}`;
+    const anchorX = graphic.anchorX ?? .5; const anchorY = graphic.anchorY ?? .5;
+    const pivotX = Number(((anchorX - .5) * width).toFixed(5)); const pivotY = Number(((anchorY - .5) * height).toFixed(5));
+    const pivotShiftX = pivotX || pivotY ? `-(${scaleExpression})*(${pivotX}*cos(${rotationExpression})-${pivotY}*sin(${rotationExpression}))` : "";
+    const pivotShiftY = pivotX || pivotY ? `-(${scaleExpression})*(${pivotX}*sin(${rotationExpression})+${pivotY}*cos(${rotationExpression}))` : "";
+    const x = `(${graphicMotionExpression(graphic, "x", size[0])})+${Number((anchorX * width - rasterWidth / 2).toFixed(5))}${pivotShiftX}`;
+    const y = `(${graphicMotionExpression(graphic, "y", size[1])})+${Number((anchorY * height - rasterHeight / 2).toFixed(5))}${pivotShiftY}`;
     const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
-    rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
-    filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);
+    filters.push(`[${input}:v]${rasterFilters.join(",")}[preparedgraphic${index}]`);
+    filters.push(...cutGraphicOpacityFilters(`preparedgraphic${index}`, `rastergraphic${index}`, opacity));
     filters.push(`[${videoLabel}][rastergraphic${index}]overlay=x='${x}':y='${y}':eval=frame:eof_action=repeat:shortest=0:enable='between(t,${graphic.timelineStart},${graphic.timelineStart + graphic.duration})'[${nextLabel}]`);
     videoLabel = nextLabel;
   }
@@ -993,7 +1014,10 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
+  // Authored curves can exceed OS argument-length limits. This is generated
+  // filter data in the job's private temporary directory, not executable input.
+  const filterGraphArgs = await cutFilterGraphArgs(temp, filters);
+  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }

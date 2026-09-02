@@ -22,6 +22,10 @@ export function log(message: string, source = "express") {
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
+    // Transform the shared application entry during development startup,
+    // rather than making the first visitor pay the full cold module waterfall.
+    // This does not preload page data or alter production delivery.
+    warmup: { clientFiles: ["./src/main.tsx", "./src/App.tsx"] },
     hmr: { server },
     allowedHosts: true as const,
   };
