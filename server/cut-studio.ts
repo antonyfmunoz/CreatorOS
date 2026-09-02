@@ -1,4 +1,6 @@
 import type { Express, RequestHandler, Response } from "express";
+import rateLimit from "express-rate-limit";
+import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -60,6 +62,8 @@ const createProjectSchema = z.object({
   mediaKind: z.enum(["video", "audio"]),
 });
 const promptSchema = z.object({ prompt: z.string().trim().min(1).max(2_000) });
+const admitStill = cutStillAdmission();
+const stillLimiter = rateLimit({ windowMs: 60_000, limit: 12, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const projectMediaSchema = z.object({
   assetId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
@@ -1854,6 +1858,48 @@ export function registerCutStudioRoutes(app: Express) {
     noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
     const artifact = await ownedAsset(job.ownerUserId, job.artifactAssetId); if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Render not found" });
     await streamPrivateAsset(res, artifact);
+  });
+  cut.get("/api/cut/jobs/:id/still", attachUser, stillLimiter, async (req, res) => {
+    noStore(res);
+    const job = await readableCutJob(req.dbUser!.id, req.params.id);
+    if (!job?.artifactAssetId || job.kind !== "render" || job.state !== "done") return res.status(404).json({ message: "A completed video render is required." });
+    const parsed = cutStillRequestSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ message: "Choose an integral frame number and PNG, JPEG or WebP format." });
+    const artifact = await ownedAsset(job.ownerUserId, job.artifactAssetId);
+    const access = await workspaceProject(req.dbUser!.id, job.projectId);
+    if (!artifact || !access || artifact.businessId !== access.project.businessId || artifact.visibility !== "private" || artifact.status !== "ready" || artifact.mimeType !== "video/mp4") return res.status(404).json({ message: "Private video render not found." });
+    if (artifact.sizeBytes === null || artifact.sizeBytes > 250 * 1024 * 1024) return res.status(413).json({ message: "Interactive frame export supports renders up to 250 MB. Download larger renders for local extraction." });
+    const release = admitStill();
+    if (!release) return res.status(429).setHeader("Retry-After", "10").json({ message: "Frame export is busy. Please try again shortly." });
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.once("close", abort);
+    let temp: string | undefined;
+    try {
+      temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-still-"));
+      const inputPath = path.join(temp, "source.mp4");
+      const outputPath = path.join(temp, `frame.${parsed.data.format}`);
+      await materializePrivateAsset(artifact.storageKey, inputPath);
+      if ((await fs.stat(inputPath)).size > 250 * 1024 * 1024) throw new CutStillError(413, "The render exceeds the interactive frame-export limit.");
+      const metadata = await renderCutStill(inputPath, outputPath, parsed.data.frame, controller.signal);
+      // Revocation during decoding must not disclose the resulting pixels.
+      const currentAsset = await ownedAsset(job.ownerUserId, artifact.id);
+      if (!await readableCutJob(req.dbUser!.id, job.id) || currentAsset?.status !== "ready" || currentAsset.visibility !== "private") return res.status(404).json({ message: "Render access is no longer available." });
+      const bytes = await fs.readFile(outputPath);
+      res.type(`image/${parsed.data.format}`);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Disposition", `attachment; filename="cut-${job.id.slice(0, 8)}-frame-${parsed.data.frame}.${parsed.data.format}"`);
+      res.setHeader("X-Cut-Frame", String(parsed.data.frame));
+      res.setHeader("X-Cut-Frame-Count", String(metadata.frameCount));
+      res.setHeader("X-Cut-Source-Asset", artifact.id);
+      res.send(bytes);
+    } catch (error) {
+      if (!res.headersSent && !res.destroyed) res.status(error instanceof CutStillError ? error.status : 503).json({ message: error instanceof CutStillError ? error.message : "Frame export is temporarily unavailable." });
+    } finally {
+      res.off("close", abort);
+      if (temp) await fs.rm(temp, { recursive: true, force: true }).catch(() => undefined);
+      release();
+    }
   });
   cut.post("/api/cut/jobs/:id/distribute", attachUser, async (req, res) => {
     noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.state, "done"))).limit(1); if (!job?.artifactAssetId) return res.status(409).json({ message: "A completed render is required" });

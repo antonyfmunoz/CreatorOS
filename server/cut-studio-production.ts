@@ -208,7 +208,8 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
       mode: "clean_room",
       declarative: "configured",
       packageAuthoring: "configured",
-      isolatedCode: process.env.CUT_COMPOSITION_SANDBOX_URL ? "provider_configured" : "provider_pending",
+      // A URL is configuration, not proof of an implemented executable path.
+      isolatedCode: "not_implemented",
       networkPolicy: "deny",
     },
     generationRuntime: {
