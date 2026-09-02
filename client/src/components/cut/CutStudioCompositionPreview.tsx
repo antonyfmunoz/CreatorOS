@@ -204,6 +204,12 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
 
 type MediaPlayback = { playing: boolean; playbackRate: number; muted: boolean; masterVolume: number; audioContext: AudioContext | null };
 
+function ImageLayer({ layer }: { layer: Layer }) {
+  const assetUrl = useContext(AssetUrlContext);
+  const [failed, setFailed] = useState(false);
+  return <><img alt={layer.name} src={assetUrl(layer.assetId!)} className="h-full w-full object-cover" onLoad={() => setFailed(false)} onError={() => setFailed(true)}/>{failed && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">This private image could not be displayed.</span>}</>;
+}
+
 function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVolume, audioContext, volume }: MediaPlayback & { layer: Layer; frame: number; fps: number; volume: number }) {
   const assetUrl = useContext(AssetUrlContext);
   const media = useRef<HTMLMediaElement | null>(null);
@@ -232,7 +238,7 @@ function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVol
     const sync = () => {
       const seekTolerance = playing ? Math.max(.08, 2 / fps) : 1 / (fps * 4);
       if (Math.abs(element.currentTime - targetTime) > seekTolerance) element.currentTime = targetTime;
-      if (playing && element.paused) void element.play().catch((caught: unknown) => {
+      if (playing && element.paused) void element.play().then(() => setError("")).catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "NotAllowedError") setError("Use Play to allow media playback in this browser.");
       });
       else if (!playing) element.pause();
@@ -241,8 +247,8 @@ function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVol
     element.addEventListener("loadedmetadata", sync);
     return () => element.removeEventListener("loadedmetadata", sync);
   }, [fps, playbackRate, playing, targetTime]);
-  const props = { ref: (element: HTMLMediaElement | null) => { media.current = element; }, "aria-label": layer.name, "data-composition-media": layer.kind, src: assetUrl(layer.assetId!), muted, preload: "metadata", onError: () => setError("This private media could not be played.") };
-  return <>{layer.kind === "audio" ? <audio {...props}/> : <video {...props} playsInline className="h-full w-full object-cover"/>}{error && <span role="status" className="text-[10px] text-amber-300">{error}</span>}</>;
+  const props = { ref: (element: HTMLMediaElement | null) => { media.current = element; }, "aria-label": layer.name, "data-composition-media": layer.kind, src: assetUrl(layer.assetId!), muted, preload: "metadata", onLoadedData: () => setError(""), onError: () => setError("This private media could not be played.") };
+  return <>{layer.kind === "audio" ? <audio {...props}/> : <video {...props} playsInline className="h-full w-full object-cover"/>}{error && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">{error}</span>}</>;
 }
 
 function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playback }: MediaPlayback & { layer: Layer; state: FrameState; frame: number; fps: number; canvasWidth: number; fonts: CutCompositionManifest["fonts"] }) {
@@ -261,8 +267,11 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
     content = <CutStudioTextPreview text={layer.text} layout={resolveCutTextLayout(layer.style, font)} styles={{ box: textStyles.box as CSSProperties, content: textStyles.content as CSSProperties }} canvasWidth={canvasWidth} fontsReady={fontsReady}/>;
   }
   else if (layer.kind === "shape") content = <div className="h-full w-full" style={{ background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
-  else if (layer.kind === "image" && layer.assetId) content = <img alt={layer.name} src={assetUrl(layer.assetId)} className="h-full w-full object-cover"/>;
-  else if ((layer.kind === "video" || layer.kind === "audio") && layer.assetId) content = <MediaLayer layer={layer} frame={frame} fps={fps} volume={state.volume} {...playback}/>;
+  else if (layer.kind === "image" && layer.assetId) content = <ImageLayer key={assetUrl(layer.assetId)} layer={layer}/>;
+  // Replacing an asset needs a fresh media element/error state and audio graph;
+  // reconnecting a graph from the previous source can leave a repaired layer
+  // silent or display the old failure after the new private media has loaded.
+  else if ((layer.kind === "video" || layer.kind === "audio") && layer.assetId) content = <MediaLayer key={`${layer.kind}:${assetUrl(layer.assetId)}`} layer={layer} frame={frame} fps={fps} volume={state.volume} {...playback}/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
   else if (layer.kind === "lottie") content = <LottieLayer layer={layer} frame={frame}/>;
