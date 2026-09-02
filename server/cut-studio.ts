@@ -59,6 +59,7 @@ import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { cutMaskAlpha } from "@shared/cut-mask";
+import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -169,7 +170,7 @@ function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
   const output = (value: number) => Number((value * multiplier + offset).toFixed(5));
-  if (points.length === 1) return String(output(points[0].value));
+  if (points.every((point) => point.value === points[0].value)) return String(output(points[0].value));
   let expression = String(output(points.at(-1)!.value));
   for (let index = points.length - 2; index >= 0; index -= 1) {
     const left = points[index]; const right = points[index + 1];
@@ -698,6 +699,7 @@ async function renderMultitrack(
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  const graphicPlans = planCutGraphicRasters(graphics, size[0], size[1]);
   for (let index = 0; index < primaryPlan.segments.length; index += 1) {
     const { clip, duration: outputDuration } = primaryPlan.segments[index];
     primaryDurations.push(outputDuration);
@@ -879,16 +881,12 @@ async function renderMultitrack(
     const nextLabel = `graphic${index}`;
     const input = rasterGraphicInputIndexes.get(graphic.id);
     if (input === undefined) throw new Error("A raster graphic input could not be prepared");
-    const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
-    const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
-    const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
-    const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
+    const plan = graphicPlans[index];
+    const { width, height, minimumScale, maximumScale } = plan;
     const animatedScale = Math.abs(maximumScale - minimumScale) > .0001 || Math.abs(maximumScale - 1) > .0001;
-    const maximumAnimatedWidth = Math.max(2, Math.round(width * maximumScale / 2) * 2);
-    const maximumAnimatedHeight = Math.max(2, Math.round(height * maximumScale / 2) * 2);
-    const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
-    const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
-    const rasterFilters = animatedScale
+    const maximumAnimatedWidth = plan.maximumWidth; const maximumAnimatedHeight = plan.maximumHeight;
+    const { virtualWidth, virtualHeight } = plan;
+    const rasterFilters = plan.has3d && animatedScale
       ? [`scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${graphicScaleExpression(graphic, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${graphic.timelineStart}/TB`]
       : ["format=rgba", `scale=${width}:${height}`, `setpts=PTS+${graphic.timelineStart}/TB`];
     const blurEffect = graphicEffect(graphic, "blur");
@@ -967,17 +965,30 @@ async function renderMultitrack(
       const alpha = geometricRevealAlpha(point.kind, point.direction, point.progress);
       rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}':enable='between(t,${start},${end})'`);
     }
-    const rotations = [graphic.rotation, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.rotation)];
-    const rotated = rotations.some((rotation) => Math.abs(rotation) > .0001);
+    const rotated = plan.rotated;
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
     let rasterHeight = animatedScale ? maximumAnimatedHeight : height;
-    if (rotated) {
+    const scaleExpression = graphicMotionExpression(graphic, "scale", 1);
+    const rotationExpression = graphicMotionExpression(graphic, "rotation", Math.PI / 180);
+    if (!plan.has3d) {
+      // Reveal/effects operate on the authored layer before its CSS-like 2D
+      // transform. Scale the real content, center it in a bounded fixed canvas,
+      // then rotate that canvas; do not simulate scaling by cropping zoompan.
+      if (animatedScale) rasterFilters.push(`scale=w='max(2\\,round(${width}*(${scaleExpression})/2)*2)':h='max(2\\,round(${height}*(${scaleExpression})/2)*2)':eval=frame`);
+      rasterWidth = plan.canvasWidth; rasterHeight = plan.canvasHeight;
+      if (rotated || animatedScale) rasterFilters.push(`pad=${rasterWidth}:${rasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`);
+      if (rotated) rasterFilters.push(`rotate=angle='${rotationExpression}':ow=iw:oh=ih:c=none`);
+    } else if (rotated) {
       const diagonal = Math.max(2, Math.ceil(Math.hypot(rasterWidth, rasterHeight) / 2) * 2);
       rasterFilters.push(`pad=${diagonal}:${diagonal}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${graphicMotionExpression(graphic, "rotation", Math.PI / 180)}':ow=iw:oh=ih:c=none`);
       rasterWidth = diagonal; rasterHeight = diagonal;
     }
-    const x = `(${graphicMotionExpression(graphic, "x", size[0])})-${Number(((rasterWidth - width) / 2).toFixed(3))}`;
-    const y = `(${graphicMotionExpression(graphic, "y", size[1])})-${Number(((rasterHeight - height) / 2).toFixed(3))}`;
+    const anchorX = graphic.anchorX ?? .5; const anchorY = graphic.anchorY ?? .5;
+    const pivotX = Number(((anchorX - .5) * width).toFixed(5)); const pivotY = Number(((anchorY - .5) * height).toFixed(5));
+    const pivotShiftX = pivotX || pivotY ? `-(${scaleExpression})*(${pivotX}*cos(${rotationExpression})-${pivotY}*sin(${rotationExpression}))` : "";
+    const pivotShiftY = pivotX || pivotY ? `-(${scaleExpression})*(${pivotX}*sin(${rotationExpression})+${pivotY}*cos(${rotationExpression}))` : "";
+    const x = `(${graphicMotionExpression(graphic, "x", size[0])})+${Number((anchorX * width - rasterWidth / 2).toFixed(5))}${pivotShiftX}`;
+    const y = `(${graphicMotionExpression(graphic, "y", size[1])})+${Number((anchorY * height - rasterHeight / 2).toFixed(5))}${pivotShiftY}`;
     const opacity = graphicMotionExpression(graphic, "opacity", 1, "T");
     rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})'`);
     filters.push(`[${input}:v]${rasterFilters.join(",")}[rastergraphic${index}]`);

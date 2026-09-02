@@ -543,8 +543,6 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
   });
   const graphics = manifest.layers.flatMap((layer) => {
     if (!["text", "caption", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
-    const graphicX = Math.max(0, Math.min(0.95, layer.x));
-    const graphicY = Math.max(0, Math.min(0.95, layer.y));
     const initialState = evaluateCompositionFrame(manifest, layer.from).find((item) => item.id === layer.id);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
@@ -557,10 +555,12 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
-      x: graphicX,
-      y: graphicY,
-      width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
-      height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
+      x: layer.x,
+      y: layer.y,
+      width: layer.width,
+      height: layer.height,
+      anchorX: layer.anchorX,
+      anchorY: layer.anchorY,
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       fontReferenceWidth: manifest.width,
       imageFit: layer.kind === "image" ? cutImageFit(layer.style.objectFit) : "contain" as const,
