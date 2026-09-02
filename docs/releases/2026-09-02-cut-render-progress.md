@@ -18,5 +18,7 @@ security gate is weakened.
 Parser tests cover chunking, malformed/private input, record boundaries and
 bounded state. A real-encoder browser-qualification test compares reported
 frames/time against a retained video, its decoded frame count and actual RGB
-pixels. Qualification, protected checks and production deployment remain pending
-for this candidate until their separate receipts are recorded.
+pixels. Combined local qualification passed 603 unit tests, types/build/bundle
+checks and 28 browser tests on mobile/desktop (6.8 minutes). The actual encoder
+test passed on both projects, alongside native application rendering journeys.
+Protected checks and production deployment remain separate pending gates.

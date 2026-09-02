@@ -38,6 +38,16 @@ private assets/audio, async readiness, replay, denied network/files, watchdog
 and cancellation tests. Independent protected exact-image qualification and its
 fresh security scan remain pending. Prior image security receipts do not cover it.
 
+## Protected closure
+
+PR 151 merged as `83b7e85ea1fd828b7eb9002ccb3ec87de925d85d` after protected
+checks passed. Runtime run `33640536948` qualified the exact production-candidate
+image `sha256:a12094bfe2785c50004884a910ff8e03b868a1bd2de62e7e773c2b0f8c37ac14`:
+66 evidence records at `2026-09-02T14:18:11.131Z`; the scan identifies that same
+image and contains zero HIGH/CRITICAL findings. Verify run `33640536966` completed
+with 282 browser tests passed, 24 pre-existing skips and no reported flaky tests.
+Source merge is not deployment or public executable-code availability.
+
 ## Boundaries
 
 Helpers require the composition browser, a bounded plain-text input and one

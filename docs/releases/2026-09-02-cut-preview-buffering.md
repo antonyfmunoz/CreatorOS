@@ -29,8 +29,12 @@ offline recovery or a public executable-TSX player.
   `B:/CreativesOS-task-artifacts/cut-preview-buffering-expanded.log` and its
   `-error.log` companion.
 
-The native encoder-progress change is combined only after this isolated preview
-pass; the combined source requires its own root and browser qualification.
+The native encoder-progress change was combined after this isolated preview pass.
+Combined qualification passed **603 unit tests**, types, build, bundle budgets and
+the Worker dry-run. **28 browser tests passed in 6.8 minutes**, including the real
+encoder's reported frame count versus decoded video and the native editing/render
+journeys. Logs are `cut-playback-progress-combined-verify.log` and
+`cut-playback-progress-combined-browser.log` under the same task-artifacts folder.
 Protected merge and production deployment are not yet claimed.
 
 ## Protected qualification structure
