@@ -40,7 +40,7 @@ try {
   context.on('page', (popup) => { if (popup !== page) void popup.close(); });
   page.setDefaultTimeout(10_000);
   const nonce = randomBytes(20).toString('base64');
-  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src 'none'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replaceAll('</script', '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
   const outputPath = `/tmp/artifact.${output.extension}`;
@@ -60,6 +60,28 @@ try {
       window.__cutRenderFrame(frame, config, input);
       await document.fonts.ready;
       await Promise.all([...document.images].map((image) => image.decode()));
+      const waitForMedia = (video, event, action) => new Promise((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); video.removeEventListener(event, ready); video.removeEventListener('error', failed); };
+        const ready = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error('Private video decode failed.')); };
+        const timer = setTimeout(failed, 8000);
+        video.addEventListener(event, ready, { once: true });
+        video.addEventListener('error', failed, { once: true });
+        try { action?.(); } catch { failed(); }
+      });
+      const videos = [...document.querySelectorAll('video[data-cut-video-time]')];
+      if (videos.length > 8) throw new Error('Too many simultaneous code video layers.');
+      await Promise.all(videos.map(async (video) => {
+        if (!/^data:video\/(mp4|webm);base64,/.test(video.currentSrc || video.src)) throw new Error('Video must remain capsule-local.');
+        video.pause();
+        if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
+        if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 120 || video.videoWidth < 1 || video.videoHeight < 1 || video.videoWidth * video.videoHeight > 3840 * 2160) throw new Error('Private video exceeds decode limits.');
+        const time = Number(video.dataset.cutVideoTime);
+        if (!Number.isFinite(time) || time < 0) throw new Error('Invalid video seek.');
+        const requested = video.dataset.cutVideoRepeat === 'yes' ? time % video.duration : time;
+        const target = Math.min(requested, Math.max(0, video.duration - 0.000001));
+        if (Math.abs(video.currentTime - target) > 0.0000001) await waitForMedia(video, 'seeked', () => { video.currentTime = target; });
+      }));
       // Time-dependent animation is not part of the frame-driven SDK contract.
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

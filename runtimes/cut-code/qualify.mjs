@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { createHash } from 'node:crypto';
@@ -90,6 +90,29 @@ console.log('PASS actual nested timing, global frame, easing, spring and color o
 await assert.rejects(renderIsolated({ request, source: capsule(`import {useEffect} from 'react';export default function Scene(){useEffect(()=>{throw new Error('private source must not be logged')},[]);return <div/>}`), image }));
 records.push({ test: 'react-effect-failure-is-not-success', passed: true });
 console.log('PASS asynchronous composition failure rejects artifact completion');
+const clipPath = `${directory}private-video-fixture.mp4`;
+execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:r=10:d=0.3', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:r=10:d=0.3', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', clipPath], { windowsHide: true });
+const clip = await readFile(clipPath);
+const videoSource = capsule(`import {FrameVideo,FullFrame} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FullFrame><FrameVideo src={clip} style={{width:'100%',height:'100%'}}/></FullFrame>`, { 'src/clip.mp4': clip });
+for (const frame of [1, 4]) {
+  const result = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, frame }, source: videoSource, image });
+  assert.ok(pixel(result.artifact)[frame < 3 ? 0 : 2] > 240, 'Private video must seek to the exact requested composition time.');
+  await writeFile(`${directory}video-seek-${frame}.png`, result.artifact);
+  records.push({ test: `private-video-seek-${frame}`, ...result.receipt });
+}
+const encodedClip = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, mode: 'video' }, source: videoSource, image });
+await writeFile(`${directory}code-video-layer.mp4`, encodedClip.artifact);
+const layerProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=nb_frames,codec_type', '-of', 'json', `${directory}code-video-layer.mp4`], { encoding: 'utf8', windowsHide: true }));
+assert.equal(layerProbe.streams.length, 1);
+assert.equal(Number(layerProbe.streams[0].nb_frames), 6);
+records.push({ test: 'private-video-layer-render', ...encodedClip.receipt, probe: layerProbe });
+const retimedSource = capsule(`import {FrameVideo,FullFrame} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FullFrame><FrameVideo src={clip} startFrom={2} speed={2} repeat style={{width:'100%',height:'100%'}}/></FullFrame>`, { 'src/clip.mp4': clip });
+for (const [frame, channel] of [[1, 2], [2, 0]]) {
+  const retimed = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, frame }, source: retimedSource, image });
+  assert.ok(pixel(retimed.artifact)[channel] > 240, 'Offset/speed/repeat must select the correct source frame.');
+  records.push({ test: `retimed-private-video-${frame}`, ...retimed.receipt });
+}
+console.log('PASS capsule-local video seeking and six-frame code video render (silent)');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);

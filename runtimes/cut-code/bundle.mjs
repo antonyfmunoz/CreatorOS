@@ -56,7 +56,7 @@ export async function bundleCapsule(files, entrypoint) {
       });
       plugin.onLoad({ filter: /.*/, namespace: 'capsule' }, (args) => {
         const extension = path.posix.extname(args.path).slice(1).toLowerCase();
-        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl' };
+        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl' };
         if (!loaders[extension] || !files[args.path]) throw new Error('Unsupported capsule module type.');
         return { contents: files[args.path], loader: loaders[extension] };
       });

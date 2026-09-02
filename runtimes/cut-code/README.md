@@ -13,6 +13,12 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
+- `FrameVideo` seeks a capsule-local MP4/WebM import at the local composition
+  frame, with source offset, speed, repetition and end-frame freeze. It uses
+  `startFrom` in composition-frame units, `speed` in `(0, 8]`, and `repeat` as a
+  boolean. Up to eight simultaneous, at-most-120-second/4K sources are admitted.
+  Embedded video remains muted; source audio is not included in exports yet.
+  No external media URL or network permission is introduced.
 - Stateless motion math: numeric keyframes with clamp/extend/wrap behavior,
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
   springs, explicit sRGB hex/alpha transitions and keyed repeatable variation.
@@ -37,8 +43,8 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   receipt hashes and preserves no private source in application logs.
 
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
-state and arbitrary timers are not a reproducibility contract. Media playback,
-audio mixing, arbitrary dependencies, PDF output,
+state and arbitrary timers are not a reproducibility contract. Video codec/VFR
+compatibility beyond the qualified MP4 fixtures, audio mixing, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Isolation and qualification

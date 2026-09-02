@@ -33,3 +33,10 @@ export function Repeat({ duration, count, alternate = false, children }) {
   if (alternate && iteration % 2) frame = duration - 1 - frame;
   return <FrameContext.Provider value={{ ...current, frame }}>{children}</FrameContext.Provider>;
 }
+
+export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, style, ...props }) {
+  const frame = useFrame();
+  const { fps } = useComposition();
+  if (typeof src !== 'string' || !/^data:video\/(mp4|webm);base64,/.test(src) || !Number.isInteger(startFrom) || startFrom < 0 || !Number.isFinite(speed) || speed <= 0 || speed > 8 || typeof repeat !== 'boolean') throw new Error('FrameVideo requires a private imported MP4/WebM and bounded timing.');
+  return <video {...props} style={style} src={src} muted playsInline autoPlay={false} loop={false} preload="auto" data-cut-video-time={(startFrom + frame * speed) / fps} data-cut-video-repeat={repeat ? 'yes' : 'no'}/>;
+}
