@@ -135,6 +135,22 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const lockfileAsset = (await lockfileUpload.json()).asset;
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: lockfileAsset.id, name: "package-lock.json", duration: 2, mediaKind: "code_lockfile" }));
 
+  // Metadata alone must not admit a tampered private executable package.
+  const corruptCapsule = Buffer.from(sourceCapsule);
+  const corruptOffset = corruptCapsule.indexOf(Buffer.from("qualification-composition"));
+  expect(corruptOffset).toBeGreaterThan(0); corruptCapsule[corruptOffset] ^= 1;
+  const corruptUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-code-source", visibility: "private", code_source: { name: "corrupt-source.zip", mimeType: "application/zip", buffer: corruptCapsule } } });
+  await expectOk(corruptUpload); const corruptAsset = (await corruptUpload.json()).asset;
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: corruptAsset.id, name: "corrupt-source.zip", duration: 2, mediaKind: "code_source" }));
+  const invalidCapsule = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, {
+    name: "Corrupt capsule must not persist", mode: "sandboxed_tsx",
+    manifest: { version: 1, name: "Invalid package", width: 480, height: 270, fps: 30, durationInFrames: 60, layers: [] },
+    codeCapsule: { version: 1, entrypoint: "src/index.tsx", sourceAssetId: corruptAsset.id, lockfileAssetId: lockfileAsset.id, runtime: "isolated_node", networkPolicy: "deny" },
+  });
+  expect(invalidCapsule.status()).toBe(400); expect(await invalidCapsule.text()).toMatch(/CRC32/);
+  const afterInvalid = await (await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).json();
+  expect(afterInvalid.compositions.some((composition: { name: string }) => composition.name === "Corrupt capsule must not persist")).toBe(false);
+
   await page.goto(`/cut-studio?project=${project.id}`);
   const riveRuntimeResponse = await page.request.get("/api/runtime-assets/rive-2.41.0.wasm");
   await expectOk(riveRuntimeResponse);
@@ -143,6 +159,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const studio = page.getByLabel("CutStudio creative runtime");
   await expect(studio.getByText("Motion graphics + cinema studio")).toBeVisible();
   const codePackage = studio.getByLabel("Code composition package");
+  await codePackage.getByLabel("Code source capsule").selectOption(sourceCapsuleAsset.id);
   await expect(codePackage.getByLabel("Code source capsule")).toHaveValue(sourceCapsuleAsset.id);
   await expect(codePackage.getByLabel("Code dependency lockfile")).toHaveValue(lockfileAsset.id);
   await codePackage.getByRole("button", { name: "Save isolated composition" }).click();
