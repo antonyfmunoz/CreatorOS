@@ -106,7 +106,10 @@ test("native text layout preserves wrapped lines and authoring controls in priva
   expect(fontResponse.headers()["content-type"]).not.toContain("json");
   const privateFamily = `CreativesOS_${fontAsset.id.replaceAll("-", "")}`;
   await expect.poll(() => page.evaluate((family) => [...document.fonts].some((face) => face.family.includes(family) && face.status === "loaded"), privateFamily)).toBe(true);
-  expect((await page.request.get(`/api/assets/${fontAsset.id}/stream`, { headers: { "x-creativesos-demo-user": String(peer) } })).status()).toBe(404);
+  const deniedFont = await page.request.get(`/api/assets/${fontAsset.id}/stream`, { headers: { "x-creativesos-demo-user": String(peer) } });
+  expect(deniedFont.status()).toBe(403);
+  expect(await deniedFont.json()).toEqual({ message: "You do not have access to this private asset" });
+  expect(deniedFont.headers()["cache-control"]).toBe("no-store");
   await studio.getByLabel("Text font style", { exact: true }).selectOption("italic");
   await expect(previewText).toHaveCSS("font-style", "italic");
   // Choosing the default must actually detach this layer, without deleting the

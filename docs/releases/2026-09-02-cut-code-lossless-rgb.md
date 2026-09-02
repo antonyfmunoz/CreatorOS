@@ -55,6 +55,12 @@ qualification is still pending; earlier image receipts do not qualify this image
 
 ## Remaining gates
 
+The same candidate includes [private preview recovery and on-demand font
+loading](2026-09-02-cut-preview-recovery.md). The combined application source
+passed `npm run verify` with 595 tests and 18 focused desktop/mobile journeys.
+The previously merged draft-custody work is already an ancestor; this candidate
+is based on main `970dec3d6d873e1d5503dcea5fbe93c9e90a9568`.
+
 Protected application/browser/runtime checks, exact candidate vulnerability scan,
 merge, approved separate execution topology, production dispatcher/custody and
 user-facing player/export behavior remain distinct. Public production was not

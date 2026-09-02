@@ -19,7 +19,14 @@ quarter-volume setting changes the measured signal accordingly. The existing
 private-typography journey additionally checks no eager unused-font request,
 actual selected-font loading and denial to the other seeded account.
 
-Local and protected qualification are pending at this source checkpoint.
+Local qualification passed: `npm run verify` (595 tests, type/build/bundle and
+Worker dry-run gates), plus 18 focused desktop/mobile journeys: ten creative
+draft scenarios, two complete private typography journeys and six source-recovery
+cases. The initial new font-permission assertion incorrectly expected 404; the
+established asset endpoint returns 403. The final assertion checks that exact
+403, the exact access-denied JSON and `no-store`, without changing server policy.
+The final 18-case run passed in 2.6 minutes. Protected qualification remains
+pending at this checkpoint.
 This is owner-side authoring recovery, not a claim that the separate shared
 workspace has full composition editing, that every resource buffers the player
 clock correctly, or that public executable TSX jobs are enabled. Those remain
