@@ -92,6 +92,7 @@ test("late autosave cannot replace the next project's timeline", async ({ page }
   try {
     await page.getByRole("slider", { name: "V1 track gain", exact: true }).press("ArrowLeft");
     await expect.poll(() => committed).toBe(true);
+    page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
     await page.getByRole("button", { name: "Projects", exact: true }).click();
     await page.getByRole("button", { name: /^Next project custody 0:01/ }).click();
     await expect(page.getByRole("heading", { name: "Next project custody", exact: true })).toBeVisible();
@@ -131,4 +132,61 @@ test("primary mixer gain and mute reach the actual simple rendered soundtrack", 
   await page.getByRole("button", { name: "Mute V1 track", exact: true }).click();
   await expect(page.getByRole("button", { name: "Unmute V1 track", exact: true })).toBeVisible();
   expect(await renderRms()).toBeLessThan(.00001);
+});
+
+test("leaving a failed unsaved edit requires an explicit discard decision", async ({ page }, info) => {
+  const project = await createProject(page, info, "Unsaved departure custody");
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await page.route(`**/projects/${project.id}/edl`, async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Synthetic save outage" }) });
+  });
+  const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+  await gain.press("ArrowLeft"); const draft = await gain.inputValue();
+  const projects = page.getByRole("button", { name: "Projects", exact: true });
+  page.once("dialog", async (dialog) => { expect(dialog.type()).toBe("confirm"); expect(dialog.message()).toContain("Leave without saving"); await dialog.dismiss(); });
+  await projects.click();
+  await expect(page.getByRole("heading", { name: project.name, exact: true })).toBeVisible();
+  await expect(gain).toHaveValue(draft);
+  await expect(page.getByRole("button", { name: "Retry saving edit", exact: true })).toBeVisible();
+  page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.dismiss(); });
+  await projects.click(); await expect(gain).toHaveValue(draft);
+  page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
+  await projects.click();
+  await expect(page.getByRole("button", { name: /^Unsaved departure custody 0:01/ })).toBeVisible();
+  const stored = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  expect(stored.edl).toEqual(project.edl); expect(stored.revision).toBe(project.revision);
+});
+
+test("background completion waits for the confirmed timeline save before refreshing", async ({ page }, info) => {
+  const project = await createProject(page, info, "Background refresh custody");
+  const jobId = "11111111-1111-4111-8111-111111111111";
+  let completed = false, projectLoads = 0;
+  const job = () => ({ id: jobId, kind: "transcribe", state: completed ? "done" : "running", detail: "Synthetic metadata refresh", progress: completed ? 1 : .5 });
+  await page.route(`**/api/cut/projects/${project.id}`, async (route) => {
+    const response = await route.fetch(); const body = await response.json();
+    projectLoads++; await route.fulfill({ response, json: { ...body, jobs: [job()] } });
+  });
+  await page.route(`**/api/cut/jobs/${jobId}`, async (route) => { completed = true; await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job()) }); });
+  let release!: () => void, committed = false;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**/projects/${project.id}/edl`, async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    const response = await route.fetch(); committed = true; await gate; await route.fulfill({ response });
+  });
+  try {
+    await page.goto(`/cut-studio?project=${project.id}`);
+    const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+    await gain.press("ArrowLeft"); const draft = await gain.inputValue();
+    await expect.poll(() => committed).toBe(true);
+    await expect(page.getByText("A background update is ready. Your current edit will stay here until it has saved.", { exact: true })).toBeVisible();
+    expect(projectLoads).toBe(1); await expect(gain).toHaveValue(draft);
+    await expect(page.getByRole("button", { name: "Render full edit", exact: true })).toBeDisabled();
+    release();
+    await expect.poll(() => projectLoads).toBe(2);
+    await expect(gain).toHaveValue(draft);
+    await expect(page.getByRole("button", { name: "Render full edit", exact: true })).toBeEnabled();
+    const stored = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+    expect(stored.edl.tracks.find((track: any) => track.track === "v1").gain).toBe(Number(draft));
+  } finally { release(); }
 });

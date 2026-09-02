@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import sharp from "sharp";
 import { expect, test } from "@playwright/test";
+import { waitForCutRender } from "./helpers/cut-render";
 
 test("native text layout preserves wrapped lines and authoring controls in private video", async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -55,7 +56,9 @@ test("native text layout preserves wrapped lines and authoring controls in priva
   const queued = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
   expect(queued.ok(), await queued.text()).toBeTruthy();
   const job = await queued.json();
-  await expect.poll(async () => (await (await page.request.get(`/api/cut/jobs/${job.id}`)).json()).state, { timeout: 60_000 }).toBe("done");
+  await waitForCutRender(page.request, job.id, info);
+  const completed = await (await page.request.get(`/api/cut/jobs/${job.id}`)).json();
+  expect(completed, completed.detail).toMatchObject({ state: "done", artifactAssetId: expect.any(String) });
   const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=0`);
   expect(still.ok()).toBeTruthy();
   await info.attach("encoded-native-text", { body: await still.body(), contentType: "image/png" });

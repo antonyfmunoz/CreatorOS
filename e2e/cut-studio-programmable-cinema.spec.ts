@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
+import { waitForCutRender } from "./helpers/cut-render";
 
 function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith("mobile") ? 1 : 2; }
 async function request(page: Page, owner: number, method: string, url: string, data?: unknown, headers: Record<string, string> = {}) { return page.request.fetch(url, { method, data, headers: { "x-creativesos-demo-user": String(owner), ...headers } }); }
@@ -381,7 +382,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const renderResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { aspect: "16:9", captions: false, cleanAudio: false, quality: "draft", resolution: "720p", fps: 24 });
   await expectOk(renderResponse);
   const render = await renderResponse.json();
-  await expect.poll(async () => (await (await request(page, owner, "GET", `/api/cut/jobs/${render.id}`)).json()).state, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
+  await waitForCutRender(page.request, render.id, testInfo, { "x-creativesos-demo-user": String(owner) });
   const renderedJob = await request(page, owner, "GET", `/api/cut/jobs/${render.id}`);
   await expectOk(renderedJob);
   const completedRender = await renderedJob.json();
