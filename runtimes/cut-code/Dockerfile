@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 WORKDIR /opt/cut-code
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
-COPY bundle.mjs sdk.jsx request.mjs render.mjs ./
+COPY bundle.mjs sdk.jsx motion.mjs request.mjs render.mjs ./
 ENV CUT_CODE_CONTAINER=1 HOME=/tmp
 USER pwuser
 ENTRYPOINT ["node", "render.mjs"]

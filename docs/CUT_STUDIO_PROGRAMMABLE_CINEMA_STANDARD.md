@@ -96,7 +96,35 @@ container pool is the portable alternative. The product decision is deferred
 until workload/cost evidence exists; the native capsule contract is compatible
 with either.
 
-## Remaining release sequence
+## Evidence refresh: 2026-09-01
+
+This dated checkpoint supersedes older release-pending wording in the historical
+sequence below; it does not declare competitor parity.
+
+- Production web `41c441d1ede1e310232678ea3a2814c6e531f4bf` passed protected
+  deploy `33581184353`, readiness and exact 120/120 migration checks. The player
+  advanced frames in the signed-in application. Three distinct parameterized
+  batch jobs completed on the immutable GCP worker image; independent review of
+  those three exact artifacts remains required.
+- Private Lottie and Rive final-frame rendering is implemented, not a missing
+  provider adapter. Its bounded animation formats are not arbitrary imported
+  Three scenes or complete interactive-animation compatibility.
+- Private finished-video PNG/JPEG/WebP exact-frame export passed protected
+  run `33583614682` and merged in `a983cc0`. Live deployment and field proof of
+  that feature remain separate from the preceding production release.
+- `runtimes/cut-code` now contains a clean-room, pinned-React TSX renderer
+  prototype. Protected Linux run `33585223417` proved actual PNG/MP4 pixels,
+  transparency, isolated imports, network/metadata/file denial, watchdog,
+  cancellation and container cleanup. It is **not connected to public jobs**.
+  Source/package persistence must not be advertised as executable rendering.
+- Production code execution still needs an approved hardened image/compute
+  boundary, tenant admission, durable dispatch and cancellation, private asset
+  exchange, receipt verification, recovery, application preview and real field
+  tests. These include internal implementation, not merely credentials.
+- Broad code/media/audio compatibility, larger-workload performance and locked
+  competitor comparisons remain open. The verdict is still `not_benchmarked`.
+
+## Historical implementation sequence
 
 1. **Completed:** migration `0114_cut_studio_programmable_cinema.sql` is in
    production on release `613ad52277ad65fe0ec36397ddbc631752f3974a`.
@@ -110,9 +138,8 @@ with either.
    project and scrub deterministic frames through the expression-free light SVG
    runtime. Cross-tenant registration, expressions, external/embedded media,
    unsupported layer runtimes and silent final-render fallback are denied.
-   Complete the dedicated isolated Lottie final renderer and imported
-   programmable Three-scene execution only after their execution boundaries
-   are approved.
+   Bounded isolated Lottie final rendering is now implemented; imported
+   programmable Three-scene execution remains a separate execution boundary.
 5. **Private Rive preview implemented and locally field-qualified:** normal
    users can upload a bounded `.riv`, associate it with an owned project and
    deterministically scrub its first linear animation through a pinned,

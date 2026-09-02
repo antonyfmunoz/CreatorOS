@@ -27,6 +27,10 @@ try {
   await context.route('**/*', (route) => route.abort('blockedbyclient'));
   await context.routeWebSocket(/.*/, (socket) => socket.close());
   const page = await context.newPage();
+  let pageFailed = false;
+  // React effects and rejected promises can fail outside the synchronous render
+  // callback. Such failures must not be turned into a successful blank artifact.
+  page.on('pageerror', () => { pageFailed = true; });
   phase = 'render';
   page.on('dialog', (dialog) => void dialog.dismiss());
   context.on('page', (popup) => { if (popup !== page) void popup.close(); });
@@ -53,7 +57,9 @@ try {
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, { frame, config, input: request.input });
+    if (pageFailed) throw new Error('Composition execution failed.');
     const png = await page.screenshot({ type: 'png', omitBackground: request.mode === 'still', timeout: 10_000 });
+    if (pageFailed) throw new Error('Composition execution failed.');
     if (png.length > MAX_ARTIFACT_BYTES) throw new Error('Frame output limit exceeded.');
     if (encoder) {
       if (!encoder.stdin.write(png)) await once(encoder.stdin, 'drain');

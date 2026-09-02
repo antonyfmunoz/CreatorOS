@@ -1,7 +1,9 @@
 import React, { createContext, useContext } from 'react';
+export { interpolate, spring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 
-export const FrameContext = createContext({ frame: 0, config: null, input: {} });
+export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
 export const useFrame = () => useContext(FrameContext).frame;
+export const useGlobalFrame = () => useContext(FrameContext).globalFrame;
 export const useComposition = () => useContext(FrameContext).config;
 export const useInputs = () => useContext(FrameContext).input;
 
@@ -16,11 +18,18 @@ export function Sequence({ at = 0, duration, children }) {
   return <FrameContext.Provider value={{ ...current, frame: current.frame - at }}>{children}</FrameContext.Provider>;
 }
 
-export function interpolate(value, input, output) {
-  if (!Number.isFinite(value) || !Array.isArray(input) || !Array.isArray(output) || input.length < 2 || input.length !== output.length || input.some((point, index) => !Number.isFinite(point) || (index > 0 && point <= input[index - 1])) || output.some((point) => !Number.isFinite(point))) throw new Error('Interpolation requires matching finite, strictly ordered input ranges.');
-  if (value <= input[0]) return output[0];
-  for (let index = 1; index < input.length; index++) {
-    if (value <= input[index]) return output[index - 1] + (output[index] - output[index - 1]) * (value - input[index - 1]) / (input[index] - input[index - 1]);
-  }
-  return output.at(-1);
+export function Freeze({ frame, children }) {
+  const current = useContext(FrameContext);
+  if (!Number.isInteger(frame) || frame < 0) throw new Error('A freeze frame must be a non-negative integer.');
+  return <FrameContext.Provider value={{ ...current, frame }}>{children}</FrameContext.Provider>;
+}
+
+export function Repeat({ duration, count, alternate = false, children }) {
+  const current = useContext(FrameContext);
+  if (!Number.isInteger(duration) || duration < 1 || (count !== undefined && (!Number.isInteger(count) || count < 1)) || typeof alternate !== 'boolean') throw new Error('Invalid repetition timing.');
+  if (current.frame < 0 || (count !== undefined && current.frame >= duration * count)) return null;
+  const iteration = Math.floor(current.frame / duration);
+  let frame = current.frame % duration;
+  if (alternate && iteration % 2) frame = duration - 1 - frame;
+  return <FrameContext.Provider value={{ ...current, frame }}>{children}</FrameContext.Provider>;
 }

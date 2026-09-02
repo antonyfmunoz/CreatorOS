@@ -34,6 +34,23 @@ assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);
 records.push({ test: 'transparent-png-and-input-binding', ...transparent.receipt });
 console.log('PASS direct transparent composition PNG and input-bound output');
+const motionSource = capsule(`import {FullFrame,Sequence,Repeat,Freeze,useFrame,useGlobalFrame,interpolate,easing,spring,interpolateColor,seededRandom} from '@creativesos/cut';
+function Probe(){const local=useFrame(),global=useGlobalFrame();return <div style={{position:'absolute',left:0,top:0,width:40,height:40,background:local===4&&global===20?'#00ff00':'#ff0000'}}/>;}
+function Frozen(){return <div style={{position:'absolute',left:40,top:0,width:40,height:40,background:useFrame()===7&&useGlobalFrame()===20?'#00ff00':'#ff0000'}}/>;}
+export default function Scene(){const f=useFrame();return <FullFrame style={{background:interpolateColor(f,[0,40],['#ff0000','#0000ff'])}}>
+<Sequence at={5}><Repeat duration={10} count={3} alternate><Probe/></Repeat><Freeze frame={7}><Frozen/></Freeze></Sequence>
+<div style={{position:'absolute',left:interpolate(f,[0,40],[0,240],{ease:easing.bezier(.42,0,.58,1)}),top:70,width:40,height:40,background:'#00ff00'}}/>
+<div style={{position:'absolute',left:280,top:0,width:40,height:40,background:spring({frame:f,fps:30,damping:20})>.98&&seededRandom('same')===seededRandom('same')?'#00ff00':'#ff0000'}}/>
+</FullFrame>}`);
+const motion = await renderIsolated({ request: { ...request, frame: 20, durationInFrames: 41 }, source: motionSource, image });
+assert.deepEqual(pixel(motion.artifact), [128, 0, 128, 255]);
+for (const [x, y] of [[20, 20], [60, 20], [140, 90], [300, 20]]) assert.deepEqual(pixel(motion.artifact, x, y), [0, 255, 0, 255]);
+await writeFile(`${directory}motion-controls.png`, motion.artifact);
+records.push({ test: 'nested-repeat-freeze-global-frame-bezier-spring-color', ...motion.receipt });
+console.log('PASS actual nested timing, global frame, easing, spring and color output');
+await assert.rejects(renderIsolated({ request, source: capsule(`import {useEffect} from 'react';export default function Scene(){useEffect(()=>{throw new Error('private source must not be logged')},[]);return <div/>}`), image }));
+records.push({ test: 'react-effect-failure-is-not-success', passed: true });
+console.log('PASS asynchronous composition failure rejects artifact completion');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);
