@@ -2,14 +2,16 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, closeDatabase } from "../server/db";
 import { claimCutStudioJob, cutWorkerIdentity, recoverInterruptedCutStudioJobs } from "../server/cut-studio";
 import { qualifyCutWorkerAdmission } from "./qualify-cut-worker-admission";
-import { claimMediaJob, recoverInterruptedMediaJobs } from "../server/media-processing";
+import { qualifyMediaWorkerAdmission } from "./qualify-media-worker-admission";
+import { claimMediaJob, mediaWorkerIdentity, recoverInterruptedMediaJobs } from "../server/media-processing";
 import { assets, businesses, cutStudioJobs, cutStudioProjects, mediaProcessingJobs, mediaWorkerNodes, users } from "../shared/schema";
 
 const expired = new Date(Date.now() - 60_000);
 const active = new Date(Date.now() + 5 * 60_000);
-const workerNodeIds = ["iad-active", "sjc-stale", cutWorkerIdentity().id];
+const workerNodeIds = ["iad-active", "sjc-stale", cutWorkerIdentity().id, mediaWorkerIdentity().id];
 let qualificationPassed = false;
 let admissionReceipt: Awaited<ReturnType<typeof qualifyCutWorkerAdmission>> | undefined;
+let mediaAdmissionReceipt: Awaited<ReturnType<typeof qualifyMediaWorkerAdmission>> | undefined;
 
 if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
   throw new Error("Worker resilience qualification requires an isolated disposable database");
@@ -22,6 +24,7 @@ try {
   const [project] = await db.insert(cutStudioProjects).values({ ownerUserId: user.id, businessId: business.id, sourceAssetId: asset.id, name: "Lease recovery", duration: 10, mediaKind: "video", edl: { version: 3, clips: [{ id: "clip", start: 0, end: 10, timelineStart: 0, trackId: "video-1", assetId: asset.id }], tracks: [{ id: "video-1", kind: "video", name: "Video 1", order: 0, locked: false, hidden: false, muted: false, solo: false, gain: 1 }], graphics: [], audioBuses: [], markers: [] } }).returning();
 
   admissionReceipt = await qualifyCutWorkerAdmission(project);
+  mediaAdmissionReceipt = await qualifyMediaWorkerAdmission(asset);
 
   await db.insert(mediaWorkerNodes).values([
     { id: "iad-active", region: "iad", capabilities: ["transcode"], maxConcurrency: 2, activeJobs: 1, status: "active", heartbeatAt: new Date() },
@@ -90,7 +93,7 @@ try {
       .where(eq(users.clerkId, "worker_resilience"));
     if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
     if (qualificationPassed) {
-      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt }));
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt }));
     }
   } finally {
     await closeDatabase();

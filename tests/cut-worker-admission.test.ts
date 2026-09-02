@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reserveCutWorkerSlot } from "../server/cut-worker-admission";
+import { reserveWorkerSlot as reserveCutWorkerSlot } from "../server/worker-admission";
 
 describe("native worker slot reservation", () => {
   it("prevents overlapping dispatch selections from overcommitting a worker", async () => {
