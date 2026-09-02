@@ -79,6 +79,17 @@ test('declarations cover exactly the SDK runtime export names', () => {
   assert.deepEqual(declared.sort(), [...names].sort());
 });
 
+test('frame preparation handles are opaque and their timing contract is typed', () => {
+  check(`import {holdFrame,releaseFrame,failRender} from '@creativesos/cut';
+const handle=holdFrame({timeoutMs:500});releaseFrame(handle);failRender();
+// @ts-expect-error handles cannot be fabricated
+releaseFrame({});
+// @ts-expect-error timeout is numeric
+holdFrame({timeoutMs:'500'});
+// @ts-expect-error private diagnostics are not exported
+failRender('private source');`);
+});
+
 test('the configuration hook fails explicitly outside its provider and renders inside it', async () => {
   // This evaluates only the checked-in SDK in a unit test, never a user capsule.
   const compiled = await build({ entryPoints: [path.join(directory, 'sdk.jsx')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], logLevel: 'silent' });

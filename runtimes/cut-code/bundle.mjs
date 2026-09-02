@@ -40,7 +40,7 @@ export function readCapsule(bytes, entrypoint) {
 export async function bundleCapsule(files, entrypoint) {
   const locate = (name) => [name, `${name}.tsx`, `${name}.ts`, `${name}.jsx`, `${name}.js`, `${name}/index.tsx`, `${name}/index.ts`].find((candidate) => files[candidate]);
   const result = await build({
-    stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {FrameContext} from './sdk.jsx';import Composition from 'capsule-entry';const root=createRoot(document.getElementById('stage'));window.__cutRenderFrame=(frame,config,input)=>flushSync(()=>root.render(React.createElement(FrameContext.Provider,{value:{frame,globalFrame:frame,config,input}},React.createElement(Composition,input))));`, resolveDir: runtimeRoot, sourcefile: 'bootstrap.jsx', loader: 'jsx' },
+    stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {FrameContext} from './sdk.jsx';import {frameReadiness} from './frame-readiness.mjs';import Composition from 'capsule-entry';const root=createRoot(document.getElementById('stage'));window.__cutRenderFrame=(frame,config,input)=>flushSync(()=>root.render(React.createElement(FrameContext.Provider,{value:{frame,globalFrame:frame,config,input}},React.createElement(Composition,input))));window.__cutWaitForFrame=()=>frameReadiness.wait(()=>flushSync(()=>{}));`, resolveDir: runtimeRoot, sourcefile: 'bootstrap.jsx', loader: 'jsx' },
     bundle: true, platform: 'browser', format: 'iife', write: false,
     outfile: path.join(runtimeRoot, '__compiled_capsule__.js'),
     jsx: 'automatic', sourcemap: false, logLevel: 'silent',

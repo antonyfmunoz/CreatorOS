@@ -9,6 +9,7 @@ import { qualifyAudioOnly } from './qualify-audio-only.mjs';
 import { qualifyGif } from './qualify-gif.mjs';
 import { qualifyProres } from './qualify-prores.mjs';
 import { qualifyVideoEncoding } from './qualify-video-encoding.mjs';
+import { qualifyFrameReadiness } from './qualify-frame-readiness.mjs';
 
 const variant = process.env.CUT_CODE_IMAGE_VARIANT ?? 'qualification';
 if (!['qualification', 'production-candidate'].includes(variant)) throw new Error('Unsupported qualification image variant.');
@@ -20,6 +21,7 @@ const capsule = (code, extras = {}) => Buffer.from(zipSync({ 'package.json': str
 const source = capsule(`import {FullFrame,Sequence,useFrame,useInputs,interpolate} from '@creativesos/cut';import Title from './title';export default function Scene(){const f=useFrame();const input=useInputs();return <FullFrame style={{background:f<15?'#ff0000':'#0000ff'}}><div style={{position:'absolute',left:interpolate(f,[0,29],[0,240]),top:70,width:40,height:40,background:'#00ff00'}}/><Sequence at={15} duration={15}><Title label={input.title}/></Sequence></FullFrame>}`, { 'src/title.tsx': strToU8(`import {useFrame} from '@creativesos/cut';export default ({label})=><span style={{position:'absolute',top:0,color:'white'}}>{label}: {useFrame()}</span>`) });
 const pixel = (artifact, x = 300, y = 160) => [...execFileSync('ffmpeg', ['-v', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-vf', `format=rgba,crop=1:1:${x}:${y}`, '-f', 'rawvideo', 'pipe:1'], { input: artifact, maxBuffer: 8192, windowsHide: true })];
 const records = [];
+records.push(...await qualifyFrameReadiness({ image, directory }));
 records.push(...await qualifyVideoEncoding({ image, directory }));
 records.push(...await qualifyProres({ image, directory }));
 records.push(...await qualifyGif({ image, directory }));
@@ -274,6 +276,8 @@ assert.ok(partial[0]>235&&Math.abs(partial[3]-128)<=3,'Semi-transparent authored
 assert.equal(alphaPixel(alphaPath,4,30,30)[3],0); assert.ok(alphaPixel(alphaPath,4,110,30)[1]>235,'Actual transparent motion must advance to the later frame.');
 execFileSync('ffmpeg',['-v','error','-y','-nostdin','-c:v','libvpx-vp9','-i',alphaPath,'-frames:v','1',`${directory}transparent-motion-frame-0.png`],{windowsHide:true});
 const alphaWithSound=await renderIsolated({request:{...alphaRequest,audioTracks:[{file:'src/tone-440.wav',volume:.5}]},source:alphaSource,image});
+assert.deepEqual((await renderIsolated({request:alphaRequest,source:alphaSource,image})).artifact,alphaVideo.artifact,'Transparent WebM must replay byte-for-byte.');
+assert.deepEqual((await renderIsolated({request:{...alphaRequest,audioTracks:[{file:'src/tone-440.wav',volume:.5}]},source:alphaSource,image})).artifact,alphaWithSound.artifact,'Transparent WebM with Opus must replay byte-for-byte.');
 const alphaSoundPath=`${directory}transparent-motion-with-audio.webm`;await writeFile(alphaSoundPath,alphaWithSound.artifact);
 const alphaSoundProbe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','stream=codec_type,codec_name','-of','json',alphaSoundPath],{encoding:'utf8',windowsHide:true}));
 assert.ok(alphaSoundProbe.streams.some(stream=>stream.codec_type==='audio'&&stream.codec_name==='opus'));assert.ok(rms(alphaSoundPath,.1,.4)>.03);assert.equal(alphaPixel(alphaSoundPath,0,300,160)[3],0,'Muxing Opus must not flatten video alpha.');

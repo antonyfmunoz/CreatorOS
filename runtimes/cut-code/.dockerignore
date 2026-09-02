@@ -4,6 +4,7 @@
 !package-lock.json
 !bundle.mjs
 !sdk.jsx
+!frame-readiness.mjs
 !motion.mjs
 !audio.mjs
 !video-encoding.mjs

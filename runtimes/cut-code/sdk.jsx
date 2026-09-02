@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+import { frameReadiness } from './frame-readiness.mjs';
 export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 
 export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
@@ -10,6 +11,9 @@ export const useComposition = () => {
   return config;
 };
 export const useInputs = () => useContext(FrameContext).input;
+export function holdFrame(options) { return frameReadiness.hold(options); }
+export function releaseFrame(handle) { frameReadiness.release(handle); }
+export function failRender() { frameReadiness.fail(); }
 
 export function FullFrame({ style, children, ...props }) {
   return <div {...props} style={{ position: 'absolute', inset: 0, ...style }}>{children}</div>;
