@@ -55,7 +55,9 @@ const variantImportInput = z.object({
   label: z.string().trim().min(1).max(160).default("Imported candidate"),
 }).strict();
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
-const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false });
+// Teammates behind the same office/NAT address have independent render budgets.
+// attachUser runs before this limiter; keep the existing five-request ceiling.
+const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionMediaLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderBatchInput = z.object({
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
@@ -208,7 +210,8 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
       mode: "clean_room",
       declarative: "configured",
       packageAuthoring: "configured",
-      isolatedCode: process.env.CUT_COMPOSITION_SANDBOX_URL ? "provider_configured" : "provider_pending",
+      // A URL is configuration, not proof of an implemented executable path.
+      isolatedCode: "not_implemented",
       networkPolicy: "deny",
     },
     generationRuntime: {

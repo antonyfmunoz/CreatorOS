@@ -1,4 +1,4 @@
-workers/**/worker-configuration.d.ts whitespace=-trailing-space
+workers/**/worker-configuration.d.ts text eol=lf whitespace=-trailing-space
 *.sh text eol=lf
 android/gradlew text eol=lf
 android/gradlew.bat text eol=crlf
