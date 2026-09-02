@@ -62,6 +62,7 @@ import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgr
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
+import { cutGraphicColorFilters } from "./cut-graphic-color";
 import { cutFilterGraphArgs } from "./cut-filter-graph";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
@@ -957,9 +958,9 @@ async function renderMultitrack(
       const end = Number((graphic.timelineStart + (filterPoints[pointIndex + 1]?.at ?? graphic.duration)).toFixed(3));
       rasterFilters.push(`gblur=sigma=${Number(sigma.toFixed(3))}:steps=2:planes=15:enable='between(t,${start},${end})'`);
     }
-    const brightness = graphicMotionExpression(graphic, "brightness", 1, "t", -1);
-    const saturation = graphicMotionExpression(graphic, "saturation", 1);
-    rasterFilters.push(`eq=brightness='${brightness}':saturation='${saturation}':eval=frame`);
+    const brightness = graphicMotionExpression(graphic, "brightness", 1, "T");
+    const saturation = graphicMotionExpression(graphic, "saturation", 1, "T");
+    rasterFilters.push(...cutGraphicColorFilters(brightness, saturation, `graphiccolor${index}`));
     const revealPoints = [{ at: 0, kind: graphic.revealKind, direction: graphic.revealDirection, progress: graphic.revealProgress }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, kind: keyframe.revealKind, direction: keyframe.revealDirection, progress: keyframe.revealProgress }))]
       .sort((left, right) => left.at - right.at)
       .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
