@@ -3,7 +3,8 @@
  * additive brightness. Expressions here are compiler-generated numeric data;
  * never pass user-authored FFmpeg/filter text to this internal helper.
  */
-export function cutGraphicColorFilters(brightness: string, saturation: string): string[] {
+export function cutGraphicColorFilters(brightness: string, saturation: string, label = "graphiccolor"): string[] {
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(label)) throw new Error("Invalid graphic color filter label");
   if (!brightness.trim() || !saturation.trim()) throw new Error("Graphic color expressions must not be empty");
   for (const expression of [brightness, saturation]) {
     const value = Number(expression);
@@ -14,6 +15,30 @@ export function cutGraphicColorFilters(brightness: string, saturation: string): 
   if (constantSaturation === 1 && Number.isFinite(constantBrightness)) {
     const value = `round(clip(val*${constantBrightness},0,255))`;
     return ["format=rgba", `lutrgb=r='${value}':g='${value}':b='${value}'`];
+  }
+  if (Number.isFinite(constantBrightness) && Number.isFinite(constantSaturation)) {
+    const s = constantSaturation;
+    const coefficients = [.213 + .787 * s, .715 - .715 * s, .072 - .072 * s,
+      .213 - .213 * s, .715 + .285 * s, .072 - .072 * s,
+      .213 - .213 * s, .715 - .715 * s, .072 + .928 * s];
+    // Native channel-mixer coefficients are bounded to [-2,2]. Use its fast
+    // matrix implementation only when every coefficient is representable;
+    // higher saturation keeps the exact general expression path below.
+    if (coefficients.every((value) => value >= -2 && value <= 2)) {
+      // Retain 16-bit intermediate precision between brightness and saturation.
+      // An 8-bit intermediate introduced a two-level RGB error after clipping.
+      // Preserve the original 8-bit alpha separately: RGB depth conversions
+      // can round an otherwise unchanged alpha byte on the way back to RGBA.
+      const filters = ["format=rgba", `split[${label}source][${label}alpha];[${label}alpha]alphaextract[${label}preserved];[${label}source]format=rgb48le`];
+      if (constantBrightness !== 1) {
+        const value = `round(clip(val*${constantBrightness},0,65535))`;
+        filters.push(`lutrgb=r='${value}':g='${value}':b='${value}'`);
+      }
+      const keys = ["rr", "rg", "rb", "gr", "gg", "gb", "br", "bg", "bb"];
+      filters.push(`colorchannelmixer=${coefficients.map((value, index) => `${keys[index]}=${Number(value.toPrecision(15))}`).join(":")}`);
+      filters.push(`format=rgb24[${label}processed];[${label}processed][${label}preserved]alphamerge`);
+      return filters;
+    }
   }
   if (constantSaturation === 1) {
     const channels = ["r", "g", "b"].map((channel) => `${channel}='round(clip(${channel}(X,Y)*(${brightness}),0,255))'`);

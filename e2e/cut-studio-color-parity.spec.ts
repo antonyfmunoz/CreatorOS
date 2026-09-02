@@ -23,7 +23,7 @@ test('native RGB color controls match CSS channel equations and preserve every a
     input.set([pixel, (pixel * 3) % 256, (pixel * 7) % 256, pixel], offset);
   }
   const receipts: unknown[] = [];
-  for (const [brightness, saturation] of [['0', '1'], ['0.5', '1'], ['1', '1'], ['1.5', '1'], ['4', '1'], ['1', '0'], ['1', '0.5'], ['1', '2'], ['1', '4'], ['1.5', '0.5'], ['0.5+T', '1'], ['0.5+T', '2*T']]) {
+  for (const [brightness, saturation] of [['0', '1'], ['0.5', '1'], ['1', '1'], ['1.5', '1'], ['4', '1'], ['1', '0'], ['1', '0.5'], ['1', '2'], ['1', '4'], ['1.5', '0.5'], ['.9', '.7'], ['0.5+T', '1'], ['0.5+T', '2*T']]) {
     const output = execFileSync('ffmpeg', ['-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${width}x${height}`, '-r', '6', '-i', 'pipe:0',
       '-vf', ['settb=AVTB', ...cutGraphicColorFilters(brightness, saturation)].join(','), '-frames:v', String(frames), '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1'],
     { input, windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024 });

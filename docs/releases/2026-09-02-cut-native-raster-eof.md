@@ -33,3 +33,27 @@ later tests; neither cleanup nor a retry counts as a passing original run.
 Exact integrated root/browser, Linux protected-CI and subsequent production
 worker/artifact qualification are still required. This does not establish broad
 decoder, long-media or competitive parity.
+
+## Combined candidate and Linux compatibility correction
+
+Candidate `f097e5ae3d0088c71c8da2c09566218de3f1c64e` passed local root
+qualification (644 tests / 154 files, types, build, budgets, Worker dry-run) and
+all 16 combined browser/native checks, with retained actual artifacts under
+`B:/CreatorOS-cut-parity-integrated/test-results/creativesos-browser-qualification-d2ce7f5bcd61422b9afbbc719d90d392`.
+
+Protected Verify `33661183679` nevertheless failed. Its desktop job recorded 21
+failures, 128 passes and 24 existing skips. Newer pinned Linux FFmpeg explicitly
+reported `Unrecognized option 'filter_complex_script'`; local Windows FFmpeg
+8.1 still accepted that former option. CodeQL and the core/database/native build
+jobs passed, but this candidate is not mergeable or deployable.
+
+The generated graph writer now uses documented `-/filter_complex` file-argument
+syntax, preserving the private UTF-8 file, exclusive creation, 8 MiB cap and job
+cleanup. Three helper tests and an actual native three-frame RGBA test passed;
+the latter uses a path containing spaces and Unicode and requires exact bytes.
+Evidence: `B:/CreativesOS-task-artifacts/native-filter-file-20260902`.
+Corrected full root, Linux checks and production remain pending. Since the
+rejected option prevented those Linux renders from starting, the finite-input
+correction's original Linux EOF claim remains unproven as well.
+
+Reference: [FFmpeg file-argument options](https://ffmpeg.org/ffmpeg.html#Options).
