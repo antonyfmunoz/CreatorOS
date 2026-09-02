@@ -4,6 +4,8 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/hooks/use-auth";
+import { CutStudioRecovery } from "@/components/cut/CutStudioRecovery";
 import { CutStudioCreativeRuntime } from "@/components/cut/CutStudioCreativeRuntime";
 import { CutStudioFrameExport } from "@/components/cut/CutStudioFrameExport";
 import { CutStudioRenderPreview } from "@/components/cut/CutStudioRenderPreview";
@@ -55,6 +57,11 @@ async function mediaDuration(file: File) {
 
 export default function CutStudioPage() {
   const [, setLocation] = useLocation();
+  const { user, isSignedIn } = useAuth();
+  const accountId = isSignedIn ? user?.id ?? null : null;
+  const accountIdRef = useRef(accountId);
+  accountIdRef.current = accountId;
+  const [authorizedProjectUserId, setAuthorizedProjectUserId] = useState<number | null>(null);
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const sourceMediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -171,6 +178,8 @@ export default function CutStudioPage() {
   }, [hasUnsavedTimeline, confirmLeavingTimeline]);
 
   const openProject = useCallback(async (id: string) => {
+    const openingAccountId = accountIdRef.current;
+    if (!openingAccountId) return;
     if (currentProjectRef.current?.id === id && hasUnsavedTimeline()) {
       setPendingProjectRefresh(id);
       setMessage("A background update is ready. Your current edit will stay here until it has saved.");
@@ -193,7 +202,7 @@ export default function CutStudioPage() {
       const nextReviews = await reviewResponse.json() as ReviewVersion[];
       const nextWorkspace = await workspaceResponse.json() as WorkspacePayload;
       const nextTemplates = await templateResponse.json() as AudioRoutingTemplate[];
-      if (opening !== openGeneration.current) return;
+      if (opening !== openGeneration.current || openingAccountId !== accountIdRef.current) return;
       // An edit made while a same-project refresh was in flight also wins over
       // that older response. Retry the metadata refresh only after saving it.
       if (currentProjectRef.current?.id === id && hasUnsavedTimeline()) { setPendingProjectRefresh(id); return; }
@@ -205,6 +214,7 @@ export default function CutStudioPage() {
         setCreativeDraftDirty(false); setCreativeTimelineBusy(false);
       }
       setPendingProjectRefresh(null);
+      setAuthorizedProjectUserId(openingAccountId);
       setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(nextReviews); setWorkspace(nextWorkspace); setAudioTemplates(nextTemplates); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
     } catch (error) { if (opening === openGeneration.current) setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { if (opening === openGeneration.current) setBusy(""); }
@@ -224,12 +234,12 @@ export default function CutStudioPage() {
   }, []);
 
   useEffect(() => {
-    if (initialProjectOpened.current) return;
+    if (initialProjectOpened.current || !accountId) return;
     const requestedProject = new URLSearchParams(window.location.search).get("project");
     if (!requestedProject || !/^[0-9a-f-]{36}$/i.test(requestedProject)) return;
     initialProjectOpened.current = true;
     void openProject(requestedProject);
-  }, [openProject]);
+  }, [openProject, accountId]);
 
   const applyEdit = useCallback((next: CutEdl) => {
     const current = edlRef.current;
@@ -1177,6 +1187,18 @@ export default function CutStudioPage() {
           {comparisonVersionIds.length === 2 && <div className="rounded-2xl border border-[#1d9bf0]/40 bg-zinc-950 p-4" aria-label="Review version comparison"><div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">Version comparison</h2><p className="mt-1 text-xs text-zinc-500">Play two private review renders in sync and inspect the revision side by side.</p></div><Button size="sm" variant="outline" onClick={() => void toggleComparisonPlayback()}><Play className="mr-1.5 h-3.5 w-3.5"/>Play / pause both</Button></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{comparisonVersionIds.map((versionId, index) => { const version = reviews.find((item) => item.id === versionId); return <div key={versionId} className="overflow-hidden rounded-xl border border-zinc-800 bg-black"><div className="flex items-center justify-between px-3 py-2 text-xs"><span className="font-bold">{version?.label}</span><span className="text-zinc-500">Revision {version?.revision}</span></div><video ref={(node) => { comparisonVideoRefs.current[index] = node; }} aria-label={`${version?.label ?? "Review version"} comparison video`} className="aspect-video w-full bg-black object-contain" src={comparisonMedia[versionId]} controls={false} muted={index === 0} onPlay={() => comparisonVideoRefs.current.forEach((video) => { if (video && video.paused) void video.play(); })} onPause={() => comparisonVideoRefs.current.forEach((video) => { if (video && !video.paused) video.pause(); })} onTimeUpdate={(event) => synchronizeComparison(event.currentTarget)}/></div>; })}</div></div>}
           {(reviews.length > 0 || reviewUrl) && <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1d9bf0]"/><h2 className="font-bold">Review & approval</h2></div>{reviewUrl && <div className="mt-3 rounded-xl border border-[#1d9bf0]/40 bg-[#1d9bf0]/10 p-3"><p className="text-xs font-bold text-[#1d9bf0]">New link · shown once</p><p className="mt-1 break-all text-[11px] text-zinc-300">{reviewUrl}</p><Button className="mt-2" size="sm" onClick={() => void navigator.clipboard.writeText(reviewUrl)}><Copy className="mr-1.5 h-3.5 w-3.5"/>Copy</Button></div>}<div className="mt-3 space-y-3">{reviews.map((version) => <div key={version.id} className="rounded-xl bg-zinc-900 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-sm font-bold">{version.label}</p><p className="text-[11px] text-zinc-600">Edit revision {version.revision}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${version.reviewStatus === "approved" ? "bg-emerald-950 text-emerald-300" : version.reviewStatus === "changes_requested" ? "bg-amber-950 text-amber-300" : "bg-black text-zinc-400"}`}>{version.reviewStatus.replace("_", " ")}</span>{version.artifactAssetId && <Button size="sm" variant={comparisonVersionIds.includes(version.id) ? "default" : "outline"} aria-label={`Select ${version.label} for comparison`} aria-pressed={comparisonVersionIds.includes(version.id)} onClick={() => void toggleComparisonVersion(version)}>{comparisonVersionIds.includes(version.id) ? "Selected" : "Compare"}</Button>}</div></div><div className="mt-3 space-y-2">{version.comments.map((comment) => <div key={comment.id} className={`rounded-lg border p-2 ${comment.status === "resolved" ? "border-zinc-800 opacity-50" : "border-zinc-700 bg-black"}`}><div className="flex items-start gap-2"><button className="text-[10px] font-bold text-[#1d9bf0]" onClick={() => seek(comment.positionMs / 1_000)}>{formatTime(comment.positionMs / 1_000)}</button><p className="min-w-0 flex-1 text-xs">{comment.body}<span className="mt-1 block text-[10px] text-zinc-600">{comment.authorName}</span></p>{comment.status === "open" && <button aria-label="Resolve review note" onClick={async () => { await apiRequest("POST", `/api/cut/projects/${project.id}/review-comments/${comment.id}/resolve`, {}); await refreshReviews(); }}><CheckCircle2 className="h-4 w-4 text-emerald-400"/></button>}</div></div>)}</div><div className="mt-3 flex flex-wrap gap-2">{version.links.filter((link) => link.status === "active").map((link) => <Button key={link.id} size="sm" variant="ghost" onClick={async () => { await apiRequest("POST", `/api/cut/projects/${project.id}/reviews/${link.id}/revoke`, {}); await refreshReviews(); }}><X className="mr-1 h-3 w-3"/>Revoke {link.label}</Button>)}</div></div>)}</div></div>}
           {visibleSaveStatus && <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300"><p role="status">{visibleSaveStatus}</p>{saveStatus === "Save failed" && <Button className="mt-2" size="sm" variant="outline" onClick={() => { failedSave.current = null; setSaveWake((value) => value + 1); }}>Retry saving edit</Button>}</div>}
+          {accountId && accountId === authorizedProjectUserId && edl && <CutStudioRecovery key={`${accountId}:${project.id}`} authorizedUserId={accountId} project={project} draft={edl} busy={Boolean(busy) || creativeTimelineBusy || creativeDraftDirty} onRestore={async (copy) => {
+            if (hasUnsavedTimeline()) throw new Error("Save or discard the current edit before restoring a recovery copy.");
+            const restoredProject = await (await apiRequest("GET", `/api/cut/projects/${project.id}`)).json() as Project;
+            if (accountIdRef.current !== copy.userId || currentProjectRef.current?.id !== copy.projectId || restoredProject.businessId !== copy.businessId || hasUnsavedTimeline()) throw new Error("The active account or timeline changed. Reopen this project before restoring.");
+            if (restoredProject.revision !== copy.baseRevision) throw new Error("Another edit was saved to the server. Recovery was not applied; download the copy for comparison or reopen this project.");
+            const restored = validateCutEdl(copy.edl, Math.max(restoredProject.duration, cutDuration(copy.edl)));
+            edlRef.current = restoredProject.edl;
+            setProject((value) => value?.id === restoredProject.id ? { ...value, edl: restoredProject.edl, revision: restoredProject.revision } : value);
+            setRevision(restoredProject.revision);
+            applyEdit(restored);
+            setMessage("Recovery timeline restored. Waiting for a verified server save.");
+          }}/>}
           {message && <p role="status" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{message}</p>}
         </aside>
       </div>
