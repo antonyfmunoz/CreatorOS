@@ -19,7 +19,15 @@ export function validateRequest(request) {
   if (['jpeg', 'webp'].includes(format) ? !Number.isInteger(quality) || quality < 1 || quality > 100 : quality !== null) throw new Error('Quality is supported only for JPEG/WebP and must be within 1..100.');
   if (typeof request.entrypoint !== 'string' || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(tsx|jsx|ts|js)$/.test(request.entrypoint)) throw new Error('Invalid source entrypoint.');
   if (!request.input || typeof request.input !== 'object' || Array.isArray(request.input) || JSON.stringify(request.input).length > 64_000) throw new Error('Inputs must be an object smaller than 64 KB.');
-  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, ...(request.mode === 'still' ? {} : { frameRange }) };
+  const tracks = request.audioTracks ?? [];
+  if (!Array.isArray(tracks) || tracks.length > 8 || (tracks.length && request.mode !== 'video')) throw new Error('Up to eight private soundtracks are supported on video exports only.');
+  const audioTracks = tracks.map((track) => {
+    if (!track || typeof track !== 'object' || typeof track.file !== 'string' || track.file.length > 200 || !/^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg)$/i.test(track.file)) throw new Error('A soundtrack must identify a private capsule WAV/MP3/FLAC/Ogg file.');
+    const { startFrame = 0, endFrame = durationInFrames, sourceStartSeconds = 0, speed = 1, volume = 1 } = track;
+    if (![startFrame, endFrame].every(Number.isInteger) || startFrame < 0 || endFrame <= startFrame || endFrame > durationInFrames || !Number.isFinite(sourceStartSeconds) || sourceStartSeconds < 0 || sourceStartSeconds >= 120 || !Number.isFinite(speed) || speed < .5 || speed > 2 || !Number.isFinite(volume) || volume < 0 || volume > 2) throw new Error('Invalid soundtrack timing or gain.');
+    return { file: track.file, startFrame, endFrame, sourceStartSeconds, speed, volume };
+  });
+  return { version: 1, mode: request.mode, width, height, fps, durationInFrames, frame, entrypoint: request.entrypoint, input: request.input, format, quality, audioTracks, ...(request.mode === 'still' ? {} : { frameRange }) };
 }
 
 export function outputContract(request) {

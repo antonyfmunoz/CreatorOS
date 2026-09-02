@@ -27,9 +27,16 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   spring-settling measurement are not implemented by this API.
 - Direct frame-driven PNG (including transparency), JPEG or WebP; JPEG/WebP
   expose bounded 1..100 quality. JPEG and MP4 cannot carry transparency.
-- Silent H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
+- H.264 MP4 with optional inclusive `[first, last]` frame ranges. Frame
   values stay on the absolute composition timeline; range output starts at
   media timestamp zero and contains exactly `last - first + 1` frames.
+- Optional `audioTracks` on video requests mix up to eight capsule-local
+  WAV/MP3/FLAC/Ogg files into stereo AAC. Tracks have a composition start frame,
+  exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
+  Range exports retain original audio timing rather than restarting soundtracks.
+  Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
+  and local input paths are fixed by the runtime. A 0.95 peak limiter protects
+  summing, without normalizing quiet material upward. No network input is allowed.
 - PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
   FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
   ZIP timestamps are fixed, and actual PNG-sequence replay is byte-checked.
@@ -44,7 +51,8 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Video codec/VFR
-compatibility beyond the qualified MP4 fixtures, audio mixing, arbitrary dependencies, PDF output,
+compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
+automatic video-audio extraction, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Isolation and qualification

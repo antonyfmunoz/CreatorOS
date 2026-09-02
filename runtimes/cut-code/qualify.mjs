@@ -114,6 +114,38 @@ for (const [frame, channel] of [[1, 2], [2, 0]]) {
   records.push({ test: `retimed-private-video-${frame}`, ...retimed.receipt });
 }
 console.log('PASS capsule-local video seeking and six-frame code video render (silent)');
+const sounds = {};
+for (const frequency of [440, 660]) {
+  const file = `${directory}tone-${frequency}.wav`;
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=${frequency}:sample_rate=48000:duration=1`, file], { windowsHide: true });
+  sounds[`src/tone-${frequency}.wav`] = await readFile(file);
+}
+const soundSource = capsule(`import {FullFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:'#0000ff'}}/>`, sounds);
+const soundRequest = { ...request, mode: 'video', audioTracks: [
+  { file: 'src/tone-440.wav', startFrame: 6, endFrame: 24, sourceStartSeconds: .1, volume: .5 },
+  { file: 'src/tone-660.wav', startFrame: 12, endFrame: 18, volume: .4 },
+] };
+const sound = await renderIsolated({ request: soundRequest, source: soundSource, image });
+const soundPath = `${directory}code-audio-mix.mp4`;
+await writeFile(soundPath, sound.artifact);
+const soundProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,sample_rate,channels,duration', '-of', 'json', soundPath], { encoding: 'utf8', windowsHide: true }));
+assert.equal(soundProbe.streams.filter((stream) => stream.codec_type === 'audio').length, 1);
+assert.equal(sound.receipt.audioTrackCount, 2); assert.equal(sound.receipt.silent, false);
+const rms = (file, start, end) => {
+  const samples = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-vn', '-af', `atrim=start=${start}:end=${end}`, '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { maxBuffer: 1024 * 1024, windowsHide: true });
+  assert.ok(samples.length > 0);
+  let sum = 0; for (let index = 0; index < samples.length; index += 4) sum += samples.readFloatLE(index) ** 2;
+  return Math.sqrt(sum / (samples.length / 4));
+};
+assert.ok(rms(soundPath, .03, .12) < .001, 'Soundtrack must not start before its timeline offset.');
+assert.ok(rms(soundPath, .88, .97) < .001, 'Soundtrack must stop at its exclusive end frame.');
+const solo = rms(soundPath, .25, .35), mixed = rms(soundPath, .45, .55);
+assert.ok(solo > .015 && mixed > solo * 1.15, 'Both independent private tracks must actually contribute to the mix.');
+const soundRange = await renderIsolated({ request: { ...soundRequest, frameRange: [12, 20] }, source: soundSource, image });
+const soundRangePath = `${directory}code-audio-range.mp4`; await writeFile(soundRangePath, soundRange.artifact);
+assert.ok(rms(soundRangePath, .02, .12) > rms(soundRangePath, .24, .29) * 1.15, 'Ranged audio must retain original absolute track timing.');
+records.push({ test: 'private-audio-mix-and-range', ...sound.receipt, probe: soundProbe, soloRms: solo, mixedRms: mixed, rangeReceipt: soundRange.receipt });
+console.log('PASS actual private audio mixing, offset/trim/gain and ranged A/V timing');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
 const boundary = await renderIsolated({ request, source: denied, image });
 assert.deepEqual(pixel(boundary.artifact), [0, 255, 0, 255]);
