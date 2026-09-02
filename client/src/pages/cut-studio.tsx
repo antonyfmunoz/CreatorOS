@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { CutStudioCreativeRuntime } from "@/components/cut/CutStudioCreativeRuntime";
 import { CutStudioFrameExport } from "@/components/cut/CutStudioFrameExport";
 import { CutStudioRenderPreview } from "@/components/cut/CutStudioRenderPreview";
+import { CutStudioPrimaryPreview } from "@/components/cut/CutStudioPrimaryPreview";
 import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, switchCutMulticamAngle, trimCutClip, ungroupCutClips, validateCutEdl, type CutAudioRoutingTemplatePayload, type CutEdl, type CutMulticamGroup, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
 import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
@@ -1082,6 +1083,7 @@ export default function CutStudioPage() {
           </div>
           <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950" aria-label="Timeline monitor">
             <span className="absolute left-3 top-2 z-10 rounded bg-black/75 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">Timeline monitor</span>
+            {project.mediaKind === "video" && <div className="absolute right-3 top-2 z-10"><CutStudioPrimaryPreview projectId={project.id} sourceAssetId={project.sourceAssetId} edl={edl} media={mediaLibrary} onOpen={() => { mediaRef.current?.pause(); sourceMediaRef.current?.pause(); stopAudioMeter(); }}/></div>}
             {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: previewColorFilter(clip) }} src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
             {(edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} data-graphic-kind={graphic.kind} className={`pointer-events-none absolute font-bold ${graphic.kind === "shape" ? "" : "max-w-[80%] rounded px-3 py-2"}`} style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, width: graphic.kind === "shape" ? `${graphic.width * 100}%` : undefined, height: graphic.kind === "shape" ? `${graphic.height * 100}%` : undefined, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
           </div>
