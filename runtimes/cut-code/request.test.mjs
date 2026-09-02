@@ -4,7 +4,16 @@ import { validateRequest, outputContract } from './request.mjs';
 const valid = { version: 1, mode: 'still', width: 1920, height: 1080, fps: 30, durationInFrames: 60, frame: 30, entrypoint: 'src/main.tsx', input: { title: 'Launch' } };
 test('accepts bounded frame-driven render requests', () => assert.deepEqual(validateRequest(valid), { ...valid, format: 'png', quality: null, audioTracks: [] }));
 test('rejects malformed, oversized and escaping requests before execution', () => {
-  for (const change of [{ width: 1921 }, { height: 0 }, { fps: 0 }, { fps: 61 }, { frame: 60 }, { frame: -1 }, { durationInFrames: 601 }, { entrypoint: '../main.tsx' }, { entrypoint: '/main.tsx' }, { input: [] }, { input: { oversized: 'x'.repeat(65000) } }, { mode: 'shell' }, { version: 2 }, { mode: 'video', width: 3840, height: 2160, durationInFrames: 600 }]) assert.throws(() => validateRequest({ ...valid, ...change }));
+  for (const change of [{ mode: 'video', frame: 0, width: 1921 }, { height: 0 }, { fps: 0 }, { fps: 61 }, { frame: 60 }, { frame: -1 }, { durationInFrames: 108001 }, { entrypoint: '../main.tsx' }, { entrypoint: '/main.tsx' }, { input: [] }, { input: { oversized: 'x'.repeat(65000) } }, { mode: 'shell' }, { version: 2 }, { mode: 'video', width: 3840, height: 2160, durationInFrames: 600 }]) assert.throws(() => validateRequest({ ...valid, ...change }));
+});
+test('long timelines and odd-sized stills do not bypass per-render compute limits', () => {
+  const poster = validateRequest({ ...valid, width: 321, height: 181, durationInFrames: 108000, frame: 107999 });
+  assert.equal(outputContract(poster).frames, 1);
+  const chunk = validateRequest({ ...valid, frame: 0, mode: 'video', durationInFrames: 108000, frameRange: [107990, 107999] });
+  assert.equal(outputContract(chunk).frames, 10);
+  assert.throws(() => validateRequest({ ...valid, frame: 0, mode: 'video', durationInFrames: 108000 }));
+  assert.throws(() => validateRequest({ ...valid, frame: 0, mode: 'sequence', durationInFrames: 108000, frameRange: [0, 600] }));
+  assert.throws(() => validateRequest({ ...valid, durationInFrames: 108000, fps: 1 }));
 });
 test('image formats, quality and inclusive ranges have explicit output contracts', () => {
   for (const format of ['png', 'jpeg', 'webp']) {

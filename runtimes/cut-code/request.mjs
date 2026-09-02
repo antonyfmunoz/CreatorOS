@@ -2,16 +2,18 @@ export const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 export function validateRequest(request) {
   if (!request || request.version !== 1 || !['still', 'video', 'sequence'].includes(request.mode)) throw new Error('Unsupported code-render request.');
   const { width, height, fps, durationInFrames } = request;
-  for (const [name, value, min, max] of [['width', width, 16, 3840], ['height', height, 16, 3840], ['fps', fps, 1, 60], ['durationInFrames', durationInFrames, 1, 600]]) {
+  for (const [name, value, min, max] of [['width', width, 16, 3840], ['height', height, 16, 3840], ['fps', fps, 1, 60], ['durationInFrames', durationInFrames, 1, 216000]]) {
     if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}.`);
   }
-  if (width % 2 || height % 2 || width * height > 3840 * 2160) throw new Error('Invalid output dimensions.');
+  if ((request.mode === 'video' && (width % 2 || height % 2)) || width * height > 3840 * 2160) throw new Error('Invalid output dimensions.');
+  if (durationInFrames / fps > 3600) throw new Error('Composition timelines are limited to one hour.');
   const frame = request.frame ?? 0;
   if (!Number.isInteger(frame) || frame < 0 || frame >= durationInFrames) throw new Error('Frame is outside the composition.');
   const frameRange = request.frameRange ?? [0, durationInFrames - 1];
   if (!Array.isArray(frameRange) || frameRange.length !== 2 || frameRange.some((value) => !Number.isInteger(value) || value < 0 || value >= durationInFrames) || frameRange[1] < frameRange[0]) throw new Error('Invalid inclusive frame range.');
   if (request.mode === 'still' && request.frameRange !== undefined) throw new Error('A still uses frame, not frameRange.');
   if (request.mode !== 'still' && frame !== 0) throw new Error('A video or sequence uses frameRange, not frame.');
+  if (request.mode !== 'still' && frameRange[1] - frameRange[0] + 1 > 600) throw new Error('Select a range of at most 600 frames per render.');
   if (request.mode !== 'still' && width * height * (frameRange[1] - frameRange[0] + 1) > 500_000_000) throw new Error('Render exceeds the pixel-frame budget.');
   const format = request.format ?? (request.mode === 'video' ? 'mp4' : 'png');
   if (!(request.mode === 'video' ? ['mp4'] : ['png', 'jpeg', 'webp']).includes(format)) throw new Error('Unsupported output format for this mode.');

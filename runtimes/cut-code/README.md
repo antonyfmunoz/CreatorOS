@@ -48,6 +48,11 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
 - Strict source, expanded-archive, dimensions, duration, pixel-frame, output,
   process, CPU, memory, temporary-storage and deadline limits. The host checks
   receipt hashes and preserves no private source in application logs.
+- Timelines may span up to one hour, but each video/sequence request is still
+  capped at 600 frames, 500 million pixel-frames, 64 MB and its execution deadline.
+  Longer projects require explicit bounded frame ranges; there is no automatic
+  unmetered fan-out. Stills can address any valid frame without rendering earlier
+  frames. Odd dimensions are supported for images; H.264 retains even dimensions.
 
 The runtime is deliberately not a general JavaScript timing engine: asynchronous
 state and arbitrary timers are not a reproducibility contract. Video codec/VFR

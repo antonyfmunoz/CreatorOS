@@ -73,6 +73,13 @@ assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);
 records.push({ test: 'transparent-png-and-input-binding', ...transparent.receipt });
 console.log('PASS direct transparent composition PNG and input-bound output');
+const latePoster = await renderIsolated({ request: { ...request, width: 321, height: 181, durationInFrames: 108000, frame: 107999 }, source: capsule(`import {FullFrame,useFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:useFrame()===107999?'#00ff00':'#ff0000'}}/>`), image });
+assert.deepEqual(pixel(latePoster.artifact), [0, 255, 0, 255]);
+await writeFile(`${directory}late-frame-poster.png`, latePoster.artifact);
+const posterProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'json', `${directory}late-frame-poster.png`], { encoding: 'utf8', windowsHide: true }));
+assert.deepEqual(posterProbe.streams[0], { width: 321, height: 181 });
+records.push({ test: 'odd-sized-late-frame-poster', ...latePoster.receipt });
+console.log('PASS odd-sized still at a late absolute frame without rendering the whole timeline');
 const motionSource = capsule(`import {FullFrame,Sequence,Repeat,Freeze,useFrame,useGlobalFrame,interpolate,easing,spring,interpolateColor,seededRandom} from '@creativesos/cut';
 function Probe(){const local=useFrame(),global=useGlobalFrame();return <div style={{position:'absolute',left:0,top:0,width:40,height:40,background:local===4&&global===20?'#00ff00':'#ff0000'}}/>;}
 function Frozen(){return <div style={{position:'absolute',left:40,top:0,width:40,height:40,background:useFrame()===7&&useGlobalFrame()===20?'#00ff00':'#ff0000'}}/>;}
