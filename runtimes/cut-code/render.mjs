@@ -1,5 +1,5 @@
 // This entry point is container-only. Never import it into the application worker.
-import { readFile, writeFile, stat } from 'node:fs/promises';
+import { readFile, writeFile, stat, rename } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -11,6 +11,7 @@ import { readCapsule, bundleCapsule } from './bundle.mjs';
 import { validateRequest, outputContract, MAX_ARTIFACT_BYTES } from './request.mjs';
 import { audioPlan, mixAudioTracks, prepareAudioTracks } from './audio.mjs';
 import { videoEncodingArgs } from './video-encoding.mjs';
+import { FrameAudioCollector } from './frame-audio.mjs';
 
 let browser;
 let encoder;
@@ -34,6 +35,7 @@ try {
   const first = output.start;
   const last = output.end + 1;
   let audioTrackCount = 0;
+  let compositionAudioReceipt;
   if (request.mode === 'audio') {
     // Only explicit data tracks are mixed. Capsule code is neither bundled nor
     // executed, and no browser is started for a soundtrack-only request.
@@ -79,8 +81,9 @@ try {
     document.body.appendChild(script);
   }, { ...bundle, nonce });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
-  const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;
+  const hasAudio = request.mode === 'video' && (request.compositionAudio || audioPlan(request).length > 0);
   const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
+  const frameAudio = request.compositionAudio ? new FrameAudioCollector(request) : null;
   const sequence = Object.create(null);
   const sequenceFrames = [];
   let sequenceBytes = 0;
@@ -98,7 +101,7 @@ try {
     encoderDone = once(encoder, 'close');
   }
   for (let frame = first; frame < last; frame += frameStep) {
-    await page.evaluate(async ({ frame, config, input }) => {
+    const frameSounds = await page.evaluate(async ({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
       // Preparation may introduce new images/fonts/media or effects. Recheck
       // after browser settlement instead of capturing an early placeholder.
@@ -145,11 +148,21 @@ try {
       // Time-dependent animation is not part of the frame-driven SDK contract.
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      if (await window.__cutWaitForFrame() === revision) return;
+      if (await window.__cutWaitForFrame() === revision) {
+        const nodes = document.querySelectorAll('[data-cut-audio-id]');
+        if (nodes.length > 8) throw new Error('Frame soundtrack limit exceeded.');
+        const sounds = [...nodes].map((node) => ({ id: node.dataset.cutAudioId, file: node.dataset.cutAudioFile,
+          sourceSeconds: Number(node.dataset.cutAudioTime), speed: Number(node.dataset.cutAudioSpeed),
+          volume: Number(node.dataset.cutAudioVolume), audioStream: Number(node.dataset.cutAudioStream) }));
+        if (JSON.stringify(sounds).length > 8192) throw new Error('Frame soundtrack data limit exceeded.');
+        return sounds;
+      }
       }
       throw new Error('Composition frame preparation did not settle.');
     }, { frame, config, input: request.input });
     if (pageFailed) throw new Error('Composition execution failed.');
+    if (frameAudio) frameAudio.capture(frame, frameSounds);
+    else if (request.mode === 'video' && frameSounds.length) throw new Error('Enable compositionAudio to export a composition soundtrack.');
     let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || ['webm', 'gif'].includes(request.format) || (request.format === 'mov' && request.proresProfile !== '422hq')) && request.format !== 'jpeg', timeout: 10_000 });
     if (pageFailed) throw new Error('Composition execution failed.');
     if (png.length > MAX_ARTIFACT_BYTES) throw new Error('Frame output limit exceeded.');
@@ -183,8 +196,15 @@ try {
   }
   await browser.close();
   browser = undefined;
+  if (frameAudio) {
+    phase = 'audio_probe';
+    const tracks = frameAudio.finish();
+    preparedAudio.push(...await prepareAudioTracks({ ...request, audioTracks: tracks }, capsule, preparedAudio.length));
+    compositionAudioReceipt = { trackCount: tracks.length, planSha256: createHash('sha256').update(JSON.stringify(tracks)).digest('hex') };
+  }
   phase = 'audio_mix';
   audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath, preparedAudio) : 0;
+  if (request.mode === 'video' && audioTrackCount === 0 && videoPath !== outputPath) await rename(videoPath, outputPath);
   }
   phase = 'receipt';
   const size = (await stat(outputPath)).size;
@@ -192,6 +212,7 @@ try {
   const artifact = await readFile(outputPath);
   const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: output.frames, start: first, end: last - 1, ...(request.gifOptions ? { gifOptions: request.gifOptions } : {}), ...(request.proresProfile ? { proresProfile: request.proresProfile } : {}), frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: hasSoundtrack && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
   if (request.videoEncoding) receipt.videoEncoding = request.videoEncoding;
+  if (compositionAudioReceipt) receipt.compositionAudio = compositionAudioReceipt;
   process.stdout.write(JSON.stringify({ receipt, artifact: artifact.toString('base64') }));
 } catch (error) {
   // Capsule errors can contain source text. Never forward them into shared logs.

@@ -90,14 +90,31 @@ holdFrame({timeoutMs:'500'});
 failRender('private source');`);
 });
 
+test('frame audio authoring uses typed file, source clock, gain and stream props', () => {
+  check(`import {FrameAudio,useFrame} from '@creativesos/cut';
+const a=<FrameAudio file="assets/sound.wav" startFrom={12} speed={1.5} volume={useFrame()/30} muted={false} audioStream={1}/>;
+// @ts-expect-error file is required
+const b=<FrameAudio/>;
+// @ts-expect-error no callback is exported into the host; useFrame supplies a number
+const c=<FrameAudio file="a.wav" volume={(frame:number)=>frame/30}/>;
+// @ts-expect-error gain is numeric
+const d=<FrameAudio file="a.wav" volume="1"/>;`);
+});
+
 test('the configuration hook fails explicitly outside its provider and renders inside it', async () => {
   // This evaluates only the checked-in SDK in a unit test, never a user capsule.
   const compiled = await build({ entryPoints: [path.join(directory, 'sdk.jsx')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], logLevel: 'silent' });
   const require = createRequire(import.meta.url);
   const module = { exports: {} };
   vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: (name) => { assert.equal(name, 'react'); return require(name); } });
-  const { FrameContext, useComposition } = module.exports;
+  const { FrameContext, useComposition, FrameAudio, Sequence, Repeat, Freeze } = module.exports;
   const Scene = () => React.createElement('span', null, useComposition().fps);
   assert.throws(() => renderToStaticMarkup(React.createElement(Scene)), /composition provider/);
   assert.equal(renderToStaticMarkup(React.createElement(FrameContext.Provider, { value: { frame: 0, globalFrame: 0, config: { width: 640, height: 360, fps: 30, durationInFrames: 60 }, input: {} } }, React.createElement(Scene))), '<span>30</span>');
+  const sound = React.createElement(FrameAudio, { file: 'sound.wav', startFrom: 3, speed: 2, volume: .25 });
+  const renderSound = (frame, child) => renderToStaticMarkup(React.createElement(FrameContext.Provider, { value: { frame, globalFrame: frame, config: { width: 64, height: 32, fps: 30, durationInFrames: 60 }, input: {} } }, child));
+  assert.match(renderSound(12, React.createElement(Sequence, { at: 9 }, sound)), /data-cut-audio-time="0.3"/);
+  assert.equal(renderSound(12, React.createElement(Freeze, { frame: 3 }, sound)), '');
+  assert.equal(renderSound(12, React.createElement(Repeat, { duration: 10, alternate: true }, sound)), '');
+  assert.match(renderSound(22, React.createElement(Repeat, { duration: 10, alternate: true }, sound)), /data-cut-audio-time="0.23333333333333334"/);
 });

@@ -1,5 +1,6 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useId } from 'react';
 import { frameReadiness } from './frame-readiness.mjs';
+import { validateFrameAudio } from './frame-audio.mjs';
 export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 
 export const FrameContext = createContext({ frame: 0, globalFrame: 0, config: null, input: {} });
@@ -29,7 +30,7 @@ export function Sequence({ at = 0, duration, children }) {
 export function Freeze({ frame, children }) {
   const current = useContext(FrameContext);
   if (!Number.isInteger(frame) || frame < 0) throw new Error('A freeze frame must be a non-negative integer.');
-  return <FrameContext.Provider value={{ ...current, frame }}>{children}</FrameContext.Provider>;
+  return <FrameContext.Provider value={{ ...current, frame, audioPaused: true }}>{children}</FrameContext.Provider>;
 }
 
 export function Repeat({ duration, count, alternate = false, children }) {
@@ -39,7 +40,20 @@ export function Repeat({ duration, count, alternate = false, children }) {
   const iteration = Math.floor(current.frame / duration);
   let frame = current.frame % duration;
   if (alternate && iteration % 2) frame = duration - 1 - frame;
-  return <FrameContext.Provider value={{ ...current, frame }}>{children}</FrameContext.Provider>;
+  return <FrameContext.Provider value={{ ...current, frame, audioPaused: current.audioPaused || (alternate && iteration % 2 === 1) }}>{children}</FrameContext.Provider>;
+}
+
+export function FrameAudio({ file, startFrom = 0, speed = 1, volume = 1, muted = false, audioStream = 0 }) {
+  const id = useId();
+  const current = useContext(FrameContext);
+  const { fps } = useComposition();
+  if (!Number.isInteger(startFrom) || startFrom < 0 || typeof muted !== 'boolean') throw new Error('Invalid frame soundtrack timing.');
+  const sample = validateFrameAudio({ id, file, sourceSeconds: (startFrom + current.frame * speed) / fps, speed, volume, audioStream });
+  // Frozen or backward visual clocks do not replay a tiny audio slice.
+  // Reverse-audio synthesis is not implemented by this forward-only contract.
+  if (current.audioPaused) return null;
+  return <span hidden data-cut-audio-id={id} data-cut-audio-file={sample.file} data-cut-audio-time={sample.sourceSeconds}
+    data-cut-audio-speed={speed} data-cut-audio-volume={muted ? 0 : volume} data-cut-audio-stream={audioStream}/>;
 }
 
 export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, style, ...props }) {

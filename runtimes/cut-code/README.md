@@ -53,6 +53,29 @@ production topology approval or enable public code execution.
   Embedded video remains muted by default. To include its source sound, name
   the same capsule-local MP4/WebM in an explicit `audioTracks` request.
   No external media URL or network permission is introduced.
+- `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
+  inside React. Video exports explicitly enable `compositionAudio: true`.
+  `startFrom` uses composition-frame units, `speed` is pitch-preserving in
+  0.5..2, `audioStream` selects 0..7 and `volume` accepts a frame-derived number
+  in 0..2. `muted` produces zero gain without restarting the source. Nested
+  `Sequence` clocks, ordinary `Repeat`, conditional unmounts and range exports
+  follow the actual local frame. Frozen and reverse phases of alternating
+  repeats are silent; reverse-audio synthesis is not implemented.
+  Descriptors are collected only after the frame's asynchronous preparation
+  settles, then independently validated inside the isolated container. No
+  browser audio playback, microphone, external URL or host callback is used.
+  Each frame's gain holds over that frame's audio samples (no implicit fade).
+  Explicit request tracks and discovered intervals share the existing eight-track
+  budget; a repeat/reset/remount/source change consumes a new interval. At most
+  600 visual frames and 120 seconds are eligible, with unchanged execution and
+  artifact caps. Excess intervals and insufficient/missing source audio fail
+  rather than becoming silent. Stills/image sequences ignore the soundtrack;
+  video containing active `FrameAudio` without opt-in fails explicitly. GIF and
+  audio-only code execution are not supported by this option.
+  Receipts bind the request's opt-in, discovered interval count and normalized
+  audio-plan hash. This digest records custody, not independent proof of every
+  authored frame's correctness. The generated PCM/AAC/Opus field fixtures verify
+  timing, gain, source selection, pitch, ranges and actual 600-frame envelopes.
 - Stateless motion math: numeric keyframes with clamp/extend/wrap behavior,
   easing and cubic Bezier timing, analytic under/critical/over-damped physical
   springs, explicit sRGB hex/alpha transitions and keyed repeatable variation.
@@ -133,7 +156,8 @@ production topology approval or enable public code execution.
   video pixel-frame limits do not apply to a path that renders no pixels.
   CPU, memory, isolation, source, output and deadline caps remain unchanged.
   Width/height stay in the composition/request receipt but no video stream is
-  created. Raw ADTS AAC and React audio-component discovery are not implemented.
+  created. Raw ADTS AAC and React audio discovery in this audio-only mode are
+  not implemented (video-mode `FrameAudio` is separate).
   MP3 container duration can include encoder padding and AAC decoding can include
   a padded final packet; WAV has exact PCM sample counts and verified replay.
 - `audioStream` selects a zero-based audio stream (not the overall video stream
@@ -151,8 +175,8 @@ production topology approval or enable public code execution.
   per output sample after source retiming; playback speed does not retime gain,
   and range exports continue the original track-local clock. Zero is a true
   mute. Keyframes cannot lie beyond the track's exclusive end. This bounded
-  data contract does not execute arbitrary callbacks in the host or provide
-  React `<Audio>` lifecycle integration. Existing requests without keyframes
+  data contract does not execute arbitrary callbacks in the host. The separate
+  `FrameAudio` component uses bounded frame-sampled gains. Existing requests without keyframes
   retain their normalized shape and filter order.
 - PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
   FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
@@ -175,8 +199,8 @@ The runtime is deliberately not a general JavaScript timing engine: unregistered
 asynchronous state and arbitrary timers are not a reproducibility contract.
 Explicit frame holds coordinate preparation, but cannot make nondeterministic
 source data deterministic or grant external network access. Video codec/VFR
-compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
-automatic React video-audio lifecycle mixing, arbitrary dependencies, PDF output,
+compatibility beyond the qualified MP4 fixtures, automatic `FrameVideo` source
+sound, reverse sound, unbounded audio intervals, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Typed source authoring
