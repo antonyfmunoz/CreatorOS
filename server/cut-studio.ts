@@ -1,4 +1,5 @@
 import type { Express, RequestHandler, Response } from "express";
+import { cutGraphicCurveExpression } from "./cut-curve-expression";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
@@ -166,6 +167,11 @@ function motionOverlayExpression(clip: CutEdl["clips"][number], axis: "x" | "y",
 }
 
 function graphicMotionExpression(graphic: NonNullable<CutEdl["graphics"]>[number], property: "x" | "y" | "scale" | "rotation" | "opacity" | "blur" | "brightness" | "saturation", multiplier: number, timeVariable = "t", offset = 0) {
+  if (graphic.compositionCurves && property !== "blur") {
+    if (timeVariable !== "t" && timeVariable !== "T") throw new Error("Unsupported graphic time variable");
+    const exact = cutGraphicCurveExpression(graphic.compositionCurves, property, graphic.timelineStart, timeVariable, multiplier, offset);
+    if (exact !== undefined) return exact;
+  }
   const fallback = property === "x" ? graphic.x : property === "y" ? graphic.y : property === "rotation" ? graphic.rotation : property === "blur" ? graphic.blur : property === "brightness" ? graphic.brightness : property === "saturation" ? graphic.saturation : 1;
   const points = [{ at: 0, value: fallback }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, value: keyframe[property] }))]
     .sort((left, right) => left.at - right.at)
@@ -1007,7 +1013,13 @@ async function renderMultitrack(
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
-  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
+  // Authored curves can exceed OS argument-length limits. This is generated
+  // filter data in the job's private temporary directory, not executable input.
+  const filterGraph = filters.join(";");
+  if (Buffer.byteLength(filterGraph, "utf8") > 8 * 1024 * 1024) throw new Error("Native filter graph exceeds the 8 MiB compilation budget");
+  const filterGraphPath = path.join(temp, `native-filter-${randomUUID()}.txt`);
+  await fs.writeFile(filterGraphPath, filterGraph, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex_script", filterGraphPath, "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }
