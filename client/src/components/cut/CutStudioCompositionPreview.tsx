@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
@@ -11,6 +11,8 @@ import { cutTextStyles, resolveCutTextLayout } from "@shared/cut-text-layout";
 import defaultCutFontUrl from "@shared/assets/cut-fonts/NotoSans-Variable.ttf?url";
 import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
 import { CutStudioTextPreview } from "./CutStudioTextPreview";
+import { createCutPreviewReadiness } from "@/lib/cut-preview-readiness";
+import { CutPreviewReadinessContext, useCutPreviewResource } from "./CutStudioPreviewReadiness";
 
 type Layer = CutCompositionManifest["layers"][number];
 type FrameState = ReturnType<typeof evaluateCompositionFrame>[number];
@@ -19,21 +21,24 @@ const FontsReadyContext = createContext(false);
 
 function CompositionFonts({ manifest, children }: { manifest: CutCompositionManifest; children: ReactNode }) {
   const assetUrl = useContext(AssetUrlContext);
+  const identity = JSON.stringify(manifest.fonts.map((font) => [font.family, font.weight, font.style, font.assetId ? assetUrl(font.assetId) : ""]));
+  const readiness = useCutPreviewResource("Composition fonts", identity);
   const [fontError, setFontError] = useState("");
   const [fontReady, setFontReady] = useState(false);
   useEffect(() => {
     let active = true;
     setFontError("");
     setFontReady(false);
+    readiness("pending");
     const faces: FontFace[] = [new FontFace("CutStudio Noto Sans", `url("${defaultCutFontUrl}")`, { weight: "100 900" })];
     for (const font of manifest.fonts) {
       if (!font.assetId) continue;
       const face = new FontFace(JSON.stringify(font.family), `url("${assetUrl(font.assetId)}")`, { weight: String(font.weight), style: font.style });
       faces.push(face);
     }
-    void Promise.all(faces.map(async (face) => { const loaded = await face.load(); if (active) document.fonts.add(loaded); })).then(() => { if (active) setFontReady(true); }).catch(() => { if (active) setFontError("A composition font is unavailable; preview font fidelity is not ready."); });
+    void Promise.all(faces.map(async (face) => { const loaded = await face.load(); if (active) document.fonts.add(loaded); })).then(() => { if (active) { setFontReady(true); readiness("ready"); } }).catch(() => { if (active) { const message = "A composition font is unavailable; preview font fidelity is not ready."; setFontError(message); readiness("error", message); } });
     return () => { active = false; for (const face of faces) document.fonts.delete(face); };
-  }, [assetUrl, manifest.fonts]);
+  }, [assetUrl, identity, readiness]);
   return <FontsReadyContext.Provider value={fontReady && !fontError}><p role="status" data-composition-fonts={fontError ? "error" : fontReady ? "ready" : "loading"} className={fontError ? "mb-2 text-[10px] text-amber-300" : "sr-only"}>{fontError || (fontReady ? "Composition fonts ready" : "Loading composition fonts")}</p>{children}</FontsReadyContext.Provider>;
 }
 
@@ -102,16 +107,19 @@ function ThreePrimitiveLayer({ layer }: { layer: Layer }) {
 
 function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
   const assetUrl = useContext(AssetUrlContext);
+  const readiness = useCutPreviewResource(`${layer.name} animation`, layer.assetId ? assetUrl(layer.assetId) : "missing");
   const host = useRef<HTMLDivElement | null>(null);
   const animation = useRef<AnimationItem | null>(null);
   const bounds = useRef<{ inPoint: number; outPoint: number } | null>(null);
+  const latestFrame = useRef(0);
+  latestFrame.current = Math.max(0, frame - layer.from + layer.sourceStartFrame);
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
     setError("");
     animation.current?.destroy(); animation.current = null; bounds.current = null;
-    if (!layer.assetId || !host.current) return () => controller.abort();
+    if (!layer.assetId || !host.current) { readiness("error", "The Lottie preview has no private source."); return () => controller.abort(); }
     void (async () => {
       try {
         const response = await fetch(assetUrl(layer.assetId!), { credentials: "include", signal: controller.signal });
@@ -123,16 +131,19 @@ function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
         const instance = lottie.loadAnimation({ container: host.current, renderer: "svg", loop: false, autoplay: false, animationData: validated.animationData });
         animation.current = instance;
         instance.addEventListener("DOMLoaded", () => {
+          if (!active) return;
           const available = Math.max(1, validated.outPoint - validated.inPoint);
-          const local = Math.max(0, frame - layer.from + layer.sourceStartFrame) % available;
+          const local = latestFrame.current % available;
           instance.goToAndStop(validated.inPoint + local, true);
+          readiness("ready");
         });
+        instance.addEventListener("data_failed", () => { if (active) { setError("Lottie preview failed"); readiness("error", "Lottie preview failed"); } });
       } catch (caught) {
-        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Lottie preview failed");
+        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) { const message = caught instanceof Error ? caught.message : "Lottie preview failed"; setError(message); readiness("error", message); }
       }
     })();
     return () => { active = false; controller.abort(); animation.current?.destroy(); animation.current = null; };
-  }, [assetUrl, layer.assetId]);
+  }, [assetUrl, layer.assetId, readiness]);
   useEffect(() => {
     if (!animation.current || !bounds.current) return;
     const available = Math.max(1, bounds.current.outPoint - bounds.current.inPoint);
@@ -145,6 +156,7 @@ function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
 
 function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: number }) {
   const assetUrl = useContext(AssetUrlContext);
+  const readiness = useCutPreviewResource(`${layer.name} animation`, layer.assetId ? assetUrl(layer.assetId) : "missing");
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const animation = useRef<RiveInstance | null>(null);
   const preview = useRef<ReturnType<typeof createCutRivePreviewController> | null>(null);
@@ -158,12 +170,12 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
     setError("");
     setLoaded(false);
     animation.current?.cleanup(); animation.current = null;
-    if (!layer.assetId || !canvas.current) return () => controller.abort();
+    if (!layer.assetId || !canvas.current) { readiness("error", "The Rive preview has no private source."); return () => controller.abort(); }
     const playback = createCutRivePreviewController({
       instance: () => animation.current,
       seconds: () => latestSeconds.current,
-      loaded: () => setLoaded(true),
-      failed: () => setError("The Rive animation could not be prepared for preview"),
+      loaded: () => { setLoaded(true); readiness("ready"); },
+      failed: () => { const message = "The Rive animation could not be prepared for preview"; setError(message); readiness("error", message); },
       schedule: (callback) => requestAnimationFrame(callback),
       cancel: (id) => cancelAnimationFrame(id),
       defer: (callback) => queueMicrotask(callback),
@@ -192,11 +204,11 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
         });
         animation.current = instance;
       } catch (caught) {
-        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Rive preview failed");
+        if (active && !(caught instanceof DOMException && caught.name === "AbortError")) { const message = caught instanceof Error ? caught.message : "Rive preview failed"; setError(message); readiness("error", message); }
       }
     })();
     return () => { active = false; playback.dispose(); preview.current = null; controller.abort(); animation.current?.cleanup(); animation.current = null; };
-  }, [assetUrl, layer.assetId]);
+  }, [assetUrl, layer.assetId, readiness]);
   useEffect(() => { preview.current?.seek(); }, [frame, fps, layer.from, layer.sourceStartFrame]);
   if (error) return <div className="grid h-full w-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</div>;
   return <canvas ref={canvas} width={640} height={360} data-rive-loaded={loaded ? "true" : "false"} aria-label={`${layer.name} Rive preview`} className="h-full w-full"/>;
@@ -206,12 +218,14 @@ type MediaPlayback = { playing: boolean; playbackRate: number; muted: boolean; m
 
 function ImageLayer({ layer }: { layer: Layer }) {
   const assetUrl = useContext(AssetUrlContext);
+  const readiness = useCutPreviewResource(`${layer.name} image`, assetUrl(layer.assetId!));
   const [failed, setFailed] = useState(false);
-  return <><img alt={layer.name} src={assetUrl(layer.assetId!)} className="h-full w-full object-cover" onLoad={() => setFailed(false)} onError={() => setFailed(true)}/>{failed && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">This private image could not be displayed.</span>}</>;
+  return <><img alt={layer.name} src={assetUrl(layer.assetId!)} className="h-full w-full object-cover" onLoad={() => { setFailed(false); readiness("ready"); }} onError={() => { setFailed(true); readiness("error", "This private image could not be displayed."); }}/>{failed && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">This private image could not be displayed.</span>}</>;
 }
 
 function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVolume, audioContext, volume }: MediaPlayback & { layer: Layer; frame: number; fps: number; volume: number }) {
   const assetUrl = useContext(AssetUrlContext);
+  const readiness = useCutPreviewResource(`${layer.name} media`, assetUrl(layer.assetId!));
   const media = useRef<HTMLMediaElement | null>(null);
   const graph = useRef<{ context: AudioContext; source: MediaElementAudioSourceNode; gain: GainNode } | null>(null);
   const [error, setError] = useState("");
@@ -237,17 +251,26 @@ function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVol
     element.playbackRate = playbackRate;
     const sync = () => {
       const seekTolerance = playing ? Math.max(.08, 2 / fps) : 1 / (fps * 4);
-      if (Math.abs(element.currentTime - targetTime) > seekTolerance) element.currentTime = targetTime;
-      if (playing && element.paused) void element.play().then(() => setError("")).catch((caught: unknown) => {
-        if (caught instanceof DOMException && caught.name === "NotAllowedError") setError("Use Play to allow media playback in this browser.");
+      // Hold at the last available source sample when a layer outlasts its
+      // asset. Seeking past duration otherwise leaves an endless buffer hold.
+      const boundedTime = Number.isFinite(element.duration) ? Math.min(targetTime, Math.max(0, element.duration - .001)) : targetTime;
+      if (Math.abs(element.currentTime - boundedTime) > seekTolerance) { readiness("pending"); element.currentTime = boundedTime; }
+      const atSourceEnd = Number.isFinite(element.duration) && targetTime >= element.duration - .001;
+      if (atSourceEnd) element.pause();
+      else if (playing && element.paused) void element.play().then(() => setError("")).catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "NotAllowedError") { const message = "Use Retry preview to allow media playback in this browser."; setError(message); readiness("error", message); }
       });
       else if (!playing) element.pause();
     };
     sync();
     element.addEventListener("loadedmetadata", sync);
     return () => element.removeEventListener("loadedmetadata", sync);
-  }, [fps, playbackRate, playing, targetTime]);
-  const props = { ref: (element: HTMLMediaElement | null) => { media.current = element; }, "aria-label": layer.name, "data-composition-media": layer.kind, src: assetUrl(layer.assetId!), muted, preload: "metadata", onLoadedData: () => setError(""), onError: () => setError("This private media could not be played.") };
+  }, [fps, playbackRate, playing, targetTime, readiness]);
+  const inspect = () => {
+    const element = media.current;
+    if (element && !element.error && !element.seeking && (element.readyState >= 3 || (element.ended && element.readyState >= 2))) { setError(""); readiness("ready"); }
+  };
+  const props = { ref: (element: HTMLMediaElement | null) => { media.current = element; }, "aria-label": layer.name, "data-composition-media": layer.kind, src: assetUrl(layer.assetId!), muted, preload: "auto", onLoadedData: inspect, onCanPlay: inspect, onSeeked: inspect, onEnded: inspect, onSeeking: () => readiness("pending"), onWaiting: () => readiness("pending"), onError: () => { setError("This private media could not be played."); readiness("error", "This private media could not be played."); } };
   return <>{layer.kind === "audio" ? <audio {...props}/> : <video {...props} playsInline className="h-full w-full object-cover"/>}{error && <span role="status" className="absolute inset-0 grid place-items-center bg-zinc-950/90 p-2 text-center text-xs text-amber-300">{error}</span>}</>;
 }
 
@@ -274,9 +297,9 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
   else if ((layer.kind === "video" || layer.kind === "audio") && layer.assetId) content = <MediaLayer key={`${layer.kind}:${assetUrl(layer.assetId)}`} layer={layer} frame={frame} fps={fps} volume={state.volume} {...playback}/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
-  else if (layer.kind === "lottie") content = <LottieLayer layer={layer} frame={frame}/>;
+  else if (layer.kind === "lottie") content = <LottieLayer key={layer.assetId} layer={layer} frame={frame}/>;
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
-  else if (layer.kind === "rive") content = <RiveLayer layer={layer} frame={frame} fps={fps}/>;
+  else if (layer.kind === "rive") content = <RiveLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
   if (!content) return null;
   return <div className="absolute" data-layer-kind={layer.kind} data-layer-id={layer.id} style={style}>{content}{visual.overlay && <div className="pointer-events-none absolute inset-0" style={visual.overlay}/>}</div>;
 }
@@ -311,6 +334,10 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   const boundedInitialFrame = cutPlayerFrame(initialFrame, manifest.durationInFrames);
   const [frame, setFrame] = useState(boundedInitialFrame);
   const [playing, setPlaying] = useState(autoPlay);
+  const [readiness] = useState(() => createCutPreviewReadiness());
+  const readinessState = useSyncExternalStore(readiness.subscribe, readiness.getSnapshot, readiness.getSnapshot);
+  const [retry, setRetry] = useState(0);
+  const advancing = playing && readinessState.ready;
   const stateRef = useRef({ frame, playing });
   stateRef.current = { frame, playing };
   const keyboardHelpId = useId();
@@ -340,7 +367,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   useImperativeHandle(ref, () => ({
     play, pause, seekTo,
     getCurrentFrame: () => stateRef.current.frame,
-    isPlaying: () => stateRef.current.playing,
+    isPlaying: () => stateRef.current.playing && readiness.getSnapshot().ready,
     setMuted: (value) => { if (!value) enableAudio(); setMuted(Boolean(value)); },
     setPlaybackRate: (rate) => setSpeed(cutPlayerRate(rate)),
   }));
@@ -351,7 +378,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
     setFrame((current) => Math.min(manifest.durationInFrames - 1, Math.max(0, current)));
   }, [manifest.durationInFrames]);
   useEffect(() => {
-    if (!playing) return;
+    if (!advancing) return;
     let requestId = 0;
     let previous = performance.now();
     let remainder = 0;
@@ -373,17 +400,18 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
     };
     requestId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(requestId);
-  }, [loop, manifest.durationInFrames, manifest.fps, speed, playing]);
+  }, [loop, manifest.durationInFrames, manifest.fps, speed, advancing]);
   useEffect(() => { onFrameChange?.(frame); }, [frame, onFrameChange]);
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
-  return <AssetUrlContext.Provider value={assetUrl}><div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1d9bf0]" role="region" tabIndex={controls ? 0 : undefined} aria-label="CutStudio composition player" aria-describedby={keyboardHelpId} data-player-state={playing ? "playing" : "paused"} data-current-frame={frame} onKeyDown={(event) => {
+  return <AssetUrlContext.Provider value={assetUrl}><CutPreviewReadinessContext.Provider value={readiness}><div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1d9bf0]" role="region" tabIndex={controls ? 0 : undefined} aria-label="CutStudio composition player" aria-describedby={keyboardHelpId} data-player-state={readinessState.errors.length ? "error" : readinessState.pending ? "buffering" : advancing ? "playing" : "paused"} data-play-requested={playing} data-current-frame={frame} onKeyDown={(event) => {
     if (!controls || event.altKey || event.ctrlKey || event.metaKey || (event.target instanceof Element && event.target.closest('input,select,textarea,button,a,[contenteditable="true"]'))) return;
     if (event.key === " ") { event.preventDefault(); if (event.repeat) return; if (stateRef.current.playing) pause(); else play(); }
     else if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); seekTo(stateRef.current.frame + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 1)); }
     else if (event.key === "Home" || event.key === "End") { event.preventDefault(); seekTo(event.key === "Home" ? 0 : manifest.durationInFrames - 1); }
   }}>
     <p id={keyboardHelpId} className="sr-only">Focus the player: Space plays or pauses. Left and right step one frame; Shift steps ten. Home and End jump to the first and last frame. Stepping pauses playback.</p>
-    <CompositionFonts manifest={manifest}><div aria-label="Composition canvas" className="relative overflow-hidden rounded-md" style={{ aspectRatio: `${manifest.width} / ${manifest.height}`, containerType: "inline-size", background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} canvasWidth={manifest.width} fonts={manifest.fonts} playing={playing} playbackRate={speed} muted={muted} masterVolume={masterVolume} audioContext={audioContext} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div></CompositionFonts>
+    <CompositionFonts key={retry} manifest={manifest}><div aria-label="Composition canvas" className="relative overflow-hidden rounded-md" style={{ aspectRatio: `${manifest.width} / ${manifest.height}`, containerType: "inline-size", background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} canvasWidth={manifest.width} fonts={manifest.fonts} playing={advancing} playbackRate={speed} muted={muted} masterVolume={masterVolume} audioContext={audioContext} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div></CompositionFonts>
+    {!readinessState.ready && <div className="mt-2 flex items-center gap-2 text-[10px] text-amber-200"><p role="status" aria-label="Composition readiness">{readinessState.errors.length ? "Preview paused because an asset could not be prepared." : `Preparing ${readinessState.pending} preview resource${readinessState.pending === 1 ? "" : "s"}; the clock is held.`}</p><button type="button" className="shrink-0 rounded border border-amber-500/40 px-2 py-1" onClick={() => { if (!muted) enableAudio(); setRetry((value) => value + 1); }}>Retry preview</button></div>}
     {controls && <div className="mt-2 flex items-center gap-2">
       <button type="button" aria-label={playing ? "Pause composition" : "Play composition"} className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => { if (playing) pause(); else play(); }}>{playing ? "Pause" : "Play"}</button>
       <button type="button" aria-label="Previous composition frame" className="h-7 rounded border border-zinc-700 px-2 text-[10px] hover:bg-zinc-900" onClick={() => seekTo(frame - 1)}>←</button>
@@ -396,7 +424,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
       <label>Volume <input aria-label="Composition volume" type="range" min="0" max="1" step="0.05" value={masterVolume} onChange={(event) => setMasterVolume(Number(event.target.value))} className="w-20 align-middle accent-[#1d9bf0]"/></label>
       <label>Speed <select aria-label="Composition playback speed" value={speed} onChange={(event) => setSpeed(cutPlayerRate(Number(event.target.value)))} className="rounded border border-zinc-700 bg-zinc-950 px-1 py-1">{[.25, .5, .75, 1, 1.25, 1.5, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}</select></label>
     </div>}
-  </div></AssetUrlContext.Provider>;
+  </div></CutPreviewReadinessContext.Provider></AssetUrlContext.Provider>;
 });
 
 export function CutStudioCompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
