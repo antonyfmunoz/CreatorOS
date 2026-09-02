@@ -1,16 +1,30 @@
 // Browser-authored descriptors are untrusted data, not host callbacks or URLs.
+import { videoSourceTime } from './media-clock.mjs';
 export const PRIVATE_AUDIO_FILE = /^([A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(wav|mp3|flac|ogg|mp4|webm)$/i;
 
+export function loopAudioSamples(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120) throw new Error('Invalid private audio loop duration.');
+  const samples = seconds * 48000, rounded = Math.round(samples);
+  // A loop may cross visual frames, but its fixed PCM period must be exact:
+  // silently rounding each cycle would introduce cumulative A/V drift.
+  if (rounded < 1 || Math.abs(samples - rounded) > 1e-6) throw new Error('Private audio loops require an exact 48 kHz sample period.');
+  return rounded;
+}
+
 export function validateFrameAudio(sample) {
+  if (sample?.sourceLoopSeconds !== undefined) {
+    loopAudioSamples(sample.sourceLoopSeconds);
+    if (sample.sourceTimebase !== 'container' || sample.sourceSeconds >= sample.sourceLoopSeconds || sample.sourceEndSeconds === undefined || sample.sourceEndSeconds > sample.sourceLoopSeconds) throw new Error('Invalid private video loop binding.');
+  }
   if (!sample || typeof sample !== 'object' || typeof sample.id !== 'string' || !/^[A-Za-z0-9:_-]{1,100}$/.test(sample.id)
     || typeof sample.file !== 'string' || sample.file.length > 200 || !PRIVATE_AUDIO_FILE.test(sample.file)
     || !Number.isFinite(sample.sourceSeconds) || sample.sourceSeconds < 0 || sample.sourceSeconds >= 120
     || (sample.sourceTimebase !== undefined && (sample.sourceTimebase !== 'container' || !/\.(mp4|webm)$/i.test(sample.file)))
-    || (sample.sourceEndSeconds !== undefined && (!Number.isFinite(sample.sourceEndSeconds) || sample.sourceEndSeconds <= sample.sourceSeconds || sample.sourceEndSeconds > 120))
+    || (sample.sourceEndSeconds !== undefined && (!Number.isFinite(sample.sourceEndSeconds) || sample.sourceEndSeconds <= (sample.sourceLoopSeconds === undefined ? sample.sourceSeconds : 0) || sample.sourceEndSeconds > 120))
     || !Number.isFinite(sample.speed) || sample.speed < .5 || sample.speed > 2
     || !Number.isFinite(sample.volume) || sample.volume < 0 || sample.volume > 2
     || !Number.isInteger(sample.audioStream) || sample.audioStream < 0 || sample.audioStream > 7) throw new Error('Invalid private frame soundtrack.');
-  return { id: sample.id, file: sample.file, sourceSeconds: sample.sourceSeconds, ...(sample.sourceTimebase === undefined ? {} : { sourceTimebase: sample.sourceTimebase }), ...(sample.sourceEndSeconds === undefined ? {} : { sourceEndSeconds: sample.sourceEndSeconds }), speed: sample.speed, volume: sample.volume, audioStream: sample.audioStream };
+  return { id: sample.id, file: sample.file, sourceSeconds: sample.sourceSeconds, ...(sample.sourceTimebase === undefined ? {} : { sourceTimebase: sample.sourceTimebase }), ...(sample.sourceEndSeconds === undefined ? {} : { sourceEndSeconds: sample.sourceEndSeconds }), ...(sample.sourceLoopSeconds === undefined ? {} : { sourceLoopSeconds: sample.sourceLoopSeconds }), speed: sample.speed, volume: sample.volume, audioStream: sample.audioStream };
 }
 
 export class FrameAudioCollector {
@@ -32,12 +46,14 @@ export class FrameAudioCollector {
       if (seen.has(sample.id)) throw new Error('Duplicate frame soundtrack identity.');
       seen.add(sample.id);
       let track = this.active.get(sample.id);
+      const expectedTime = track ? track.sourceStartSeconds + (frame - track.startFrame) * track.speed / request.fps : 0;
+      const expectedSource = track?.sourceLoopSeconds === undefined ? expectedTime : videoSourceTime(expectedTime, track.sourceLoopSeconds, true);
       // Repeat/conditional mount/source changes become new bounded intervals.
       // Range exports start at the actual local source clock, never at zero.
-      if (!track || track.file !== sample.file || track.audioStream !== sample.audioStream || track.speed !== sample.speed || track.sourceEndSeconds !== sample.sourceEndSeconds || track.sourceTimebase !== sample.sourceTimebase
-        || Math.abs(track.sourceStartSeconds + (frame - track.startFrame) * track.speed / request.fps - sample.sourceSeconds) > 1e-8) {
+      if (!track || track.file !== sample.file || track.audioStream !== sample.audioStream || track.speed !== sample.speed || track.sourceEndSeconds !== sample.sourceEndSeconds || track.sourceTimebase !== sample.sourceTimebase || track.sourceLoopSeconds !== sample.sourceLoopSeconds
+        || Math.abs(expectedSource - sample.sourceSeconds) > 1e-8) {
         if (this.tracks.length + request.audioTracks.length >= 8) throw new Error('At most eight combined explicit and composition soundtrack intervals are supported.');
-        track = { file: sample.file, startFrame: frame, endFrame: frame + 1, sourceStartSeconds: sample.sourceSeconds, ...(sample.sourceTimebase === undefined ? {} : { sourceTimebase: sample.sourceTimebase }), ...(sample.sourceEndSeconds === undefined ? {} : { sourceEndSeconds: sample.sourceEndSeconds }), speed: sample.speed, volume: 1, audioStream: sample.audioStream, volumeSamples: [] };
+        track = { file: sample.file, startFrame: frame, endFrame: frame + 1, sourceStartSeconds: sample.sourceSeconds, ...(sample.sourceTimebase === undefined ? {} : { sourceTimebase: sample.sourceTimebase }), ...(sample.sourceEndSeconds === undefined ? {} : { sourceEndSeconds: sample.sourceEndSeconds }), ...(sample.sourceLoopSeconds === undefined ? {} : { sourceLoopSeconds: sample.sourceLoopSeconds }), speed: sample.speed, volume: 1, audioStream: sample.audioStream, volumeSamples: [] };
         this.tracks.push(track);
       }
       track.endFrame = frame + 1;

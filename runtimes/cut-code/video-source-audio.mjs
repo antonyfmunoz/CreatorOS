@@ -1,4 +1,4 @@
-import { PRIVATE_AUDIO_FILE, validateFrameAudio } from './frame-audio.mjs';
+import { PRIVATE_AUDIO_FILE, validateFrameAudio, loopAudioSamples } from './frame-audio.mjs';
 import { videoSourceTime } from './media-clock.mjs';
 
 /** Data only. The caller probes imported private files inside the container. */
@@ -21,9 +21,9 @@ export function videoSourceAudioSample(entry, { id, time, duration, repeat, spee
   if (!entry || !Array.isArray(entry.audioDurations) || !Number.isFinite(time) || time < 0 || !Number.isFinite(duration) || duration <= 0 || duration > 120 || typeof repeat !== 'boolean' || !Number.isInteger(fps) || fps < 1 || fps > 60) throw new Error('Invalid private video sound clock.');
   if (!entry.audioDurations.length) return null;
   if (!Number.isInteger(audioStream) || audioStream < 0 || audioStream >= entry.audioDurations.length) throw new Error('Requested video audio stream is unavailable.');
-  if (repeat && (Math.abs(duration * fps / speed - Math.round(duration * fps / speed)) > .01 || Math.abs(time * fps / speed - Math.round(time * fps / speed)) > .01)) throw new Error('Repeating source sound requires frame-aligned duration, speed and phase.');
+  if (repeat) loopAudioSamples(duration);
   const sourceSeconds = videoSourceTime(time, duration, repeat);
   const sourceEndSeconds = Math.min(duration, entry.audioDurations[audioStream]);
-  if (sourceSeconds >= sourceEndSeconds) return null;
-  return validateFrameAudio({ id, file: entry.file, sourceSeconds, sourceEndSeconds, sourceTimebase: 'container', speed, volume, audioStream });
+  if (sourceSeconds >= sourceEndSeconds && !repeat) return null;
+  return validateFrameAudio({ id, file: entry.file, sourceSeconds, sourceEndSeconds, ...(repeat ? { sourceLoopSeconds: duration } : {}), sourceTimebase: 'container', speed, volume, audioStream });
 }
