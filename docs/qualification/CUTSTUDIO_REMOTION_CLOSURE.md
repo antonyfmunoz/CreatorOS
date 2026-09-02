@@ -11,9 +11,11 @@ The public application remains on source
 rendering path has actual GCP/R2 artifact evidence, including private fonts,
 automatic two-line text fitting and preservation of submitted gain while the
 project changes. The snapshot receipt records the release, output hash and
-decoded audio/frame. Its exact Cloud Run execution/image receipt is still pending
-Google management reauthentication; verified job configuration is not execution
-proof. Later merged candidates require their own protected release and production
+decoded audio/frame. Google management access was restored and the dispatched
+operation was resolved to successful execution `creativesos-cut-worker-bv7tv`
+with the exact retained image. The old worker did not log individual claimed-job
+IDs, so this is not a retroactive job-to-lease trace. Later merged candidates
+require their own protected release and production
 receipts before public capability claims advance.
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
@@ -28,8 +30,8 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded explicit frame holds/cancellation with actual async pixels and replay tests | Public editor/player/render path; broader approved dependencies; safe user-facing error reporting and preview buffering |
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
 | 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
-| Media | Private MP4/WebM frame seek/retime/repeat, image/font resources and alpha-overlay reuse | VFR and broad decoder matrix, long media, edge cases and lifecycle-synchronized source sound |
-| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; candidate frame-authored audio with actual PCM/AAC/Opus lifecycle/range tests | Exact-candidate protected qualification; browser preview sound, automatic video-source sound, reverse audio, broader interval/workload limits and public code execution |
+| Media | Private MP4/WebM frame seek/retime/repeat, image/font resources and alpha-overlay reuse; candidate lifecycle-synchronized video-source sound with local decoded output | VFR and broad decoder matrix, long media, edge cases and exact-candidate protected source-sound qualification |
+| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio with actual PCM/AAC/Opus lifecycle/range tests; candidate automatic imported-video audio | Exact-candidate protected qualification; browser preview sound, reverse audio, broader interval/workload limits and public code execution |
 | Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF and ProRes HQ/4444/XQ with PCM audio; decoded CRF/target-bitrate/speed-control tests; candidate lossless RGB MP4 with full-HD text/transition paint-history regressions and eight independently compared study frames | Exact-candidate protected qualification; additional codecs/containers, two-pass/hardware encoding, HDR, external-editor interoperability and long-range/chunk workflows; production exposure of executable exports |
 | Workload limits | Single-job CPU/memory/bytes/frame bounds, timeout, cancellation, cleanup | App/runtime quota reconciliation, durable tenant admission, metering, scheduling, dispatch, recovery and scaled rendering |
 | Security | Actual non-root, no-network, read-only, sandboxed browser tests; lean Noble image passed independent CI pixels and zero HIGH/CRITICAL scan in run 33614621889 | Continued exact-image vulnerability qualification, approved execution topology, privilege/credential separation, adversarial review and service deployment |
@@ -62,9 +64,11 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
    reproducible-metadata fix passed all local isolated/candidate tests and a
    zero HIGH/CRITICAL scan. Runtime CI 33621171596 independently reproduced both
    suites and the scan; application/browser/release gates remain separate.
-7. Google management reauthentication is required for the pending execution
-   receipt and subsequent worker promotion. This is a credential gate, not
-   evidence that all remaining implementation is external.
+7. Google management reauthentication has been recovered. Native worker
+   promotion still requires the exact protected source, image and production
+   receipts. The separate executable-code service still requires approved
+   topology; access to the ordinary worker does not authorize sharing its
+   credentials or privilege boundary with user code.
 
 ## September 2 protected-source checkpoint
 
@@ -104,12 +108,33 @@ normal-user field tests and direct competitor comparisons remain open.
   24 existing desktop skips and no reported retries. It merged at
   `5d023f40dd3df13b237278e2b544ef7b3ef4d976`. Base sRGB brightness/saturation and
   alpha-preserving constant-color optimization are qualified at source level.
-- The separate color-effect-order candidate has passing raw/color comparisons
-  but an original full-workflow timeout. Its bounded raster-decoder follow-up and
-  explicit native-range rejection still need broad/protected qualification.
+- PR 159's color-effect-order and bounded-decoder candidate passed protected
+  Verify `33676259215` and CodeQL `33676259244`, including 332 browser passes,
+  24 existing desktop skips and no reported retries. It merged at
+  `ebf4d7ef24832d7454761d1874806c83f083ca1b`. Its original failed evidence is retained.
 - A fresh public readiness read still identifies source `7785912c74404b653ed64faba1ebe45b7b5a4fb8`,
   build `20260902T102159Z-791e2941c783`, and 120/120 migration parity. New source
-  merges are not deployments. Google management reauthentication is still needed.
+  merges are not deployments. Google management access was subsequently restored.
+
+## Native reliability and isolated source-sound candidates
+
+- Native cancellation/lease ownership now stops actual registered child work,
+  including the previously missed preparation-before-spawn interval. Bounded
+  codec/filter scheduling retains existing image/audio quality settings. At
+  source `89fdd2cf3286d653f3f6e28e8b4c8e14273f8552`, 681 root tests, actual SQL
+  cancellation/reassignment/expiry tests and 18 local native/browser tests passed.
+  Protected Verify `33683362812` passed overall but contained a desktop rolling-
+  edit retry (expected 1.8, observed 1.7). That retry is not a clean parity receipt.
+  A current-draft saved-indicator fix is being qualified separately in PR 160.
+- Isolated imported-video sound passed eight local actual-output records in
+  `video-source-audio-20260902212858539/receipt.json`. It covers source clock,
+  Sequence/Repeat/Freeze lifecycle, gain/mute, pitch-preserving speed, range
+  exports, explicit-track mixing and silent/legacy behavior. Extended tail and
+  stream-selection tests, the complete exact-image suite, vulnerability scan
+  and protected runtime reproduction are still pending. The fixed eight-interval,
+  eight-import and forward-sound limits remain explicit.
+- Neither candidate is deployed. Public code execution, normal-user field
+  proof and same-input authorized Remotion benchmarks remain open.
 
 ## Completion rule (unchanged)
 

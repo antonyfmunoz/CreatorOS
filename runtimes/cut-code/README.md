@@ -80,8 +80,11 @@ production topology approval or enable public code execution.
   video to avoid mixing the source twice. Legacy requests without the soundtrack
   opt-in remain silent. The runtime permits at most eight imported video files
   for automatic sound and retains its eight combined soundtrack-interval cap.
-  These changes still require actual isolated-output and protected qualification;
-  they are not a deployed public source-code editor or service.
+  The first eight local actual-output records passed for lifecycle, source
+  clocks, gain/mute, pitch, ranges, explicit mixing and silent/legacy behavior.
+  The extended fractional-tail/stream-selection cases and full exact-image
+  qualification remain pending. This is not a deployed public source-code
+  editor or service; protected candidate pixels and vulnerability gates remain.
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
