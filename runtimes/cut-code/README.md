@@ -61,6 +61,20 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   default opaque output. WebM preserves the same even-size, frame, pixel-frame,
   CPU, memory, deadline and byte limits. It is not ProRes, HDR or universal-device
   playback support. Private WebM overlays can be reused through `FrameVideo`.
+- Opt-in `format: "gif"` video exports use a shared 255-color palette plus a
+  reserved transparent entry. Transparency is binary (alpha threshold 128), not
+  the partial alpha available in WebM/PNG. `gifOptions.frameStep` in 1..30 samples
+  absolute frames starting at the range's first frame; the shortened final hold
+  preserves range duration to GIF's centisecond precision. `repeatCount: null`
+  repeats indefinitely, `0` plays once, and 1..1000 repeats that many times after
+  the initial play. Defaults are step 1 and indefinite repetition. GIF supports
+  odd dimensions, at most 50 composition FPS and a stricter 100-million full-range
+  pixel-frame palette budget; sampling cannot bypass that budget. Other execution
+  and byte caps remain unchanged. Soundtrack requests fail explicitly because
+  GIF cannot carry audio. Receipts bind the sampling/repetition settings, original
+  range and actual sampled frame count; `fps` remains the composition frame rate.
+  Decoded artifacts verify moving transparency without trails, opaque colors,
+  frame delays, repeat metadata, one-frame ranges and byte-identical replay.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
   WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.

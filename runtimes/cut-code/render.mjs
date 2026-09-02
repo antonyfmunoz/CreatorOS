@@ -78,15 +78,19 @@ try {
   const sequenceFrames = [];
   let sequenceBytes = 0;
   let encoderDone;
+  const frameStep = request.gifOptions?.frameStep ?? 1;
   if (request.mode === 'video') {
-    const encoding = request.format === 'webm'
+    const gifFinalDelay = Math.round(output.frames ? (last - first) * 100 / request.fps : 0) - Math.round((output.frames - 1) * frameStep * 100 / request.fps);
+    const encoding = request.format === 'gif'
+      ? ['-filter_complex_threads', '1', '-filter_complex', '[0:v]split[frames][colors];[colors]palettegen=reserve_transparent=1[palette];[frames][palette]paletteuse=dither=sierra2_4a:alpha_threshold=128', '-c:v', 'gif', '-threads', '1', '-fps_mode', 'passthrough', '-gifflags', '-offsetting-transdiff', '-loop', String(request.gifOptions.repeatCount === null ? 0 : request.gifOptions.repeatCount === 0 ? -1 : request.gifOptions.repeatCount), '-final_delay', String(gifFinalDelay)]
+      : request.format === 'webm'
       ? ['-c:v', 'libvpx-vp9', '-threads', '1', '-b:v', '0', '-crf', '30', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-metadata:s:v:0', 'alpha_mode=1']
       : ['-c:v', 'libx264', '-threads', '1', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
-    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', String(request.fps), '-i', 'pipe:0', '-an', ...encoding, '-fs', String(MAX_ARTIFACT_BYTES), videoPath], { stdio: ['pipe', 'ignore', 'ignore'] });
+    encoder = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', '-f', 'image2pipe', '-framerate', `${request.fps}/${frameStep}`, '-i', 'pipe:0', '-an', ...encoding, '-fs', String(MAX_ARTIFACT_BYTES), videoPath], { stdio: ['pipe', 'ignore', 'ignore'] });
     encoder.stdin.on('error', () => {});
     encoderDone = once(encoder, 'close');
   }
-  for (let frame = first; frame < last; frame++) {
+  for (let frame = first; frame < last; frame += frameStep) {
     await page.evaluate(async ({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
       await document.fonts.ready;
@@ -132,7 +136,7 @@ try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, { frame, config, input: request.input });
     if (pageFailed) throw new Error('Composition execution failed.');
-    let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || request.format === 'webm') && request.format !== 'jpeg', timeout: 10_000 });
+    let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || ['webm', 'gif'].includes(request.format)) && request.format !== 'jpeg', timeout: 10_000 });
     if (pageFailed) throw new Error('Composition execution failed.');
     if (png.length > MAX_ARTIFACT_BYTES) throw new Error('Frame output limit exceeded.');
     if (request.format === 'webp') {
@@ -172,7 +176,7 @@ try {
   const size = (await stat(outputPath)).size;
   if (!size || size >= MAX_ARTIFACT_BYTES) throw new Error('Artifact output limit exceeded.');
   const artifact = await readFile(outputPath);
-  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: last - first, start: first, end: last - 1, frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: hasSoundtrack && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
+  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: output.frames, start: first, end: last - 1, ...(request.gifOptions ? { gifOptions: request.gifOptions } : {}), frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: hasSoundtrack && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
   process.stdout.write(JSON.stringify({ receipt, artifact: artifact.toString('base64') }));
 } catch (error) {
   // Capsule errors can contain source text. Never forward them into shared logs.

@@ -4,6 +4,14 @@ import { createHash } from 'node:crypto';
 import { assertArtifactReceipt } from './host.mjs';
 import { validateRequest, outputContract } from './request.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+test('GIF receipts bind sampled frame counts, timing range and repeat choices', () => {
+  const artifact = Buffer.from('unit custody fixture'), source = Buffer.from('source');
+  const request = validateRequest({ version: 1, mode: 'video', format: 'gif', width: 65, height: 33, fps: 25, durationInFrames: 10, frameRange: [3, 9], gifOptions: { frameStep: 3, repeatCount: 2 }, entrypoint: 'index.tsx', input: {} });
+  const output = outputContract(request);
+  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', bytes: artifact.length, artifactSha256: hash(artifact), sourceSha256: hash(source), requestSha256: hash(JSON.stringify(request)), width: request.width, height: request.height, fps: request.fps, mode: request.mode, format: request.format, quality: request.quality, start: output.start, end: output.end, frames: output.frames, mediaType: output.mediaType, gifOptions: request.gifOptions, audioTrackCount: 0, silent: true };
+  assert.doesNotThrow(() => assertArtifactReceipt(artifact, receipt, request, source));
+  for (const change of [{ frames: 7 }, { gifOptions: undefined }, { gifOptions: { frameStep: 3, repeatCount: null } }, { gifOptions: { frameStep: 1, repeatCount: 2 } }, { audioTrackCount: 1 }, { silent: false }, { mediaType: 'video/mp4' }]) assert.throws(() => assertArtifactReceipt(artifact, { ...receipt, ...change }, request, source));
+});
 test('audio-only receipts bind explicit soundtracks and generated silence', () => {
   const artifact = Buffer.from('not an encoded media test'), source = Buffer.from('source');
   for (const audioTracks of [[], [{ file: 'music.wav' }]]) {

@@ -2,6 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRequest, outputContract } from './request.mjs';
 const valid = { version: 1, mode: 'still', width: 1920, height: 1080, fps: 30, durationInFrames: 60, frame: 30, entrypoint: 'src/main.tsx', input: { title: 'Launch' } };
+test('GIF sampling, repetition, odd dimensions and memory limits have explicit contracts', () => {
+  const base = { ...valid, mode: 'video', format: 'gif', width: 321, height: 181, frame: 0, frameRange: [3, 9], gifOptions: { frameStep: 3, repeatCount: 2 } };
+  const request = validateRequest(base);
+  assert.deepEqual(outputContract(request), { start: 3, end: 9, frames: 3, extension: 'gif', mediaType: 'image/gif' });
+  assert.deepEqual(validateRequest(request), request);
+  assert.deepEqual(validateRequest({ ...base, gifOptions: undefined }).gifOptions, { frameStep: 1, repeatCount: null });
+  for (const repeatCount of [null, 0, 1, 1000]) assert.equal(validateRequest({ ...base, gifOptions: { repeatCount } }).gifOptions.repeatCount, repeatCount);
+  for (const change of [{ mode: 'still' }, { mode: 'sequence' }, { format: 'webm', width: 320, height: 180 }, { fps: 51 }, { quality: 80 }, { audioTracks: [{ file: 'tone.wav' }] }, { gifOptions: [] }, { gifOptions: { unknown: true } }, { gifOptions: { frameStep: 0 } }, { gifOptions: { frameStep: 31 } }, { gifOptions: { frameStep: 1.5 } }, { gifOptions: { repeatCount: -1 } }, { gifOptions: { repeatCount: 1001 } }, { gifOptions: { repeatCount: '0' } }, { width: 1920, height: 1080, frameRange: [0, 59], gifOptions: { frameStep: 30 } }]) assert.throws(() => validateRequest({ ...base, ...change }));
+});
 test('audio-only exports have separate duration, container and bounded track contracts', () => {
   const base = { ...valid, mode: 'audio', frame: 0, durationInFrames: 3600, audioTracks: [] };
   for (const [format, mediaType] of [['wav', 'audio/wav'], ['mp3', 'audio/mpeg'], ['m4a', 'audio/mp4']]) {
