@@ -173,6 +173,7 @@
     "bufferutil": "^4.0.8"
   },
   "overrides": {
+    "qs": "6.16.0",
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.12"
     }
