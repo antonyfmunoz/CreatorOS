@@ -7,6 +7,8 @@ import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutFitVideoFilters, cutSourceVideoFilters, cutSourceRenditionSize } from "./cut-video-geometry";
 import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
+import { createCutNativeBrowserSession } from "./cut-native-browser-session";
+import { cutPreparationProgress } from "./cut-preparation-progress";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -823,9 +825,18 @@ async function renderMultitrack(
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
   const rasterGraphicInputs: Array<{ path: string; animated: boolean }> = [];
-  const textRasterizer = createCutTextRasterizer();
+  const nativeSession = createCutNativeBrowserSession();
+  const textRasterizer = createCutTextRasterizer(nativeSession);
+  const preparationStarted = Date.now();
+  const reportPreparation = async (index: number, fraction = 0) => {
+    const display = cutPreparationProgress(index, graphics.length, fraction);
+    console.info("CutStudio preparation progress", { jobId, layer: index + 1, layers: graphics.length, fraction, elapsedMs: Date.now() - preparationStarted });
+    await updateCutJobProgress(jobId, leaseToken, display.progress, display.detail);
+  };
   try {
-  for (const graphic of graphics) {
+  for (let graphicIndex = 0; graphicIndex < graphics.length; graphicIndex++) {
+    const graphic = graphics[graphicIndex];
+    await reportPreparation(graphicIndex);
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputs.length}.png`);
     const staticMaskEffect = graphicEffect(graphic, "mask");
     const staticMaskAssetId = typeof staticMaskEffect?.parameters.maskAssetId === "string" ? staticMaskEffect.parameters.maskAssetId : null;
@@ -842,7 +853,7 @@ async function renderMultitrack(
       const privateAnimation = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       const expectedKind = graphic.kind === "lottie" ? "cut-lottie" : "cut-rive";
       if (!privateAnimation || privateAnimation.asset.kind !== expectedKind) throw new Error(`A composition ${graphic.kind} layer must reference ready private validated media`);
-      const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration });
+      const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
       rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
       rasterGraphicInputs.push({ path: frames.pattern, animated: true });
       continue;
