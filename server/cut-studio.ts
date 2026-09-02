@@ -15,7 +15,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
@@ -61,7 +61,9 @@ import {
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
-import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
+import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
+import { runCutNativeProcess } from "./cut-native-process";
+import { watchCutJobLease } from "./cut-job-lease-watch";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
@@ -69,7 +71,8 @@ import { cutGraphicColorFilters } from "./cut-graphic-color";
 import { reserveWorkerSlot } from "./worker-admission";
 import { cutColorMatrixControls } from "../shared/cut-color-effects";
 import { cutFilterGraphArgs } from "./cut-filter-graph";
-import { cutFilterThreadArgs } from "./cut-filter-budget";
+import { cutFilterThreadArgs, cutSimpleFilterThreadArgs } from "./cut-filter-budget";
+import { cutCodecThreadArgs } from "./cut-codec-budget";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -330,6 +333,7 @@ const idSchema = z.string().uuid();
 const proxyRequestSchema = z.object({ mediaId: z.string().uuid() });
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
+const activeJobControllers = new Map<string, AbortController>();
 let cutWorkerTimer: NodeJS.Timeout | null = null;
 let cutNodeHeartbeatTimer: NodeJS.Timeout | null = null;
 let cutWorkerRegistered = false;
@@ -375,8 +379,17 @@ async function heartbeatCutWorker(requestedStatus?: "active" | "draining" | "off
   }
 }
 
-async function updateCutJobProgress(jobId: string, leaseToken: string, progress: number, detail: string) {
-  await db.update(cutStudioJobs).set({ progress, detail }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken)));
+export async function cutJobLeaseIsOwned(jobId: string, leaseToken: string) {
+  const rows = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, new Date()))).limit(1);
+  return rows.length === 1;
+}
+
+export async function updateCutJobProgress(jobId: string, leaseToken: string, progress: number, detail: string) {
+  const rows = await db.update(cutStudioJobs).set({ progress, detail }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, new Date()))).returning({ id: cutStudioJobs.id });
+  if (!rows.length) {
+    activeJobControllers.get(jobId)?.abort();
+    throw new Error("Native job cancelled or lease lost");
+  }
 }
 
 function reportCutEncodingProgress(jobId: string, leaseToken: string, duration: number) {
@@ -535,29 +548,10 @@ async function canStartJob(userId: number) {
 }
 
 function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string, progress?: (progress: CutProcessProgress) => void) {
-  return new Promise<string>((resolve, reject) => {
-    const withProgress = command === "ffmpeg" && progress;
-    const child = spawn(command, withProgress ? cutProcessProgressArgs(args) : args, { windowsHide: true });
-    if (withProgress) {
-      const parse = createCutProcessProgressParser(withProgress);
-      child.stdout.on("data", (chunk) => parse(String(chunk)));
-    } else child.stdout.resume();
-    if (jobId) activeProcesses.set(jobId, child);
-    let stderr = "";
-    child.stderr.on("data", (chunk) => { stderr = `${stderr}${String(chunk)}`.slice(-8_000); });
-    let settled = false;
-    const finish = (handler: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId);
-      handler();
-    };
-    const timer = setTimeout(() => { child.kill("SIGKILL"); finish(() => reject(new Error(`${command} timed out`))); }, timeoutMs);
-    child.on("error", (error) => finish(() => reject(error)));
-    child.on("close", (code) => {
-      finish(() => code === 0 ? resolve(stderr) : reject(new Error(`${command} exited ${code}: ${stderr.slice(-1_000)}`)));
-    });
+  return runCutNativeProcess(command, args, {
+    timeoutMs, progress, signal: jobId ? activeJobControllers.get(jobId)?.signal : undefined,
+    started(child) { if (jobId) activeProcesses.set(jobId, child); },
+    finished(child) { if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId); },
   });
 }
 
@@ -828,6 +822,10 @@ async function renderMultitrack(
   const rasterGraphicInputs: Array<{ path: string; animated: boolean }> = [];
   const nativeSession = createCutNativeBrowserSession();
   const textRasterizer = createCutTextRasterizer(nativeSession);
+  const signal = activeJobControllers.get(jobId)?.signal;
+  const cancelPreparation = () => { void nativeSession.close(); };
+  signal?.addEventListener("abort", cancelPreparation, { once: true });
+  if (signal?.aborted) cancelPreparation();
   const preparationStarted = Date.now();
   const reportPreparation = async (index: number, fraction = 0) => {
     const display = cutPreparationProgress(index, graphics.length, fraction);
@@ -899,7 +897,7 @@ async function renderMultitrack(
     rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
     rasterGraphicInputs.push({ path: rasterPath, animated: false });
   }
-  } finally { await textRasterizer.close(); }
+  } finally { signal?.removeEventListener("abort", cancelPreparation); await textRasterizer.close(); }
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;
@@ -1037,7 +1035,7 @@ async function renderMultitrack(
   // Authored curves can exceed OS argument-length limits. This is generated
   // filter data in the job's private temporary directory, not executable input.
   const filterGraphArgs = await cutFilterGraphArgs(temp, filters);
-  const args = ["-y", ...cutFilterThreadArgs(), ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
+  const args = ["-y", ...cutFilterThreadArgs(), ...mediaInputs.flatMap((input) => [...cutCodecThreadArgs(), "-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", ...cutCodecThreadArgs(), "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }
@@ -1173,9 +1171,9 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     if (media.hasAudio && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
     const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
     const duration = cutDuration({ version: 2, clips });
-    const inputArgs = ["-y", "-i", sourcePath];
+    const inputArgs = ["-y", ...cutFilterThreadArgs(), ...cutCodecThreadArgs(), "-i", sourcePath];
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
-    const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+    const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...cutCodecThreadArgs(), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
     await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
     await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, duration));
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
@@ -1207,7 +1205,7 @@ async function createProxyJob(jobId: string, leaseToken: string, project: typeof
     const probed = await probeMedia(inputPath);
     if (!probed.hasVideo) throw Object.assign(new Error("The selected media does not contain video"), { code: "proxy_source_required" });
     await updateCutJobProgress(jobId, leaseToken, 0.25, "Creating lightweight editing media");
-    await runProcess("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", "scale=w='min(1280,iw)':h=-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", ...(probed.hasAudio ? ["-c:a", "aac", "-b:a", "96k"] : ["-an"]), "-movflags", "+faststart", outputPath], 20 * 60_000, jobId);
+    await runProcess("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...cutSimpleFilterThreadArgs(), ...cutCodecThreadArgs(), "-i", inputPath, "-vf", "scale=w='min(1280,iw)':h=-2", "-c:v", "libx264", ...cutCodecThreadArgs(), "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", ...(probed.hasAudio ? ["-c:a", "aac", "-b:a", "96k"] : ["-an"]), "-movflags", "+faststart", outputPath], 20 * 60_000, jobId);
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-proxy", filename: outputName, mimeType: "video/mp4" });
     const [artifact] = await db.insert(assets).values({
       ownerUserId: project.ownerUserId,
@@ -1234,6 +1232,9 @@ export async function processCutStudioJob(jobId: string) {
   // Dispatch queries can overlap while awaiting their queued rows. Recheck and
   // reserve here, synchronously, rather than trusting their stale slot counts.
   if (!reserveWorkerSlot(running, jobId, cutWorker.maxConcurrency, cutWorkerStopping)) return;
+  const controller = new AbortController();
+  activeJobControllers.set(jobId, controller);
+  let stopLeaseWatch: (() => void) | undefined;
   const leaseToken = randomUUID();
   let leaseHeartbeat: NodeJS.Timeout | null = null;
   const processingStartedAt = Date.now();
@@ -1243,14 +1244,15 @@ export async function processCutStudioJob(jobId: string) {
     const now = new Date();
     const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken, now);
     if (!claimed) return;
+    stopLeaseWatch = watchCutJobLease(controller, () => cutJobLeaseIsOwned(jobId, leaseToken));
     // Correlate a durable claim with its Cloud execution without logging the
     // lease token, owner content, request payload or private asset URLs.
     process.stdout.write(`${JSON.stringify({ event: "cut.job.claimed", jobId, workerId: cutWorker.id, kind: claimed.kind })}\n`);
     await heartbeatCutWorker();
     leaseHeartbeat = setInterval(() => {
       const heartbeatAt = new Date();
-      void db.update(cutStudioJobs).set({ heartbeatAt, leaseExpiresAt: new Date(heartbeatAt.getTime() + cutLeaseMs) }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).then((rows) => {
-        if (!rows.length) activeProcesses.get(jobId)?.kill("SIGKILL");
+      void db.update(cutStudioJobs).set({ heartbeatAt, leaseExpiresAt: new Date(heartbeatAt.getTime() + cutLeaseMs) }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, heartbeatAt))).returning({ id: cutStudioJobs.id }).then((rows) => {
+        if (!rows.length) controller.abort();
       }).catch((error) => console.error("CutStudio worker lease heartbeat failed", { jobId, errorType: error instanceof Error ? error.name : typeof error }));
     }, Math.max(10_000, Math.floor(cutLeaseMs / 3)));
     leaseHeartbeat.unref();
@@ -1318,7 +1320,10 @@ export async function processCutStudioJob(jobId: string) {
     if (failed.length) processingOutcome = false;
   } finally {
     if (leaseHeartbeat) clearInterval(leaseHeartbeat);
+    stopLeaseWatch?.();
+    if (activeJobControllers.get(jobId) === controller) activeJobControllers.delete(jobId);
     running.delete(jobId);
+    process.stdout.write(`${JSON.stringify({ event: "cut.job.execution_stopped", jobId, workerId: cutWorker.id, aborted: controller.signal.aborted, childRegistered: activeProcesses.has(jobId) })}\n`);
     if (processingBusinessId && processingOutcome !== null) void recordOperationalServiceEvent({ businessId: processingBusinessId, service: "rendering", success: processingOutcome, durationMs: Date.now() - processingStartedAt, sourceType: "cut_studio_job", sourceId: jobId, quantity: Date.now() - processingStartedAt, unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(Date.now() - processingStartedAt, Number(process.env.CUT_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
     void heartbeatCutWorker().catch((error) => console.error("CutStudio worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error }));
   }
@@ -1966,6 +1971,7 @@ export function registerCutStudioRoutes(app: Express) {
     const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled by user", errorCode: null, cancellationRequestedAt: cancelledAt, leaseExpiresAt: null, finishedAt: cancelledAt })
       .where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), sql`${cutStudioJobs.state} in ('queued', 'running')`)).returning();
     if (!cancelled) return res.status(409).json({ message: "The job already finished" });
+    activeJobControllers.get(job.id)?.abort();
     activeProcesses.get(job.id)?.kill("SIGKILL");
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.job.cancelled", actorUserId: req.dbUser!.id, payload: { jobId: job.id, kind: job.kind }, idempotencyKey: `cutstudio:${job.id}:cancelled` });
     res.json(cancelled);

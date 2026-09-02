@@ -10,3 +10,7 @@ export function cutFilterThreadArgs(environment: NodeJS.ProcessEnv = process.env
   if (!Number.isInteger(parallelism) || parallelism < 1) throw new Error("Native filter CPU availability is invalid");
   return ["-filter_complex_threads", String(Math.min(2, parallelism))];
 }
+
+export function cutSimpleFilterThreadArgs(environment: NodeJS.ProcessEnv = process.env, parallelism = availableParallelism()): [string, string] {
+  return ["-filter_threads", cutFilterThreadArgs(environment, parallelism)[1]];
+}

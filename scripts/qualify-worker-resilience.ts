@@ -3,6 +3,7 @@ import { db, closeDatabase } from "../server/db";
 import { claimCutStudioJob, cutWorkerIdentity, recoverInterruptedCutStudioJobs } from "../server/cut-studio";
 import { qualifyCutWorkerAdmission } from "./qualify-cut-worker-admission";
 import { qualifyMediaWorkerAdmission } from "./qualify-media-worker-admission";
+import { qualifyCutJobCancellation } from "./qualify-cut-job-cancellation";
 import { claimMediaJob, mediaWorkerIdentity, recoverInterruptedMediaJobs } from "../server/media-processing";
 import { assets, businesses, cutStudioJobs, cutStudioProjects, mediaProcessingJobs, mediaWorkerNodes, users } from "../shared/schema";
 
@@ -12,6 +13,7 @@ const workerNodeIds = ["iad-active", "sjc-stale", cutWorkerIdentity().id, mediaW
 let qualificationPassed = false;
 let admissionReceipt: Awaited<ReturnType<typeof qualifyCutWorkerAdmission>> | undefined;
 let mediaAdmissionReceipt: Awaited<ReturnType<typeof qualifyMediaWorkerAdmission>> | undefined;
+let cancellationReceipt: Awaited<ReturnType<typeof qualifyCutJobCancellation>> | undefined;
 
 if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
   throw new Error("Worker resilience qualification requires an isolated disposable database");
@@ -25,6 +27,7 @@ try {
 
   admissionReceipt = await qualifyCutWorkerAdmission(project);
   mediaAdmissionReceipt = await qualifyMediaWorkerAdmission(asset);
+  cancellationReceipt = await qualifyCutJobCancellation(project);
 
   await db.insert(mediaWorkerNodes).values([
     { id: "iad-active", region: "iad", capabilities: ["transcode"], maxConcurrency: 2, activeJobs: 1, status: "active", heartbeatAt: new Date() },
@@ -98,7 +101,7 @@ try {
       .where(eq(users.clerkId, "worker_resilience"));
     if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
     if (qualificationPassed) {
-      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt }));
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt, cancellation: cancellationReceipt }));
     }
   } finally {
     await closeDatabase();
