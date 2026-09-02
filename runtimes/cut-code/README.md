@@ -51,6 +51,17 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects
   summing, without normalizing quiet material upward. No network input is allowed.
+- A soundtrack may have 1..32 `volumeKeyframes` with integral, strictly increasing
+  track-local `frame`, `value` in 0..2, and `interpolation` of `linear` (default)
+  or `hold`. The outgoing interval uses the left point's interpolation. The
+  first/last value holds outside the points. Keyframe gain multiplies constant
+  track volume; the existing mix limiter remains in force. Gains are evaluated
+  per output sample after source retiming; playback speed does not retime gain,
+  and range exports continue the original track-local clock. Zero is a true
+  mute. Keyframes cannot lie beyond the track's exclusive end. This bounded
+  data contract does not execute arbitrary callbacks in the host or provide
+  React `<Audio>` lifecycle integration. Existing requests without keyframes
+  retain their normalized shape and filter order.
 - PNG/JPEG/WebP frame-sequence ZIPs with absolute-frame filenames, dimensions,
   FPS, a full-request hash and per-frame SHA-256/byte counts in `manifest.json`.
   ZIP timestamps are fixed, and actual PNG-sequence replay is byte-checked.

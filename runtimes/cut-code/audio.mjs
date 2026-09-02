@@ -10,8 +10,33 @@ export function audioPlan(request) {
     const start = Math.max(track.startFrame, output.start);
     const end = Math.min(track.endFrame, output.end + 1);
     if (end <= start) return [];
-    return [{ ...track, sourceStart: track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps, sourceDuration: (end - start) * track.speed / request.fps, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
+    return [{ ...track, localStartFrame: start - track.startFrame, sourceStart: track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps, sourceDuration: (end - start) * track.speed / request.fps, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });
+}
+
+// Only normalized numeric keyframes enter this expression. The frame clock is
+// track-local after retiming; a range export continues rather than restarts it.
+export function volumeAutomationFilter(track, fps) {
+  if (!track.volumeKeyframes?.length) return `volume=${track.volume}`;
+  const points = track.volumeKeyframes;
+  const frame = `(t*${fps}+${track.localStartFrame})`;
+  let expression = String(points.at(-1).value);
+  for (let index = points.length - 2; index >= 0; index--) {
+    const left = points[index], right = points[index + 1];
+    const span = left.interpolation === 'hold' ? String(left.value) : `(${left.value}+(${right.value - left.value})*(${frame}-${left.frame})/${right.frame - left.frame})`;
+    expression = `if(lt(${frame},${right.frame}),${span},${expression})`;
+  }
+  expression = `${track.volume}*if(lt(${frame},${points[0].frame}),${points[0].value},${expression})`;
+  // aeval evaluates each output sample; volume:eval=frame would step by audio
+  // decode packets and lose precision at fades and exact held-keyframe edges.
+  return `aeval=exprs='val(0)*(${expression})|val(1)*(${expression})':channel_layout=stereo`;
+}
+
+export function audioTrackFilters(track, fps) {
+  const gain = track.volumeKeyframes
+    ? `aresample=48000,aformat=channel_layouts=stereo,asetpts=N/SR/TB,${volumeAutomationFilter(track, fps)}`
+    : `volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo`;
+  return `atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
 // Container-only media work. File names, decoders and process arguments are
@@ -32,7 +57,7 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo) 
     const seconds = Number(probe.format.duration);
     if (streams.length !== 1 || !Number.isFinite(Number(streams[0].sample_rate)) || Number(streams[0].sample_rate) < 1 || Number(streams[0].sample_rate) > 192000 || !Number.isInteger(Number(streams[0].channels)) || Number(streams[0].channels) < 1 || Number(streams[0].channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('A soundtrack exceeds its decode or source timing limits.');
     args.push('-threads', '1', '-protocol_whitelist', 'file,pipe', '-f', extension, '-i', filename);
-    filters.push(`[${index + 1}:a:0]atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1[a${index}]`);
+    filters.push(`[${index + 1}:a:0]${audioTrackFilters(track, request.fps)}[a${index}]`);
   }
   const duration = outputContract(request).frames / request.fps;
   filters.push(`${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`);
