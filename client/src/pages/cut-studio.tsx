@@ -10,7 +10,7 @@ import { CutStudioRenderPreview } from "@/components/cut/CutStudioRenderPreview"
 import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, estimateCutRenderSeconds, groupCutClips, moveCutClipGroup, removeCutRange, restoreCutRange, rollCutEdit, shortTermLufs, slipCutClip, snapCutTime, splitCutAt, switchCutMulticamAngle, trimCutClip, ungroupCutClips, validateCutEdl, type CutAudioRoutingTemplatePayload, type CutEdl, type CutMulticamGroup, type CutRenderRequest, type CutRippleMode, type CutTranscript } from "@shared/cut-studio";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
 import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
-import { updateCutTrackSettings } from "@shared/cut-studio";
+import { updateCutTrackSettings, cutTrackEffectiveGain, cutClipVolumeAt } from "@shared/cut-studio";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile"; createdAt: string };
 type ProjectLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } } };
@@ -58,6 +58,7 @@ export default function CutStudioPage() {
   const sourceMediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const monitorGainRef = useRef<GainNode | null>(null);
   const audioSourceElementRef = useRef<HTMLMediaElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFilterRefs = useRef<{ highPass: BiquadFilterNode; shelf: BiquadFilterNode; sink: GainNode } | null>(null);
@@ -583,6 +584,7 @@ export default function CutStudioPage() {
       const AudioContextClass = window.AudioContext;
       if (audioSourceElementRef.current && audioSourceElementRef.current !== media) {
         audioSourceRef.current?.disconnect();
+        monitorGainRef.current?.disconnect();
         analyserRef.current?.disconnect();
         meterFilterRefs.current?.highPass.disconnect();
         meterFilterRefs.current?.shelf.disconnect();
@@ -590,6 +592,7 @@ export default function CutStudioPage() {
         await audioContextRef.current?.close();
         audioContextRef.current = null;
         audioSourceRef.current = null;
+        monitorGainRef.current = null;
         analyserRef.current = null;
         meterFilterRefs.current = null;
       }
@@ -604,14 +607,25 @@ export default function CutStudioPage() {
         analyserRef.current = audioContextRef.current.createAnalyser();
         analyserRef.current.fftSize = 1024;
         const sink = audioContextRef.current.createGain(); sink.gain.value = 0;
-        audioSourceRef.current.connect(audioContextRef.current.destination);
-        audioSourceRef.current.connect(highPass).connect(shelf).connect(analyserRef.current).connect(sink).connect(audioContextRef.current.destination);
+        monitorGainRef.current = audioContextRef.current.createGain();
+        monitorGainRef.current.gain.value = 0;
+        audioSourceRef.current.connect(monitorGainRef.current);
+        monitorGainRef.current.connect(audioContextRef.current.destination);
+        monitorGainRef.current.connect(highPass).connect(shelf).connect(analyserRef.current).connect(sink).connect(audioContextRef.current.destination);
         meterFilterRefs.current = { highPass, shelf, sink };
       }
       await audioContextRef.current.resume();
       const samples = new Uint8Array(analyserRef.current!.fftSize);
       const weightedSamples = new Float32Array(analyserRef.current!.fftSize);
       const measure = () => {
+        const currentEdl = edlRef.current;
+        const activeClip = currentEdl?.clips.find((item) => (item.track ?? "v1") === "v1" && media.currentTime >= item.start && media.currentTime < item.end);
+        const track = currentEdl?.tracks?.find((item) => item.track === "v1");
+        if (monitorGainRef.current && currentEdl) {
+          const multiplier = track?.muted ? 0 : cutTrackEffectiveGain("v1", currentEdl.tracks, currentEdl.audioBuses);
+          const localTime = activeClip ? (media.currentTime - activeClip.start) / (activeClip.speed ?? 1) : 0;
+          monitorGainRef.current.gain.value = activeClip ? cutClipVolumeAt(activeClip, localTime, multiplier) : 0;
+        }
         analyserRef.current!.getByteTimeDomainData(samples);
         analyserRef.current!.getFloatTimeDomainData(weightedSamples);
         setAudioLevelDb(audioRmsDb(samples));
