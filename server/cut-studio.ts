@@ -57,6 +57,7 @@ import {
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
+import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -361,6 +362,25 @@ async function updateCutJobProgress(jobId: string, leaseToken: string, progress:
   await db.update(cutStudioJobs).set({ progress, detail }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken)));
 }
 
+function reportCutEncodingProgress(jobId: string, leaseToken: string, duration: number) {
+  let updatedAt = 0;
+  let highWater = .35;
+  let writing = false;
+  return (progress: CutProcessProgress) => {
+    if (!progress.complete && Date.now() - updatedAt < 5_000) return;
+    updatedAt = Date.now();
+    // Numeric allowlist only: no FFmpeg stderr, private paths or signed URLs.
+    console.info("CutStudio encode progress", { jobId, ...progress });
+    if (writing) return;
+    const display = cutProcessProgressDisplay(progress, duration);
+    highWater = Math.max(highWater, display.progress);
+    writing = true;
+    void updateCutJobProgress(jobId, leaseToken, highWater, display.detail).catch(() => {
+      console.warn("CutStudio encode progress could not be persisted", { jobId });
+    }).finally(() => { writing = false; });
+  };
+}
+
 async function registerCutArtifact(parentAssetId: string, artifact: typeof assets.$inferSelect, relationship: "rendered_from" | "derived_from") {
   await Promise.all([
     queueMediaIngestJobs(artifact),
@@ -497,9 +517,14 @@ async function canStartJob(userId: number) {
   return (row?.count ?? 0) < 2;
 }
 
-function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string) {
+function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string, progress?: (progress: CutProcessProgress) => void) {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, args, { windowsHide: true });
+    const withProgress = command === "ffmpeg" && progress;
+    const child = spawn(command, withProgress ? cutProcessProgressArgs(args) : args, { windowsHide: true });
+    if (withProgress) {
+      const parse = createCutProcessProgressParser(withProgress);
+      child.stdout.on("data", (chunk) => parse(String(chunk)));
+    } else child.stdout.resume();
     if (jobId) activeProcesses.set(jobId, child);
     let stderr = "";
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${String(chunk)}`.slice(-8_000); });
@@ -968,7 +993,7 @@ async function renderMultitrack(
   const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
   const args = ["-y", ...mediaInputs.flatMap((input) => ["-i", input.url]), ...rasterGraphicInputs.flatMap((input) => input.animated ? ["-framerate", String(request.fps), "-i", input.path] : ["-loop", "1", "-framerate", String(request.fps), "-i", input.path]), "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
-  await runProcess("ffmpeg", args, 30 * 60_000, jobId);
+  await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }
 
 function atempoFilters(speed: number) {
@@ -1106,7 +1131,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
     const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
     await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
-    await runProcess("ffmpeg", args, 30 * 60_000, jobId);
+    await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, duration));
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
     const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, ...compositionMetadata } }).returning();
