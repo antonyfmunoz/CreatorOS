@@ -75,3 +75,14 @@ matching player. Both compositions and the rejection/revision checks remain.
 This is a test-target correction, not a successful color comparison; the exact
 candidate must pass again. Root qualification passed 657 tests before this
 locator-only correction.
+
+Protected run `33673101414` completed successfully but retained one desktop
+audio-preview retry: 178 mobile passes, 153 desktop first-attempt passes, one
+desktop flaky case and 24 existing skips. It is not a clean first-attempt run.
+The original trace records a startup baseline of -25.1 dBFS, followed by stable
+quarter-gain readings of -32.9/-33.0 dBFS. The original test accepted any first
+meter window above -30 as its baseline. The new prerequisite decodes the actual
+fixture tone and requires the preview baseline to reach within one dB of that
+source, before retaining it. The existing 10–14 dB attenuation, mute and restore
+bounds are unchanged. Repeat qualification is required; no production audio
+gain behavior is changed by this test correction.
