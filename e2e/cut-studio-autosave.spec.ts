@@ -119,6 +119,35 @@ test("failed autosave retains the draft and retries only on request", async ({ p
   await page.reload(); await expect(gain).toHaveValue(draftGain);
 });
 
+test("returning to the saved edit before debounce clears the abandoned saving state", async ({ page }, info) => {
+  const project = await createProject(page, info, "Return to saved timeline");
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+  const render = page.getByRole("button", { name: "Render full edit", exact: true });
+  await gain.press("ArrowLeft");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const savedValue = await gain.inputValue();
+  const before = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  let writes = 0;
+  await page.route(`**/projects/${project.id}/edl`, async (route) => {
+    if (route.request().method() === "PUT") writes++;
+    await route.continue();
+  });
+  await gain.press("ArrowLeft");
+  await expect(render).toBeDisabled();
+  await gain.press("ArrowRight");
+  await expect(gain).toHaveValue(savedValue);
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(render).toBeEnabled();
+  // Observe beyond the unchanged 800ms debounce: no abandoned write is allowed.
+  await page.waitForTimeout(1100);
+  expect(writes).toBe(0);
+  const after = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  expect(after.revision).toBe(before.revision); expect(after.edl).toEqual(before.edl);
+  await page.reload(); await expect(gain).toHaveValue(savedValue);
+  await expect(render).toBeEnabled();
+});
+
 test("late autosave cannot replace the next project's timeline", async ({ page }, info) => {
   const first = await createProject(page, info, "Earlier project custody");
   const next = await createProject(page, info, "Next project custody");
