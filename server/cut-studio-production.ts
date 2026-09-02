@@ -32,7 +32,7 @@ import {
   cutShotSpecSchema,
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
-import { cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
+import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
@@ -366,21 +366,31 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" });
     }
     const ordered = parsed.data.compositionIds.map((compositionId) => compositions.find((composition) => composition.id === compositionId)!);
-    const jobs = await db.transaction(async (transaction) => {
-      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.render-batch.${access.project.id}.${parsed.data.idempotencyKey}`}))`);
+    const result = await db.transaction(async (transaction) => {
+      // Serialize batch admission across projects for this owner, not just this key.
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.render-batch.owner.${access.project.ownerUserId}`}))`);
       const existing = await transaction.select().from(cutStudioJobs).where(and(
         eq(cutStudioJobs.projectId, access.project.id),
-        eq(cutStudioJobs.ownerUserId, req.dbUser!.id),
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
         eq(cutStudioJobs.kind, "render"),
         sql`${cutStudioJobs.request}->'composition'->>'renderBatchId' = ${parsed.data.idempotencyKey}`,
       )).orderBy(asc(cutStudioJobs.createdAt));
       if (existing.length) {
-        if (existing.length !== ordered.length) throw new Error("An incomplete render batch already uses this idempotency key");
-        return existing;
+        const matches = existing.length === ordered.length && existing.every((job) => {
+          const saved = cutRenderRequestSchema.safeParse(job.request);
+          if (!saved.success || !saved.data.composition) return false;
+          const { composition } = saved.data;
+          return parsed.data.compositionIds[composition.variantIndex] === composition.id
+            && JSON.stringify(cutRenderSettingsSchema.parse(saved.data)) === JSON.stringify(parsed.data.render);
+        });
+        if (!matches) return { status: 409, message: "This idempotency key already belongs to a different render batch" } as const;
+        return { jobs: existing };
       }
-      return transaction.insert(cutStudioJobs).values(ordered.map((composition, variantIndex) => ({
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(eq(cutStudioJobs.ownerUserId, access.project.ownerUserId), sql`${cutStudioJobs.state} in ('queued', 'running')`));
+      if ((active?.count ?? 0) + ordered.length > 20) return { status: 429, message: "At most 20 CutStudio jobs can be active; wait for renders to finish before adding this batch" } as const;
+      const jobs = await transaction.insert(cutStudioJobs).values(ordered.map((composition, variantIndex) => ({
         projectId: access.project.id,
-        ownerUserId: req.dbUser!.id,
+        ownerUserId: access.project.ownerUserId,
         kind: "render",
         detail: "Composition batch render queued",
         request: {
@@ -395,7 +405,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
           },
         },
       }))).returning();
+      return { jobs };
     });
+    if (!result.jobs) return res.status(result.status).json({ message: result.message });
+    const jobs = result.jobs;
     for (const job of jobs) dependencies.queueRenderJob(job.id);
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.render_batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, renderBatchId: parsed.data.idempotencyKey, compositionIds: ordered.map((composition) => composition.id), jobIds: jobs.map((job) => job.id), count: jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:render-batch:${parsed.data.idempotencyKey}` });
     res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: jobs.length, jobs });

@@ -506,6 +506,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const repeatedRenderBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, renderBatchRequest);
   await expectOk(repeatedRenderBatch);
   expect((await repeatedRenderBatch.json()).jobs.map((job: { id: string }) => job.id).sort()).toEqual(renderBatchPayload.jobs.map((job) => job.id).sort());
+  const conflictingRenderBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { ...renderBatchRequest, render: { ...renderBatchRequest.render, fps: 60 } });
+  expect(conflictingRenderBatch.status()).toBe(409);
+  const forgedSnapshot = await request(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { ...renderBatchRequest.render, composition: { id: sourceComposition.id } });
+  expect(forgedSnapshot.status()).toBe(400);
   await expect.poll(async () => Promise.all(renderBatchPayload.jobs.map(async (job) => (await (await request(page, owner, "GET", `/api/cut/jobs/${job.id}`)).json()).state)), { timeout: 120_000, intervals: [1_000, 2_000] }).toEqual(["done", "done"]);
   for (const job of renderBatchPayload.jobs) {
     const completed = await request(page, owner, "GET", `/api/cut/jobs/${job.id}`);
@@ -556,4 +560,16 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`));
   const reviewerMutation = await request(page, peer, "POST", `/api/cut/projects/${project.id}/generative-workflows`, { workflow: runtime.workflows[0].workflow });
   expect(reviewerMutation.status()).toBe(403);
+  const teamBatch = { ...renderBatchRequest, idempotencyKey: `e2e.team.render.${crypto.randomUUID()}`, compositionIds: renderBatchRequest.compositionIds.slice(0, 1) };
+  expect((await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch)).status()).toBe(403);
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/collaborators`, { username: peerUsername, role: "editor" }));
+  const editorBatch = await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch);
+  await expectOk(editorBatch);
+  const editorJob = (await editorBatch.json()).jobs[0];
+  expect(editorJob.ownerUserId).toBe(owner);
+  await expect.poll(async () => (await (await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}`)).json()).state, { timeout: 120_000 }).toBe("done");
+  await expectOk(await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}/media`));
+  await expectOk(await request(page, owner, "DELETE", `/api/cut/projects/${project.id}/collaborators/${peer}`));
+  expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}`)).status()).toBe(404);
+  expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}/media`)).status()).toBe(404);
 });

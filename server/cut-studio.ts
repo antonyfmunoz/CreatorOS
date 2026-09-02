@@ -432,6 +432,15 @@ async function cutWorkspaceParticipants(project: typeof cutStudioProjects.$infer
   return accounts.map((account) => ({ ...account, role: account.id === project.ownerUserId ? "owner" : collaborators.find((item) => item.userId === account.id)?.role ?? "reviewer" }));
 }
 
+async function readableCutJob(userId: number, id: string) {
+  if (!idSchema.safeParse(id).success) return undefined;
+  const [job] = await db.select().from(cutStudioJobs).where(eq(cutStudioJobs.id, id)).limit(1);
+  if (!job) return undefined;
+  if (job.ownerUserId === userId) return job;
+  const access = await workspaceProject(userId, job.projectId);
+  return access ? job : undefined;
+}
+
 async function ownedAsset(userId: number, id: string) {
   if (!idSchema.safeParse(id).success) return undefined;
   const [asset] = await db.select().from(assets)
@@ -1790,6 +1799,7 @@ export function registerCutStudioRoutes(app: Express) {
     const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind, request: {} }).returning(); queueJob(job.id); res.status(202).json(job);
   });
   cut.post("/api/cut/projects/:id/render", attachUser, async (req, res) => {
+    if (req.body?.composition !== undefined) return res.status(400).json({ message: "Composition snapshots are server-owned; use composition-render-batches" });
     noStore(res); const parsed = cutRenderRequestSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ message: "Render settings are invalid" });
     const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
     if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
@@ -1798,7 +1808,7 @@ export function registerCutStudioRoutes(app: Express) {
     const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind: "render", request: parsed.data }).returning(); queueJob(job.id); res.status(202).json(job);
   });
   cut.get("/api/cut/jobs/:id", attachUser, async (req, res) => {
-    noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job) return res.status(404).json({ message: "Job not found" });
+    noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job) return res.status(404).json({ message: "Job not found" });
     if (job.state === "queued") queueJob(job.id);
     else if (job.state === "running" && job.leaseExpiresAt && job.leaseExpiresAt < new Date()) {
       await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted job", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.state, "running"), lt(cutStudioJobs.leaseExpiresAt, new Date())));
@@ -1832,12 +1842,12 @@ export function registerCutStudioRoutes(app: Express) {
     res.status(202).json(retry);
   });
   cut.get("/api/cut/jobs/:id/media", attachUser, async (req, res) => {
-    noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
-    const artifact = await ownedAsset(req.dbUser!.id, job.artifactAssetId); if (!artifact) return res.status(404).json({ message: "Render not found" }); res.json(await privateReadDescriptor(artifact, `/api/cut/jobs/${encodeURIComponent(job.id)}/media-file`));
+    noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
+    const artifact = await ownedAsset(job.ownerUserId, job.artifactAssetId); if (!artifact) return res.status(404).json({ message: "Render not found" }); res.json(await privateReadDescriptor(artifact, `/api/cut/jobs/${encodeURIComponent(job.id)}/media-file`));
   });
   cut.get("/api/cut/jobs/:id/media-file", attachUser, async (req, res) => {
-    noStore(res); const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
-    const artifact = await ownedAsset(req.dbUser!.id, job.artifactAssetId); if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Render not found" });
+    noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });
+    const artifact = await ownedAsset(job.ownerUserId, job.artifactAssetId); if (!artifact || artifact.visibility !== "private" || artifact.status !== "ready") return res.status(404).json({ message: "Render not found" });
     await streamPrivateAsset(res, artifact);
   });
   cut.post("/api/cut/jobs/:id/distribute", attachUser, async (req, res) => {
