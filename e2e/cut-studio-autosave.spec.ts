@@ -52,6 +52,48 @@ test("autosave serializes rapid edits without replacing the newer draft", async 
   } finally { release(); }
 });
 
+test("a prior saved receipt never labels a newer timeline draft as saved", async ({ page }, info) => {
+  const project = await createProject(page, info, "Current-draft save receipt");
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+  await gain.press("ArrowLeft");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const baseline = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  let release!: () => void;
+  let received = false;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**/projects/${project.id}/edl`, async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    received = true;
+    await gate; await route.continue();
+  });
+  await gain.evaluate((element) => {
+    const initial = (element as HTMLInputElement).value;
+    const observed: string[] = [];
+    Object.assign(window, { __cutStaleSaveReceipts: observed });
+    new MutationObserver(() => {
+      if ((element as HTMLInputElement).value !== initial && [...document.querySelectorAll('[role="status"]')].some((status) => status.textContent === "Saved")) observed.push("Saved while a newer draft is displayed");
+    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  });
+  try {
+    await gain.press("ArrowLeft");
+    const draft = await gain.inputValue();
+    await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
+    await expect.poll(() => received).toBe(true);
+    await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+    const unchanged = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+    expect(unchanged.revision).toBe(baseline.revision);
+    expect(unchanged.edl).toEqual(baseline.edl);
+    expect(await page.evaluate(() => (window as unknown as { __cutStaleSaveReceipts: string[] }).__cutStaleSaveReceipts)).toEqual([]);
+    release();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    const saved = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+    expect(saved.revision).toBe(baseline.revision + 1);
+    expect(saved.edl.tracks.find((track: any) => track.track === "v1").gain).toBe(Number(draft));
+    await page.reload(); await expect(gain).toHaveValue(draft);
+  } finally { release(); }
+});
+
 test("failed autosave retains the draft and retries only on request", async ({ page }, info) => {
   const project = await createProject(page, info, "Failed-save custody");
   await page.goto(`/cut-studio?project=${project.id}`);
