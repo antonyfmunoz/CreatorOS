@@ -268,7 +268,15 @@ export default function CutStudioPage() {
   }, [edl, selectedClip]);
 
   useEffect(() => {
-    if (!project || !edl || busy === "open" || saveInFlight.current || JSON.stringify(edl) === JSON.stringify(project.edl)) return;
+    if (!project || !edl || busy === "open" || saveInFlight.current) return;
+    if (JSON.stringify(edl) === JSON.stringify(project.edl)) {
+      clearTimeout(saveTimer.current);
+      // A draft can return to its confirmed server snapshot before the debounce
+      // fires. There is then no request left to turn Saving into Saved. Do not
+      // clear an uncertain failed write, and never take this path in flight.
+      if (!failedSave.current) setSaveStatus((status) => status === "Saving…" ? "Saved" : status);
+      return;
+    }
     const saveIdentity = JSON.stringify([saveGeneration.current, project.id, revision, edl]);
     if (failedSave.current === saveIdentity) return;
     clearTimeout(saveTimer.current);
@@ -286,6 +294,7 @@ export default function CutStudioPage() {
         const nextRevision = Number(response.headers.get("X-EDL-Rev"));
         if (generation !== saveGeneration.current) return;
         if (!Number.isInteger(nextRevision) || nextRevision <= revision) throw new Error("The saved edit revision could not be verified. Reload the project before continuing.");
+        failedSave.current = null;
         const hasNewerEdit = JSON.stringify(edlRef.current) !== JSON.stringify(submitted);
         if (!hasNewerEdit) { edlRef.current = saved; setEdl(saved); }
         setRevision(nextRevision);
