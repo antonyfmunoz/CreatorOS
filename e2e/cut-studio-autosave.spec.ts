@@ -148,6 +148,38 @@ test("returning to the saved edit before debounce clears the abandoned saving st
   await expect(render).toBeEnabled();
 });
 
+test("returning to a prior edit during an in-flight save waits for its compensating save", async ({ page }, info) => {
+  const project = await createProject(page, info, "Return during a committed save");
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+  const render = page.getByRole("button", { name: "Render full edit", exact: true });
+  await gain.press("ArrowLeft");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const baseline = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  const savedValue = await gain.inputValue();
+  let release!: () => void, committed = false, writes = 0;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**/projects/${project.id}/edl`, async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    writes++;
+    const response = await route.fetch();
+    if (writes === 1) { committed = true; await gate; }
+    await route.fulfill({ response });
+  });
+  try {
+    await gain.press("ArrowLeft"); await expect.poll(() => committed).toBe(true);
+    await gain.press("ArrowRight"); await expect(gain).toHaveValue(savedValue);
+    await page.waitForTimeout(1100);
+    await expect(render).toBeDisabled(); await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+    expect(writes).toBe(1);
+    release();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible(); await expect(render).toBeEnabled();
+    expect(writes).toBe(2);
+    const saved = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+    expect(saved.revision).toBe(baseline.revision + 2); expect(saved.edl).toEqual(baseline.edl);
+  } finally { release(); }
+});
+
 test("late autosave cannot replace the next project's timeline", async ({ page }, info) => {
   const first = await createProject(page, info, "Earlier project custody");
   const next = await createProject(page, info, "Next project custody");
