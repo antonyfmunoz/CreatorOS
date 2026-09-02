@@ -96,8 +96,9 @@ const clip = await readFile(clipPath);
 const videoSource = capsule(`import {FrameVideo,FullFrame} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FullFrame><FrameVideo src={clip} style={{width:'100%',height:'100%'}}/></FullFrame>`, { 'src/clip.mp4': clip });
 for (const frame of [1, 4]) {
   const result = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, frame }, source: videoSource, image });
-  assert.ok(pixel(result.artifact)[frame < 3 ? 0 : 2] > 240, 'Private video must seek to the exact requested composition time.');
   await writeFile(`${directory}video-seek-${frame}.png`, result.artifact);
+  const decodedPixel = pixel(result.artifact);
+  assert.ok(decodedPixel[frame < 3 ? 0 : 2] > 240, `Private video must seek to frame ${frame}; decoded pixel ${decodedPixel.join(',')}.`);
   records.push({ test: `private-video-seek-${frame}`, ...result.receipt });
 }
 const encodedClip = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, mode: 'video' }, source: videoSource, image });

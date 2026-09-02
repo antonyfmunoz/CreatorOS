@@ -69,18 +69,32 @@ try {
         video.addEventListener('error', failed, { once: true });
         try { action?.(); } catch { failed(); }
       });
-      const videos = [...document.querySelectorAll('video[data-cut-video-time]')];
+      const videos = [...document.querySelectorAll('canvas[data-cut-video-time]')];
       if (videos.length > 8) throw new Error('Too many simultaneous code video layers.');
-      await Promise.all(videos.map(async (video) => {
-        if (!/^data:video\/(mp4|webm);base64,/.test(video.currentSrc || video.src)) throw new Error('Video must remain capsule-local.');
+      await Promise.all(videos.map(async (canvas) => {
+        const source = canvas.dataset.cutVideoSrc;
+        if (!/^data:video\/(mp4|webm);base64,/.test(source)) throw new Error('Video must remain capsule-local.');
+        let video = canvas.__cutVideo;
+        if (!video || video.src !== source) {
+          video?.pause();
+          video = document.createElement('video');
+          video.muted = true; video.preload = 'auto'; video.src = source;
+          canvas.__cutVideo = video;
+        }
         video.pause();
         if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
         if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 120 || video.videoWidth < 1 || video.videoHeight < 1 || video.videoWidth * video.videoHeight > 3840 * 2160) throw new Error('Private video exceeds decode limits.');
-        const time = Number(video.dataset.cutVideoTime);
+        const time = Number(canvas.dataset.cutVideoTime);
         if (!Number.isFinite(time) || time < 0) throw new Error('Invalid video seek.');
-        const requested = video.dataset.cutVideoRepeat === 'yes' ? time % video.duration : time;
+        const requested = canvas.dataset.cutVideoRepeat === 'yes' ? time % video.duration : time;
         const target = Math.min(requested, Math.max(0, video.duration - 0.000001));
         if (Math.abs(video.currentTime - target) > 0.0000001) await waitForMedia(video, 'seeked', () => { video.currentTime = target; });
+        // Decoded-frame custody must not depend on the video's asynchronous
+        // compositor paint. Copy its decoded bitmap into our captured canvas.
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        const drawing = canvas.getContext('2d');
+        if (!drawing) throw new Error('Video frame canvas is unavailable.');
+        drawing.drawImage(video, 0, 0);
       }));
       // Time-dependent animation is not part of the frame-driven SDK contract.
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
