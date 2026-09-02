@@ -24,18 +24,21 @@ test('native opacity preserves every RGBA byte while avoiding redundant color ev
     expect(output[0].length).toBe(input.length);
     expect(output[1].length).toBe(input.length);
     expect(output[1].equals(output[0]), `exact RGBA comparison for ${expression}`).toBeTruthy();
-    let maximumAlphaRounding = 0;
+    let maximumAlphaRounding = 0, maximumColorError = 0;
     for (let frame = 0; frame < frames; frame++) for (let pixel = 0; pixel < width * height; pixel++) {
       const offset = frame * frameBytes + pixel * 4;
       const opacity = expression.startsWith('0.3+') ? .3 + .3 * Math.sin(frame / 6 * Math.PI) ** 2
         : expression.startsWith('if(') ? (frame < 3 ? .25 : .75) : Number(expression);
-      for (let channel = 0; channel < 3; channel++) expect(output[1][offset + channel]).toBe(input[offset + channel]);
+      for (let channel = 0; channel < 3; channel++) maximumColorError = Math.max(maximumColorError, Math.abs(output[1][offset + channel] - input[offset + channel]));
       maximumAlphaRounding = Math.max(maximumAlphaRounding, Math.abs(output[1][offset + 3] - Math.floor(input[offset + 3] * opacity)));
     }
     // JS and FFmpeg double precision can lie on opposite sides of an integer.
     // This independent formula check does not relax the exact native comparison.
     expect(maximumAlphaRounding).toBeLessThanOrEqual(1);
-    receipts.push({ expression, frames, comparedBytes: input.length, exactNativeMatch: true, maximumAlphaRounding });
+    // Compare every channel, but emit one trace assertion instead of tens of
+    // thousands of Playwright trace steps for this synchronous byte loop.
+    expect(maximumColorError).toBe(0);
+    receipts.push({ expression, frames, comparedBytes: input.length, exactNativeMatch: true, maximumAlphaRounding, maximumColorError });
   }
   writeFileSync(info.outputPath('opacity-byte-comparison.json'), JSON.stringify(receipts, null, 2));
 });
