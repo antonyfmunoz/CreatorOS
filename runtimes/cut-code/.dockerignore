@@ -6,5 +6,6 @@
 !sdk.jsx
 !motion.mjs
 !audio.mjs
+!video-encoding.mjs
 !request.mjs
 !render.mjs
