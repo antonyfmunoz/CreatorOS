@@ -4,6 +4,7 @@ import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
 import { cutFitVideoFilters, cutSourceVideoFilters } from "./cut-video-geometry";
 import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
+import { createCutTextRasterizer } from "./cut-text-layout-renderer";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -531,9 +532,12 @@ async function probeMedia(url: string) {
 
 async function cutStudioFontFilter(customFontPath?: string) {
   if (customFontPath) {
-    const signature = await fs.readFile(customFontPath).then((value) => value.subarray(0, 4));
+    const font = await fs.open(customFontPath, "r");
+    const signature = Buffer.alloc(4);
+    let signatureLength = 0;
+    try { signatureLength = (await font.read(signature, 0, 4, 0)).bytesRead; } finally { await font.close(); }
     const tag = signature.toString("ascii");
-    const isSfnt = signature.length === 4 && ((signature[0] === 0 && signature[1] === 1 && signature[2] === 0 && signature[3] === 0) || ["OTTO", "true", "typ1"].includes(tag));
+    const isSfnt = signatureLength === 4 && ((signature[0] === 0 && signature[1] === 1 && signature[2] === 0 && signature[3] === 0) || ["OTTO", "true", "typ1"].includes(tag));
     if (!isSfnt) throw new Error("A custom CutStudio font must be a valid TTF or OTF file");
     return `fontfile='${escapeFfmpegFilterPath(customFontPath)}':`;
   }
@@ -768,6 +772,8 @@ async function renderMultitrack(
   }
   const rasterGraphicInputIndexes = new Map<string, number>();
   const rasterGraphicInputs: Array<{ path: string; animated: boolean }> = [];
+  const textRasterizer = createCutTextRasterizer();
+  try {
   for (const graphic of graphics) {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputs.length}.png`);
     const staticMaskEffect = graphicEffect(graphic, "mask");
@@ -803,12 +809,17 @@ async function renderMultitrack(
         : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
       await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
     } else {
-      const textPath = path.join(temp, `graphic-text-${rasterGraphicInputs.length}.txt`);
-      await fs.writeFile(textPath, graphic.text.replace(/[\r\n]+/g, " "), { mode: 0o600 });
       const privateFont = graphic.fontAssetId ? inputById.get(graphic.fontAssetId) : undefined;
       if (graphic.fontAssetId && (!privateFont || privateFont.asset.kind !== "cut-font" || !privateFont.asset.mimeType || !cutStudioFontMime.test(privateFont.asset.mimeType))) throw new Error("A composition font must reference ready private TTF or OTF media");
-      const titleFontFilter = await cutStudioFontFilter(privateFont?.url);
-      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", cutTextRasterSource(width, height), "-vf", cutTextRasterFilter(graphic, size[0], titleFontFilter, escapeFfmpegFilterPath(textPath)), "-frames:v", "1", baseRasterPath], 30_000, jobId);
+      if (graphic.textLayout && graphic.fontReferenceWidth) {
+        if (privateFont) await cutStudioFontFilter(privateFont.url); // Validate its SFNT signature before the native font loader.
+        await textRasterizer.render({ text: graphic.text, layout: graphic.textLayout, width, height, canvasWidth: size[0], referenceWidth: graphic.fontReferenceWidth, textColor: graphic.textColor, backgroundColor: graphic.backgroundColor, backgroundOpacity: graphic.backgroundOpacity, fontPath: privateFont?.url, outputPath: baseRasterPath });
+      } else {
+        const textPath = path.join(temp, `graphic-text-${rasterGraphicInputs.length}.txt`);
+        await fs.writeFile(textPath, graphic.text.replace(/[\r\n]+/g, " "), { mode: 0o600 });
+        const titleFontFilter = await cutStudioFontFilter(privateFont?.url);
+        await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", cutTextRasterSource(width, height), "-vf", cutTextRasterFilter(graphic, size[0], titleFontFilter, escapeFfmpegFilterPath(textPath)), "-frames:v", "1", baseRasterPath], 30_000, jobId);
+      }
     }
     const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputs.length}.png`) : rasterPath;
     const styledInputPath = needsBakedEffects ? await bakeGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
@@ -822,6 +833,7 @@ async function renderMultitrack(
     rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
     rasterGraphicInputs.push({ path: rasterPath, animated: false });
   }
+  } finally { await textRasterizer.close(); }
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;

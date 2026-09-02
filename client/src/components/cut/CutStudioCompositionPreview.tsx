@@ -7,6 +7,8 @@ import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import { cutPlayerFrame, cutPlayerGain, cutPlayerRate } from "@shared/cut-studio-player";
 import type { AnimationItem } from "lottie-web";
 import type { Rive as RiveInstance } from "@rive-app/canvas-lite";
+import { cutTextStyles, resolveCutTextLayout } from "@shared/cut-text-layout";
+import defaultCutFontUrl from "@shared/assets/cut-fonts/NotoSans-Variable.ttf?url";
 import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
 
 type Layer = CutCompositionManifest["layers"][number];
@@ -16,19 +18,21 @@ const AssetUrlContext = createContext((assetId: string) => `/api/assets/${encode
 function CompositionFonts({ manifest }: { manifest: CutCompositionManifest }) {
   const assetUrl = useContext(AssetUrlContext);
   const [fontError, setFontError] = useState("");
+  const [fontReady, setFontReady] = useState(false);
   useEffect(() => {
     let active = true;
     setFontError("");
-    const faces: FontFace[] = [];
+    setFontReady(false);
+    const faces: FontFace[] = [new FontFace("CutStudio Noto Sans", `url("${defaultCutFontUrl}")`, { weight: "100 900" })];
     for (const font of manifest.fonts) {
       if (!font.assetId) continue;
-      const face = new FontFace(font.family, `url("${assetUrl(font.assetId)}")`, { weight: String(font.weight), style: font.style });
+      const face = new FontFace(JSON.stringify(font.family), `url("${assetUrl(font.assetId)}")`, { weight: String(font.weight), style: font.style });
       faces.push(face);
-      void face.load().then((loaded) => { if (active) document.fonts.add(loaded); }).catch(() => { if (active) setFontError("A private composition font is unavailable; the preview is using a fallback."); });
     }
+    void Promise.all(faces.map(async (face) => { const loaded = await face.load(); if (active) document.fonts.add(loaded); })).then(() => { if (active) setFontReady(true); }).catch(() => { if (active) setFontError("A composition font is unavailable; preview font fidelity is not ready."); });
     return () => { active = false; for (const face of faces) document.fonts.delete(face); };
   }, [assetUrl, manifest.fonts]);
-  return fontError ? <p role="status" className="mb-2 text-[10px] text-amber-300">{fontError}</p> : null;
+  return <p role="status" data-composition-fonts={fontError ? "error" : fontReady ? "ready" : "loading"} className={fontError ? "mb-2 text-[10px] text-amber-300" : "sr-only"}>{fontError || (fontReady ? "Composition fonts ready" : "Loading composition fonts")}</p>;
 }
 
 function safeSvg(source: string) {
@@ -239,7 +243,7 @@ function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVol
   return <>{layer.kind === "audio" ? <audio {...props}/> : <video {...props} playsInline className="h-full w-full object-cover"/>}{error && <span role="status" className="text-[10px] text-amber-300">{error}</span>}</>;
 }
 
-function PreviewLayer({ layer, state, frame, fps, canvasWidth, ...playback }: MediaPlayback & { layer: Layer; state: FrameState; frame: number; fps: number; canvasWidth: number }) {
+function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playback }: MediaPlayback & { layer: Layer; state: FrameState; frame: number; fps: number; canvasWidth: number; fonts: CutCompositionManifest["fonts"] }) {
   const assetUrl = useContext(AssetUrlContext);
   const visual = effectStyles(state);
   const style: CSSProperties = {
@@ -248,7 +252,11 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, ...playback }: Me
     transformOrigin: `${layer.anchorX * 100}% ${layer.anchorY * 100}%`, transformStyle: "preserve-3d", mixBlendMode: layer.blendMode.replace("_", "-") as CSSProperties["mixBlendMode"], filter: visual.filter, ...revealStyle(state),
   };
   let content = null;
-  if (layer.kind === "text" || layer.kind === "caption") content = <div className="h-full w-full overflow-hidden rounded px-2 py-1 font-bold" style={{ color: String(layer.style.color ?? "#ffffff"), background: layer.style.backgroundColor ? colorWithOpacity(layer.style.backgroundColor, layer.style.backgroundOpacity) : "transparent", fontFamily: typeof layer.style.fontFamily === "string" ? `${layer.style.fontFamily}, sans-serif` : undefined, fontSize: `${Math.max(1, Number(layer.style.fontSize ?? 48)) / canvasWidth * 100}cqw` }}>{layer.text}</div>;
+  if (layer.kind === "text" || layer.kind === "caption") {
+    const font = fonts.find((candidate) => candidate.assetId && candidate.family === layer.style.fontFamily);
+    const textStyles = cutTextStyles(resolveCutTextLayout(layer.style, font), canvasWidth, "container", font ? `${JSON.stringify(font.family)}, "CutStudio Noto Sans", sans-serif` : '"CutStudio Noto Sans", sans-serif', String(layer.style.color ?? "#ffffff"), layer.style.backgroundColor ? colorWithOpacity(layer.style.backgroundColor, layer.style.backgroundOpacity) : "transparent");
+    content = <div data-native-text-box style={textStyles.box as CSSProperties}><div data-native-text-content style={textStyles.content as CSSProperties}>{layer.text}</div></div>;
+  }
   else if (layer.kind === "shape") content = <div className="h-full w-full" style={{ background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
   else if (layer.kind === "image" && layer.assetId) content = <img alt={layer.name} src={assetUrl(layer.assetId)} className="h-full w-full object-cover"/>;
   else if ((layer.kind === "video" || layer.kind === "audio") && layer.assetId) content = <MediaLayer layer={layer} frame={frame} fps={fps} volume={state.volume} {...playback}/>;
@@ -364,7 +372,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   }}>
     <p id={keyboardHelpId} className="sr-only">Focus the player: Space plays or pauses. Left and right step one frame; Shift steps ten. Home and End jump to the first and last frame. Stepping pauses playback.</p>
     <CompositionFonts manifest={manifest}/>
-    <div aria-label="Composition canvas" className="relative overflow-hidden rounded-md" style={{ aspectRatio: `${manifest.width} / ${manifest.height}`, containerType: "inline-size", background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} canvasWidth={manifest.width} playing={playing} playbackRate={speed} muted={muted} masterVolume={masterVolume} audioContext={audioContext} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
+    <div aria-label="Composition canvas" className="relative overflow-hidden rounded-md" style={{ aspectRatio: `${manifest.width} / ${manifest.height}`, containerType: "inline-size", background: manifest.background }}>{evaluated.map((state) => <PreviewLayer key={state.id} state={state} frame={frame} fps={manifest.fps} canvasWidth={manifest.width} fonts={manifest.fonts} playing={playing} playbackRate={speed} muted={muted} masterVolume={masterVolume} audioContext={audioContext} layer={manifest.layers.find((layer) => layer.id === state.id)!}/>)}</div>
     {controls && <div className="mt-2 flex items-center gap-2">
       <button type="button" aria-label={playing ? "Pause composition" : "Play composition"} className="h-7 rounded border border-zinc-700 px-2 text-[10px] font-bold hover:bg-zinc-900" onClick={() => { if (playing) pause(); else play(); }}>{playing ? "Pause" : "Play"}</button>
       <button type="button" aria-label="Previous composition frame" className="h-7 rounded border border-zinc-700 px-2 text-[10px] hover:bg-zinc-900" onClick={() => seekTo(frame - 1)}>←</button>

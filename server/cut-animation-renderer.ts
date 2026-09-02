@@ -41,7 +41,7 @@ async function chromiumExecutable(environment: NodeJS.ProcessEnv = process.env) 
   throw new Error("The isolated animation renderer requires Chromium");
 }
 
-async function launchRenderer() {
+export async function launchCutNativeRenderer() {
   return chromium.launch({
     executablePath: await chromiumExecutable(),
     headless: true,
@@ -137,7 +137,7 @@ export async function renderCutAnimationFrames(input: {
   await fs.mkdir(input.outputDirectory, { recursive: true });
   let browser: Browser | null = null;
   try {
-    browser = await launchRenderer();
+    browser = await launchCutNativeRenderer();
     const context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block" });
     const page = await context.newPage();
     await page.route("**/*", async (route) => {
