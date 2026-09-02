@@ -242,7 +242,7 @@ export const cutTranscriptSchema = z.object({
   })).max(10_000),
 });
 
-export const cutRenderRequestSchema = z.object({
+export const cutRenderSettingsSchema = z.object({
   aspect: z.enum(["source", "9:16", "1:1", "16:9"]).default("9:16"),
   captions: z.boolean().default(true),
   captionStyle: z.number().int().min(1).max(4).default(1),
@@ -251,8 +251,23 @@ export const cutRenderRequestSchema = z.object({
   masterGainDb: z.number().finite().min(-12).max(12).default(0),
   quality: z.enum(["draft", "social", "master"]).default("social"),
   resolution: z.enum(["720p", "1080p", "2160p"]).default("1080p"),
-  fps: z.union([z.literal(24), z.literal(30), z.literal(60)]).default(30),
+  fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(50), z.literal(60)]).default(30),
+});
+
+export const cutRenderRequestSchema = cutRenderSettingsSchema.extend({
   clip: z.object({ start: z.number().min(0), end: z.number().positive() }).optional(),
+  composition: z.object({
+    id: z.string().uuid(),
+    revision: z.number().int().positive(),
+    name: z.string().trim().min(1).max(160),
+    renderBatchId: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
+    variantIndex: z.number().int().min(0).max(19),
+    manifest: z.unknown(),
+  }).optional(),
+}).superRefine((value, context) => {
+  if (value.composition && value.clip) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["clip"], message: "Composition snapshots cannot be combined with a timeline clip range" });
+  }
 });
 
 export type CutClip = z.infer<typeof cutClipSchema>;

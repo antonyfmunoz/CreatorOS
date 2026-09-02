@@ -1545,7 +1545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ message: "A valid client mutation ID is required" });
         }
         if (
-          !["photo", "video", "audio", "cut-lut", "cut-font", "cut-lottie", "cut-rive", "download"].includes(kind) ||
+          !["photo", "video", "audio", "cut-lut", "cut-font", "cut-lottie", "cut-rive", "cut-code-source", "cut-code-lockfile", "download"].includes(kind) ||
           !visibility
         ) {
           await discardUploadedFiles(files);

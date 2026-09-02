@@ -40,6 +40,10 @@ const storage = multer.diskStorage({
       prefix = 'cut-lottie';
     } else if (file.fieldname === 'rive') {
       prefix = 'cut-rive';
+    } else if (file.fieldname === 'code_source') {
+      prefix = 'cut-code-source';
+    } else if (file.fieldname === 'code_lockfile') {
+      prefix = 'cut-code-lockfile';
     } else if (file.fieldname === 'benchmark-evidence') {
       prefix = 'benchmark-evidence';
     } else if (file.fieldname === 'media') {
@@ -125,6 +129,17 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     const isRiveMime = /^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(file.mimetype);
     if (isRive && isRiveMime) return cb(null, true);
     cb(new Error('Only Rive .riv files are allowed!'));
+  } else if (file.fieldname === 'code_source') {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedMime = /^(application\/(zip|x-zip-compressed)|multipart\/x-zip)$/i.test(file.mimetype);
+    if (extension === '.zip' && allowedMime) return cb(null, true);
+    cb(new Error('Only ZIP source capsules are allowed!'));
+  } else if (file.fieldname === 'code_lockfile') {
+    const filename = path.basename(file.originalname).toLowerCase();
+    const allowedName = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock'].includes(filename);
+    const allowedMime = /^(application\/(json|octet-stream)|text\/(plain|yaml|x-yaml))$/i.test(file.mimetype);
+    if (allowedName && allowedMime) return cb(null, true);
+    cb(new Error('Only npm, pnpm, or Yarn lockfiles are allowed!'));
   } else if (file.fieldname === 'benchmark-evidence') {
     // Manifests, logs, output artifacts, and run recordings intentionally use
     // different MIME families. Asset policy enforces the bounded private

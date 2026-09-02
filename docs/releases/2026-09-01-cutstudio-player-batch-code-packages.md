@@ -1,0 +1,44 @@
+# CutStudio player, render batches, and code-package release candidate
+
+Status: locally field-qualified release candidate
+
+## Product change
+
+- Parameterized composition variants can be created and independently rendered
+  as one idempotent batch. Every job owns an immutable manifest snapshot and
+  records composition, revision, batch, variant and artifact lineage.
+  Changed payloads cannot reuse a batch key, incoming public render requests
+  cannot forge server-owned snapshots, and owner-scoped admission bounds the
+  active batch workload. Editors render into the project owner's asset space;
+  removed collaborators immediately lose authenticated job/media access.
+- CutStudio exports a reusable frame-accurate composition player with play,
+  pause, seek, restart, loop and playback-rate behavior. A private revisioned
+  API returns only the composition and exact assets the authorized player needs.
+- Code compositions may be packaged before an execution provider is activated.
+  The package binds a private ZIP, an exact npm/pnpm/Yarn lockfile, entrypoint,
+  deny-network policy, and bounded CPU, memory and output budgets.
+
+## Safety boundary
+
+The web process never executes uploaded composition code. Source-package
+inspection rejects path traversal, absolute and duplicate paths, symlinks,
+encrypted entries, unsupported compression, expansion bombs, missing root
+`package.json`, missing entrypoints and malformed lockfiles. Isolated execution
+remains an explicit external activation and production-qualification gate.
+
+## Local evidence
+
+- TypeScript and 73 focused schema, migration, asset-policy, composition and
+  archive-security tests pass.
+- Fresh migration qualification passes 120 ordered migrations through
+  `0119_cut_studio_code_capsules.sql`.
+- Mobile and desktop Chromium create a private code package without a configured
+  executor, plays and pauses a real composition, validates the revisioned
+  player API and cross-tenant denial, creates parameterized variants, proves an
+  idempotent two-job render batch, waits for both FFmpeg jobs, and opens both
+  private media artifacts.
+  The expanded team journey also renders as an editor, denies reviewer writes,
+  and proves access revocation at the job and private-media boundaries.
+
+Protected CI, the exact production release, live player behavior, and live
+multi-artifact output remain required before this candidate is called shipped.

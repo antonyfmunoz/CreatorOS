@@ -6,6 +6,37 @@ function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith(
 async function request(page: Page, owner: number, method: string, url: string, data?: unknown, headers: Record<string, string> = {}) { return page.request.fetch(url, { method, data, headers: { "x-creativesos-demo-user": String(owner), ...headers } }); }
 async function expectOk(response: APIResponse) { expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy(); }
 
+function crc32(input: Buffer) {
+  let crc = 0xffffffff;
+  for (const byte of input) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function storedZip(entries: Record<string, string>) {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, source] of Object.entries(entries)) {
+    const filename = Buffer.from(name);
+    const body = Buffer.from(source);
+    const checksum = crc32(body);
+    const local = Buffer.alloc(30 + filename.length);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(checksum, 14); local.writeUInt32LE(body.length, 18); local.writeUInt32LE(body.length, 22); local.writeUInt16LE(filename.length, 26); filename.copy(local, 30);
+    locals.push(local, body);
+    const central = Buffer.alloc(46 + filename.length);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(checksum, 16); central.writeUInt32LE(body.length, 20); central.writeUInt32LE(body.length, 24); central.writeUInt16LE(filename.length, 28); central.writeUInt32LE(offset, 42); filename.copy(central, 46);
+    centrals.push(central);
+    offset += local.length + body.length;
+  }
+  const centralDirectory = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(centrals.length, 8); eocd.writeUInt16LE(centrals.length, 10); eocd.writeUInt32LE(centralDirectory.length, 12); eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, centralDirectory, eocd]);
+}
+
 test("CutStudio persists and enforces the programmable motion and cinematic production lifecycle", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const owner = ownerFor(testInfo);
@@ -81,6 +112,17 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(await invalidRiveRegistration.text()).toMatch(/header is invalid/i);
   expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`)).status()).toBe(404);
 
+  const sourceCapsule = storedZip({ "package.json": JSON.stringify({ name: "qualification-composition", private: true }), "src/index.tsx": "export default function Composition(){ return null; }" });
+  const sourceCapsuleUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-code-source", visibility: "private", code_source: { name: "qualification-source.zip", mimeType: "application/zip", buffer: sourceCapsule } } });
+  await expectOk(sourceCapsuleUpload);
+  const sourceCapsuleAsset = (await sourceCapsuleUpload.json()).asset;
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: sourceCapsuleAsset.id, name: "qualification-source.zip", duration: 2, mediaKind: "code_source" }));
+  const lockfileDocument = Buffer.from(JSON.stringify({ name: "qualification-composition", lockfileVersion: 3, packages: {} }));
+  const lockfileUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-code-lockfile", visibility: "private", code_lockfile: { name: "package-lock.json", mimeType: "application/json", buffer: lockfileDocument } } });
+  await expectOk(lockfileUpload);
+  const lockfileAsset = (await lockfileUpload.json()).asset;
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: lockfileAsset.id, name: "package-lock.json", duration: 2, mediaKind: "code_lockfile" }));
+
   await page.goto(`/cut-studio?project=${project.id}`);
   const riveRuntimeResponse = await page.request.get("/api/runtime-assets/rive-2.41.0.wasm");
   await expectOk(riveRuntimeResponse);
@@ -88,9 +130,23 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   const studio = page.getByLabel("CutStudio creative runtime");
   await expect(studio.getByText("Motion graphics + cinema studio")).toBeVisible();
+  const codePackage = studio.getByLabel("Code composition package");
+  await expect(codePackage.getByLabel("Code source capsule")).toHaveValue(sourceCapsuleAsset.id);
+  await expect(codePackage.getByLabel("Code dependency lockfile")).toHaveValue(lockfileAsset.id);
+  await codePackage.getByRole("button", { name: "Save isolated composition" }).click();
+  await expect(studio.getByText(/Pinned code composition saved/)).toBeVisible();
+  await expect(studio.getByText("src/index.tsx", { exact: true })).toBeVisible();
+  await expect(studio.getByText(/Package ready; isolated execution provider remains/)).toBeVisible();
   await studio.getByRole("button", { name: "Kinetic" }).click();
   await expect(studio.getByText(/Motion composition saved/)).toBeVisible();
   await expect(studio.getByLabel("Deterministic composition preview")).toBeVisible();
+  const compositionPlayer = studio.getByLabel("Deterministic composition preview").getByLabel("CutStudio composition player");
+  const playerStartFrame = Number(await compositionPlayer.getAttribute("data-current-frame"));
+  await compositionPlayer.getByRole("button", { name: "Play composition" }).click();
+  await expect(compositionPlayer).toHaveAttribute("data-player-state", "playing");
+  await expect.poll(async () => Number(await compositionPlayer.getAttribute("data-current-frame"))).toBeGreaterThan(playerStartFrame);
+  await compositionPlayer.getByRole("button", { name: "Pause composition" }).click();
+  await expect(compositionPlayer).toHaveAttribute("data-player-state", "paused");
   await studio.getByLabel("Preview frame").fill("30");
   await expect(studio.getByText(/Frame 31 \/ /)).toBeVisible();
   await studio.getByLabel("Layer content").fill("A connected creative system");
@@ -370,6 +426,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   }
   expect(threePixelCount).toBeGreaterThan(1_000);
   const variantBatch = studio.getByLabel("Composition variant batch");
+  await expect(variantBatch.getByRole("button", { name: "Render 3" })).toBeVisible();
   await variantBatch.getByLabel("Variant 1 name").fill("Launch · A");
   await variantBatch.getByLabel("Variant 1 Headline").fill("Create once");
   await variantBatch.getByLabel("Variant 2 name").fill("Launch · B");
@@ -417,8 +474,16 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const runtimeResponse = await request(page, owner, "GET", `/api/cut/projects/${project.id}/creative-runtime`);
   await expectOk(runtimeResponse);
   const runtime = await runtimeResponse.json();
-  const sourceComposition = runtime.compositions.find((composition: { manifest: { metadata: Record<string, unknown> } }) => !composition.manifest.metadata.sourceCompositionId);
+  const sourceComposition = runtime.compositions.find((composition: { mode: string; manifest: { metadata: Record<string, unknown> } }) => composition.mode === "declarative" && !composition.manifest.metadata.sourceCompositionId);
+  expect(runtime.compositions).toEqual(expect.arrayContaining([expect.objectContaining({ mode: "sandboxed_tsx", codeCapsule: expect.objectContaining({ entrypoint: "src/index.tsx", sourceAssetId: sourceCapsuleAsset.id, lockfileAssetId: lockfileAsset.id, networkPolicy: "deny" }) })]));
   expect(sourceComposition).toMatchObject({ manifest: expect.objectContaining({ parameters: [expect.objectContaining({ key: "headline", defaultValue: "A connected creative system" })], fonts: [expect.objectContaining({ assetId: fontAsset.id })], layers: expect.arrayContaining([expect.objectContaining({ text: "A connected creative system", rotation: -8, dataBindings: { text: "headline" }, style: expect.objectContaining({ fontFamily: expect.stringMatching(/^CreativesOS_/) }), animations: expect.arrayContaining([expect.objectContaining({ property: "scale", keyframes: expect.arrayContaining([expect.objectContaining({ frame: 44, value: 1.4 })]) })]) }), expect.objectContaining({ name: "Project B-roll", kind: "video", assetId: source.id }), expect.objectContaining({ name: "Brand accent", kind: "shape", rotationX: -18, rotationY: 32, perspective: 700, style: expect.objectContaining({ fill: "#f43f5e" }), effects: expect.arrayContaining([expect.objectContaining({ kind: "glow", parameters: expect.objectContaining({ radius: 20 }) }), expect.objectContaining({ kind: "drop_shadow", parameters: expect.objectContaining({ blur: 8 }) })]), animations: expect.arrayContaining([expect.objectContaining({ property: "opacity", keyframes: [expect.objectContaining({ frame: 12, value: .75 })] }), expect.objectContaining({ property: "x", keyframes: [expect.objectContaining({ frame: 30, value: .25 })] }), expect.objectContaining({ property: "scale", keyframes: [expect.objectContaining({ frame: 45, value: 1.4 })] }), expect.objectContaining({ property: "blur", keyframes: [expect.objectContaining({ frame: 20, value: 3 })] }), expect.objectContaining({ property: "brightness", keyframes: [expect.objectContaining({ frame: 20, value: .9 })] }), expect.objectContaining({ property: "saturation", keyframes: [expect.objectContaining({ frame: 20, value: .7 })] })]) }), expect.objectContaining({ name: "Vector rule", kind: "path" })]) }) });
+  const playerContract = await request(page, owner, "GET", `/api/cut/projects/${project.id}/compositions/${sourceComposition.id}/player`);
+  await expectOk(playerContract);
+  const playerEtag = playerContract.headers().etag;
+  expect(playerEtag).toMatch(/^"cut-composition-/);
+  expect(await playerContract.json()).toMatchObject({ playerVersion: "cutstudio-composition-player-v1", composition: { id: sourceComposition.id, revision: sourceComposition.revision, manifest: { version: 1 } }, durationSeconds: 2, assetIds: expect.arrayContaining([source.id, imageAsset.id, maskAsset.id, fontAsset.id]), assetUrlTemplate: "/api/assets/{assetId}/stream" });
+  expect((await request(page, owner, "GET", `/api/cut/projects/${project.id}/compositions/${sourceComposition.id}/player`, undefined, { "If-None-Match": playerEtag })).status()).toBe(304);
+  expect((await request(page, peer, "GET", `/api/cut/projects/${project.id}/compositions/${sourceComposition.id}/player`)).status()).toBe(404);
   const persistedLayers = sourceComposition.manifest.layers as Array<{ name: string; effects: Array<{ kind: string; parameters: Record<string, unknown> }> }>;
   expect(persistedLayers.find((layer) => layer.name === "Clock wipe accent")?.effects.map((effect) => effect.kind)).toEqual(["grain", "noise", "vignette", "color_matrix", "chroma_key", "displacement", "motion_blur", "light_leak"]);
   expect(persistedLayers.find((layer) => layer.name === "Custom mask accent")?.effects).toEqual([expect.objectContaining({ kind: "mask", parameters: expect.objectContaining({ maskAssetId: maskAsset.id }) })]);
@@ -428,6 +493,30 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const repeatedBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions/${sourceComposition.id}/variants`, { idempotencyKey: compositionVariants[0].manifest.metadata.variantBatchId, variants: [{ name: "Launch · A", parameterValues: { headline: "Create once" } }, { name: "Launch · B", parameterValues: { headline: "Publish everywhere" } }, { name: "Launch · C", parameterValues: { headline: "Own the audience" } }] });
   await expectOk(repeatedBatch);
   expect((await repeatedBatch.json()).variants.map((composition: { id: string }) => composition.id).sort()).toEqual(compositionVariants.map((composition: { id: string }) => composition.id).sort());
+  const renderBatchId = `e2e.composition.render.${crypto.randomUUID()}`;
+  const renderBatchRequest = {
+    idempotencyKey: renderBatchId,
+    compositionIds: compositionVariants.slice(0, 2).map((composition: { id: string }) => composition.id),
+    render: { aspect: "source", captions: false, quality: "draft", resolution: "720p", fps: 30 },
+  };
+  const renderBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, renderBatchRequest);
+  await expectOk(renderBatch);
+  const renderBatchPayload = await renderBatch.json() as { count: number; jobs: Array<{ id: string }> };
+  expect(renderBatchPayload.count).toBe(2);
+  const repeatedRenderBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, renderBatchRequest);
+  await expectOk(repeatedRenderBatch);
+  expect((await repeatedRenderBatch.json()).jobs.map((job: { id: string }) => job.id).sort()).toEqual(renderBatchPayload.jobs.map((job) => job.id).sort());
+  const conflictingRenderBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { ...renderBatchRequest, render: { ...renderBatchRequest.render, fps: 60 } });
+  expect(conflictingRenderBatch.status()).toBe(409);
+  const forgedSnapshot = await request(page, owner, "POST", `/api/cut/projects/${project.id}/render`, { ...renderBatchRequest.render, composition: { id: sourceComposition.id } });
+  expect(forgedSnapshot.status()).toBe(400);
+  await expect.poll(async () => Promise.all(renderBatchPayload.jobs.map(async (job) => (await (await request(page, owner, "GET", `/api/cut/jobs/${job.id}`)).json()).state)), { timeout: 120_000, intervals: [1_000, 2_000] }).toEqual(["done", "done"]);
+  for (const job of renderBatchPayload.jobs) {
+    const completed = await request(page, owner, "GET", `/api/cut/jobs/${job.id}`);
+    await expectOk(completed);
+    expect(await completed.json()).toMatchObject({ state: "done", output: { renderBatchId, compositionId: expect.any(String), compositionRevision: expect.any(Number) } });
+    await expectOk(await request(page, owner, "GET", `/api/cut/jobs/${job.id}/media`));
+  }
   expect(runtime).toMatchObject({ plan: { brief: expect.objectContaining({ title: "World launch" }) }, shots: [expect.objectContaining({ spec: expect.objectContaining({ name: "Hero reveal", safety: expect.objectContaining({ rightsConfirmed: true }) }) })], jobs: [expect.objectContaining({ state: "provider_pending" })], workflows: [expect.objectContaining({ workflow: expect.objectContaining({ name: "Cinematic campaign pipeline", outputs: expect.arrayContaining([expect.objectContaining({ label: "Output 3" })]), nodes: expect.arrayContaining([expect.objectContaining({ prompt: "Create a precise launch hero image" }), expect.objectContaining({ operation: "video_to_video", inputs: [expect.objectContaining({ slot: "source_video", sourceNodeId: "hero_video" })] })]) }) })] });
 
   await studio.getByRole("button", { name: /Cinema/ }).focus();
@@ -471,4 +560,16 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`));
   const reviewerMutation = await request(page, peer, "POST", `/api/cut/projects/${project.id}/generative-workflows`, { workflow: runtime.workflows[0].workflow });
   expect(reviewerMutation.status()).toBe(403);
+  const teamBatch = { ...renderBatchRequest, idempotencyKey: `e2e.team.render.${crypto.randomUUID()}`, compositionIds: renderBatchRequest.compositionIds.slice(0, 1) };
+  expect((await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch)).status()).toBe(403);
+  await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/collaborators`, { username: peerUsername, role: "editor" }));
+  const editorBatch = await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch);
+  await expectOk(editorBatch);
+  const editorJob = (await editorBatch.json()).jobs[0];
+  expect(editorJob.ownerUserId).toBe(owner);
+  await expect.poll(async () => (await (await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}`)).json()).state, { timeout: 120_000 }).toBe("done");
+  await expectOk(await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}/media`));
+  await expectOk(await request(page, owner, "DELETE", `/api/cut/projects/${project.id}/collaborators/${peer}`));
+  expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}`)).status()).toBe(404);
+  expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}/media`)).status()).toBe(404);
 });
