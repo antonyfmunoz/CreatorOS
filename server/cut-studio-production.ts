@@ -56,6 +56,7 @@ const variantImportInput = z.object({
 }).strict();
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false });
+const compositionMediaLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderBatchInput = z.object({
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
   compositionIds: z.array(z.string().uuid()).min(1).max(20),
@@ -293,8 +294,37 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       composition: { id: composition.id, name: composition.name, revision: composition.revision, manifest },
       durationSeconds: manifest.durationInFrames / manifest.fps,
       assetIds,
-      assetUrlTemplate: "/api/assets/{assetId}/stream",
+      assetUrlTemplate: `/api/cut/projects/${access.project.id}/compositions/${composition.id}/assets/{assetId}/stream`,
     });
+  });
+
+  cut.get("/api/cut/projects/:id/compositions/:compositionId/assets/:assetId/stream", attachUser, compositionMediaLimiter, async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access || !uuid.safeParse(req.params.compositionId).success || !uuid.safeParse(req.params.assetId).success) return res.status(404).json({ message: "Composition media not found" });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.status, "active"), eq(cutStudioCompositions.mode, "declarative"))).limit(1);
+    if (!composition || !manifestAssetIds(composition.manifest).includes(req.params.assetId)) return res.status(404).json({ message: "Composition media not found" });
+    if (req.params.assetId !== access.project.sourceAssetId) {
+      const [projectMedia] = await db.select({ id: cutStudioProjectMedia.id }).from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, req.params.assetId), inArray(cutStudioProjectMedia.mediaKind, ["video", "audio", "image", "font", "lottie", "rive"]))).limit(1);
+      if (!projectMedia) return res.status(404).json({ message: "Composition media not found" });
+    }
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.assetId), eq(assets.ownerUserId, access.project.ownerUserId), eq(assets.businessId, access.project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    if (!asset) return res.status(404).json({ message: "Composition media not found" });
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-composition-media-"));
+    const outputPath = path.join(temp, "media.bin");
+    try {
+      await materializePrivateAsset(asset.storageKey, outputPath);
+      res.type(asset.mimeType ?? "application/octet-stream");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+      res.sendFile(outputPath, { acceptRanges: true }, (error) => {
+        void fs.rm(temp, { recursive: true, force: true });
+        if (error && !res.headersSent) res.status(500).end();
+      });
+    } catch {
+      await fs.rm(temp, { recursive: true, force: true });
+      if (!res.headersSent) res.status(503).json({ message: "Composition media is temporarily unavailable" });
+    }
   });
 
   cut.put("/api/cut/projects/:id/compositions/:compositionId", attachUser, async (req, res) => {
@@ -360,6 +390,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     ));
     if (compositions.length !== parsed.data.compositionIds.length) return res.status(404).json({ message: "One or more compositions are unavailable" });
     if (compositions.some((composition) => composition.mode !== "declarative")) return res.status(409).json({ message: "Code compositions must render through the isolated runtime" });
+    if (compositions.some((composition) => composition.manifest.durationInFrames / composition.manifest.fps > 7_200)) return res.status(413).json({ message: "A single composition render can be up to two hours" });
     try {
       for (const composition of compositions) await assertCompositionAssets(access.project, composition.manifest);
     } catch (error) {
