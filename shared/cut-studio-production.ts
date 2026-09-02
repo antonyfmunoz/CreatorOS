@@ -5,6 +5,7 @@ import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { cutLayerMaskAsset } from "./cut-mask";
 import { cutImageFit } from "./cut-image-fit";
+import { CUT_GRAPHIC_CURVE_PROPERTIES, cutGraphicCurvesSchema, type CutGraphicCurves } from "./cut-graphic-curves";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -516,6 +517,24 @@ function sampledGraphicMotion(manifest: CutCompositionManifest, layer: CutCompos
   });
 }
 
+function graphicCurves(manifest: CutCompositionManifest, layer: CutCompositionManifest["layers"][number]): CutGraphicCurves | undefined {
+  // The legacy projected-3D path has different scale timing. Do not imply that
+  // exact scalar curves repair perspective/3D frame fidelity in that path.
+  if (layer.rotationX || layer.rotationY || layer.animations.some((animation) => ["rotationX", "rotationY"].includes(animation.property)) || layer.enter?.kind === "flip" || layer.exit?.kind === "flip") return undefined;
+  const transitions: CutGraphicCurves["transitions"] = [];
+  for (const phase of ["enter", "exit"] as const) {
+    const transition = layer[phase];
+    if (!transition || !transition.durationInFrames || !["fade", "custom_mask", "slide", "zoom"].includes(transition.kind)) continue;
+    transitions.push({ phase, kind: transition.kind === "custom_mask" ? "fade" : transition.kind as "fade" | "slide" | "zoom", durationInFrames: transition.durationInFrames, easing: transition.easing,
+      ...(transition.direction && ["left", "right", "up", "down"].includes(transition.direction) ? { direction: transition.direction as "left" | "right" | "up" | "down" } : {}) });
+  }
+  return cutGraphicCurvesSchema.parse({ version: 1, fps: manifest.fps, durationInFrames: layer.durationInFrames,
+    curves: CUT_GRAPHIC_CURVE_PROPERTIES.map((property) => ({ property,
+      base: property === "x" ? layer.x : property === "y" ? layer.y : property === "rotation" ? layer.rotation : property === "opacity" ? layer.opacity : 1,
+      keyframes: (layer.animations.find((animation) => animation.property === property)?.keyframes ?? []).filter((point) => typeof point.value === "number").sort((left, right) => left.frame - right.frame),
+    })), transitions });
+}
+
 export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
   const manifest = cutCompositionManifestSchema.parse(manifestInput);
   const fps = manifest.fps;
@@ -559,6 +578,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
     const three = layer.kind === "three" ? parseCutThreePrimitiveStyle(layer.style) : null;
+    const motionKeyframes = sampledGraphicMotion(manifest, layer);
     return [{
       id: layer.id,
       kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "lottie" ? "lottie" as const : layer.kind === "rive" ? "rive" as const : layer.kind === "three" ? "three" as const : "title" as const,
@@ -601,7 +621,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       revealProgress: initialState?.reveal?.progress ?? 1,
       revealMaskAssetId: cutLayerMaskAsset(layer),
       effects: layer.effects.filter((effect) => effect.enabled).slice(0, 20).map((effect) => ({ kind: effect.kind, parameters: effect.parameters })),
-      motionKeyframes: sampledGraphicMotion(manifest, layer),
+      motionKeyframes,
+      compositionCurves: graphicCurves(manifest, layer),
     }];
   });
   if (!clips.length) throw new Error("A composition must contain at least one video or audio layer before it can be applied to the timeline");

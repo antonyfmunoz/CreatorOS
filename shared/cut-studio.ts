@@ -2,6 +2,7 @@ import { z } from "zod";
 import { cutTextLayoutSchema, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { CUT_IMAGE_FITS } from "./cut-image-fit";
+import { cutGraphicCurvesSchema } from "./cut-graphic-curves";
 
 const cutGraphicEffectSchema = z.object({
   kind: z.enum(["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"]),
@@ -90,6 +91,8 @@ export const cutGraphicSchema = z.object({
   // Optional to preserve the content hashes of older queued render snapshots.
   anchorX: z.number().finite().min(-4).max(4).optional(),
   anchorY: z.number().finite().min(-4).max(4).optional(),
+  // Optional: old immutable snapshots must not acquire new default fields.
+  compositionCurves: cutGraphicCurvesSchema.optional(),
   fillColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
   strokeWidth: z.number().finite().positive().max(20).default(2),
   primitive: z.enum(["cube", "pyramid", "plane"]).nullable().default(null),

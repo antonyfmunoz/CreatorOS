@@ -1,6 +1,9 @@
+import type { CutGraphicCurves } from "../shared/cut-graphic-curves";
+
 type GraphicGeometry = {
   width: number; height: number; rotation: number; rotationX: number; rotationY: number;
   anchorX?: number; anchorY?: number;
+  compositionCurves?: CutGraphicCurves;
   motionKeyframes?: Array<{ scale: number; rotation: number; rotationX: number; rotationY: number }>;
 };
 const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
@@ -10,7 +13,8 @@ const MAX_WORKING_PIXELS = 67_108_864;
 /** Allocation plan, not a claim of measured peak memory or all-filter coverage. */
 export function planCutGraphicRaster(graphic: GraphicGeometry, outputWidth: number, outputHeight: number) {
   const width = even(graphic.width * outputWidth); const height = even(graphic.height * outputHeight);
-  const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale)];
+  const authoredScale = graphic.compositionCurves?.curves.find((curve) => curve.property === "scale");
+  const scales = [1, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.scale), ...(authoredScale ? [authoredScale.base, ...authoredScale.keyframes.map((point) => point.value)] : [])];
   if (scales.some((scale) => !Number.isFinite(scale) || scale < .01 || scale > 8)) throw new Error("Graphic scale must remain within 0.01 and 8");
   const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
   const maximumWidth = even(width * maximumScale); const maximumHeight = even(height * maximumScale);
