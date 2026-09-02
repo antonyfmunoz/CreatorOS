@@ -26,6 +26,15 @@ export async function waitForCutRender(request: APIRequestContext, jobId: string
     }, { timeout: 60_000, intervals: [500, 1_000] }).not.toMatch(/queued|running/);
   } catch (error) {
     console.error("CUT_RENDER_QUALIFICATION_FAILURE", JSON.stringify({ jobId, states }));
+    // Preserve the failed assertion and its pre-cleanup evidence. Cancel only
+    // this fixture's job so a failed render cannot occupy the shared actor's
+    // quota and turn later independent tests into misleading 429 failures.
+    try {
+      const cancelled = await request.post(`/api/cut/jobs/${jobId}/cancel`, { headers, timeout: 10_000 });
+      states.push({ elapsedMs: Date.now() - started, cleanup: "cancel-owned-fixture", status: cancelled.status() });
+    } catch {
+      states.push({ elapsedMs: Date.now() - started, cleanup: "cancel-owned-fixture-failed" });
+    }
     throw error;
   } finally {
     await info.attach("cut-render-states", { body: JSON.stringify({ jobId, states }, null, 2), contentType: "application/json" });
