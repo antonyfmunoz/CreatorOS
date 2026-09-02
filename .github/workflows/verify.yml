@@ -172,3 +172,13 @@ jobs:
       - name: Qualify isolated CutStudio animation rendering
         run: npm run verify:cut-animation
       - run: npx playwright test
+      - name: Retain failed synthetic browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-failure-evidence
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: warn

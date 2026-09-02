@@ -10,8 +10,8 @@ const numeric = [
   ["textRadius", "Text corner radius", 0, 100, 1],
 ] as const;
 
-export function CutStudioTextLayoutControls({ style, onChange }: { style: Style; onChange(style: Style): void }) {
-  const layout = resolveCutTextLayout(style);
+export function CutStudioTextLayoutControls({ style, font, onChange }: { style: Style; font?: { weight: number; style: "normal" | "italic" }; onChange(style: Style): void }) {
+  const layout = resolveCutTextLayout(style, font);
   const field = "mt-1 w-full rounded border border-zinc-800 bg-black px-2 py-1.5 text-xs text-zinc-200";
   const set = (key: string, value: string | number) => onChange({ ...style, [key]: value });
   return <fieldset className="rounded-lg border border-zinc-800 p-2">

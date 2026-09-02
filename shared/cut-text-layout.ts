@@ -24,7 +24,7 @@ export function resolveCutTextLayout(style: Record<string, unknown>, font?: { we
   return cutTextLayoutSchema.parse({
     fontSize: bounded(style.fontSize, 48, 8, 400),
     fontWeight: Math.round(bounded(style.fontWeight, 700, 100, 900) / 100) * 100,
-    fontStyle: font?.style ?? (style.fontStyle === "italic" ? "italic" : "normal"),
+    fontStyle: style.fontStyle === "italic" || style.fontStyle === "normal" ? style.fontStyle : font?.style ?? "normal",
     fontFaceStyle: font?.style ?? "normal",
     fontFaceWeight: font?.weight,
     align: ["left", "center", "right"].includes(String(style.textAlign)) ? style.textAlign : "left",

@@ -20,6 +20,9 @@ describe("shared native composition text layout", () => {
     expect(() => cutTextLayoutSchema.parse({ fontWeight: 701 })).toThrow();
     expect(() => cutTextLayoutSchema.parse({ align: "justify" })).toThrow();
     expect(resolveCutTextLayout({ fontStyle: "italic" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "normal" });
+    expect(resolveCutTextLayout({ fontStyle: "italic" }, { weight: 400, style: "normal" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "normal", fontFaceWeight: 400 });
+    expect(resolveCutTextLayout({}, { weight: 400, style: "italic" })).toMatchObject({ fontStyle: "italic", fontFaceStyle: "italic" });
+    expect(resolveCutTextLayout({ fontStyle: "normal" }, { weight: 400, style: "italic" })).toMatchObject({ fontStyle: "normal", fontFaceStyle: "italic" });
   });
   it("retains line breaks, full authoring size and an absent background at compile time", () => {
     const result = compileCompositionToEdl({ version: 1, name: "Text", width: 1920, height: 1080, fps: 30, durationInFrames: 30, layers: [

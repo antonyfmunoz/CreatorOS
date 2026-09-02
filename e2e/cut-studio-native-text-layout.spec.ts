@@ -78,4 +78,54 @@ test("native text layout preserves wrapped lines and authoring controls in priva
   expect(data[background + 2]).toBeGreaterThan(180);
   const peer = info.project.name.startsWith("mobile") ? 2 : 1;
   expect((await page.request.get(`/api/cut/jobs/${job.id}/still?frame=0`, { headers: { "x-creativesos-demo-user": String(peer) } })).status()).toBe(404);
+
+  const fontUpload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "cut-font", visibility: "private", font: { name: "NotoSans.ttf", mimeType: "font/ttf", buffer: readFileSync("shared/assets/cut-fonts/NotoSans-Variable.ttf") } } });
+  expect(fontUpload.ok(), await fontUpload.text()).toBeTruthy();
+  const fontAsset = (await fontUpload.json()).asset;
+  const registration = await page.request.post(`/api/cut/projects/${project.id}/media-library`, { data: { assetId: fontAsset.id, name: "Private Noto", duration: 1, mediaKind: "font" } });
+  expect(registration.ok(), await registration.text()).toBeTruthy();
+  await page.reload();
+  await studio.getByLabel("Selected layer", { exact: true }).selectOption("title");
+  const privateFont = studio.getByLabel("Layer private font", { exact: true });
+  await privateFont.selectOption(fontAsset.id);
+  await studio.getByLabel("Text font style", { exact: true }).selectOption("italic");
+  await expect(previewText).toHaveCSS("font-style", "italic");
+  // Choosing the default must actually detach this layer, without deleting the
+  // private font registration that another layer could still be using.
+  await privateFont.selectOption("");
+  await expect(privateFont).toHaveValue("");
+  await expect(previewText).toHaveCSS("font-family", /CutStudio Noto Sans/);
+  await privateFont.selectOption(fontAsset.id);
+  await studio.getByLabel("Layer content", { exact: true }).fill("IIII");
+  await expect(studio.locator('[data-composition-fonts="ready"]')).toHaveCount(1);
+  const saveItalic = page.waitForResponse((response) => response.request().method() === "PUT" && response.url().endsWith(`/compositions/${composition.id}`));
+  await studio.getByRole("button", { name: "Save composition", exact: true }).click();
+  expect((await saveItalic).ok()).toBeTruthy();
+  await page.reload();
+  await studio.getByLabel("Selected layer", { exact: true }).selectOption("title");
+  await expect(privateFont).toHaveValue(fontAsset.id);
+  await expect(previewText).toHaveCSS("font-style", "italic");
+  const currentProject = await page.request.get(`/api/cut/projects/${project.id}`);
+  expect(currentProject.ok()).toBeTruthy();
+  const applyItalic = await page.request.post(`/api/cut/projects/${project.id}/compositions/${composition.id}/apply`, { headers: { "If-Match": String((await currentProject.json()).revision) } });
+  expect(applyItalic.ok(), await applyItalic.text()).toBeTruthy();
+  expect((await applyItalic.json()).edl.graphics[0]).toMatchObject({ fontAssetId: fontAsset.id, textLayout: { fontStyle: "italic", fontFaceStyle: "normal" } });
+  const italicQueued = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
+  expect(italicQueued.ok()).toBeTruthy();
+  const italicJob = await italicQueued.json();
+  await expect.poll(async () => (await (await page.request.get(`/api/cut/jobs/${italicJob.id}`)).json()).state, { timeout: 60_000 }).toBe("done");
+  const italicStill = await page.request.get(`/api/cut/jobs/${italicJob.id}/still?frame=0`);
+  expect(italicStill.ok()).toBeTruthy();
+  await info.attach("encoded-private-font-italic", { body: await italicStill.body(), contentType: "image/png" });
+  const italicPixels = await sharp(await italicStill.body()).removeAlpha().raw().toBuffer();
+  const rows: Array<{ y: number; center: number }> = [];
+  for (let y = 72; y < 504; y++) {
+    let sum = 0; let count = 0;
+    for (let x = 128; x < 1152; x++) { const i = (y * 1280 + x) * 3; if (italicPixels[i] > 220 && italicPixels[i + 1] > 220 && italicPixels[i + 2] > 220) { sum += x; count++; } }
+    if (count > 10) rows.push({ y, center: sum / count });
+  }
+  expect(rows.length).toBeGreaterThan(30);
+  const upper = rows[Math.floor(rows.length * .25)].center;
+  const lower = rows[Math.floor(rows.length * .75)].center;
+  expect(upper - lower, "The decoded private-font strokes must visibly lean right").toBeGreaterThan(3);
 });
