@@ -58,6 +58,7 @@ import { registerCutStudioProductionRoutes } from "./cut-studio-production";
 import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { createCutProcessProgressParser, cutProcessProgressArgs, cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
+import { cutMaskAlpha } from "@shared/cut-mask";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
@@ -862,7 +863,8 @@ async function renderMultitrack(
     if (maskAssetId) {
       const privateMask = inputById.get(maskAssetId);
       if (!privateMask?.asset.mimeType?.startsWith("image/")) throw new Error("A custom reveal mask must reference ready private image media");
-      const alpha = await sharp(privateMask.url).resize(width, height, { fit: "fill" }).greyscale().raw().toBuffer();
+      const rgba = await sharp(privateMask.url).resize(width, height, { fit: "fill" }).toColourspace("srgb").ensureAlpha().raw().toBuffer();
+      const alpha = Buffer.from(cutMaskAlpha(rgba));
       const mask = await sharp({ create: { width, height, channels: 3, background: { r: 0, g: 0, b: 0 } } }).joinChannel(alpha, { raw: { width, height, channels: 1 } }).png().toBuffer();
       await sharp(styledInputPath).composite([{ input: mask, blend: "dest-in" }]).png().toFile(rasterPath);
     }
