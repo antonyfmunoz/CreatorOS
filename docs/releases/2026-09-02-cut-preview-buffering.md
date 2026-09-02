@@ -49,3 +49,13 @@ seeded database and the existing 30-minute bound. Their internal execution remai
 serial. The required `Browser journeys` check succeeds only when the entire matrix
 succeeds; failure, cancellation or skipping cannot pass it. Branch-protection
 settings, test assertions, retry policy and individual test limits are unchanged.
+
+## Protected receipt
+
+PR 152 head `bedfe7694c70922c1a585379a184a1240764004a` passed Verify run
+`33643528748`: 603 root tests, 162 mobile and 138 desktop browser passes, 24 existing
+desktop skips and no reported retries. Core, durable database workflows, native
+shells, the aggregate Browser journeys gate and CodeQL all passed. Normal protected
+merge produced main `831ab2f0b3186a94ae85c4baad9f722d39791af1` at
+2026-09-02T14:57:10Z. This includes native progress reporting; deployment and
+production playback/native-worker checks remain separate.

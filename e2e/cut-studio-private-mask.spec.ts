@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
 import { waitForCutRender } from './helpers/cut-render';
@@ -72,7 +72,7 @@ for (const transition of [false, true]) {
     for (const frame of transition ? [6, 18] : [6]) {
       await player.getByLabel('Preview frame', { exact: true }).fill(String(frame));
       await expect(player).toHaveAttribute('data-player-state', 'paused');
-      const screenshot = await player.getByLabel('Composition canvas', { exact: true }).screenshot();
+      const screenshot = await player.getByLabel('Composition canvas', { exact: true }).screenshot({ path: `${directory}/preview-${frame}.png` });
       await info.attach(`mask-preview-${frame}`, { body: screenshot, contentType: 'image/png' });
       const sample = await samples(screenshot); previewSamples.set(frame, sample);
       const opacity = transition && frame === 6 ? .5 : 1;
@@ -88,6 +88,7 @@ for (const transition of [false, true]) {
     for (const [frame, preview] of Array.from(previewSamples)) {
       const still = await page.request.get(`/api/cut/jobs/${job.id}/still?frame=${frame}`); expect(still.ok()).toBeTruthy();
       const buffer = await still.body(); const encoded = await samples(buffer);
+      writeFileSync(`${directory}/export-${frame}.png`, buffer);
       await info.attach(`mask-export-${frame}`, { body: buffer, contentType: 'image/png' });
       for (let band = 0; band < 8; band++) for (let channel = 0; channel < 3; channel++) expect(Math.abs(encoded[band][channel] - preview[band][channel])).toBeLessThanOrEqual(6);
     }

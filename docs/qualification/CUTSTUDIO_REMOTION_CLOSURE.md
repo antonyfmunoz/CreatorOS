@@ -66,7 +66,32 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
    receipt and subsequent worker promotion. This is a credential gate, not
    evidence that all remaining implementation is external.
 
-## Completion rule
+## September 2 protected-source checkpoint
+
+- PR 148's frame-authored private audio passed runtime and application gates.
+  PR 149's draft/conflict/navigation work is also merged. These are not public
+  executable-code or offline-draft claims.
+- PR 150's lossless RGB and stable frame-paint candidate passed runtime run
+  `33637334537` (63 qualification records, exact-image zero HIGH/CRITICAL findings).
+  Its application run had one native-render timeout that passed on retry; the
+  original cause remains open. Lossless output is not all-player compatibility.
+- PR 151's clean-room text measurement/fitting passed runtime `33640536948`
+  (66 records, exact-image zero HIGH/CRITICAL findings) and 282 browser tests,
+  with 24 existing skips. It is still part of the isolated prototype, not a
+  production source-code editor or user-facing render service.
+- PR 152's native resource buffering/retry and numeric encoder progress passed
+  protected Verify `33643528748`: 603 root tests, 300 browser passes and 24 existing
+  skips, no reported retries. Main is `831ab2f0b3186a94ae85c4baad9f722d39791af1`.
+- The private mask/preview-origin correction has focused local artifact checks;
+  its combined/protected/deployed gates are pending. See the corresponding
+  [mask receipt](../releases/2026-09-02-cut-private-mask-parity.md).
+
+These newer receipts supersede the table's older candidate-pending descriptions
+only for the exact tested scope. Public source, service topology, long-media and
+decoder coverage, transformed composition matching, reliable scaled admission,
+normal-user field tests and direct competitor comparisons remain open.
+
+## Completion rule (unchanged)
 
 A row closes only with source and test links, exact release identity where
 applicable, retained actual outputs, and explicit scope/limits. A passing test

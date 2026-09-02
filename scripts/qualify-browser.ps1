@@ -2,6 +2,7 @@ param(
   [string[]]$PlaywrightArgs = @(),
   [string]$Grep = "",
   [switch]$PreflightWorkerResilience,
+  [switch]$RetainBrowserEvidence,
   [string]$QualificationRoot = ""
 )
 
@@ -77,7 +78,9 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification fixture setup failed" }
   $playwrightArguments = @($PlaywrightArgs)
   if ($Grep) { $playwrightArguments += @("--grep", $Grep) }
-  & npx.cmd playwright test @playwrightArguments
+  # Invoke the installed CLI directly: cmd.exe can interpret grep alternation
+  # as pipelines instead of passing it through as one Playwright argument.
+  & node node_modules/@playwright/test/cli.js test @playwrightArguments
   if ($LASTEXITCODE -ne 0) { throw "Browser qualification failed" }
   $qualificationSucceeded = $true
 } finally {
@@ -95,10 +98,10 @@ try {
   if (Test-Path -LiteralPath $qualificationPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $qualificationPath).Path
     if ($resolvedPath.StartsWith($qualificationPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-      # Keep only synthetic browser evidence on failure, never the disposable
-      # database, upload store, or runtime directory. Do not hide the failure.
+      # Keep synthetic browser evidence on failure or explicit qualification
+      # request, never the disposable database, upload store or runtime directory.
       $browserEvidence = Join-Path $resolvedPath "playwright-results"
-      if (-not $qualificationSucceeded -and (Test-Path -LiteralPath $browserEvidence)) {
+      if ((-not $qualificationSucceeded -or $RetainBrowserEvidence) -and (Test-Path -LiteralPath $browserEvidence)) {
         $evidenceRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "test-results"
         New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
         $evidenceRoot = (Resolve-Path -LiteralPath $evidenceRoot).Path.TrimEnd("\")
@@ -108,10 +111,10 @@ try {
         }
         try {
           Copy-Item -LiteralPath $browserEvidence -Destination $evidenceDestination -Recurse
-          Write-Host "Failed browser evidence retained at $evidenceDestination"
+          Write-Host "Browser evidence retained at $evidenceDestination (qualification succeeded: $qualificationSucceeded)"
         } catch {
           # A disk/copy failure must not strand the disposable database/uploads.
-          Write-Warning "Could not retain browser evidence; qualification remains failed."
+          Write-Warning "Could not retain browser evidence; qualification succeeded: $qualificationSucceeded. No evidence-retention claim is available."
         }
       }
       Remove-Item -LiteralPath $resolvedPath -Recurse -Force
