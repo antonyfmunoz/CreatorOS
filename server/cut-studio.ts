@@ -63,6 +63,7 @@ import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
 import { cutGraphicColorFilters } from "./cut-graphic-color";
+import { cutColorMatrixControls } from "../shared/cut-color-effects";
 import { cutFilterGraphArgs } from "./cut-filter-graph";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
@@ -908,11 +909,6 @@ async function renderMultitrack(
     }
     const vignetteEffect = graphicEffect(graphic, "vignette");
     if (vignetteEffect) rasterFilters.push(`vignette=angle=PI/${Number((10 - effectNumber(vignetteEffect, "amount", .5, 0, 1) * 6).toFixed(3))}:eval=frame`);
-    const matrixEffect = graphicEffect(graphic, "color_matrix");
-    if (matrixEffect) {
-      const amount = effectNumber(matrixEffect, "amount", 0, 0, 1);
-      rasterFilters.push(`eq=brightness=${Number((effectNumber(matrixEffect, "brightness", 1, 0, 2) - 1).toFixed(3))}:contrast=${Number((effectNumber(matrixEffect, "contrast", 1, .25, 4) * (1 + amount * .15)).toFixed(3))}:saturation=${Number((effectNumber(matrixEffect, "saturation", 1, 0, 4) * (1 + amount * .3)).toFixed(3))}`);
-    }
     const chromaEffect = graphicEffect(graphic, "chroma_key");
     if (chromaEffect) rasterFilters.push(`chromakey=0x${effectColor(chromaEffect, "color", "#00ff00").slice(1)}:${effectNumber(chromaEffect, "similarity", effectNumber(chromaEffect, "amount", .3, .01, 1), .01, 1)}:${effectNumber(chromaEffect, "blend", .08, 0, 1)}`);
     const displacementEffect = graphicEffect(graphic, "displacement");
@@ -961,6 +957,14 @@ async function renderMultitrack(
     const brightness = graphicMotionExpression(graphic, "brightness", 1, "T");
     const saturation = graphicMotionExpression(graphic, "saturation", 1, "T");
     rasterFilters.push(...cutGraphicColorFilters(brightness, saturation, `graphiccolor${index}`));
+    // Color-only stacks follow the preview: base controls, then every authored
+    // color effect in order. Other spatial/compositing effects retain their
+    // separate pipeline and require their own ordering/fidelity qualification.
+    for (const [effectIndex, effect] of graphic.effects.entries()) {
+      if (effect.kind !== "color_matrix") continue;
+      const color = cutColorMatrixControls(effect.parameters);
+      rasterFilters.push(...cutGraphicColorFilters(String(color.brightness), String(color.saturation), `graphiccolor${index}effect${effectIndex}`, color.contrast));
+    }
     const revealPoints = [{ at: 0, kind: graphic.revealKind, direction: graphic.revealDirection, progress: graphic.revealProgress }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, kind: keyframe.revealKind, direction: keyframe.revealDirection, progress: keyframe.revealProgress }))]
       .sort((left, right) => left.at - right.at)
       .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cutGraphicColorFilters } from "../server/cut-graphic-color";
+import { cutColorMatrixControls } from "../shared/cut-color-effects";
 
 describe("native CSS graphic color compilation", () => {
   it("leaves neutral RGB unchanged and avoids expensive per-pixel expressions", () => {
@@ -36,5 +37,19 @@ describe("native CSS graphic color compilation", () => {
     for (const values of [["", "1"], ["1", " "], ["-1", "1"], ["1", "9"]]) {
       expect(() => cutGraphicColorFilters(values[0], values[1])).toThrow();
     }
+  });
+  it("implements contrast around the sRGB midpoint before brightness and saturation", () => {
+    const filter = cutGraphicColorFilters(".8", ".7", "contrasted", 2).join(",");
+    expect(filter).toContain("clip((val-32767.5)*2+32767.5,0,65535)*0.8");
+    expect(filter).toContain("[contrastedprocessed][contrastedpreserved]alphamerge");
+    expect(cutGraphicColorFilters("1", "1", "neutral", 0).join(",")).toContain("(val-127.5)*0+127.5");
+    expect(cutGraphicColorFilters("1+T", "4", "dynamic", .5).join(",")).toContain("clip((r(X,Y)-127.5)*0.5+127.5,0,255)");
+    for (const contrast of [-1, 9, Infinity, NaN]) expect(() => cutGraphicColorFilters("1", "1", "test", contrast)).toThrow(/contrast/);
+  });
+  it("shares explicit controls and legacy amount/intensity defaults with the preview", () => {
+    expect(cutColorMatrixControls({})).toEqual({ contrast: 1, brightness: 1, saturation: 1 });
+    expect(cutColorMatrixControls({ amount: .7, contrast: 0, brightness: 2 })).toEqual({ contrast: 0, brightness: 2, saturation: .7 });
+    expect(cutColorMatrixControls({ intensity: .5, saturation: -1 })).toEqual({ contrast: .5, brightness: .5, saturation: 0 });
+    expect(cutColorMatrixControls({ contrast: "bad", brightness: NaN, saturation: Infinity })).toEqual({ contrast: 1, brightness: 1, saturation: 1 });
   });
 });

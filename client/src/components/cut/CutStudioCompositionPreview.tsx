@@ -15,6 +15,7 @@ import { createCutPreviewReadiness } from "@/lib/cut-preview-readiness";
 import { CutPreviewReadinessContext, useCutPreviewResource } from "./CutStudioPreviewReadiness";
 import { cutLayerMaskAsset } from "@shared/cut-mask";
 import { cutImageFit } from "@shared/cut-image-fit";
+import { cutColorMatrixControls } from "@shared/cut-color-effects";
 import { CutStudioMaskFailure, CutStudioPrivateMask } from "./CutStudioPrivateMask";
 
 type Layer = CutCompositionManifest["layers"][number];
@@ -61,7 +62,10 @@ function effectStyles(state: FrameState) {
     if (effect.kind === "blur" || effect.kind === "motion_blur") filters.push(`blur(${Math.max(0, Math.min(80, amount(effect, "radius", effect.kind === "motion_blur" ? 2 : 6)))}px)`);
     if (effect.kind === "glow") filters.push(`drop-shadow(0 0 ${Math.max(0, Math.min(80, amount(effect, "radius", 16)))}px ${String(effect.parameters.color ?? "#1d9bf0")})`);
     if (effect.kind === "drop_shadow") filters.push(`drop-shadow(${amount(effect, "x", 4)}px ${amount(effect, "y", 6)}px ${Math.max(0, amount(effect, "blur", 10))}px ${String(effect.parameters.color ?? "#000000")})`);
-    if (effect.kind === "color_matrix") filters.push(`contrast(${Math.max(0, amount(effect, "contrast", 1))}) brightness(${Math.max(0, amount(effect, "brightness", 1))}) saturate(${Math.max(0, amount(effect, "saturation", 1))})`);
+    if (effect.kind === "color_matrix") {
+      const color = cutColorMatrixControls(effect.parameters);
+      filters.push(`contrast(${color.contrast}) brightness(${color.brightness}) saturate(${color.saturation})`);
+    }
     if (effect.kind === "vignette") overlay = { background: `radial-gradient(circle, transparent ${Math.max(10, 70 - amount(effect, "amount", .5) * 45)}%, rgba(0,0,0,${Math.max(0, Math.min(1, amount(effect, "amount", .5)))}) 100%)` };
     if (effect.kind === "grain" || effect.kind === "noise") overlay = { backgroundImage: "repeating-radial-gradient(circle at 17% 31%, rgba(255,255,255,.13) 0 1px, rgba(0,0,0,.12) 1px 2px, transparent 2px 4px)", opacity: Math.max(0, Math.min(.55, amount(effect, "amount", .18))), mixBlendMode: "overlay" };
     if (effect.kind === "light_leak") overlay = { background: `radial-gradient(circle at 8% 12%, rgba(255,110,45,${Math.max(0, Math.min(.9, amount(effect, "amount", .35)))}), transparent 55%)`, mixBlendMode: "screen" };
