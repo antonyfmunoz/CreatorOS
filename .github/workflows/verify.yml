@@ -134,10 +134,14 @@ jobs:
       - name: Qualify cross-machine worker lease recovery
         run: npx tsx scripts/qualify-worker-resilience.ts
 
-  browser:
-    name: Browser journeys
+  browser-project:
+    name: Browser project (${{ matrix.project }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
     services:
       postgres:
         image: postgres:16-alpine
@@ -171,14 +175,32 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Qualify isolated CutStudio animation rendering
         run: npm run verify:cut-animation
-      - run: npx playwright test
-      - name: Retain failed synthetic browser evidence
-        if: failure()
+      - run: npx playwright test --project=${{ matrix.project }}
+      # A retried test can pass the job and still contain essential failure
+      # traces. Keep the synthetic report in both outcomes; never erase a flake
+      # by treating the final green job as a clean first-attempt qualification.
+      - name: Retain synthetic browser evidence including retried failures
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-failure-evidence
+          name: browser-evidence-${{ matrix.project }}
           path: |
             test-results/
             playwright-report/
           retention-days: 7
           if-no-files-found: warn
+
+  # Preserve the required branch-protection check. Neither a skipped, cancelled
+  # nor failed project can make this aggregate pass. Every project's complete
+  # suite remains serial against its own seeded PostgreSQL service.
+  browser:
+    name: Browser journeys
+    needs: browser-project
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all browser projects to succeed
+        env:
+          BROWSER_RESULT: ${{ needs.browser-project.result }}
+        run: test "$BROWSER_RESULT" = success
