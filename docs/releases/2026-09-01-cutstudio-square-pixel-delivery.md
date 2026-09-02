@@ -25,5 +25,29 @@ mobile/desktop private-frame/preview journey additionally renders a portrait
 video and checks the browser's actual decoded dimensions. Existing exact-frame,
 format, revoked-access and preview retry checks remain; no deadline was relaxed.
 
-This candidate needs protected qualification, deployment of the corresponding
-worker and a corrected live artifact before the production defect is closed.
+## Corrected production geometry evidence
+
+PR #124 passed protected Verify `33589977074`, CodeQL `33589977080` and
+isolated-runtime qualification `33589977070`, then merged as
+`d9e2947736da6c398572de6677f064141cc3ee41`. GCP build
+`a118fa29-d765-4b3f-b6c3-a9a5b75bdbc2` produced immutable image
+`sha256:45d406bebd3d32b5f0b3523f41eb58d521edb56705a339d39070a2b331de4ef6`.
+The existing worker was updated only to that image and source label; resource,
+task-count, secret and IAM configuration was preserved.
+
+Fresh private job `55ddd4f7-c089-451e-9391-692dd70269cb` completed on execution
+`creativesos-cut-worker-x5d5q` (one successful task, 2026-09-02 04:48:49 through
+04:51:27 UTC). Independent private-object retrieval verified asset
+`99bf765d-a426-455e-a259-8f74d56afe85`, 284608 bytes, SHA-256
+`68dfc51d00ccb206247b19e755f2107e9a5710899d21af52afaff7a161e03fc7`.
+FFprobe now reports H.264 406x720, SAR 1:1, DAR 203:360, 30 fps, 90 frames,
+three seconds and AAC. The actual signed-in browser video reports 406x720,
+three seconds and readyState 4. The public web release was still `1be110e` at
+this observation; this is worker/artifact proof, not a claim that the newer
+website deployment had completed.
+
+Geometry is corrected in this live artifact. Inspection of decoded frame 30
+also exposed oversized/clipped text and an opaque background outside the title
+box. Those are separate open visual-fidelity defects, tracked by the responsive
+title correction. Neither SAR success nor successful decoding establishes
+Remotion parity or complete composition-preview fidelity.

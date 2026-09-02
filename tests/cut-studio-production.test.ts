@@ -123,7 +123,7 @@ describe("CutStudio programmable production runtime", () => {
     const family = "CreativesOS_00000000000040008000000000000007";
     const styled = { ...manifest, fonts: [{ family, assetId: fontAssetId, weight: 400 as const, style: "normal" as const }], layers: [sourceLayer, { ...manifest.layers[1], style: { ...manifest.layers[1].style, fontFamily: family } }] };
     const edl = compileCompositionToEdl(styled, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
-    expect(edl.graphics?.[0]).toMatchObject({ fontAssetId, fontFamily: family });
+    expect(edl.graphics?.[0]).toMatchObject({ fontAssetId, fontFamily: family, fontReferenceWidth: 1920 });
     expect(() => cutCompositionManifestSchema.parse({ ...styled, fonts: [] })).toThrow(/font family must exist/i);
   });
 

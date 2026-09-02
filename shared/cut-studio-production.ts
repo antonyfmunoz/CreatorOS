@@ -555,6 +555,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       width: Math.max(.01, Math.min(1 - graphicX, layer.width)),
       height: Math.max(.01, Math.min(1 - graphicY, layer.height)),
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
+      fontReferenceWidth: manifest.width,
       fontAssetId: selectedFont?.assetId,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",
       textColor: three?.edgeColor ?? (typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff"),

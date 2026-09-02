@@ -72,10 +72,34 @@ test("CutStudio exports exact private finished frames with permission and format
   await preview.getByRole("button", { name: "Retry preview" }).click();
   await expect(preview.getByRole("status")).toContainText("Private video ready");
   await preview.getByRole("button", { name: "Close", exact: true }).click();
+  const compositionResponse = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: {
+    name: "Responsive portrait headline", manifest: { version: 1, name: "Responsive portrait headline", width: 1920, height: 1080, fps: 30, durationInFrames: 60, background: "#000000", layers: [
+      { id: "source", kind: "video", name: "Source", from: 0, durationInFrames: 60, assetId: asset.id },
+      { id: "headline", kind: "text", name: "Headline", from: 0, durationInFrames: 60, x: .1, y: .4, width: .72, height: .16, text: "Turn attention into momentum", style: { fontSize: 72, color: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0 } },
+    ] },
+  } });
+  expect(compositionResponse.ok(), await compositionResponse.text()).toBeTruthy();
+  const composition = await compositionResponse.json();
+  const applied = await page.request.post(`/api/cut/projects/${project.id}/compositions/${composition.id}/apply`, { headers: { "If-Match": String(project.revision) } });
+  expect(applied.ok(), await applied.text()).toBeTruthy();
+  expect((await applied.json()).edl.graphics[0].fontReferenceWidth).toBe(1920);
   const portraitQueued = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "9:16", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
   expect(portraitQueued.ok()).toBeTruthy();
   const portraitJob = await portraitQueued.json();
   await expect.poll(async () => (await (await page.request.get(`/api/cut/jobs/${portraitJob.id}`)).json()).state, { timeout: 60000 }).toBe("done");
+  const portraitStill = await page.request.get(`/api/cut/jobs/${portraitJob.id}/still?frame=30`);
+  expect(portraitStill.ok()).toBeTruthy();
+  const portraitPixels = await sharp(await portraitStill.body()).removeAlpha().raw().toBuffer();
+  const corner = (290 * 406 + 50) * 3;
+  expect(portraitPixels[corner + 2]).toBeGreaterThan(180);
+  expect(portraitPixels[corner]).toBeLessThan(40);
+  const whiteY: number[] = [];
+  for (let y = 288; y < 404; y++) for (let x = 40; x < 335; x++) {
+    const index = (y * 406 + x) * 3;
+    if (portraitPixels[index] > 200 && portraitPixels[index + 1] > 200 && portraitPixels[index + 2] > 200) whiteY.push(y);
+  }
+  expect(whiteY.length).toBeGreaterThan(100);
+  expect(Math.max(...whiteY) - Math.min(...whiteY)).toBeLessThan(24);
   await page.reload();
   await page.getByRole("button", { name: /^Preview rendered video / }).first().click();
   await expect(preview.getByRole("status")).toContainText("Private video ready");

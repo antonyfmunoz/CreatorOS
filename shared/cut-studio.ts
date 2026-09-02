@@ -71,6 +71,9 @@ export const cutGraphicSchema = z.object({
   x: z.number().finite().min(0).max(0.95).default(0.1),
   y: z.number().finite().min(0).max(0.95).default(0.75),
   fontSize: z.number().int().min(12).max(160).default(48),
+  // Composition fonts are measured in their authored canvas, not delivery pixels.
+  // Absent on legacy/manual graphics: preserve their existing pixel sizing.
+  fontReferenceWidth: z.number().int().min(240).max(7_680).optional(),
   fontAssetId: z.string().uuid().optional(),
   fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),

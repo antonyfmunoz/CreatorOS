@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
 import { cutFitVideoFilters, cutSourceVideoFilters } from "./cut-video-geometry";
+import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -802,11 +803,12 @@ async function renderMultitrack(
         : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
       await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
     } else {
-      const text = graphic.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%").replace(/[\r\n]+/g, " ");
+      const textPath = path.join(temp, `graphic-text-${rasterGraphicInputs.length}.txt`);
+      await fs.writeFile(textPath, graphic.text.replace(/[\r\n]+/g, " "), { mode: 0o600 });
       const privateFont = graphic.fontAssetId ? inputById.get(graphic.fontAssetId) : undefined;
       if (graphic.fontAssetId && (!privateFont || privateFont.asset.kind !== "cut-font" || !privateFont.asset.mimeType || !cutStudioFontMime.test(privateFont.asset.mimeType))) throw new Error("A composition font must reference ready private TTF or OTF media");
       const titleFontFilter = await cutStudioFontFilter(privateFont?.url);
-      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black@0.0:s=${width}x${height}`, "-vf", `format=rgba,drawtext=${titleFontFilter}text='${text}':expansion=none:fontsize=${graphic.fontSize}:fontcolor=${graphic.textColor}:x=12:y=(h-text_h)/2:box=1:boxcolor=${graphic.backgroundColor}@${graphic.backgroundOpacity}:boxborderw=12`, "-frames:v", "1", baseRasterPath], 30_000, jobId);
+      await runProcess("ffmpeg", ["-y", "-f", "lavfi", "-i", cutTextRasterSource(width, height), "-vf", cutTextRasterFilter(graphic, size[0], titleFontFilter, escapeFfmpegFilterPath(textPath)), "-frames:v", "1", baseRasterPath], 30_000, jobId);
     }
     const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputs.length}.png`) : rasterPath;
     const styledInputPath = needsBakedEffects ? await bakeGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
