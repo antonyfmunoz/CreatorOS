@@ -152,3 +152,29 @@ test('creative brief creation preserves newer edits until its own revision is sa
     await expect(objective).toHaveValue('Newer brief');
   } finally { release(); }
 });
+
+test('creative edits remain unsaved when the server commits but the save response is lost', async ({ page }, info) => {
+  const { project, rows, studio, first } = await setup(page, info);
+  const content = first.getByLabel('Layer content', { exact: true });
+  await content.fill('Committed but unconfirmed');
+  let committed = false;
+  await page.route(`**/projects/${project.id}/compositions/${rows[0].id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    const response = await route.fetch();
+    expect(response.ok()).toBeTruthy(); committed = true;
+    await route.abort('connectionreset');
+  });
+  await first.getByRole('button', { name: 'Save composition', exact: true }).click();
+  await expect.poll(() => committed).toBe(true);
+  await expect(first.getByRole('button', { name: 'Save composition', exact: true })).toBeEnabled();
+  await content.fill('First composition');
+  await expect(content).toHaveValue('First composition');
+  await expect(studio.getByLabel('Unsaved creative edits')).toBeVisible();
+  await expect(first.getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await studio.getByRole('button', { name: 'Kinetic', exact: true }).click();
+  await expect(studio.getByLabel('Unsaved creative edits')).toContainText('changed elsewhere');
+  await expect(content).toHaveValue('First composition');
+  page.once('dialog', async (dialog) => { await dialog.accept(); });
+  await studio.getByRole('button', { name: 'Discard creative edits', exact: true }).click();
+  await expect(content).toHaveValue('Committed but unconfirmed');
+});

@@ -37,12 +37,19 @@ describe('independent creative draft custody', () => {
     drafts.saved(submitted, row('a', 'submitted', 2));
     expect(drafts.view([row('a', 'submitted', 2)])[0]).toEqual(row('a', 'original', 2));
   });
-  it('retains failed or uncertain saves, rejects wrong receipts, and clears an ordinary undo', () => {
+  it('retains uncertain saves even when returning to the old value and rejects wrong receipts', () => {
     const drafts = create(); const a = row('a', 'original'); drafts.edit(a, { text: 'new' });
     const submitted = drafts.view([a])[0]; drafts.beginSave(submitted); drafts.endPending();
     expect(drafts.has('a')).toBe(true);
     for (const saved of [row('other', 'new', 2), row('a', 'new', 1), row('a', 'new', NaN)]) expect(() => drafts.saved(submitted, saved)).toThrow();
-    drafts.edit(submitted, { text: 'original' }); expect(drafts.size).toBe(0);
+    drafts.edit(submitted, { text: 'original' }); expect(drafts.size).toBe(1);
+    drafts.saved(submitted, row('a', 'new', 2));
+    expect(drafts.view([row('a', 'new', 2)])[0]).toEqual(row('a', 'original', 2));
+  });
+  it('clears an ordinary undo when no save has an uncertain outcome', () => {
+    const drafts = create(); const a = row('a', 'original');
+    drafts.edit(a, { text: 'new' }); drafts.edit(drafts.view([a])[0], { text: 'original' });
+    expect(drafts.size).toBe(0);
   });
 
   it('preserves an explicit return to the old value after remote change or deletion', () => {

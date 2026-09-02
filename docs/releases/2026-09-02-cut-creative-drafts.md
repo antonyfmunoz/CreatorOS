@@ -7,6 +7,8 @@ independent in-memory edits. A refresh or another item's successful save no long
 replaces those edits. Apply/variant actions require that composition to be saved.
 Save acknowledgements preserve a newer edit, including an undo made while the
 response is in flight, and advance only that item's acknowledged revision.
+An interrupted or failed acknowledgement is not treated as proof that the
+server failed to commit; the draft remains protected even after an undo.
 
 External revisions/deletions retain the draft and its original conflict guard.
 Returning a draft to its old value after an external change does not silently
@@ -24,22 +26,23 @@ Creative section tabs remain below the sticky project header.
 
 ## Local evidence
 
-- Eight desktop/mobile database-backed browser journeys passed on the final
+- Ten desktop/mobile database-backed browser journeys passed on the final
   candidate: independent saves/refreshes, blocked navigation and confirmed
   discard, delayed acknowledgements with intervening undo, actual revision
-  conflicts, and brief creation/update with intervening edits and reload.
+  conflicts, brief creation/update with intervening edits and reload, and an
+  actual server commit followed by a deliberately lost network response.
 - The journeys create private synthetic media and actual records in a disposable
   database after all 120 migrations. They do not use production user records.
 - Unit coverage exercises generic draft transitions and validates all three
   starter templates against the actual manifest schema, across short and longer
   durations and video/audio input types.
-- `npm run verify` passed: 594 tests in 145 files, TypeScript, client/server
+- `npm run verify` passed: 595 tests in 145 files, TypeScript, client/server
   production build, bundle budgets, Worker types and local deployment dry-run.
 - Source secret scan passed for 1120 tracked source files before staging.
 - Initial failures were retained and fixed; no forced clicks, enlarged timeouts,
   skipped assertions or changed protected gates were used.
 
-Artifacts: `B:\CreativesOS-task-artifacts\creative-drafts-browser-qualified.log`.
+Artifacts: `B:\CreativesOS-task-artifacts\creative-drafts-browser-unconfirmed.log`.
 Protected CI and production are separate gates; their results must be attached
 to the exact candidate before protected release/public capability claims.
 
