@@ -10,6 +10,9 @@ const MAX_ANIMATION_PIXELS = 3_840 * 2_160;
 export type CutAnimationKind = "lottie" | "rive";
 
 export function cutAnimationFrameCount(duration: number, fps: number) {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps < 1 || fps > 60) {
+    throw new Error("Animation duration must be positive and frame rate must be between 1 and 60");
+  }
   const frames = Math.ceil(duration * fps);
   if (!Number.isFinite(frames) || frames < 1 || frames > MAX_ANIMATION_FRAMES) {
     throw new Error(`Animation rendering is limited to ${MAX_ANIMATION_FRAMES} frames per layer`);
@@ -143,10 +146,12 @@ export async function renderCutAnimationFrames(input: {
     });
     if (input.kind === "lottie") await prepareLottie(page, input.sourcePath, input.width, input.height);
     else await prepareRive(page, input.sourcePath, input.width, input.height);
-    const stage = page.locator("#stage");
     for (let frame = 0; frame < frameCount; frame += 1) {
       await seekFrame(page, input.kind, frame, input.fps);
-      await stage.screenshot({ path: path.join(input.outputDirectory, `frame-${String(frame).padStart(6, "0")}.png`), omitBackground: true });
+      // The stage is exactly the fixed viewport. seekFrame has already waited
+      // for two paint frames; repeating locator visibility/stability waits for
+      // every exported frame slows all animation-heavy variant batches.
+      await page.screenshot({ path: path.join(input.outputDirectory, `frame-${String(frame).padStart(6, "0")}.png`), clip: { x: 0, y: 0, width: input.width, height: input.height }, omitBackground: true });
     }
     await context.close();
     return { frameCount, pattern: path.join(input.outputDirectory, "frame-%06d.png") };
