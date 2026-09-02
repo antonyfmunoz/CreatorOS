@@ -46,7 +46,16 @@ export function audioTrackFilters(track, fps) {
   const gain = track.volumeKeyframes || track.volumeSamples
     ? `aresample=48000,aformat=channel_layouts=stereo,asetpts=N/SR/TB,${volumeAutomationFilter(track, fps)}`
     : `volume=${track.volume},aresample=48000,aformat=channel_layouts=stereo`;
-  const sourceClock = /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
+  // Explicit tracks retain their established stream-relative trim semantics.
+  // Imported-video sound instead shares the browser's container media clock:
+  // FFmpeg first subtracts format.start_time, so restore that trusted probe
+  // offset, then materialize initial silence (or trim negative preroll) before
+  // applying the requested source trim. Never reset late sound to frame zero.
+  const containerStart = track.containerStartSeconds ?? 0;
+  if (!Number.isFinite(containerStart) || Math.abs(containerStart) > 120) throw new Error('Invalid private container clock.');
+  const sourceClock = track.sourceTimebase === 'container'
+    ? `asetpts=PTS+(${containerStart})/TB,aresample=48000:async=1:first_pts=0,`
+    : /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
   return `${sourceClock}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
@@ -61,7 +70,10 @@ export function validateSoundtrackProbe(probe, track) {
   const streams = Array.isArray(probe?.streams) ? probe.streams.filter((stream) => stream.codec_type === 'audio') : [];
   const selected = streams[track.audioStream ?? 0];
   const streamSeconds = Number(selected?.duration);
-  const seconds = Number.isFinite(streamSeconds) && streamSeconds > 0 ? streamSeconds : Number(probe?.format?.duration);
+  const relativeSeconds = Number.isFinite(streamSeconds) && streamSeconds > 0 ? streamSeconds : Number(probe?.format?.duration);
+  const seconds = track.sourceTimebase === 'container'
+    ? Number.isFinite(streamSeconds) && streamSeconds > 0 ? Number(selected?.start_time ?? 0) + streamSeconds : Number(probe?.format?.start_time ?? 0) + relativeSeconds
+    : relativeSeconds;
   if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
   if (track.sourceEndSeconds !== undefined && track.sourceEndSeconds > seconds + .01) throw new Error('Private source sound tail exceeds the selected stream.');
   return selected;
@@ -78,9 +90,11 @@ export async function prepareAudioTracks(request, capsule, indexOffset = 0) {
     const filename = `/tmp/soundtrack-${index + indexOffset}.${extension}`;
     await writeFile(filename, capsule[track.file], { flag: 'wx' });
     const inputOptions = soundtrackInputOptions(track.file);
-    const probe = JSON.parse((await execute('ffprobe', ['-v', 'error', ...inputOptions, '-show_entries', 'stream=codec_type,sample_rate,channels,duration:format=duration', '-of', 'json', filename], { timeout: 8000, maxBuffer: 16384 })).stdout);
+    const probe = JSON.parse((await execute('ffprobe', ['-v', 'error', ...inputOptions, '-show_entries', 'stream=codec_type,sample_rate,channels,start_time,duration:format=start_time,duration', '-of', 'json', filename], { timeout: 8000, maxBuffer: 16384 })).stdout);
     validateSoundtrackProbe(probe, track);
-    Object.assign(track, { filename, inputOptions });
+    const containerStartSeconds = Number(probe?.format?.start_time ?? 0);
+    if (!Number.isFinite(containerStartSeconds) || Math.abs(containerStartSeconds) > 120) throw new Error('Private container clock exceeds its limit.');
+    Object.assign(track, { filename, inputOptions, ...(track.sourceTimebase === 'container' ? { containerStartSeconds } : {}) });
   }
   return plan;
 }

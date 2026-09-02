@@ -7,7 +7,7 @@ export function videoAudioCatalogEntry(file, bytes, probe) {
   const streams = Array.isArray(probe?.streams) ? probe.streams.filter((stream) => stream.codec_type === 'audio') : [];
   if (streams.length > 8) throw new Error('Private video has too many audio streams.');
   const audioDurations = streams.map((stream) => {
-    const duration = Number(stream.duration) > 0 ? Number(stream.duration) : Number(probe?.format?.duration);
+    const duration = Number(stream.duration) > 0 ? Number(stream.start_time ?? 0) + Number(stream.duration) : Number(probe?.format?.start_time ?? 0) + Number(probe?.format?.duration);
     if (!Number.isFinite(duration) || duration <= 0 || duration > 120 || !Number.isInteger(Number(stream.channels)) || Number(stream.channels) < 1 || Number(stream.channels) > 8 || !Number.isFinite(Number(stream.sample_rate)) || Number(stream.sample_rate) < 1 || Number(stream.sample_rate) > 192000) throw new Error('Private video soundtrack exceeds decode limits.');
     return duration;
   });
@@ -23,5 +23,5 @@ export function videoSourceAudioSample(entry, { id, time, duration, repeat, spee
   const sourceSeconds = videoSourceTime(time, duration, repeat);
   const sourceEndSeconds = Math.min(duration, entry.audioDurations[audioStream]);
   if (sourceSeconds >= sourceEndSeconds) return null;
-  return validateFrameAudio({ id, file: entry.file, sourceSeconds, sourceEndSeconds, speed, volume, audioStream });
+  return validateFrameAudio({ id, file: entry.file, sourceSeconds, sourceEndSeconds, sourceTimebase: 'container', speed, volume, audioStream });
 }

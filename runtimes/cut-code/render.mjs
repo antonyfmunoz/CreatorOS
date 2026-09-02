@@ -52,7 +52,7 @@ try {
       const extension = file.toLowerCase().endsWith('.mp4') ? 'mp4' : 'webm';
       const filename = `/tmp/video-audio-import-${videoAudioCatalog.length}.${extension}`;
       await writeFile(filename, capsule[file], { flag: 'wx' });
-      const probe = JSON.parse((await promisify(execFile)('ffprobe', ['-v', 'error', ...soundtrackInputOptions(file), '-show_entries', 'stream=codec_type,sample_rate,channels,duration:format=duration', '-of', 'json', filename], { timeout: 8_000, maxBuffer: 16_384 })).stdout);
+      const probe = JSON.parse((await promisify(execFile)('ffprobe', ['-v', 'error', ...soundtrackInputOptions(file), '-show_entries', 'stream=codec_type,sample_rate,channels,start_time,duration:format=start_time,duration', '-of', 'json', filename], { timeout: 8_000, maxBuffer: 16_384 })).stdout);
       videoAudioCatalog.push(videoAudioCatalogEntry(file, capsule[file], probe));
     }
   }
