@@ -13,6 +13,7 @@ import { qualifyFrameReadiness } from './qualify-frame-readiness.mjs';
 import { qualifyFrameAudio } from './qualify-frame-audio.mjs';
 import { qualifyLosslessRgb } from './qualify-lossless-rgb.mjs';
 import { qualifyTextFrameHistory } from './qualify-text-frame-history.mjs';
+import { qualifyTextLayout } from './qualify-text-layout.mjs';
 
 const variant = process.env.CUT_CODE_IMAGE_VARIANT ?? 'qualification';
 if (!['qualification', 'production-candidate'].includes(variant)) throw new Error('Unsupported qualification image variant.');
@@ -26,6 +27,7 @@ const pixel = (artifact, x = 300, y = 160) => [...execFileSync('ffmpeg', ['-v', 
 const records = [];
 records.push(...await qualifyLosslessRgb({ image, directory }));
 records.push(...await qualifyTextFrameHistory({ image, directory }));
+records.push(...await qualifyTextLayout({ image, directory }));
 records.push(...await qualifyFrameAudio({ image, directory }));
 records.push(...await qualifyFrameReadiness({ image, directory }));
 records.push(...await qualifyVideoEncoding({ image, directory }));
