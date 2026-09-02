@@ -56,6 +56,8 @@ for (const workload of ['base', 'effects'] as const) test(workload === 'base'
   const created = await page.request.post('/api/cut/projects', { data: { sourceAssetId: source.id, name: 'Color parity proof', duration: 2, mediaKind: 'video' } });
   expect(created.ok()).toBeTruthy(); const project = await created.json();
   const controls = [[.5, 1], [1.5, 1], [1, 0], [1, 2], [1.5, .5], [.5, 2], [1, 1], [1, 1]];
+  // Hold the source/base controls equal: these two cards differ ONLY in order.
+  if (workload === 'effects') controls[3] = controls[4] = [.7, 1];
   const contrastFirst = [{ contrast: 1.7, brightness: 1, saturation: 1 }, { contrast: 1, brightness: .5, saturation: 1 }];
   const effectParameters = [[{ contrast: 0 }], [{ contrast: 2 }], [{ contrast: 1.5, brightness: .8, saturation: .7 }],
     contrastFirst, [...contrastFirst].reverse(), [{ amount: .8, brightness: 1.5 }], [{ contrast: .8, brightness: 1.5, saturation: .5 }], [{ contrast: 1.5, brightness: .6, saturation: .4 }]];
@@ -76,6 +78,16 @@ for (const workload of ['base', 'effects'] as const) test(workload === 'base'
   }));
   const manifest = { version: 1, name: 'RGB proof', width: 1920, height: 1080, fps: 30, durationInFrames: 60,
     layers: [{ id: 'source', name: 'Source', kind: 'video', assetId: source.id, from: 0, durationInFrames: 60 }, ...cards] };
+  if (workload === 'effects') {
+    const unsupported = { ...manifest, layers: [manifest.layers[0], { ...cards[0], effects: [{ id: 'unsupported', kind: 'color_matrix', parameters: { brightness: 9 } }] }] };
+    const savedUnsupported = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: 'Unsupported native effect', manifest: unsupported } });
+    expect(savedUnsupported.ok()).toBeTruthy();
+    const failedApply = await page.request.post(`/api/cut/projects/${project.id}/compositions/${(await savedUnsupported.json()).id}/apply`, { headers: { 'If-Match': String(project.revision) } });
+    expect(failedApply.status()).toBe(400);
+    expect((await failedApply.json()).message).toContain('cannot exceed eight');
+    const unchanged = await page.request.get(`/api/cut/projects/${project.id}`); expect(unchanged.ok()).toBeTruthy();
+    expect((await unchanged.json()).revision).toBe(project.revision);
+  }
   const composed = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: 'RGB proof', manifest } });
   expect(composed.ok(), await composed.text()).toBeTruthy(); const saved = await composed.json();
   const applied = await page.request.post(`/api/cut/projects/${project.id}/compositions/${saved.id}/apply`, { headers: { 'If-Match': String(project.revision) } });

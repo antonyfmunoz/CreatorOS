@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cutGraphicColorFilters } from "../server/cut-graphic-color";
 import { cutColorMatrixControls } from "../shared/cut-color-effects";
+import { cutGraphicSchema } from "../shared/cut-studio";
 
 describe("native CSS graphic color compilation", () => {
   it("leaves neutral RGB unchanged and avoids expensive per-pixel expressions", () => {
@@ -51,5 +52,12 @@ describe("native CSS graphic color compilation", () => {
     expect(cutColorMatrixControls({ amount: .7, contrast: 0, brightness: 2 })).toEqual({ contrast: 0, brightness: 2, saturation: .7 });
     expect(cutColorMatrixControls({ intensity: .5, saturation: -1 })).toEqual({ contrast: .5, brightness: .5, saturation: 0 });
     expect(cutColorMatrixControls({ contrast: "bad", brightness: NaN, saturation: Infinity })).toEqual({ contrast: 1, brightness: 1, saturation: 1 });
+  });
+  it("rejects unsupported native color effects before admitting a render", () => {
+    const graphic = { id: "color", text: "Color", timelineStart: 0, duration: 1 };
+    expect(() => cutGraphicSchema.parse({ ...graphic, effects: [{ kind: "color_matrix", parameters: { contrast: 8, brightness: 8, saturation: 8 } }] })).not.toThrow();
+    for (const key of ["contrast", "brightness", "saturation", "amount", "intensity"]) {
+      expect(() => cutGraphicSchema.parse({ ...graphic, effects: [{ kind: "color_matrix", parameters: { [key]: 9 } }] })).toThrow(/cannot exceed eight/);
+    }
   });
 });
