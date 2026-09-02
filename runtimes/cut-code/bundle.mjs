@@ -7,6 +7,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const runtimeRoot = path.dirname(fileURLToPath(import.meta.url));
 const allowedDependencies = new Set(['react', 'react/jsx-runtime', 'react/jsx-dev-runtime']);
+const threeModule = path.join(path.dirname(require.resolve('three')), 'three.module.js');
+const pinnedDependencies = { react: '18.3.1', 'react-dom': '18.3.1', three: '0.185.1' };
 
 export function readCapsule(bytes, entrypoint) {
   if (bytes.length > 25 * 1024 * 1024) throw new Error('Source archive exceeds 25 MB.');
@@ -30,7 +32,7 @@ export function readCapsule(bytes, entrypoint) {
   const manifest = JSON.parse(new TextDecoder().decode(files['package.json']));
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('Invalid package manifest.');
   for (const [name, version] of Object.entries(manifest.dependencies ?? {})) {
-    if (!['react', 'react-dom'].includes(name) || version !== '18.3.1') throw new Error('This runtime accepts only its pinned React 18.3.1 dependency set.');
+    if (!Object.hasOwn(pinnedDependencies, name) || version !== pinnedDependencies[name]) throw new Error('This runtime accepts only its exact pinned React/Three dependency set.');
   }
   return files;
 }
@@ -44,8 +46,12 @@ export async function bundleCapsule(files, entrypoint) {
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'private-capsule', setup(plugin) {
       plugin.onResolve({ filter: /^capsule-entry$/ }, () => ({ path: entrypoint, namespace: 'capsule' }));
+      // One pinned ESM instance is shared with the approved SVG addon. No
+      // arbitrary Three addon, package installation or remote import is allowed.
+      plugin.onResolve({ filter: /^three$/ }, () => ({ path: threeModule }));
       plugin.onResolve({ filter: /.*/, namespace: 'capsule' }, (args) => {
         if (args.path === '@creativesos/cut') return { path: path.join(runtimeRoot, 'sdk.jsx') };
+        if (args.path === 'three/addons/renderers/SVGRenderer.js') return { path: require.resolve(args.path) };
         if (allowedDependencies.has(args.path)) return { path: require.resolve(args.path) };
         if (!args.path.startsWith('./') && !args.path.startsWith('../')) throw new Error('Only capsule-relative modules and the pinned React/CutStudio SDK are supported.');
         const name = path.posix.normalize(path.posix.join(path.posix.dirname(args.importer), args.path));

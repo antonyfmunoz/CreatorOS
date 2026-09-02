@@ -80,6 +80,31 @@ const posterProbe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_en
 assert.deepEqual(posterProbe.streams[0], { width: 321, height: 181 });
 records.push({ test: 'odd-sized-late-frame-poster', ...latePoster.receipt });
 console.log('PASS odd-sized still at a late absolute frame without rendering the whole timeline');
+const threeSource = capsule(`import {useRef,useMemo,useLayoutEffect} from 'react';import {Scene,PerspectiveCamera,BoxGeometry,PlaneGeometry,Mesh,MeshBasicMaterial} from 'three';import {SVGRenderer} from 'three/addons/renderers/SVGRenderer.js';import {useFrame,useComposition,useInputs} from '@creativesos/cut';
+export default function SceneView(){const frame=useFrame(),config=useComposition(),input=useInputs(),host=useRef(null);const view=useMemo(()=>{const scene=new Scene(),camera=new PerspectiveCamera(50,config.width/config.height,.1,100),renderer=new SVGRenderer();renderer.setSize(config.width,config.height);renderer.setPrecision(5);const back=new Mesh(new PlaneGeometry(20,20),new MeshBasicMaterial({color:'#0000ff'}));back.position.z=-1;scene.add(back);const box=new Mesh(new BoxGeometry(1.2,1.2,1.2),new MeshBasicMaterial({color:'#ff0000'}));scene.add(box);return {scene,camera,renderer,box,back};},[]);useLayoutEffect(()=>{view.camera.position.z=input.cameraZ??4;view.box.position.x=frame*1.3/20;view.box.rotation.y=frame/30;view.box.rotation.x=frame/100;view.renderer.render(view.scene,view.camera);host.current.replaceChildren(view.renderer.domElement);},[frame,input.cameraZ]);return <div ref={host}/>;}`);
+const threeFrames = [];
+for (const [name, frame, cameraZ] of [['near',0,4],['moving',20,4],['far',0,6]]) {
+  const rendered = await renderIsolated({ request: { ...request, frame, input: { cameraZ } }, source: threeSource, image });
+  await writeFile(`${directory}three-${name}.png`, rendered.artifact);
+  threeFrames.push(rendered);
+  records.push({ test: `private-three-vector-${name}`, ...rendered.receipt });
+}
+assert.deepEqual(pixel(threeFrames[0].artifact,160,90),[255,0,0,255]);
+assert.deepEqual(pixel(threeFrames[1].artifact,160,90),[0,0,255,255]);
+assert.deepEqual(pixel(threeFrames[1].artifact,220,90),[255,0,0,255]);
+const redArea = artifact => {const decoded=execFileSync('ffmpeg',['-v','error','-i','pipe:0','-f','rawvideo','-pix_fmt','rgba','pipe:1'],{input:artifact,maxBuffer:2_000_000,windowsHide:true});let area=0;for(let i=0;i<decoded.length;i+=4)if(decoded[i]>240&&decoded[i+1]<15&&decoded[i+2]<15)area++;return area;};
+assert.ok(redArea(threeFrames[0].artifact)>1000);
+assert.ok(redArea(threeFrames[2].artifact)<redArea(threeFrames[0].artifact)*.6,'A farther perspective camera must reduce the projected geometry area');
+console.log('PASS actual pinned Three geometry, depth ordering, frame motion and perspective camera pixels');
+const threeVideo = await renderIsolated({ request: { ...request, mode: 'video', frameRange: [0, 5], input: { cameraZ: 4 } }, source: threeSource, image });
+const threeVideoPath = `${directory}three-motion.mp4`;
+await writeFile(threeVideoPath, threeVideo.artifact);
+const threeProbe = JSON.parse(execFileSync('ffprobe', ['-v','error','-show_entries','stream=nb_frames,width,height','-of','json',threeVideoPath], { encoding:'utf8',windowsHide:true }));
+assert.equal(Number(threeProbe.streams[0].nb_frames),6);
+const centroids = [0,5].map(frame => {const raw=execFileSync('ffmpeg',['-v','error','-i',threeVideoPath,'-vf',`select=eq(n\\,${frame})`,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{maxBuffer:2_000_000,windowsHide:true});let total=0,area=0;for(let i=0;i<raw.length;i+=3)if(raw[i]>220&&raw[i+1]<30&&raw[i+2]<30){total+=(i/3)%320;area++;}assert.ok(area>1000);return total/area;});
+assert.ok(centroids[1]-centroids[0]>10,'Encoded Three video must advance actual geometry between frames');
+records.push({ test:'private-three-motion-video',...threeVideo.receipt,probe:threeProbe });
+console.log('PASS actual six-frame Three video with decoded geometry movement');
 const motionSource = capsule(`import {FullFrame,Sequence,Repeat,Freeze,useFrame,useGlobalFrame,interpolate,easing,spring,interpolateColor,seededRandom} from '@creativesos/cut';
 function Probe(){const local=useFrame(),global=useGlobalFrame();return <div style={{position:'absolute',left:0,top:0,width:40,height:40,background:local===4&&global===20?'#00ff00':'#ff0000'}}/>;}
 function Frozen(){return <div style={{position:'absolute',left:40,top:0,width:40,height:40,background:useFrame()===7&&useGlobalFrame()===20?'#00ff00':'#ff0000'}}/>;}

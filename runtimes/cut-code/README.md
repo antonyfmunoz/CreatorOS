@@ -11,6 +11,14 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
+- The MIT-licensed Three.js 0.185.1 core and its explicitly approved SVGRenderer
+  addon can be imported by private source. This enables frame-driven geometry,
+  perspective cameras, depth ordering and vector-shaded motion graphics without
+  granting network imports or arbitrary addons. The dependency must be exact;
+  ranges, other versions and unapproved addons fail admission/bundling. GPU
+  WebGL/WebGPU compatibility is not qualified by the SVG tests. SVGRenderer does
+  not support textures, shadows or advanced shading; it is not a replacement
+  for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - `FrameVideo` seeks a capsule-local MP4/WebM import at the local composition
