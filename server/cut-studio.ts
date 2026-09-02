@@ -9,6 +9,7 @@ import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
 import { createCutNativeBrowserSession } from "./cut-native-browser-session";
 import { cutPreparationProgress } from "./cut-preparation-progress";
+import { cutWorkerRuntimeId } from "./cut-worker-identity";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -339,7 +340,7 @@ const cutKinds = ["render", "proxy", "highlights", "transcribe"] as const;
 
 export function cutWorkerIdentity(environment: NodeJS.ProcessEnv = process.env) {
   return normalizeMediaWorkerConfiguration({
-    id: environment.CUT_WORKER_ID || `${os.hostname()}:${process.pid}:cut`,
+    id: cutWorkerRuntimeId(environment, `${os.hostname()}:${process.pid}:cut`, process.pid),
     region: environment.CUT_WORKER_REGION || environment.FLY_REGION || "local",
     capabilities: environment.CUT_WORKER_CAPABILITIES,
     maxConcurrency: environment.CUT_WORKER_CONCURRENCY,
@@ -1242,6 +1243,9 @@ export async function processCutStudioJob(jobId: string) {
     const now = new Date();
     const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken, now);
     if (!claimed) return;
+    // Correlate a durable claim with its Cloud execution without logging the
+    // lease token, owner content, request payload or private asset URLs.
+    process.stdout.write(`${JSON.stringify({ event: "cut.job.claimed", jobId, workerId: cutWorker.id, kind: claimed.kind })}\n`);
     await heartbeatCutWorker();
     leaseHeartbeat = setInterval(() => {
       const heartbeatAt = new Date();
