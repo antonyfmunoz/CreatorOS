@@ -9,8 +9,10 @@ import { qualifyAudioOnly } from './qualify-audio-only.mjs';
 import { qualifyGif } from './qualify-gif.mjs';
 import { qualifyProres } from './qualify-prores.mjs';
 
-const image = execFileSync('docker', ['image', 'inspect', 'creativesos-cut-code:qualification', '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
-const directory = fileURLToPath(new URL('./qualification-output/', import.meta.url));
+const variant = process.env.CUT_CODE_IMAGE_VARIANT ?? 'qualification';
+if (!['qualification', 'production-candidate'].includes(variant)) throw new Error('Unsupported qualification image variant.');
+const image = execFileSync('docker', ['image', 'inspect', `creativesos-cut-code:${variant}`, '--format', '{{.Id}}'], { encoding: 'utf8', windowsHide: true }).trim();
+const directory = fileURLToPath(new URL(`./qualification-output/${variant === 'production-candidate' ? 'production-candidate/' : ''}`, import.meta.url));
 await mkdir(directory, { recursive: true });
 const request = { version: 1, mode: 'still', width: 320, height: 180, fps: 30, durationInFrames: 30, frame: 0, entrypoint: 'src/main.tsx', input: { title: 'CreativesOS' } };
 const capsule = (code, extras = {}) => Buffer.from(zipSync({ 'package.json': strToU8('{"dependencies":{"react":"18.3.1"}}'), 'src/main.tsx': strToU8(code), ...extras }));

@@ -50,3 +50,59 @@ jobs:
           path: runtimes/cut-code/qualification-output/
           retention-days: 7
           if-no-files-found: warn
+
+  production-candidate:
+    name: Candidate image pixels and vulnerability gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: runtimes/cut-code
+    env:
+      CUT_CODE_IMAGE_VARIANT: production-candidate
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: runtimes/cut-code/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm audit --audit-level=moderate
+      - name: Install artifact inspection tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Build pinned parent and remove unused runtime components
+        run: |
+          docker build -t creativesos-cut-code:qualification .
+          parent="$(docker image inspect creativesos-cut-code:qualification --format '{{.Id}}')"
+          [[ "$parent" =~ ^sha256:[a-f0-9]{64}$ ]]
+          parent_tag="creativesos-cut-code-parent:${parent#sha256:}"
+          docker tag "$parent" "$parent_tag"
+          test "$(docker image inspect "$parent_tag" --format '{{.Id}}')" = "$parent"
+          docker build -f Dockerfile.production --build-arg "CUT_CODE_QUALIFIED_IMAGE=$parent_tag" -t creativesos-cut-code:production-candidate .
+          test "$(docker image inspect "$parent_tag" --format '{{.Id}}')" = "$parent"
+      - name: Prove the same pixels, audio, cancellation and isolation boundaries
+        run: npm run qualify
+      - name: Install checksum-pinned vulnerability scanner
+        run: |
+          mkdir -p "$RUNNER_TEMP/cut-trivy"
+          curl --fail --location --connect-timeout 20 --max-time 120 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz \
+            --output "$RUNNER_TEMP/cut-trivy/trivy.tar.gz"
+          printf '%s  %s\n' '2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a' "$RUNNER_TEMP/cut-trivy/trivy.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/cut-trivy/trivy.tar.gz" -C "$RUNNER_TEMP/cut-trivy" trivy
+      - name: Block promotion on high or critical OS and package vulnerabilities
+        run: |
+          "$RUNNER_TEMP/cut-trivy/trivy" image --scanners vuln --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m --format json \
+            --output qualification-output/production-candidate/vulnerabilities.json \
+            creativesos-cut-code:production-candidate
+      - name: Retain candidate evidence including unsuccessful scans
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cut-code-production-candidate-evidence
+          path: runtimes/cut-code/qualification-output/production-candidate/
+          retention-days: 7
+          if-no-files-found: warn

@@ -36,12 +36,14 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 
 ## Release blockers versus implementation
 
-1. The stylesheet bundler's generated-code finding must be fixed in source and
-   verified by CodeQL, not dismissed merely because another layer escaped HTML.
-   Structured CSS data transfer is the candidate correction.
-2. The production image candidate is separately blocked by HIGH/CRITICAL
-   vulnerabilities. Passing the local Playwright image is not approval to
-   expose untrusted customer code. No ignore list or lowered gate is authorized.
+1. Structured CSS data transfer fixed the stylesheet generated-code finding;
+   CodeQL and the full protected suite passed before PR 141 merged. Exact
+   production release qualification remains distinct from those source checks.
+2. The older Trixie image remains blocked. The lean Noble candidate removed
+   unused vulnerable components and passed the full local artifact suite plus
+   a fresh zero HIGH/CRITICAL scan. Protected candidate CI, approved isolation
+   topology and actual public service qualification remain required. No ignore
+   list or lowered gate is authorized.
 3. The ordinary GCP worker holds application/provider credentials. It must never
    become the executable-capsule worker by simply importing the prototype.
 4. Existing public capsule CPU/memory/output declarations do not yet match the
