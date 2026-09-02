@@ -73,6 +73,28 @@ assert.deepEqual(pixel(transparent.artifact), [0, 0, 0, 0]);
 assert.deepEqual(pixel(transparent.artifact, 20, 20), [255, 0, 255, 255]);
 records.push({ test: 'transparent-png-and-input-binding', ...transparent.receipt });
 console.log('PASS direct transparent composition PNG and input-bound output');
+const cssSource = capsule(`import {useLayoutEffect} from 'react';import {useFrame} from '@creativesos/cut';import './styles/theme.css';import a from './styles/a.module.css';import b from './styles/b.module.css';export default function Scene(){const f=useFrame();useLayoutEffect(()=>{void document.fonts.load('24px PrivateBrand').then(fonts=>{if(fonts.length!==1||fonts[0].status!=='loaded')throw Error('Private CSS font did not load');});},[]);return <><div className={a.box} style={{left:20+f*2,top:20}}/><div className={b.box} style={{left:130,top:20}}/><div className="private-image"/><div className="private-font">Private typography</div></>}`, {
+  'src/styles/theme.css': strToU8('@import "palette.css"; @font-face {font-family:PrivateBrand;src:url(../../assets/brand.ttf) format("truetype");} body{background:var(--background)} .private-image{position:absolute;left:220px;top:20px;width:40px;height:40px;background:url(../../assets/brand.svg)} .private-font{position:absolute;left:20px;top:90px;font-family:PrivateBrand;font-size:24px;color:white} .escaped::after{content:"</SCRIPT><div>not markup</div>";}'),
+  'src/styles/palette.css': strToU8(':root{--background:#000000}'),
+  'src/styles/base.module.css': strToU8('.base{position:absolute;width:40px;height:40px}'),
+  'src/styles/a.module.css': strToU8('.box{composes:base from "base.module.css";background:#00ff00}'),
+  'src/styles/b.module.css': strToU8('.box{composes:base from "base.module.css";background:#0000ff}'),
+  'assets/brand.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path fill="#ff00ff" d="M0 0h40v40H0z"/></svg>'),
+  'assets/brand.ttf': await readFile(new URL('../../shared/assets/cut-fonts/NotoSans-Variable.ttf', import.meta.url)),
+});
+for (const frame of [0, 20]) {
+  const rendered = await renderIsolated({ request: { ...request, frame }, source: cssSource, image });
+  assert.deepEqual(pixel(rendered.artifact, 30 + frame * 2, 30), [0, 255, 0, 255], 'CSS module composition must keep frame-driven positioning.');
+  assert.deepEqual(pixel(rendered.artifact, 140, 30), [0, 0, 255, 255], 'Identically named classes in different modules must not collide.');
+  assert.deepEqual(pixel(rendered.artifact, 230, 30), [255, 0, 255, 255], 'Stylesheet image URLs must embed private assets.');
+  assert.deepEqual(pixel(rendered.artifact), [0, 0, 0, 255], 'Nested stylesheet imports must apply before capture.');
+  if (frame === 20) assert.deepEqual(pixel(rendered.artifact, 30, 30), [0, 0, 0, 255]);
+  await writeFile(`${directory}private-css-${frame}.png`, rendered.artifact);
+  records.push({ test: `private-css-modules-assets-frame-${frame}`, ...rendered.receipt });
+}
+const cssReplay = await renderIsolated({ request: { ...request, frame: 0 }, source: cssSource, image });
+assert.equal(cssReplay.receipt.artifactSha256, records.find((item) => item.test === 'private-css-modules-assets-frame-0').artifactSha256, 'Imported stylesheet output must be reproducible.');
+console.log('PASS actual private CSS imports/modules, scoped classes, font/image URLs, frame motion and replay');
 const latePoster = await renderIsolated({ request: { ...request, width: 321, height: 181, durationInFrames: 108000, frame: 107999 }, source: capsule(`import {FullFrame,useFrame} from '@creativesos/cut';export default ()=> <FullFrame style={{background:useFrame()===107999?'#00ff00':'#ff0000'}}/>`), image });
 assert.deepEqual(pixel(latePoster.artifact), [0, 255, 0, 255]);
 await writeFile(`${directory}late-frame-poster.png`, latePoster.artifact);

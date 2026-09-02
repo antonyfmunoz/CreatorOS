@@ -46,7 +46,7 @@ try {
   page.setDefaultTimeout(10_000);
   const nonce = randomBytes(20).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
-  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replaceAll('</script', '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
+  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replace(/<\/script/gi, '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
   const outputPath = `/tmp/artifact.${output.extension}`;
   const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;

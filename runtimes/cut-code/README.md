@@ -11,6 +11,15 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
+- Capsule-relative CSS imports and CSS modules support reusable motion-design
+  styles. Nested `@import`, module `composes`, and private image/font `url(...)`
+  references stay inside the archive and are bundled before rendering. Local
+  SVG fragment references are allowed; remote, host and package stylesheet
+  resources fail admission. CSS and JavaScript share the existing 25 MB compiled
+  limit. No Sass, Tailwind build, PostCSS plugins or external font fetch is run.
+  Styles are installed before source execution and private font readiness.
+  As with inline styles, motion must be driven by composition frames, not
+  wall-clock CSS animations or transitions.
 - The MIT-licensed Three.js 0.185.1 core and its explicitly approved SVGRenderer
   addon can be imported by private source. This enables frame-driven geometry,
   perspective cameras, depth ordering and vector-shaded motion graphics without
@@ -53,7 +62,7 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   CPU, memory, deadline and byte limits. It is not ProRes, HDR or universal-device
   playback support. Private WebM overlays can be reused through `FrameVideo`.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
-  WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC. Tracks have a composition start frame,
+  WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
   exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
   Range exports retain original audio timing rather than restarting soundtracks.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names

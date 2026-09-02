@@ -26,3 +26,37 @@ test('allows private relative TSX imports and rejects escaping archive paths', a
   assert.ok(await bundleCapsule(files, 'src/index.tsx'));
   assert.throws(() => readCapsule(archive('export default null', { '../escape': strToU8('no') }), 'src/index.tsx'));
 });
+
+test('bundles nested private styles, local module names, composition and image URLs', async () => {
+  const files = readCapsule(archive(`import './theme.css'; import styles from './title.module.css'; export default () => <h1 className={styles.title}>Private title</h1>`, {
+    'src/theme.css': strToU8('@import "palette.css"; h1 { color: red; }'),
+    'src/palette.css': strToU8(':root { --brand: #00ff00; }'),
+    'src/title.module.css': strToU8('.title { composes: base from "base.module.css"; color: var(--brand); background-image: url(../assets/logo.svg); filter:url(#shadow); }'),
+    'src/base.module.css': strToU8('.base { font-weight: bold; }'),
+    'assets/logo.svg': strToU8('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><path fill="blue" d="M0 0h2v2H0z"/></svg>'),
+  }), 'src/index.tsx');
+  const bundle = await bundleCapsule(files, 'src/index.tsx');
+  assert.ok(bundle.startsWith('(()=>{const style=document.createElement'));
+  assert.ok(bundle.includes('title_title'));
+  assert.ok(bundle.includes('base_base'));
+  assert.ok(bundle.includes('data:image/svg+xml'));
+  assert.ok(bundle.includes('--brand'));
+  assert.ok(bundle.includes('#shadow'));
+});
+
+test('rejects network, host, missing and unsupported stylesheet dependencies', async () => {
+  const attempts = [
+    '@import "https://example.invalid/style.css";', '@import "//example.invalid/style.css";',
+    '@import "file:///etc/passwd";', '@import "../../outside.css";', '@import "missing.css";',
+    '.x { background: url(https://example.invalid/a.png); }', '.x { background: url(/etc/passwd); }',
+    '.x { background: url(data:image/png;base64,AAAA); }', '.x { background: url(../secret.json); }',
+    '.x { background: url(../assets/a.png?query=yes); }',
+    '.x { composes: other from "https://example.invalid/style.css"; }',
+  ];
+  for (const css of attempts) {
+    const files = readCapsule(archive(`import styles from './x.module.css'; export default () => <div className={styles.x}/>`, {
+      'src/x.module.css': strToU8(css), 'secret.json': strToU8('{}'),
+    }), 'src/index.tsx');
+    await assert.rejects(bundleCapsule(files, 'src/index.tsx'), undefined, css);
+  }
+});
