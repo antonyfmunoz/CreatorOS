@@ -102,3 +102,12 @@ The timeline correctly stops at its end; forcing the media element's loop flag
 does not override that contract. The fixture now lasts 60 seconds, longer than
 the unchanged 45-second test deadline, without forcing loop. Evidence remains
 at `creativesos-browser-qualification-3964eab1c2554ebea0909330b4f0e7de`.
+
+Source `5b1a748c1940f1ff4b02149de7570a0e6cb10175` passed the corrected audio
+repeat: six tests (three per device) in 1.8 minutes, no retries. Evidence:
+`creativesos-browser-qualification-7616185816cb4f24b09cbb8398c2a238`.
+Protected Verify `33676259215` and CodeQL `33676259244` passed; inspected logs
+contain 178 mobile and 154 desktop passes, 24 existing desktop skips and no
+reported retries/flaky cases. Core, database and both native shell builds passed.
+PR 159 merged at `ebf4d7ef24832d7454761d1874806c83f083ca1b`. Production promotion
+and broader Remotion comparisons remain open.
