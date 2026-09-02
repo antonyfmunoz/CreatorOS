@@ -23,6 +23,13 @@ declare module '@creativesos/cut' {
   export function useComposition(): CompositionConfig;
   /** Types are authoring assistance, not validation of supplied JSON values. */
   export function useInputs<T extends object = Record<string, unknown>>(): Readonly<T>;
+  export type FramePreparation = { readonly __framePreparation: unique symbol };
+  /** Blocks capture until released. Default 10 seconds; bounded to 1..30000 ms. */
+  export function holdFrame(options?: { timeoutMs?: number }): FramePreparation;
+  /** Idempotent for an already released handle from this composition. */
+  export function releaseFrame(handle: FramePreparation): void;
+  /** Permanently fails this render; authored error contents are not exported. */
+  export function failRender(): void;
 
   export function FullFrame(props: HTMLAttributes<HTMLDivElement>): ReactNode;
   export function Sequence(props: { at?: number; duration?: number; children?: ReactNode }): ReactNode;

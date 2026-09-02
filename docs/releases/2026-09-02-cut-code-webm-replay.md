@@ -39,5 +39,11 @@ not a promise that arbitrary dates, randomness, asynchronous source code, other
 encoder versions or every codec will produce identical bytes. It is not a broad
 Remotion parity or production security claim.
 
+Independent runtime CI `33621171596` subsequently passed both isolated-image
+jobs, including the candidate vulnerability gate. Downloaded candidate artifacts
+at `B:/CreativesOS-task-artifacts/webm-replay-ci-33621171596` independently match
+the CRF 8 hash above; its retained vulnerability JSON contains zero HIGH/CRITICAL
+findings. Public application/browser/release gates remain separate.
+
 Reference: [FFmpeg format options](https://ffmpeg.org/ffmpeg-formats.html), output
 `bitexact` semantics. No competitor source or package was copied.

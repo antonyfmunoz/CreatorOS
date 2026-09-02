@@ -35,6 +35,17 @@ production topology approval or enable public code execution.
   for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
+- Explicit asynchronous preparation: `holdFrame({timeoutMs})` returns an opaque
+  handle; `releaseFrame(handle)` lets capture proceed only when every hold clears.
+  `failRender()` permanently rejects the current render without exporting private
+  exception content. The default hold is 10 seconds, maximum 30 seconds, with at
+  most 64 pending handles. Deadlines begin at acquisition and cannot be reset by
+  releasing an expired handle. Release is idempotent for cleanup. Hold before
+  starting work, commit its state before release, and clean up on unmount. The
+  renderer flushes React state and rechecks media/fonts and readiness after paint,
+  with at most eight settlement rounds. Network access remains prohibited and
+  the independent host deadline still wins. See the
+  [actual async-frame receipt](../../docs/releases/2026-09-02-cut-code-frame-readiness.md).
 - `FrameVideo` seeks a capsule-local MP4/WebM import at the local composition
   frame, with source offset, speed, repetition and end-frame freeze. It uses
   `startFrom` in composition-frame units, `speed` in `(0, 8]`, and `repeat` as a
@@ -160,8 +171,10 @@ production topology approval or enable public code execution.
   unmetered fan-out. Stills can address any valid frame without rendering earlier
   frames. Odd dimensions are supported for images; H.264 retains even dimensions.
 
-The runtime is deliberately not a general JavaScript timing engine: asynchronous
-state and arbitrary timers are not a reproducibility contract. Video codec/VFR
+The runtime is deliberately not a general JavaScript timing engine: unregistered
+asynchronous state and arbitrary timers are not a reproducibility contract.
+Explicit frame holds coordinate preparation, but cannot make nondeterministic
+source data deterministic or grant external network access. Video codec/VFR
 compatibility beyond the qualified MP4 fixtures, per-frame React audio envelopes,
 automatic React video-audio lifecycle mixing, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.

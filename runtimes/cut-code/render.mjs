@@ -94,6 +94,10 @@ try {
   for (let frame = first; frame < last; frame += frameStep) {
     await page.evaluate(async ({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
+      // Preparation may introduce new images/fonts/media or effects. Recheck
+      // after browser settlement instead of capturing an early placeholder.
+      for (let settlement = 0; settlement < 8; settlement++) {
+      const revision = await window.__cutWaitForFrame();
       await document.fonts.ready;
       await Promise.all([...document.images].map((image) => image.decode()));
       const waitForMedia = (video, event, action) => new Promise((resolve, reject) => {
@@ -135,6 +139,9 @@ try {
       // Time-dependent animation is not part of the frame-driven SDK contract.
       for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = frame * 1000 / config.fps; }
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (await window.__cutWaitForFrame() === revision) return;
+      }
+      throw new Error('Composition frame preparation did not settle.');
     }, { frame, config, input: request.input });
     if (pageFailed) throw new Error('Composition execution failed.');
     let png = await page.screenshot({ type: request.format === 'jpeg' ? 'jpeg' : 'png', ...(request.format === 'jpeg' ? { quality: request.quality } : {}), omitBackground: (request.mode !== 'video' || ['webm', 'gif'].includes(request.format) || (request.format === 'mov' && request.proresProfile !== '422hq')) && request.format !== 'jpeg', timeout: 10_000 });

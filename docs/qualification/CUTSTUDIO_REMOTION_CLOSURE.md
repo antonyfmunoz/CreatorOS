@@ -25,7 +25,7 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | Area | Evidence available | Still required for direct substitution |
 | --- | --- | --- |
 | Native declarative compositions | Owned manifests, parameter batches, private rendering, typography/fitting production artifacts | Larger representative content, editing ergonomics and quality/time comparisons |
-| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images | Public editor/player/render path; broader approved dependencies; safe error reporting |
+| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded explicit frame holds/cancellation with actual async pixels and replay tests | Public editor/player/render path; broader approved dependencies; safe user-facing error reporting and preview buffering |
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
 | 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
 | Media | Private MP4/WebM frame seek/retime/repeat, image/font resources and alpha-overlay reuse | VFR and broad decoder matrix, long media, edge cases and lifecycle-synchronized source sound |
@@ -60,7 +60,8 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
    clips, not all graphics, tracks, effects or final-frame composition.
 6. WebM container replay initially failed despite equal decoded pixels. The
    reproducible-metadata fix passed all local isolated/candidate tests and a
-   zero HIGH/CRITICAL scan; independent protected CI remains a separate gate.
+   zero HIGH/CRITICAL scan. Runtime CI 33621171596 independently reproduced both
+   suites and the scan; application/browser/release gates remain separate.
 7. Google management reauthentication is required for the pending execution
    receipt and subsequent worker promotion. This is a credential gate, not
    evidence that all remaining implementation is external.
