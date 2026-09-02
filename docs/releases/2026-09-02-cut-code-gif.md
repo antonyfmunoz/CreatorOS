@@ -33,6 +33,14 @@ and the aggregate receipt; local logs `gif-unit.log`, `gif-image.log`, and
 `gif-isolated.log` under `B:/CreativesOS-task-artifacts`.
 
 Protected CI must independently qualify the immutable candidate before merge.
+The isolated runtime check subsequently passed in run
+[`33610439488`](https://github.com/antonyfmunoz/CreatorOS/actions/runs/33610439488)
+for candidate `3dcb74fa7f6a01a9d9dd09a9ca8e0a3479dcd06c`. Its retained
+`sampled-infinite.gif` matches the local artifact exactly:
+`04c5b84584ca65336e7272d3961ebc3aec8b4829c55e4b4ac714473bdf50a024`.
+This proves that bounded GIF case across the two environments, not production
+code execution or general cross-version deterministic encoding.
+
 No Remotion source or package was imported. Public API behavior references:
 [Remotion GIF rendering](https://www.remotion.dev/docs/render-as-gif) and
 [FFmpeg GIF muxer timing](https://ffmpeg.org/ffmpeg-formats.html#gif-1).

@@ -3,6 +3,25 @@ function dimension(value: number) {
   return value;
 }
 
+/** Match source-aspect scaling for a fixed multitrack canvas, including SAR and
+ * the quarter-turn display rotation FFmpeg applies before filtering. */
+export function cutSourceRenditionSize(source: { width?: number; height?: number; sampleAspectRatio?: string; rotation?: number }, height: number): [number, number] {
+  dimension(height);
+  if (!Number.isFinite(source.width) || !Number.isFinite(source.height) || source.width! <= 0 || source.height! <= 0) throw new Error("Source video geometry is unavailable");
+  const sar = source.sampleAspectRatio;
+  let pixelAspect = 1;
+  if (sar && sar !== "N/A" && sar !== "0:1") {
+    const parts = sar.split(":").map(Number);
+    if (parts.length !== 2 || parts.some((value) => !Number.isFinite(value) || value <= 0)) throw new Error("Source pixel aspect is invalid");
+    pixelAspect = parts[0] / parts[1];
+  }
+  let aspect = source.width! * pixelAspect / source.height!;
+  const rotation = source.rotation ?? 0;
+  if (!Number.isFinite(rotation)) throw new Error("Source rotation is invalid");
+  if (Math.abs(Math.abs(rotation % 180) - 90) < .001) aspect = 1 / aspect;
+  return [Math.max(2, Math.trunc(Math.min(3840, height * aspect) / 2) * 2), Math.max(2, Math.trunc(Math.min(height, 3840 / aspect) / 2) * 2)];
+}
+
 /** Fit displayed source geometry, then remove inherited anamorphic metadata. */
 export function cutFitVideoFilters(width: number, height: number): string[] {
   dimension(width); dimension(height);

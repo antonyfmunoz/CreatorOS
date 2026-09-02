@@ -2,7 +2,7 @@ import type { Express, RequestHandler, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
-import { cutFitVideoFilters, cutSourceVideoFilters } from "./cut-video-geometry";
+import { cutFitVideoFilters, cutSourceVideoFilters, cutSourceRenditionSize } from "./cut-video-geometry";
 import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -527,8 +527,9 @@ async function probeMedia(url: string) {
     child.on("error", reject);
     child.on("close", (code) => code === 0 ? resolve() : reject(new Error("ffprobe could not inspect the source media")));
   });
-  const streams = (JSON.parse(stdout).streams ?? []) as Array<{ codec_type?: string }>;
-  return { hasVideo: streams.some((stream) => stream.codec_type === "video"), hasAudio: streams.some((stream) => stream.codec_type === "audio") };
+  const streams = (JSON.parse(stdout).streams ?? []) as Array<{ codec_type?: string; width?: number; height?: number; sample_aspect_ratio?: string; side_data_list?: Array<{ rotation?: number }>; tags?: { rotate?: string } }>;
+  const video = streams.find((stream) => stream.codec_type === "video");
+  return { hasVideo: Boolean(video), hasAudio: streams.some((stream) => stream.codec_type === "audio"), videoGeometry: video ? { width: video.width, height: video.height, sampleAspectRatio: video.sample_aspect_ratio, rotation: video.side_data_list?.find((side) => side.rotation !== undefined)?.rotation ?? Number(video.tags?.rotate ?? 0) } : null };
 }
 
 async function cutStudioFontFilter(customFontPath?: string) {
@@ -648,7 +649,7 @@ async function renderMultitrack(
     const inputPath = path.join(temp, `source-${index}${extension}`);
     await materializePrivateAsset(asset.storageKey, inputPath);
     const rendererResource = ["cut-font", "cut-lottie", "cut-rive", "cut-code-source", "cut-code-lockfile"].includes(asset.kind);
-    return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false } : await probeMedia(inputPath) };
+    return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false, videoGeometry: null } : await probeMedia(inputPath) };
   }));
   // Fonts and validated animation documents are renderer resources rather
   // than audiovisual demuxer inputs. Keep them addressable while excluding
@@ -663,13 +664,13 @@ async function renderMultitrack(
   const trackGain = (track: string) => cutTrackEffectiveGain(track, trackSettings, audioBuses);
   const primaryClips = clips.filter((clip) => (clip.track ?? "v1") === "v1");
   if (!primaryClips.length) throw new Error("A multitrack edit requires a primary video track");
-  const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.every((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
+  const primaryHasAudio = audioTrackEnabled("v1") && primaryClips.some((clip) => inputById.get(clip.assetId ?? source.id)?.media.hasAudio);
   const duckingClips = primaryHasAudio ? clips.filter((clip) => (clip.track ?? "").startsWith("a") && audioTrackEnabled(clip.track ?? "a1") && clip.duckUnderVoice && inputById.get(clip.assetId ?? "")?.media.hasAudio) : [];
   const filters: string[] = [];
   const primaryDurations: number[] = [];
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
-  const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" || request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
   for (let index = 0; index < primaryClips.length; index += 1) {
     const clip = primaryClips[index];
     const assetId = clip.assetId ?? source.id;
@@ -686,11 +687,15 @@ async function renderMultitrack(
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
     filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
-    if (primaryHasAudio) {
-      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain("v1"))}':eval=frame`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo"];
+    if (primaryHasAudio && media.hasAudio) {
+      const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain("v1"))}':eval=frame`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo", "apad", `atrim=duration=${outputDuration}`];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
       if (fadeOut > 0) audioFilters.push(`afade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
       filters.push(`[${sourceIndex}:a]${audioFilters.join(",")}[basea${index}]`);
+    } else if (primaryHasAudio) {
+      // A silent camera angle must not erase sound from all the other clips or
+      // collapse their timeline offsets when the primary soundtrack is joined.
+      filters.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${outputDuration},asetpts=PTS-STARTPTS[basea${index}]`);
     }
   }
   let primaryVideoLabel = "basev0";
@@ -1027,7 +1032,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     const lutPaths = await materializeCutLuts(project, clips, temp);
-    if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve") || (project.edl.graphics?.length ?? 0) > 0)) {
+    if (project.edl.version === 3 && project.mediaKind === "video" && (clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
