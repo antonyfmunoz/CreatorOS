@@ -46,3 +46,12 @@ capacity assertion: **six blocked claims instead of two**. Its original nonzero
 exit and assertion are retained in
 `cut-worker-admission-negative-20260902T124030.log.errors`. The candidate worktree
 was not changed by this experiment. Browser/protected/deployment gates remain.
+
+The native browser repeat passed six checks and failed both cinema main renders
+at the existing 60-second completion bound. Evidence is retained at
+`creativesos-browser-qualification-6e40264806a54c838b94a3e3c2ec3331`. The mobile
+job spent 44 seconds before entering multitrack encoding and reached frame four
+at the deadline; desktop spent 33 seconds before encoding and remained at frame
+zero. The failures are not waived. Admission correctness does not establish
+adequate render resource behavior; bounded filter scheduling is being evaluated
+separately without changing quality, job capacity or deadlines.
