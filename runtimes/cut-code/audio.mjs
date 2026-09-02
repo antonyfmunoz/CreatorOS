@@ -80,18 +80,26 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
   // preparedTracks is a trusted in-process result of prepareAudioTracks, never
   // accepted from the request or capsule. It avoids re-reading media after frames.
   const plan = preparedTracks ?? await prepareAudioTracks(request, capsule);
-  if (!plan.length) return 0;
-  const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', '-i', inputVideo];
+  const audioOnly = request.mode === 'audio';
+  if (!plan.length && !audioOnly) return 0;
+  const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', ...(audioOnly ? [] : ['-i', inputVideo])];
   const filters = [];
   for (let index = 0; index < plan.length; index++) {
     const track = plan[index];
     args.push('-threads', '1', ...track.inputOptions, '-i', track.filename);
-    filters.push(`[${index + 1}:a:${track.audioStream ?? 0}]${audioTrackFilters(track, request.fps)}[a${index}]`);
+    filters.push(`[${index + (audioOnly ? 0 : 1)}:a:${track.audioStream ?? 0}]${audioTrackFilters(track, request.fps)}[a${index}]`);
   }
   const duration = outputContract(request).frames / request.fps;
-  filters.push(`${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`);
-  const encoding = request.format === 'webm' ? ['-c:a', 'libopus', '-b:a', '160k'] : ['-c:a', 'aac', '-b:a', '192k'];
-  args.push('-filter_complex', filters.join(';'), '-map', '0:v:0', '-map', '[mix]', '-c:v', 'copy', ...encoding, '-threads', '1', '-t', String(duration), ...(request.format === 'webm' ? [] : ['-movflags', '+faststart']), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
+  filters.push(plan.length
+    ? `${plan.map((_, index) => `[a${index}]`).join('')}amix=inputs=${plan.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95:level=false:latency=true,apad,atrim=duration=${duration}[mix]`
+    : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[mix]`);
+  const encoding = request.format === 'webm' ? ['-c:a', 'libopus', '-b:a', '160k']
+    : request.format === 'wav' ? ['-c:a', 'pcm_s16le']
+    : request.format === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', '192k']
+    : ['-c:a', 'aac', '-b:a', '192k'];
+  args.push('-filter_complex', filters.join(';'), ...(audioOnly ? ['-vn'] : ['-map', '0:v:0', '-c:v', 'copy']), '-map', '[mix]', ...encoding,
+    '-ar', '48000', '-ac', '2', '-map_metadata', '-1', '-threads', '1', '-t', String(duration),
+    ...(['mp4', 'm4a'].includes(request.format) ? ['-movflags', '+faststart'] : []), '-fs', String(MAX_ARTIFACT_BYTES), outputVideo);
   await execute('ffmpeg', args, { timeout: 20_000, maxBuffer: 16384 });
   if ((await stat(outputVideo)).size >= MAX_ARTIFACT_BYTES) throw new Error('Soundtrack output exceeds the artifact limit.');
   return plan.length;

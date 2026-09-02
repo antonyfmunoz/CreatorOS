@@ -27,7 +27,18 @@ try {
   const source = await readFile('/input/source.zip');
   const capsule = readCapsule(source, request.entrypoint);
   phase = 'audio_probe';
-  const preparedAudio = request.mode === 'video' ? await prepareAudioTracks(request, capsule) : [];
+  const hasSoundtrack = ['video', 'audio'].includes(request.mode);
+  const preparedAudio = hasSoundtrack ? await prepareAudioTracks(request, capsule) : [];
+  const outputPath = `/tmp/artifact.${output.extension}`;
+  const first = output.start;
+  const last = output.end + 1;
+  let audioTrackCount = 0;
+  if (request.mode === 'audio') {
+    // Only explicit data tracks are mixed. Capsule code is neither bundled nor
+    // executed, and no browser is started for a soundtrack-only request.
+    phase = 'audio_mix';
+    audioTrackCount = await mixAudioTracks(request, capsule, undefined, outputPath, preparedAudio);
+  } else {
   phase = 'bundle';
   const bundle = await bundleCapsule(capsule, request.entrypoint);
   phase = 'browser_start';
@@ -46,9 +57,21 @@ try {
   page.setDefaultTimeout(10_000);
   const nonce = randomBytes(20).toString('base64');
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
-  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div><script nonce="${nonce}">${bundle.replace(/<\/script/gi, '<\\/script')}</script></body></html>`, { waitUntil: 'domcontentloaded' });
+  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden}*{box-sizing:border-box}</style></head><body><div id="stage"></div></body></html>`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(({ javascript, stylesheet, nonce }) => {
+    if (stylesheet) {
+      const style = document.createElement('style');
+      style.textContent = stylesheet;
+      document.head.appendChild(style);
+    }
+    // Capsule JavaScript intentionally executes only inside this no-network,
+    // sandboxed browser. Neither source nor CSS passes through an HTML parser.
+    const script = document.createElement('script');
+    script.nonce = nonce;
+    script.textContent = javascript;
+    document.body.appendChild(script);
+  }, { ...bundle, nonce });
   const config = { width: request.width, height: request.height, fps: request.fps, durationInFrames: request.durationInFrames };
-  const outputPath = `/tmp/artifact.${output.extension}`;
   const hasAudio = request.mode === 'video' && audioPlan(request).length > 0;
   const videoPath = hasAudio ? `/tmp/silent.${output.extension}` : outputPath;
   const sequence = Object.create(null);
@@ -63,8 +86,6 @@ try {
     encoder.stdin.on('error', () => {});
     encoderDone = once(encoder, 'close');
   }
-  const first = output.start;
-  const last = output.end + 1;
   for (let frame = first; frame < last; frame++) {
     await page.evaluate(async ({ frame, config, input }) => {
       window.__cutRenderFrame(frame, config, input);
@@ -145,12 +166,13 @@ try {
   await browser.close();
   browser = undefined;
   phase = 'audio_mix';
-  const audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath, preparedAudio) : 0;
+  audioTrackCount = request.mode === 'video' ? await mixAudioTracks(request, capsule, videoPath, outputPath, preparedAudio) : 0;
+  }
   phase = 'receipt';
   const size = (await stat(outputPath)).size;
   if (!size || size >= MAX_ARTIFACT_BYTES) throw new Error('Artifact output limit exceeded.');
   const artifact = await readFile(outputPath);
-  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: last - first, start: first, end: last - 1, frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: request.mode === 'video' && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
+  const receipt = { version: 1, runtime: 'cut-code-prototype-v1', requestSha256, mode: request.mode, format: request.format, quality: request.quality, width: request.width, height: request.height, fps: request.fps, frames: last - first, start: first, end: last - 1, frame: request.mode === 'still' ? first : undefined, sourceSha256: createHash('sha256').update(source).digest('hex'), artifactSha256: createHash('sha256').update(artifact).digest('hex'), bytes: artifact.length, mediaType: output.mediaType, audioTrackCount, silent: hasSoundtrack && audioTrackCount === 0, operatingSystem: { noNewPrivileges: true, seccomp: true, effectiveCapabilities: 'none', networkInterfaces: ['lo'] } };
   process.stdout.write(JSON.stringify({ receipt, artifact: artifact.toString('base64') }));
 } catch (error) {
   // Capsule errors can contain source text. Never forward them into shared logs.

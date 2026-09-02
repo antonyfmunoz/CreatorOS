@@ -2,6 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRequest, outputContract } from './request.mjs';
 const valid = { version: 1, mode: 'still', width: 1920, height: 1080, fps: 30, durationInFrames: 60, frame: 30, entrypoint: 'src/main.tsx', input: { title: 'Launch' } };
+test('audio-only exports have separate duration, container and bounded track contracts', () => {
+  const base = { ...valid, mode: 'audio', frame: 0, durationInFrames: 3600, audioTracks: [] };
+  for (const [format, mediaType] of [['wav', 'audio/wav'], ['mp3', 'audio/mpeg'], ['m4a', 'audio/mp4']]) {
+    const request = validateRequest({ ...base, format });
+    assert.deepEqual(validateRequest(request), request);
+    assert.deepEqual(outputContract(request), { start: 0, end: 3599, frames: 3600, mediaType, extension: format });
+    assert.equal(request.quality, null);
+  }
+  assert.equal(validateRequest(base).format, 'wav');
+  const range = validateRequest({ ...base, durationInFrames: 108000, frameRange: [107970, 107999] });
+  assert.equal(outputContract(range).start, 107970);
+  for (const change of [{ durationInFrames: 3601 }, { format: 'mp4' }, { format: 'aac' }, { format: 'png' }, { quality: 90 }, { frame: 1 }, { audioTracks: Array(9).fill({ file: 'a.wav' }) }]) assert.throws(() => validateRequest({ ...base, ...change }));
+});
 test('accepts bounded frame-driven render requests', () => assert.deepEqual(validateRequest(valid), { ...valid, format: 'png', quality: null, audioTracks: [] }));
 test('rejects malformed, oversized and escaping requests before execution', () => {
   for (const change of [{ mode: 'video', frame: 0, width: 1921 }, { height: 0 }, { fps: 0 }, { fps: 61 }, { frame: 60 }, { frame: -1 }, { durationInFrames: 108001 }, { entrypoint: '../main.tsx' }, { entrypoint: '/main.tsx' }, { input: [] }, { input: { oversized: 'x'.repeat(65000) } }, { mode: 'shell' }, { version: 2 }, { mode: 'video', width: 3840, height: 2160, durationInFrames: 600 }]) assert.throws(() => validateRequest({ ...valid, ...change }));
