@@ -577,6 +577,11 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const foreignWorkflowUpdate = await request(page, owner, "PUT", `/api/cut/projects/${project.id}/generative-workflows/${runtime.workflows[0].id}`, { workflow: foreignWorkflow }, { "If-Match": String(runtime.workflows[0].revision) });
   expect(foreignWorkflowUpdate.status()).toBe(400);
 
+  const portraitName = `Portrait player ${Date.now()}`;
+  const portraitResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: portraitName, manifest: { ...sourceComposition.manifest, name: portraitName, width: 1080, height: 1920, fonts: [], layers: [sourceComposition.manifest.layers.find((layer: { kind: string }) => layer.kind === "video")] } });
+  await expectOk(portraitResponse);
+  const portrait = await portraitResponse.json();
+
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/collaborators`, { username: peerUsername, role: "reviewer" }));
   await expectOk(await request(page, peer, "GET", `/api/cut/projects/${project.id}/creative-runtime`));
   await expectOk(await request(page, peer, "GET", playerAssetTemplate.replace("{assetId}", source.id)));
@@ -584,7 +589,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect((await request(page, peer, "GET", playerAssetTemplate.replace("{assetId}", sourceCapsuleAsset.id))).status()).toBe(404);
   const reviewerMutation = await request(page, peer, "POST", `/api/cut/projects/${project.id}/generative-workflows`, { workflow: runtime.workflows[0].workflow });
   expect(reviewerMutation.status()).toBe(403);
-  const teamBatch = { ...renderBatchRequest, idempotencyKey: `e2e.team.render.${crypto.randomUUID()}`, compositionIds: renderBatchRequest.compositionIds.slice(0, 1) };
+  // Heavy effects and parameterized output are already proved above. Exercise
+  // identical job/asset authorization on a lightweight portrait composition,
+  // rather than spending the field-test deadline re-encoding those effects.
+  const teamBatch = { ...renderBatchRequest, idempotencyKey: `e2e.team.render.${crypto.randomUUID()}`, compositionIds: [portrait.id] };
   expect((await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch)).status()).toBe(403);
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/collaborators`, { username: peerUsername, role: "editor" }));
   const editorBatch = await request(page, peer, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, teamBatch);
@@ -597,10 +605,6 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}`)).status()).toBe(404);
   expect((await request(page, peer, "GET", `/api/cut/jobs/${editorJob.id}/media`)).status()).toBe(404);
   expect((await request(page, peer, "GET", playerAssetTemplate.replace("{assetId}", source.id))).status()).toBe(404);
-  const portraitName = `Portrait player ${Date.now()}`;
-  const portraitResponse = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: portraitName, manifest: { ...sourceComposition.manifest, name: portraitName, width: 1080, height: 1920, fonts: [], layers: [sourceComposition.manifest.layers.find((layer: { kind: string }) => layer.kind === "video")] } });
-  await expectOk(portraitResponse);
-  const portrait = await portraitResponse.json();
   const portraitBatch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { ...renderBatchRequest, idempotencyKey: `e2e.portrait.${crypto.randomUUID()}`, compositionIds: [portrait.id] });
   await expectOk(portraitBatch);
   const portraitJob = (await portraitBatch.json()).jobs[0];
