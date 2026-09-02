@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cutTextLayoutSchema, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 
 const cutGraphicEffectSchema = z.object({
@@ -71,6 +72,10 @@ export const cutGraphicSchema = z.object({
   x: z.number().finite().min(0).max(0.95).default(0.1),
   y: z.number().finite().min(0).max(0.95).default(0.75),
   fontSize: z.number().int().min(12).max(160).default(48),
+  // Composition fonts are measured in their authored canvas, not delivery pixels.
+  // Absent on legacy/manual graphics: preserve their existing pixel sizing.
+  fontReferenceWidth: z.number().int().min(240).max(7_680).optional(),
+  textLayout: cutTextLayoutSchema.optional(),
   fontAssetId: z.string().uuid().optional(),
   fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
@@ -118,8 +123,10 @@ export const cutGraphicSchema = z.object({
     easing: z.enum(["linear", "ease_in_out"]).default("linear"),
   })).max(50).optional(),
 }).superRefine((value, context) => {
-  if (!["path", "svg"].includes(value.kind) && value.text.length > 240) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Graphic text may contain at most 240 characters" });
+  if (value.textLayout && !value.fontReferenceWidth) context.addIssue({ code: z.ZodIssueCode.custom, path: ["fontReferenceWidth"], message: "Native text layout requires the authored canvas width" });
+  const textLimit = value.textLayout ? CUT_NATIVE_TEXT_MAX_CHARACTERS : 240;
+  if (!["path", "svg"].includes(value.kind) && value.text.length > textLimit) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `Graphic text may contain at most ${textLimit} characters` });
   }
   if (value.kind === "path" && (!value.text.trim() || value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
