@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FrameAudioCollector, loopAudioSamples, loopAudioClock, validateFrameAudio } from './frame-audio.mjs';
+import { FrameAudioCollector, loopAudioSamples, loopAudioClock, validateFrameAudio, assertLoopAudioBudget } from './frame-audio.mjs';
 import { videoSourceAudioSample } from './video-source-audio.mjs';
 import { audioPlan, audioTrackFilters, validateSoundtrackProbe } from './audio.mjs';
 import { validateRequest } from './request.mjs';
@@ -60,4 +60,18 @@ test('NTSC and uncommon frame periods keep an exact bounded intermediate sample 
   }
   assert.deepEqual(loopAudioClock(.1001), { sampleRate:50000, samples:5005 });
   assert.deepEqual(loopAudioClock(.15), { sampleRate:48000, samples:7200 });
+});
+
+test('loop PCM caches are bounded individually and across all soundtrack intervals', () => {
+  assert.equal(assertLoopAudioBudget([{ sourceLoopSeconds: .15 }, {}]), 7200 * 8);
+  assert.throws(() => assertLoopAudioBudget([{ sourceLoopSeconds: 119 + 1 / 90000 }]), /64 MiB/);
+  assert.doesNotThrow(() => assertLoopAudioBudget(Array.from({ length: 2 }, () => ({ sourceLoopSeconds: 120 }))));
+  assert.throws(() => assertLoopAudioBudget(Array.from({ length: 3 }, () => ({ sourceLoopSeconds: 120 }))), /128 MiB/);
+  const collector = new FrameAudioCollector(request);
+  const descriptors = Array.from({ length: 3 }, (_, i) => ({ ...sample(0), id: `long${i}`, sourceLoopSeconds: 120 }));
+  assert.throws(() => collector.capture(0, descriptors), /128 MiB/);
+  const track = { ...sample(0), startFrame: 0, endFrame: 600, sourceStartSeconds: 0, sourceLoopSeconds: 120 };
+  assert.throws(() => audioPlan({ ...request, audioTracks: [track,track,track] }), /128 MiB/);
+  const [plan] = audioPlan({ ...request, audioTracks: [track] });
+  assert.match(audioTrackFilters(plan, 30), /aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=/);
 });

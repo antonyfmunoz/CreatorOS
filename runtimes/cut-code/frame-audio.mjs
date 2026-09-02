@@ -26,6 +26,21 @@ export function loopAudioClock(seconds) {
 }
 export function loopAudioSamples(seconds) { return loopAudioClock(seconds).samples; }
 
+// The loop filter is explicitly negotiated to stereo float32 before caching.
+// Bound retained PCM separately from the container's total-memory enforcement;
+// input decoder buffers, resampling and the renderer still need headroom.
+export function assertLoopAudioBudget(tracks) {
+  let total = 0;
+  for (const track of tracks) {
+    if (track.sourceLoopSeconds === undefined) continue;
+    const bytes = loopAudioClock(track.sourceLoopSeconds).samples * 2 * 4;
+    if (bytes > 64 * 1024 * 1024) throw new Error('Private audio loop exceeds the 64 MiB PCM cache limit.');
+    total += bytes;
+    if (total > 128 * 1024 * 1024) throw new Error('Private audio loops exceed the combined 128 MiB PCM cache limit.');
+  }
+  return total;
+}
+
 export function validateFrameAudio(sample) {
   if (sample?.sourceLoopSeconds !== undefined) {
     loopAudioSamples(sample.sourceLoopSeconds);
@@ -69,6 +84,7 @@ export class FrameAudioCollector {
         || Math.abs(expectedSource - sample.sourceSeconds) > 1e-8) {
         if (this.tracks.length + request.audioTracks.length >= 8) throw new Error('At most eight combined explicit and composition soundtrack intervals are supported.');
         track = { file: sample.file, startFrame: frame, endFrame: frame + 1, sourceStartSeconds: sample.sourceSeconds, ...(sample.sourceTimebase === undefined ? {} : { sourceTimebase: sample.sourceTimebase }), ...(sample.sourceEndSeconds === undefined ? {} : { sourceEndSeconds: sample.sourceEndSeconds }), ...(sample.sourceLoopSeconds === undefined ? {} : { sourceLoopSeconds: sample.sourceLoopSeconds }), speed: sample.speed, volume: 1, audioStream: sample.audioStream, volumeSamples: [] };
+        assertLoopAudioBudget([...request.audioTracks, ...this.tracks, track]);
         this.tracks.push(track);
       }
       track.endFrame = frame + 1;

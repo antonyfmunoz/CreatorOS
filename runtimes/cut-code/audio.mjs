@@ -2,13 +2,13 @@ import { writeFile, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MAX_ARTIFACT_BYTES, outputContract } from './request.mjs';
-import { frameVolumeExpression, loopAudioSamples, loopAudioClock } from './frame-audio.mjs';
+import { frameVolumeExpression, loopAudioSamples, loopAudioClock, assertLoopAudioBudget } from './frame-audio.mjs';
 import { videoSourceTime } from './media-clock.mjs';
 const execute = promisify(execFile);
 
 export function audioPlan(request) {
   const output = outputContract(request);
-  return request.audioTracks.flatMap((track) => {
+  const plan = request.audioTracks.flatMap((track) => {
     const start = Math.max(track.startFrame, output.start);
     const end = Math.min(track.endFrame, output.end + 1);
     if (end <= start) return [];
@@ -19,6 +19,8 @@ export function audioPlan(request) {
     if (sourceDuration <= 0) return [];
     return [{ ...track, localStartFrame: start - track.startFrame, sourceStart, sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });
+  assertLoopAudioBudget(plan);
+  return plan;
 }
 
 // Only normalized numeric keyframes enter this expression. The frame clock is
@@ -60,7 +62,8 @@ export function audioTrackFilters(track, fps) {
     ? 'aresample=48000:async=1:first_pts=0,'
     : /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
   const loopClock = track.sourceLoopSeconds === undefined ? null : loopAudioClock(track.sourceLoopSeconds);
-  const loop = loopClock === null ? '' : `aresample=${loopClock.sampleRate},atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopClock.samples},aloop=loop=-1:size=${loopClock.samples},asetpts=N/SR/TB,`;
+  assertLoopAudioBudget([track]);
+  const loop = loopClock === null ? '' : `aresample=${loopClock.sampleRate},aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopClock.samples},aloop=loop=-1:size=${loopClock.samples},asetpts=N/SR/TB,`;
   return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
@@ -114,6 +117,7 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
   // preparedTracks is a trusted in-process result of prepareAudioTracks, never
   // accepted from the request or capsule. It avoids re-reading media after frames.
   const plan = preparedTracks ?? await prepareAudioTracks(request, capsule);
+  assertLoopAudioBudget(plan);
   const audioOnly = request.mode === 'audio';
   if (!plan.length && !audioOnly) return 0;
   const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', ...(audioOnly ? [] : ['-i', inputVideo])];
