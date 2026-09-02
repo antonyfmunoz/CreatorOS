@@ -4,6 +4,16 @@ import { createHash } from 'node:crypto';
 import { assertArtifactReceipt } from './host.mjs';
 import { validateRequest, outputContract } from './request.mjs';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+test('audio-only receipts bind explicit soundtracks and generated silence', () => {
+  const artifact = Buffer.from('not an encoded media test'), source = Buffer.from('source');
+  for (const audioTracks of [[], [{ file: 'music.wav' }]]) {
+    const request = validateRequest({ version: 1, mode: 'audio', width: 320, height: 180, fps: 30, durationInFrames: 30, entrypoint: 'index.tsx', input: {}, audioTracks });
+    const output = outputContract(request);
+    const receipt = { version: 1, runtime: 'cut-code-prototype-v1', bytes: artifact.length, artifactSha256: hash(artifact), sourceSha256: hash(source), requestSha256: hash(JSON.stringify(request)), width: request.width, height: request.height, fps: request.fps, mode: request.mode, format: request.format, quality: request.quality, start: output.start, end: output.end, frames: output.frames, mediaType: output.mediaType, audioTrackCount: audioTracks.length, silent: !audioTracks.length };
+    assert.doesNotThrow(() => assertArtifactReceipt(artifact, receipt, request, source));
+    for (const change of [{ mode: 'video' }, { format: 'mp3' }, { mediaType: 'video/mp4' }, { silent: !!audioTracks.length }, { audioTrackCount: 8 }]) assert.throws(() => assertArtifactReceipt(artifact, { ...receipt, ...change }, request, source));
+  }
+});
 
 test('receipt binds the entire input, source, frame range, format and output bytes', () => {
   const artifact = Buffer.from('owned unit fixture, not a media qualification'), source = Buffer.from('source fixture');

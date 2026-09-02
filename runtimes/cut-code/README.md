@@ -68,6 +68,19 @@ executable code as not implemented until its end-to-end dispatcher is qualified.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects
   summing, without normalizing quiet material upward. No network input is allowed.
+- `mode: "audio"` exports the explicit soundtrack mix without bundling or
+  executing visual capsule code or starting Chromium. Formats are PCM16 WAV
+  (default), 192-kbit/s MP3 and 192-kbit/s AAC in M4A, all 48-kHz stereo. This
+  uses the same source validation, stream selection, track gain, fades and
+  absolute range clock as video soundtracks. Empty/nonoverlapping mixes emit
+  genuine silence; missing or out-of-bounds sources fail instead of becoming
+  silence. A request can cover at most 120 seconds within the one-hour timeline;
+  video pixel-frame limits do not apply to a path that renders no pixels.
+  CPU, memory, isolation, source, output and deadline caps remain unchanged.
+  Width/height stay in the composition/request receipt but no video stream is
+  created. Raw ADTS AAC and React audio-component discovery are not implemented.
+  MP3 container duration can include encoder padding and AAC decoding can include
+  a padded final packet; WAV has exact PCM sample counts and verified replay.
 - `audioStream` selects a zero-based audio stream (not the overall video stream
   index), defaulting to the first. At most eight audio streams are admitted per
   file. Missing streams fail; they never silently deliver a mute artifact.
