@@ -9,8 +9,11 @@ describe("CutStudio isolated animation renderer budget", () => {
   });
 
   it("rejects empty, unbounded, and non-finite renders", () => {
-    expect(() => cutAnimationFrameCount(0, 30)).toThrow(/limited/i);
+    expect(() => cutAnimationFrameCount(0, 30)).toThrow(/positive/i);
     expect(() => cutAnimationFrameCount(121, 30)).toThrow(/limited/i);
-    expect(() => cutAnimationFrameCount(Number.POSITIVE_INFINITY, 30)).toThrow(/limited/i);
+    expect(() => cutAnimationFrameCount(Number.POSITIVE_INFINITY, 30)).toThrow(/positive/i);
+    expect(() => cutAnimationFrameCount(-1, -30)).toThrow(/positive/i);
+    expect(() => cutAnimationFrameCount(1, 0)).toThrow(/frame rate/i);
+    expect(() => cutAnimationFrameCount(1, 61)).toThrow(/frame rate/i);
   });
 });
