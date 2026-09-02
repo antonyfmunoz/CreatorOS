@@ -84,7 +84,7 @@ export function CutStudioRecovery({ authorizedUserId, project, draft, busy, onRe
   };
   return <section aria-label="Timeline recovery" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
     <div className="flex items-center justify-between gap-3"><span>Keep recovery copies on this device</span><Switch aria-label="Keep timeline recovery copies on this device" checked={enabled} onCheckedChange={toggle}/></div>
-    <p className="mt-2 text-xs leading-5 text-zinc-500">Optional browser storage contains timeline text and edit settings, not media files. Avoid shared devices. Copies expire after 7 days, are removed after confirmed saving, and may be cleared by your browser. This is not a backup or an offline media editor.</p>
+    <p className="mt-2 text-xs leading-5 text-zinc-500">Optional browser storage contains timeline text and edit settings, not media files, and is not encrypted by CutStudio. Avoid shared devices. Copies older than 7 days are discarded when recovery is used; confirmed saving removes matching copies. Your browser may clear them. This is not a backup or an offline media editor.</p>
     {status && <p role="status" className="mt-2 text-xs">{status}</p>}
     {copies.map((copy) => <div key={copy.writerId} className="mt-3 rounded-lg border border-zinc-700 p-3">
       <p>Recovered timeline · {new Date(copy.updatedAt).toLocaleString()}</p>
