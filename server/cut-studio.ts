@@ -960,7 +960,8 @@ async function renderMultitrack(
     // Color-only stacks follow the preview: base controls, then every authored
     // color effect in order. Other spatial/compositing effects retain their
     // separate pipeline and require their own ordering/fidelity qualification.
-    for (const [effectIndex, effect] of graphic.effects.entries()) {
+    for (let effectIndex = 0; effectIndex < graphic.effects.length; effectIndex++) {
+      const effect = graphic.effects[effectIndex];
       if (effect.kind !== "color_matrix") continue;
       const color = cutColorMatrixControls(effect.parameters);
       rasterFilters.push(...cutGraphicColorFilters(String(color.brightness), String(color.saturation), `graphiccolor${index}effect${effectIndex}`, color.contrast));
