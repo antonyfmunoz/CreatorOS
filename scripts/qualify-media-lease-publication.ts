@@ -11,6 +11,7 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
   const url = new URL(process.env.DATABASE_URL!);
   assert.ok(["127.0.0.1", "localhost"].includes(url.hostname));
   assert.equal(url.pathname, "/creativesos_media");
+  const timezone = await db.execute(sql`SHOW TIME ZONE`);
   const token = randomUUID();
   const [job] = await db.insert(mediaProcessingJobs).values({ assetId: asset.id, ownerUserId: asset.ownerUserId,
     kind: "probe", state: "running", leaseToken: token, leaseExpiresAt: new Date(Date.now() + 60_000),
@@ -114,7 +115,8 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
     assert.equal((await state()).leaseExpiresAt?.getTime(), expires.getTime());
     return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
       localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
-      liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true };
+      liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true,
+      databaseTimeZone: timezone[0].TimeZone };
   } finally {
     await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
   }

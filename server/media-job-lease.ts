@@ -20,13 +20,15 @@ export async function renewMediaJobLease(
     await transaction.select({ id: mediaProcessingJobs.id }).from(mediaProcessingJobs)
       .where(eq(mediaProcessingJobs.id, claim.id)).for("update");
     const rows = await transaction.update(mediaProcessingJobs).set({
-      heartbeatAt: sql`clock_timestamp()`,
-      leaseExpiresAt: sql`clock_timestamp() + ${leaseMs} * interval '1 millisecond'`,
-      updatedAt: sql`clock_timestamp()`,
+      // These existing columns store UTC WITHOUT a timezone. Do not allow
+      // PostgreSQL's session timezone to reinterpret expiry or heartbeat data.
+      heartbeatAt: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
+      leaseExpiresAt: sql`(clock_timestamp() AT TIME ZONE 'UTC') + ${leaseMs} * interval '1 millisecond'`,
+      updatedAt: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
     }).where(and(
       eq(mediaProcessingJobs.id, claim.id), eq(mediaProcessingJobs.state, "running"),
       eq(mediaProcessingJobs.leaseToken, claim.leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt),
-      gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
+      gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp() AT TIME ZONE 'UTC'`),
     )).returning({ id: mediaProcessingJobs.id });
     return rows.length === 1;
   });

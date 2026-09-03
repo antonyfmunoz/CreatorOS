@@ -2,6 +2,13 @@
 
 Candidate work; not deployed or qualified yet.
 
+The first real-SQL run at `5d4a470` failed the waiting-heartbeat expiry check.
+The new SQL clock comparison had mixed an existing UTC-without-timezone column
+with a timezone-aware database clock. The correction explicitly converts the
+clock to UTC for those columns; it does not change schema or relax the test.
+The next receipt includes the actual database timezone. This first failure is
+retained in `media-lease-exact-20260903T034833-media.log.errors`.
+
 The prior worker cancelled only currently registered decoder children. A
 cancelled job downloading its source, or moving between children, could therefore
 start more work afterward. Lease-heartbeat callbacks also looked up jobs by ID,

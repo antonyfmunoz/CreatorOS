@@ -366,7 +366,7 @@ export async function processMediaJob(jobId: string) {
       const rows = await db.select({ id: mediaProcessingJobs.id }).from(mediaProcessingJobs).where(and(
         eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"),
         eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt),
-        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
+        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp() AT TIME ZONE 'UTC'`),
       )).limit(1);
       return rows.length === 1;
     };
@@ -406,7 +406,7 @@ export async function processMediaJob(jobId: string) {
         eq(mediaProcessingJobs.state, "running"),
         eq(mediaProcessingJobs.leaseToken, leaseToken),
         isNull(mediaProcessingJobs.cancellationRequestedAt),
-        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
+        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp() AT TIME ZONE 'UTC'`),
         )).returning({ id: mediaProcessingJobs.id });
         return row;
       });
