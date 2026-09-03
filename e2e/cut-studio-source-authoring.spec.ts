@@ -216,6 +216,9 @@ test("expanded source workspace preserves one draft, selected file, selection an
   await expect(workspace).toBeVisible(); await expect(editor).toHaveCount(1);
   await expect(editor).toBeFocused(); await expect(editor).toHaveValue(edited); await expect(file).toHaveValue("src/style.css");
   await expect.poll(() => editor.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([3, 9]);
+  await editor.press("Tab");
+  await expect(workspace.getByRole("button", { name: "Remove selected source file", exact: true })).toBeFocused();
+  await editor.focus();
   const size = await workspace.boundingBox(); expect(size!.width).toBeGreaterThan(page.viewportSize()!.width * .9);
   expect(size!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.screenshot({ path: info.outputPath("source-workspace.png") });

@@ -5,7 +5,7 @@ immutable save/reopen, unchanged timeline revision and anonymous denial. Its
 full-page screenshot also showed that source editing occupied the narrow studio
 sidebar. Functional custody does not establish an efficient editing experience.
 
-This candidate adds a 96vw, bounded-height source workspace using the app's
+This candidate adds a 96vw (up to 1400px), bounded-height source workspace using the app's
 existing dialog and black/blue visual language. It presents only one editable
 copy of the existing parent-owned draft, preserving file selection, source
 selection/scroll where dimensions allow, undo/redo and actual saved identity.
