@@ -43,6 +43,20 @@ for (const visibility of ["public", "private"] as const) {
     expect(descriptor.rendition?.manifestType === "hls").toBe(visibility === "public");
     const video = page.getByLabel("Media library video preview", { exact: true });
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({ width: element.videoWidth, ready: element.readyState >= 2, adaptive: element.currentSrc.startsWith("blob:") }))).toEqual({ width: 32, ready: true, adaptive: visibility === "public" });
+    const layout = await page.evaluate(() => {
+      const viewport = document.documentElement.clientWidth;
+      const labels = ["Search media library", "Media library video preview", "Remove asset"];
+      return { viewport, controls: labels.map(label => {
+        const element = document.querySelector(`[aria-label="${label}"]`)!;
+        const bounds = element.getBoundingClientRect();
+        return { label, left: bounds.left, right: bounds.right, width: bounds.width };
+      }) };
+    });
+    for (const control of layout.controls) {
+      expect(control.width, `${control.label} must remain usable`).toBeGreaterThan(0);
+      expect(control.left, `${control.label} left edge`).toBeGreaterThanOrEqual(0);
+      expect(control.right, `${control.label} right edge`).toBeLessThanOrEqual(layout.viewport + 1);
+    }
     // Exercise the actual native media control using a trusted keyboard gesture.
     await video.focus(); await video.press("Space");
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.ended)).toBe(true);
@@ -50,7 +64,7 @@ for (const visibility of ["public", "private"] as const) {
     expect(playback.duration).toBeCloseTo(0.3, 1); expect(playback.error).toBeNull();
     expect(playback.adaptive).toBe(visibility === "public"); expect(playbackErrors).toEqual([]);
     await page.screenshot({ path: info.outputPath("library-video.png") });
-    writeFileSync(info.outputPath("library-video.json"), JSON.stringify({ visibility, assetId: asset.id, rendition: descriptor.rendition?.manifestType ?? "progressive", playback }, null, 2));
+    writeFileSync(info.outputPath("library-video.json"), JSON.stringify({ visibility, assetId: asset.id, rendition: descriptor.rendition?.manifestType ?? "progressive", playback, layout }, null, 2));
   });
 }
 
