@@ -24,6 +24,13 @@ are never evaluated, and no dependency installation happens in the application.
 Initial local evidence: 22 archive/authoring checks passed, including UTF-8,
 deterministic byte replay, valid compressed-source reading, path/count/byte
 limits, CRC corruption and rejection of binary/unsupported source files.
-Types, full application/browser checks and production field evidence remain
-pending at this checkpoint. The separate executable service, user-facing code
+Type checking also passed. Initial local browser evidence at
+`creativesos-browser-qualification-f83b5b8c006a47ebbd0ebf16075c7c42` failed:
+three journeys timed out loading the development application's dependency
+modules before reaching the editor. The fourth verified failed-upload draft
+preservation, then exposed an incorrect test locator for a profile link absent
+from the studio shell. The navigation test now uses the actual **Projects**
+button and still requires the unsaved-edit confirmation and unchanged URL.
+The 45-second test deadline is unchanged. A fresh complete browser run and
+production field evidence remain pending. The separate executable service, user-facing code
 player, broader media/3D/scale and same-input competitor benchmark remain open.

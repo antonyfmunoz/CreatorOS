@@ -67,8 +67,8 @@ test("source draft survives upload failure, download and declined navigation wit
   await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
   await expect(editor).toHaveValue(original + "// preserved after failed save\n");
   const before = page.url();
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await page.locator('a[href="/profile"]').first().click();
+  page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.dismiss(); });
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page).toHaveURL(before);
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download source ZIP", exact: true }).click();

@@ -65,6 +65,6 @@ export function starterCutSource(): CutSourceFile[] {
   return [
     { path: "package.json", content: JSON.stringify({ name: "cut-composition", private: true, type: "module", dependencies: { react: "18.3.1" } }, null, 2) + "\n" },
     { path: "src/index.tsx", content: "import React from 'react';\nimport { FullFrame, useFrame } from '@creativesos/cut';\nimport './style.css';\n\nexport default function Composition() {\n  const frame = useFrame();\n  return <FullFrame className=\"title\">\n    <h1 style={{ transform: `translateY(${Math.max(0, 30 - frame)}px)` }}>Your story</h1>\n  </FullFrame>;\n}\n" },
-    { path: "src/style.css", content: ".title { background: #09090b; color: #1d9bf0; align-items: center; justify-content: center; font-family: sans-serif; }\n" },
+    { path: "src/style.css", content: ".title { display: flex; background: #09090b; color: #1d9bf0; align-items: center; justify-content: center; font-family: sans-serif; }\n" },
   ];
 }
