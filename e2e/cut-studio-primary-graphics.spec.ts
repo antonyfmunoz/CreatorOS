@@ -1,0 +1,34 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { test, expect } from "@playwright/test";
+
+test("primary preview animates supported native timeline graphics at the selected output frame", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const directory = info.outputPath("primary-graphics"); mkdirSync(directory, { recursive: true });
+  const source = `${directory}/graphics-blue.mp4`;
+  execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", source], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+  const upload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "video", visibility: "private", video: { name: "graphics-blue.mp4", mimeType: "video/mp4", buffer: readFileSync(source) } } });
+  expect(upload.status()).toBe(201); const asset = (await upload.json()).asset;
+  const created = await page.request.post("/api/cut/projects", { data: { sourceAssetId: asset.id, name: "Primary graphics", duration: 1, mediaKind: "video" } });
+  expect(created.ok()).toBe(true); const project = await created.json();
+  const saved = await page.request.put(`/api/cut/projects/${project.id}/edl`, { headers: { "If-Match": String(project.revision) }, data: { version: 3, clips: [{ id: "primary", start: 0, end: 1, timelineStart: 0 }], graphics: [{ id: "moving-shape", kind: "shape", text: "", timelineStart: 0, duration: 1, x: .1, y: .2, width: .2, height: .2, backgroundColor: "#ff0000", backgroundOpacity: 1, motionKeyframes: [{ at: .5, x: .5, y: .4, scale: 1.5, rotation: 0, rotationX: 0, rotationY: 0, perspective: 0, blur: 0, brightness: 1, saturation: 1, revealKind: null, revealDirection: null, revealProgress: 1, opacity: .5 }] }] } });
+  expect(saved.ok(), await saved.text()).toBe(true);
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Preview primary sequence", exact: true }).click();
+  const player = page.getByRole("region", { name: "Primary sequence player", exact: true });
+  const graphic = player.locator('[data-primary-preview-graphic="moving-shape"]');
+  await expect(graphic).toBeVisible();
+  expect(await graphic.evaluate((element: HTMLElement) => element.style.left)).toBe("10%");
+  const slider = player.getByRole("slider", { name: "Sequence frame", exact: true });
+  await slider.press("End");
+  await expect(player).toHaveAttribute("data-preview-frame", "29");
+  expect(await graphic.evaluate((element: HTMLElement) => element.style.left)).toBe("50%");
+  expect(await graphic.evaluate((element: HTMLElement) => element.style.top)).toBe("40%");
+  await expect(graphic).toHaveCSS("opacity", "0.5");
+  expect(await graphic.evaluate((element: HTMLElement) => element.style.transform)).toContain("scale(1.5)");
+  await player.getByLabel("Primary sequence canvas", { exact: true }).screenshot({ path: `${directory}/graphics-frame-29.png` });
+  const otherOwner = info.project.name.startsWith("mobile") ? "2" : "1";
+  const denied = await page.request.get(`/api/cut/projects/${project.id}`, { headers: { "x-creativesos-demo-user": otherOwner } });
+  expect(denied.status()).toBe(404);
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, frame: 29, crossOwnerStatus: denied.status() }, null, 2));
+});
