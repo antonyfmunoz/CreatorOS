@@ -35,7 +35,11 @@ export function videoFrameIndex(probe) {
     duration = (pts.at(-1) + lastDuration - originTicks) * tick;
   }
   if (duration > 120 || duration <= pts.at(-1) * tick - origin) throw new Error('Private video presentation endpoint is unavailable or unbounded.');
-  return { pts, tick, origin, duration, codec: stream.codec_name, alpha: stream.tags?.alpha_mode === '1' };
+  // WebM muxers preserve tag spelling (including ALPHA_MODE in our own
+  // bitexact exports). Missing the tag selects the native VP9 decoder, which
+  // silently drops the alpha plane even though the stream is transparent.
+  const alpha = Object.entries(stream.tags ?? {}).some(([name, value]) => name.toLowerCase() === 'alpha_mode' && value === '1');
+  return { pts, tick, origin, duration, codec: stream.codec_name, alpha };
 }
 
 export function selectVideoFrame(index, time, repeat) {

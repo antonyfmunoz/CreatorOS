@@ -43,6 +43,15 @@ are not evidence of a fresh pass. No assertions, control deadlines, isolation
 limits or vulnerability thresholds were relaxed. Existing protected Linux
 runtime and application gates must qualify the new exact head before merge.
 
+Protected run `33697314506` then failed **both** images at the existing imported
+transparent-overlay pixel assertion: black instead of the blue backing scene.
+The retained exported WebM had `ALPHA_MODE: "1"`; the new decoder checked only
+lowercase `alpha_mode`, selecting a decoder that discarded alpha. A focused
+metadata test reproduced the error. Tag-name matching is now case-insensitive
+while its enabled value remains exact; the actual overlay assertions are
+unchanged, and the reimported PNG is retained even when they fail. This correction
+still requires the new complete protected image suites and scan.
+
 ## Remaining boundaries
 
 Eight imports, 36,000 indexed frames/source, 20 MiB/import, 120-second sources,
