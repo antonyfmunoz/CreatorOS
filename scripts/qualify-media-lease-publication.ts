@@ -52,7 +52,8 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
         ready(String(rows[0].xid)); await held;
       });
       const xid = await Promise.race([acquired, mutation.then(() => { throw new Error("Fixture transaction exited before holding its lock"); })]);
-      const denied = assert.rejects(withMediaLeaseWrite(claim, fresh().signal, write), /lease lost/);
+      const outcome = withMediaLeaseWrite(claim, fresh().signal, write)
+        .then(() => null, error => error as Error);
       try {
         let blocked = false;
         const deadline = Date.now() + 5_000;
@@ -62,7 +63,12 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
           await new Promise(resolve => setTimeout(resolve, 20));
         }
         assert.equal(blocked, true, "Publication must serialize with the exact job's durable mutation");
-      } finally { release(); await mutation; await denied; }
+      } finally {
+        release(); await mutation;
+        const error = await outcome;
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /lease lost/);
+      }
       assert.equal(writes, 2, "Losing attempts must never invoke a publication write");
       assert.deepEqual((await state()).output, { publication: 1 });
       conflicts.push(change);
