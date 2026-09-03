@@ -37,7 +37,7 @@ import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
 import { materializePrivateAsset } from "./asset-storage";
-import { validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
+import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
 
 const uuid = z.string().uuid();
 const compositionInput = z.object({
@@ -59,6 +59,7 @@ const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeade
 // attachUser runs before this limiter; keep the existing five-request ceiling.
 const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionMediaLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
+const sourceReadLimiter = rateLimit({ windowMs: 60_000, limit: 20, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderBatchInput = z.object({
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
   compositionIds: z.array(z.string().uuid()).min(1).max(20),
@@ -236,6 +237,30 @@ type CutRouteRegistry = {
 };
 
 export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, dependencies: { queueRenderJob(jobId: string): void }) {
+  cut.get("/api/cut/projects/:id/code-sources/:assetId", attachUser, sourceReadLimiter, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const entry = cutCodeCapsuleSchema.shape.entrypoint.safeParse(req.query.entrypoint);
+    if (!uuid.safeParse(req.params.assetId).success || !entry.success) return res.status(400).json({ message: "A source asset and valid entrypoint are required" });
+    const [source] = await db.select({ storageKey: assets.storageKey }).from(cutStudioProjectMedia).innerJoin(assets, eq(assets.id, cutStudioProjectMedia.assetId)).where(and(
+      eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, req.params.assetId), eq(cutStudioProjectMedia.mediaKind, "code_source"),
+      eq(assets.kind, "cut-code-source"), eq(assets.ownerUserId, access.project.ownerUserId), eq(assets.businessId, access.project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready"),
+    )).limit(1);
+    if (!source) return res.status(404).json({ message: "Private project source not found" });
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-source-read-"));
+    try {
+      const filename = path.join(directory, "source.zip");
+      await materializePrivateAsset(source.storageKey, filename);
+      if ((await fs.stat(filename)).size > 25 * 1024 * 1024) return res.status(400).json({ message: "Source ZIP exceeds 25 MiB" });
+      const files = readCutCodeSourceFiles(await fs.readFile(filename), entry.data);
+      return res.json({ files, entrypoint: entry.data, sourceAssetId: req.params.assetId, execution: "not_implemented" });
+    } catch {
+      // Never return source content, filesystem paths or provider errors as diagnostics.
+      return res.status(400).json({ message: "This ZIP cannot be opened in the text editor. It must be a valid package with the specified entrypoint, at most 64 UTF-8 text files, 256 KiB per file and 2 MiB total. Use ZIP import for other packages; no files were changed." });
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   cut.get("/api/cut/projects/:id/creative-runtime", attachUser, async (req, res) => {
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access) return res.status(404).json({ message: "Project not found" });

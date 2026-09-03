@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateCutCodeLockfile, validateCutCodeSourceArchive } from "../server/cut-code-package";
+import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "../server/cut-code-package";
 import { deflateRawSync } from "node:zlib";
 
 function crc32(input: Buffer) {
@@ -103,6 +103,15 @@ describe("CutStudio isolated code packages", () => {
     const invalid = zip({ "package.json": "{}", "src/index.tsx": "source" });
     const central = invalid.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])); invalid[central + 46] = 255;
     expect(() => validateCutCodeSourceArchive(invalid, "src/index.tsx")).toThrow(/UTF-8/);
+  });
+
+  it("refuses binary, oversized and unsupported files without discarding them from editable packages", () => {
+    const base = { "package.json": "{}", "src/index.tsx": "export default () => null;" };
+    expect(() => readCutCodeSourceFiles(zip({ ...base, "source.txt": Buffer.from([0xff]) }), "src/index.tsx")).toThrow(/binary/);
+    expect(() => readCutCodeSourceFiles(zip({ ...base, "source.txt": "\0" }), "src/index.tsx")).toThrow(/NUL/);
+    expect(() => readCutCodeSourceFiles(zip({ ...base, "source.bin": "ASCII is not a supported extension" }), "src/index.tsx")).toThrow(/filename/);
+    expect(() => readCutCodeSourceFiles(zip({ ...base, "source.txt": "x".repeat(262145) }), "src/index.tsx")).toThrow(/editor limits/);
+    expect(readCutCodeSourceFiles(zip({ ...base, "notes.txt": "ordinary compressed notes" }, { deflate: true }), "src/index.tsx")).toHaveLength(3);
   });
 
   it("rejects overlapping local payloads and conflicting filesystem types", () => {
