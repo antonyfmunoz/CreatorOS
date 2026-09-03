@@ -6,6 +6,35 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+Checkpoint 2026-09-03 07:19 UTC: PR 171's exact public deployment
+`33721447399` passed (764 root, 382 browser journeys, 24 existing desktop skips,
+no reported retries and two public identity checks). Current confirmed public
+source is `12642a1d1a0b9b929758f190628de007f475352a`, 120/120 migrations.
+PR 173 merged at `efed8e7ada67a0ffb4cf26be3e8e745faad6b7ab` after protected
+787-root/382-browser qualification; its application deployment `33725833600`
+is still running. Its frozen local run passed root/types/build/bundle and real
+native lifecycle/animation checks, but passed **15/16** selected browser cases:
+one desktop native-session case exceeded 45 seconds. That failure is retained.
+
+The PR 173 native image is independently production-tested with the PR 171 app:
+private text/Lottie/Rive output, saved source offset, exact decoded geometry,
+anonymous denial and original-project invariants all pass. The exact image is
+`sha256:e508f0fd89ac61ab341b4824e4aa509985fd4643bd7ec550eda0c1f84a33ecc9`.
+Completion was 178,706 ms, barely inside the unchanged 180-second gate. Earlier
+252,650/254,280 ms failures remain failed. The new clock measures about two
+seconds Node uptime at worker-start versus about 164 seconds since submission;
+pre-process delay dominates this observation, but a specific platform root cause
+and reliable latency are not established.
+
+The next candidate closes native FFmpeg input-protocol and private-error/
+environment boundaries. Its 23 focused tests pass; full qualification/deployment
+are pending. [Detailed scope and evidence](../releases/2026-09-03-cut-native-io-boundary.md).
+Filesystem isolation, aggregate scratch/fleet budgets, native deadline stability,
+public executable TSX service, broader motion/3D/media and authorized comparative
+benchmarks still remain. **Only providers remain is not an accurate status.**
+
+### Prior checkpoint (retained historical evidence)
+
 Checkpoint 2026-09-03 06:39 UTC: production deployment `33718462648` passed for
 `f3648cbc6d1fb3152648acfb093bbafbef021544`: 760 root tests, 378 mobile/desktop
 journeys, 24 existing desktop skips, no reported retries and two public-release
