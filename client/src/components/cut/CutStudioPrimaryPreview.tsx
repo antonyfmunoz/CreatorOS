@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { cutPrimaryPreviewAt } from "@shared/cut-primary-preview";
 import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
+import { cutClipPreviewAt } from "@shared/cut-clip-preview";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import type { CutEdl, CutGraphic, CutRenderRequest } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,19 @@ function PrimaryGraphic({ graphic, frame, fps }: { graphic: CutGraphic; frame: n
   if (graphic.kind === "svg") return <div data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={style} dangerouslySetInnerHTML={{ __html: sanitizeCutStudioSvg(graphic.text) }}/>;
   if (graphic.kind === "image" && graphic.assetId) return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={{ ...style, objectFit: graphic.imageFit ?? "contain" }} src={`/api/assets/${encodeURIComponent(graphic.assetId)}/stream`} alt=""/>;
   return null;
+}
+
+function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onError }: { clip: NonNullable<CutEdl["clips"]>[number]; media: Media; projectId: string; frame: number; fps: number; playing: boolean; onError: (message: string) => void }) {
+  const state = cutClipPreviewAt(clip, frame / fps);
+  if (!state.active) return null;
+  const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
+  const style: CSSProperties = {
+    left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${transform.width * 100}%`, height: `${transform.height * 100}%`, opacity: state.opacity,
+    transform: `scale(${state.scale})`, transformOrigin: "top left",
+  };
+  return <div data-primary-preview-overlay={clip.id ?? media.id} className="absolute overflow-hidden" style={style}>
+    <PrimaryMedia label={`Overlay ${clip.label ?? media.name}`} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} time={state.sourceTime} speed={clip.speed ?? 1} gain={0} opacity={1} playing={playing} audio={null} onReady={() => undefined} onError={onError}/>
+  </div>;
 }
 
 function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady, onError, label = "Primary sequence video" }: {
@@ -91,6 +105,9 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   const outgoing = state?.outgoing;
   const graphicTime = frame / fps;
   const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => ["lottie", "rive", "three"].includes(graphic.kind) && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
+  const activeOverlays = edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" && (clip.track ?? "").startsWith("v") && !edl.tracks?.find((track) => track.track === clip.track)?.hidden)
+    .flatMap((clip) => { const overlay = media.find((item) => item.assetId === clip.assetId); return overlay ? [{ clip, media: overlay }] : []; });
+  const unsupportedOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && (clip.chromaKey?.enabled || clip.colorPreset && clip.colorPreset !== "original" || clip.lutAssetId));
   const outgoingMedia = outgoing ? media.find(item => item.assetId === (outgoing.clip.assetId ?? sourceAssetId)) : undefined;
   const outgoingKey = outgoing ? `${outgoing.clip.id ?? "clip"}:${outgoingMedia?.id}:${outgoing.sourceTime}` : "none";
   const clipKey = state?.clip ? `${state.clip.id ?? "clip"}:${active?.id}:${state.clip.timelineStart}:${state.clip.start}` : "gap";
@@ -131,6 +148,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
     <div className="relative aspect-video overflow-hidden rounded-xl bg-black" aria-label="Primary sequence canvas">
       {outgoing && outgoingMedia && <div className="absolute inset-0 bg-black"><PrimaryMedia key={outgoingKey} label="Outgoing sequence video" url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(outgoingMedia.id)}/media-file`} time={outgoing.sourceTime} speed={outgoing.clip.speed ?? 1} gain={0} opacity={outgoing.opacity} playing={false} audio={null} onReady={setOutgoingReady} onError={reportError}/></div>}
       {state?.clip && active ? <div className="absolute inset-0 bg-black" style={{ opacity: state.mix }}><PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} playing={playing && (!outgoing || outgoingReady)} audio={audio} onReady={setReady} onError={reportError}/></div> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
+      {activeOverlays.map(({ clip, media: overlay }) => <PrimaryVideoOverlay key={clip.id ?? overlay.id} clip={clip} media={overlay} projectId={projectId} frame={frame} fps={fps} playing={playing} onError={reportError}/>)}
       {(edl.graphics ?? []).map((graphic) => <PrimaryGraphic key={graphic.id} graphic={graphic} frame={frame} fps={fps}/>)}
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -142,7 +160,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie, Rive, or 3D graphic requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, and supported timeline graphics. Layered video/audio, active Lottie/Rive/3D, color/effects and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie, Rive, or 3D graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Lottie/Rive/3D, color/effects and captions require a rendered preview.")}</p>
   </div>;
 }
 
