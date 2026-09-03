@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
 import { readCutCodeSourceFiles } from "../server/cut-code-package";
+import { generateCutSourceLockfile } from "../shared/cut-code-lockfile";
 
 async function fixture(page: Page, info: TestInfo) {
   const directory = info.outputPath("source-authoring"); mkdirSync(directory, { recursive: true });
@@ -84,4 +85,67 @@ test("source draft survives upload failure, download and declined navigation wit
   await page.unroute("**/api/assets/upload-intents"); await page.unroute("**/api/assets/upload-proxy");
   await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
   await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+});
+
+test("source lockfile pair registers exact private assets and clears stale pair selection", async ({ page }, info) => {
+  const project = await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const source = await editor.inputValue();
+  const lockChoice = page.getByRole("combobox", { name: "Code dependency lockfile", exact: true });
+  await expect(lockChoice).toHaveValue("");
+  let uploadedLock = "";
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/assets/upload-proxy") && request.postData()?.includes('name="code_lockfile"')) uploadedLock = request.postData()!;
+  });
+  await page.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
+  await expect(page.getByText("New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable.", { exact: true })).toBeVisible();
+  const sourceId = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
+  const lockId = await lockChoice.inputValue(); expect(lockId).toBeTruthy(); expect(lockId).not.toBe(sourceId);
+  const opened = await (await page.request.get(`/api/cut/projects/${project.id}/code-sources/${sourceId}?entrypoint=src%2Findex.tsx`)).json();
+  expect(opened.files.find((file: any) => file.path === "src/index.tsx").content).toBe(source);
+  expect(uploadedLock).toContain(generateCutSourceLockfile(opened.files));
+  await page.getByRole("button", { name: "Save isolated composition", exact: true }).click();
+  await expect(page.getByText(/Pinned code composition saved/)).toBeVisible();
+  const runtime = await (await page.request.get(`/api/cut/projects/${project.id}/creative-runtime`)).json();
+  const composition = runtime.compositions.find((row: any) => row.mode === "sandboxed_tsx");
+  expect(composition.codeCapsule).toMatchObject({ sourceAssetId: sourceId, lockfileAssetId: lockId });
+  expect(runtime.compositionRuntime.isolatedCode).toBe("not_implemented");
+  const mismatched = JSON.parse(generateCutSourceLockfile(opened.files)); mismatched.packages["node_modules/react"].integrity = "tampered";
+  const upload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "cut-code-lockfile", visibility: "private", code_lockfile: { name: "package-lock.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(mismatched)) } } });
+  expect(upload.ok(), await upload.text()).toBeTruthy(); const wrong = (await upload.json()).asset.id;
+  const attached = await page.request.post(`/api/cut/projects/${project.id}/media-library`, { data: { assetId: wrong, name: "package-lock.json", duration: 1, mediaKind: "code_lockfile" } });
+  expect(attached.ok(), await attached.text()).toBeTruthy();
+  const denied = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: "Mismatched source must not register", mode: "sandboxed_tsx", manifest: composition.manifest, codeCapsule: { ...composition.codeCapsule, lockfileAssetId: wrong } } });
+  expect(denied.status()).toBe(400); expect(await denied.text()).toContain("do not match the pinned runtime");
+  expect((await (await page.request.get(`/api/cut/projects/${project.id}/creative-runtime`)).json()).compositions).toHaveLength(runtime.compositions.length);
+  await editor.fill(source + "// new source must not inherit the old lockfile\n");
+  await expect(page.getByRole("button", { name: "Save isolated composition", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  await expect(lockChoice).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Save isolated composition", exact: true })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Code source capsule", exact: true }).selectOption(sourceId);
+  await expect(lockChoice).toHaveValue("");
+});
+
+test("source lockfile pair failure retains the draft and does not claim a completed pair", async ({ page }, info) => {
+  await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const source = await editor.inputValue();
+  await page.route("**/api/assets/upload-intents", (route) => route.fulfill({ status: 503, json: { message: "Local proxy qualification" } }));
+  await page.route("**/api/assets/upload-proxy", (route) => route.request().postData()?.includes('name="code_lockfile"')
+    ? route.fulfill({ status: 503, json: { message: "Synthetic lockfile outage" } }) : route.continue());
+  await page.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
+  await expect(page.getByText(/The source ZIP was saved, but the matching lockfile could not be confirmed/)).toBeVisible();
+  await expect(editor).toHaveValue(source);
+  await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save isolated composition", exact: true })).toBeDisabled();
+  await page.unroute("**/api/assets/upload-proxy");
+  await page.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Code dependency lockfile", exact: true })).not.toHaveValue("");
+  await page.getByRole("combobox", { name: "Source editor file", exact: true }).selectOption("package.json");
+  await editor.fill(JSON.stringify({ dependencies: { react: "latest" } }));
+  await expect(page.getByRole("button", { name: "Save source + matching lockfile", exact: true })).toBeDisabled();
+  await expect(page.getByText(/Automatic lockfiles support only React/)).toBeVisible();
 });

@@ -114,6 +114,15 @@ describe("CutStudio isolated code packages", () => {
     expect(readCutCodeSourceFiles(zip({ ...base, "notes.txt": "ordinary compressed notes" }, { deflate: true }), "src/index.tsx")).toHaveLength(3);
   });
 
+  it("manifest-only inspection preserves binary ZIP admission without expanding text editor limits", () => {
+    const entries = { "package.json": "{}", "src/index.tsx": "export default null", "private.bin": Buffer.alloc(300_000, 255) };
+    const seen: string[] = [];
+    expect(validateCutCodeSourceArchive(zip(entries), "src/index.tsx", (name) => seen.push(name), "manifest").entryCount).toBe(3);
+    expect(seen).toEqual(["package.json"]);
+    expect(() => readCutCodeSourceFiles(zip(entries), "src/index.tsx")).toThrow(/text editor/);
+    expect(() => validateCutCodeSourceArchive(zip({ ...entries, "package.json": " ".repeat(262145) }), "src/index.tsx", () => undefined, "manifest")).toThrow(/256 KiB/);
+  });
+
   it("rejects overlapping local payloads and conflicting filesystem types", () => {
     const nested = zip({ "src/index.tsx": "nested source" });
     const nestedCentral = nested.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));

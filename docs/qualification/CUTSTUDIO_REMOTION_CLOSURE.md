@@ -40,13 +40,21 @@ This is still not a public executable-code service. See the
 [fractional-sound receipt](../releases/2026-09-03-cut-fractional-source-sound.md).
 
 PR 166 implements a bounded data-only source-package editor: text editing,
-private immutable ZIP saves and authenticated reopen. At `e22d434`, protected
-Verify `33702702402` passed 703 root tests and 366 browser journeys without
-retries (24 existing skips); CodeQL `33702702367` passed. Final text-budget/BOM
-hardening and the merged-source candidate need fresh checks. It is not a deployed
-editor or public executable player. Two local runs retain startup/total-deadline
-failures separately from the protected success. See the
+private immutable ZIP saves and authenticated reopen. Final source `14033e7`
+passed every protected Verify/CodeQL job and merged at
+`4af98a7b316f77e8b5488dbf9e363439529b6a9d`. Earlier `e22d434` passed 703 root
+tests and 366 browser journeys without retries (24 existing skips); final run
+`33703887438` needs its detailed count/retry receipt retrieved separately.
+The final local run passed 704 root tests, types/build and worker checks but
+failed the unchanged 120-second browser-server startup gate before any journey.
+Original local failures remain retained. This is not yet a deployed-editor or
+public executable-player claim. See the
 [source-authoring receipt](../releases/2026-09-03-cut-source-authoring.md).
+
+The next candidate adds generated pinned source/lockfile pairs, honest partial
+failure handling, stale-pair protection and server dependency reconciliation.
+Focused tests and all four real-installer cases passed; browser/protected/
+production qualification is still pending. See the [pairing receipt](../releases/2026-09-03-cut-source-lockfile-pairs.md).
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
 not a public executable-capsule service. A saved code package is not an executable

@@ -70,6 +70,8 @@ jobs:
       - run: npm run verify:stitch
       - run: npm run verify:infrastructure
       - run: npm run verify
+      - name: Qualify generated source dependency lockfiles with the real installer
+        run: npm run verify:cut-code-lockfiles
       - name: Apply and qualify the exact migration ledger
         run: node scripts/migrate-qualification.mjs
       - name: Qualify cross-machine worker lease recovery

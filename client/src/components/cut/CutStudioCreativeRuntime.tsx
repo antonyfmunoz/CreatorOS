@@ -6,6 +6,7 @@ import { CompositionAuthoringControls, CompositionVariantBatchControls, Workflow
 import { CutStudioCompositionPreview } from "@/components/cut/CutStudioCompositionPreview";
 import { CutStudioSourceEditor, sourceDraftDirty, sourceDraftIdentity, type CutSourceDraft } from "@/components/cut/CutStudioSourceEditor";
 import { buildCutSourceZip, starterCutSource, type CutSourceFile } from "@shared/cut-code-authoring";
+import { generateCutSourceLockfile } from "@shared/cut-code-lockfile";
 import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
@@ -43,7 +44,7 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File) => Promise<{ assetId: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
+export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File, lockfile?: File) => Promise<{ assetId: string; lockfileAssetId?: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
   const [serverRuntime, setRuntime] = useState<RuntimePayload | null>(null);
   const compositions = useRef(new CutCreativeDrafts<CompositionRow, "manifest">("manifest"));
   const workflows = useRef(new CutCreativeDrafts<WorkflowRow, "workflow">("workflow"));
@@ -100,7 +101,6 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   }, [project.id]);
   useEffect(() => {
     setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
-    setCodeLockfileAssetId((current) => current || media.find((item) => item.mediaKind === "code_lockfile")?.assetId || "");
   }, [media]);
   // CompositionFonts owns the active manifest's font loading and visible
   // readiness/error state. Do not eagerly fetch every library font here (the
@@ -175,6 +175,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   });
 
   const createCodeComposition = () => act("composition:code", async () => {
+    if (sourceDraftDirty(sourceDraftRef.current)) throw new Error("Save or discard your source draft before registering its saved package.");
     if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
     const manifest = { ...motionTemplate(project, "kinetic"), name: codeName.trim() };
     const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
@@ -192,16 +193,19 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
       setMessage("Private source opened as text. Nothing was executed.");
     });
   };
-  const saveSource = () => act("code:save", async () => {
+  const saveSource = (withLockfile = false) => act("code:save", async () => {
     const draft = sourceDraftRef.current;
     if (!draft) return;
     const identity = sourceDraftIdentity(draft);
     const zip = buildCutSourceZip(draft.files, draft.entrypoint);
-    const result = await onSaveCodeSource(new File([zip], "cut-composition.zip", { type: "application/zip" }));
+    const lockfile = withLockfile ? new File([generateCutSourceLockfile(draft.files)], "package-lock.json", { type: "application/json" }) : undefined;
+    const result = await onSaveCodeSource(new File([zip], "cut-composition.zip", { type: "application/zip" }), lockfile);
     if (!alive.current) return;
     if (sourceDraftRef.current && sourceDraftIdentity(sourceDraftRef.current) === identity) changeSource({ ...draft, saved: identity });
     setCodeSourceAssetId(result.assetId); setCodeEntrypoint(draft.entrypoint);
-    setMessage("New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Public execution remains unavailable.");
+    // A previous source's lockfile must never remain selected for a new source.
+    setCodeLockfileAssetId(result.lockfileAssetId ?? "");
+    setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Public execution remains unavailable.");
   });
 
   const saveBrief = () => act("brief", async () => {
@@ -286,11 +290,11 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
             changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null });
           }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
-          {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} onChange={changeSource} onSave={() => void saveSource()}/>}
+          {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
-          <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} value={codeSourceAssetId} onChange={(event) => setCodeSourceAssetId(event.target.value)}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
-          <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
+          <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
+          <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
         </div>
         {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>Package saved; isolated code execution still requires implementation and qualification.</p></div>}</div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
