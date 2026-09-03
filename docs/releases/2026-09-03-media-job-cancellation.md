@@ -64,3 +64,9 @@ wrong-owner and exhausted-budget retries. These additions are pending tests.
 Claim admission and automatic recovery also enforce the same attempt budget.
 Exhausted interrupted/queued jobs become terminal failures rather than looping
 forever. The real database test covers both states and retains the attempt count.
+
+The first polling-loop run (`79f4eb2`) reached real worker drain and exposed a
+pre-existing raw-SQL Date parameter that postgres-js could not serialize. The
+drain timestamp now uses an explicit UTC ISO timestamp value. The failed run is
+retained in `media-lease-exact-20260903T041841-media.log.errors`; the same actual
+drain path remains in qualification, without a mock or relaxed assertion.

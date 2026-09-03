@@ -113,7 +113,7 @@ async function heartbeatWorker(requestedStatus?: "active" | "draining" | "offlin
       version: worker.version,
       status,
       heartbeatAt: now,
-      drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now})` : null,
+      drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now.toISOString()}::timestamp)` : null,
       updatedAt: now,
     },
   });
