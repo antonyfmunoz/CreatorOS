@@ -63,7 +63,10 @@ for (const gapped of [false, true]) {
     expect(preview[2].rgb[0]).toBeGreaterThan(240); expect(preview[2].rgb[2]).toBeLessThan(10);
     await slider.press("Home"); await player.getByRole("button", { name: "Play sequence", exact: true }).click();
     await expect.poll(async () => Number(await player.getAttribute("data-preview-frame"))).toBeGreaterThan(frames[1]);
-    await player.getByRole("button", { name: "Pause sequence", exact: true }).click();
+    await expect(player).toHaveAttribute("data-preview-frame", String(Math.ceil((start + 1) * 30) - 1));
+    await expect(player.getByRole("button", { name: "Play sequence", exact: true })).toBeVisible();
+    await expect.poll(() => player.getByLabel("Primary sequence video", { exact: true })
+      .evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
     await page.getByRole("button", { name: "Close sequence", exact: true }).click();
     const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
     expect(submitted.status()).toBe(202); const job = await submitted.json(); await waitForCutRender(page.request, job.id, info);

@@ -39,7 +39,14 @@ types/build/bundle and protected Verify `33763693826` (402 browser cases,
 rendered audio faded from RMS about .0885 to .0194. It is not yet deployed.
 PR 188 fixes the separate 30-fps-only preview clock; combined candidate
 `b7face2ebf54da20928dc97889b48a6940ea87e3` is under local/protected qualification.
-The cross-dissolve preview candidate remains unqualified.
+PR 188 subsequently passed all 12 local browser cases, 845 root tests,
+types/build/bundle and protected Verify `33765951453` (406 browser cases).
+PR 189 includes that exact source and passed protected Verify `33766634428`
+(849 root tests, 410 browser cases), but its independent local run failed three
+of 16 cases. One cold first-page dependency-readiness delay and two test clicks
+after natural playback completion are being corrected without extending gates.
+All failures remain retained. The combined preview remains unqualified and must
+not be released until the corrected exact head passes again.
 
 PR 186 combined native audio/format/framing candidate
 `e17acc4f84f7b442e4879cdf22d857efe56f0b31` passed 18 local browser cases,

@@ -5,6 +5,7 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+import { prepareDevelopmentClient } from "./development-client-readiness";
 
 const viteLogger = createLogger();
 
@@ -42,6 +43,13 @@ export async function setupVite(app: Express, server: Server) {
     server: serverOptions,
     appType: "custom",
   });
+
+  try {
+    await prepareDevelopmentClient(vite.environments.client);
+  } catch (error) {
+    await vite.close();
+    throw error;
+  }
 
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
