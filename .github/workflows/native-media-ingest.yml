@@ -30,7 +30,7 @@ jobs:
       QUALIFICATION_ISOLATED_DATABASE: "true"
       CREATOROS_QUALIFICATION_MODE: "true"
       ASSET_STORAGE_PROVIDER: local
-      CREATOROS_UPLOAD_DIR: ${{ runner.temp }}/creativesos-media-ingest-qualification
+      CREATOROS_UPLOAD_DIR: ${{ github.workspace }}/creativesos-media-ingest-qualification
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,6 +51,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-media-ingest-outputs
-          path: ${{ runner.temp }}/creativesos-media-ingest-qualification
+          path: ${{ env.CREATOROS_UPLOAD_DIR }}
           retention-days: 7
           if-no-files-found: warn

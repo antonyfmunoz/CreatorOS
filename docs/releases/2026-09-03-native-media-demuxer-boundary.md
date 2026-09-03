@@ -57,4 +57,11 @@ media workloads, resource admission and the isolated code-service deployment
 remain separate gates. No provider configuration, budget, topology, codec
 quality, test deadline or pixel threshold changed.
 
+The first protected dispatch (`33734270116`) did not run tests: its reusable
+workflow incorrectly used the `runner` context in a job-level environment.
+Actionlint 1.7.12 independently reproduced that exact validation error. The
+workflow-only correction uses the permitted workspace context and reuses the
+same output path for artifact capture. Native image inputs and application code
+are unchanged. The invalid dispatch is not counted as qualified evidence.
+
 Primary reference: [FFmpeg input demuxer allowlist and external-track options](https://ffmpeg.org/ffmpeg-formats.html).
