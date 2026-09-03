@@ -143,9 +143,13 @@ try {
     const expected = decode(clipPath), actual = decode(masterPath);
     assert.equal(actual.length, frames * 32 * 32 * 3);
     assert.ok(actual.equals(expected), "Published short HLS must retain every original picture");
-    const packets = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=duration_time", "-of", "json", masterPath], { windowsHide: true, timeout: 10_000, stdio: "pipe" }).toString()).packets;
+    const packets = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=pts_time,dts_time,duration_time", "-of", "json", masterPath], { windowsHide: true, timeout: 10_000, stdio: "pipe" }).toString()).packets as Array<{ pts_time: string; dts_time: string; duration_time: string }>;
     assert.equal(packets.length, frames);
     for (const packet of packets) assert.ok(Math.abs(Number(packet.duration_time) - 0.1) < 0.00001, "Every original picture must retain its duration");
+    if (frames <= 10) {
+      assert.ok(Math.abs(Math.min(...packets.map(packet => Number(packet.pts_time)))) < 0.00001, "Short playback must start at zero, not at decoder reorder delay");
+      assert.ok(Math.abs(Math.max(...packets.map(packet => Number(packet.pts_time) + Number(packet.duration_time))) - frames / 10) < 0.00001, "Short playback must end at its original duration");
+    }
     shortClipEvidence.push({ frames, targetDuration, allPixelsExact: true, explicitFrameDuration: frames <= 10 });
   }
 
