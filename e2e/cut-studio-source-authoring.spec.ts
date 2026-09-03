@@ -1,0 +1,87 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
+import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { readCutCodeSourceFiles } from "../server/cut-code-package";
+
+async function fixture(page: Page, info: TestInfo) {
+  const directory = info.outputPath("source-authoring"); mkdirSync(directory, { recursive: true });
+  const path = `${directory}/source.mp4`;
+  execFileSync("ffmpeg", ["-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=30:d=1", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-pix_fmt", "yuv420p", path], { timeout: 10_000 });
+  const uploaded = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "video", visibility: "private", video: { name: "source.mp4", mimeType: "video/mp4", buffer: readFileSync(path) } } });
+  expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+  const created = await page.request.post("/api/cut/projects", { data: { sourceAssetId: (await uploaded.json()).asset.id, name: "Source authoring qualification", duration: 1, mediaKind: "video" } });
+  expect(created.ok(), await created.text()).toBeTruthy();
+  const project = await created.json();
+  await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "New source package", exact: true }).click();
+  return project;
+}
+
+test("source authoring saves immutable private ZIPs, reopens all files and enforces account and deletion boundaries", async ({ page }, info) => {
+  const project = await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const source = "// café 🎬\nglobalThis.__sourceMustNotExecute = true;\nexport default function Composition() { return null; }\n";
+  await editor.fill(source);
+  await page.getByRole("button", { name: "Flows", exact: true }).click();
+  await page.getByRole("button", { name: "Motion", exact: true }).click();
+  await expect(editor).toHaveValue(source);
+  await page.getByRole("textbox", { name: "New source file path", exact: true }).fill("src/Title.tsx");
+  await page.getByRole("button", { name: "Add source file", exact: true }).click();
+  await editor.fill("export const Title = () => <h1>Native source</h1>;\n");
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  const asset = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
+  const url = `/api/cut/projects/${project.id}/code-sources/${asset}?entrypoint=src%2Findex.tsx`;
+  const opened = await page.request.get(url);
+  expect(opened.ok(), await opened.text()).toBeTruthy(); expect(opened.headers()["cache-control"]).toBe("no-store");
+  const saved = await opened.json(); expect(saved.files).toHaveLength(4);
+  expect(saved.files.find((file: any) => file.path === "src/index.tsx").content).toBe(source);
+  expect(saved.execution).toBe("not_implemented");
+  const peer = info.project.name.startsWith("mobile") ? 2 : 1;
+  expect((await page.request.get(url, { headers: { "x-creativesos-demo-user": String(peer) } })).status()).toBe(404);
+  expect(await page.evaluate(() => (globalThis as any).__sourceMustNotExecute)).toBeUndefined();
+  await page.reload();
+  await page.getByRole("combobox", { name: "Code source capsule", exact: true }).selectOption(asset);
+  await page.getByRole("button", { name: "Edit selected source ZIP", exact: true }).click();
+  await expect(editor).toHaveValue(source);
+  await editor.fill(source + "// second revision\n");
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  const next = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
+  expect(next).not.toBe(asset);
+  expect((await (await page.request.get(url)).json()).files).toEqual(saved.files);
+  const deleted = await page.request.delete(`/api/assets/${asset}`); expect(deleted.ok(), await deleted.text()).toBeTruthy();
+  expect((await page.request.get(url)).status()).toBe(404);
+  expect((await page.request.get(url.replace(asset, next))).ok()).toBeTruthy();
+});
+
+test("source draft survives upload failure, download and declined navigation without claiming server persistence", async ({ page }, info) => {
+  await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const original = await editor.inputValue();
+  await editor.fill("é".repeat(131073));
+  await expect(page.getByText("Each editable source file is limited to 256 KiB. Previous draft retained.", { exact: true })).toBeVisible();
+  await expect(editor).toHaveValue(original);
+  await editor.fill(original + "// preserved after failed save\n");
+  await page.route("**/api/assets/upload-intents", (route) => route.fulfill({ status: 503, json: { message: "Synthetic private storage outage" } }));
+  await page.route("**/api/assets/upload-proxy", (route) => route.fulfill({ status: 503, json: { message: "Synthetic private storage outage" } }));
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Synthetic private storage outage", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
+  await expect(editor).toHaveValue(original + "// preserved after failed save\n");
+  const before = page.url();
+  page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.dismiss(); });
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page).toHaveURL(before);
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download source ZIP", exact: true }).click();
+  const downloaded = await downloading; const path = await downloaded.path(); expect(path).toBeTruthy();
+  expect(readCutCodeSourceFiles(readFileSync(path!), "src/index.tsx").find((file) => file.path === "src/index.tsx")?.content).toBe(original + "// preserved after failed save\n");
+  await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "New source package", exact: true }).click();
+  await expect(editor).toHaveValue(original + "// preserved after failed save\n");
+  await page.unroute("**/api/assets/upload-intents"); await page.unroute("**/api/assets/upload-proxy");
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+});

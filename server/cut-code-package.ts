@@ -1,5 +1,6 @@
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
+import { cutSourceEditorLimits, validateCutSourceFiles, type CutSourceFile } from "@shared/cut-code-authoring";
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 100 * 1024 * 1024;
@@ -36,7 +37,7 @@ function normalizedArchivePath(value: string) {
   return normalized;
 }
 
-export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string) {
+export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, inspect?: (name: string, body: Buffer) => void) {
   if (!input.length || input.length > MAX_SOURCE_BYTES) throw new Error("The code source ZIP exceeds the safe package limit");
   const minimumEocd = Math.max(0, input.length - 65_557);
   let eocd = -1;
@@ -110,6 +111,9 @@ export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string) 
     expandedBytes += uncompressedBytes;
     if (expandedBytes > MAX_EXPANDED_BYTES) throw new Error("The expanded code source exceeds the safe package limit");
     if (!name.endsWith("/")) entries.push(name);
+    // Text inspection has a smaller budget than executable-package admission.
+    // Reject declared over-budget expansion before inflating any entry.
+    if (inspect && (uncompressedBytes > cutSourceEditorLimits.fileBytes || expandedBytes > cutSourceEditorLimits.totalBytes || entries.length > cutSourceEditorLimits.files)) throw new Error("This archive exceeds the text editor limits; no files were discarded.");
     records.push({ name, start: localHeaderOffset, end: recordEnd, dataStart, dataEnd, size: uncompressedBytes, method, checksum });
     offset = nameEnd + extraBytes + commentBytes;
   }
@@ -136,8 +140,23 @@ export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string) 
       } catch { throw new Error("Code source deflate data is corrupt or exceeds its declared size"); }
     }
     if (body.length !== record.size || crc32(body) !== record.checksum) throw new Error("The code source entry content does not match its size and CRC32");
+    if (!record.name.endsWith("/")) inspect?.(record.name, body);
   }
   return { entries, entryCount, compressedBytes: input.length, expandedBytes };
+}
+
+export function readCutCodeSourceFiles(input: Buffer, entrypoint: string): CutSourceFile[] {
+  const files: CutSourceFile[] = []; let total = 0;
+  validateCutCodeSourceArchive(input, entrypoint, (name, body) => {
+    total += body.length;
+    if (files.length >= cutSourceEditorLimits.files || body.length > cutSourceEditorLimits.fileBytes || total > cutSourceEditorLimits.totalBytes) throw new Error("This archive exceeds the text editor limits. Keep using ZIP import for larger or binary packages.");
+    let content: string;
+    try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(body); }
+    catch { throw new Error("This package contains binary files. Use ZIP import; no files were discarded."); }
+    files.push({ path: name, content });
+  });
+  validateCutSourceFiles(files, entrypoint);
+  return files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
 
 export function validateCutCodeLockfile(filename: string, input: Buffer) {
