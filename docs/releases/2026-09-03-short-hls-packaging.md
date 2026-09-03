@@ -73,6 +73,12 @@ native HLS for browsers without that engine. React clears its progressive source
 before the adaptive engine attaches, and each effect destroys only its own engine.
 These changes still require real browser qualification; no gate was relaxed.
 
+Both local library-upload journeys also failed. Their actual network trace shows
+the refreshed list containing the new upload, followed by an older initial list
+without it. Cancelling the older query before a cache-owned refresh replaces the
+previous manual-cache-write workaround. A deterministic browser regression holds
+the real initial response and releases it only after the real upload is visible.
+
 ## Primary references
 
 - [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)
