@@ -33,7 +33,7 @@ test("CutStudio exports selected AAC targets and 25/50 fps through both render p
     await expect(render).toBeEnabled();
     await page.getByLabel("Render quality", { exact: true }).selectOption("draft");
     await page.getByLabel("Render resolution", { exact: true }).selectOption("720p");
-    await page.getByLabel("Aspect ratio", { exact: true }).selectOption("source");
+    await page.getByLabel("Render aspect ratio", { exact: true }).selectOption("source");
     await page.getByLabel("Render frame rate", { exact: true }).selectOption(String(config.fps));
     await page.getByLabel("Render audio bitrate", { exact: true }).selectOption(String(config.target));
     const submitted = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith(`/api/cut/projects/${project.id}/render`));
