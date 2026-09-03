@@ -848,6 +848,13 @@
       "when": 1788436800000,
       "tag": "0120_cut_studio_retry_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1788440400000,
+      "tag": "0121_cut_studio_dispatch_budget",
+      "breakpoints": true
     }
   ]
 }

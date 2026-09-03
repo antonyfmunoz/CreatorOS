@@ -88,6 +88,22 @@ describe("CutStudio cloud dispatch contract", () => {
     }
   });
 
+  it.each([false, null, {}, { accepted: false }, { accepted: "true" }])("does not treat an unconfirmed response as a start: %j", async result => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(result), { status: 202 })));
+    await expect(dispatchCutStudioCloudJob(jobId, { CUT_CLOUD_DISPATCH_URL: "https://dispatch.example/dispatch", CUT_CLOUD_DISPATCH_SECRET: secret }))
+      .rejects.toMatchObject({ code: "cut_cloud_dispatch_unconfirmed" });
+  });
+
+  it("releases only its in-process lock after transport failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error("Synthetic transport interruption"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accepted: true }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const environment = { CUT_CLOUD_DISPATCH_URL: "https://dispatch.example/dispatch", CUT_CLOUD_DISPATCH_SECRET: secret };
+    await expect(dispatchCutStudioCloudJob(jobId, environment)).rejects.toThrow("Synthetic transport interruption");
+    await expect(dispatchCutStudioCloudJob(jobId, environment)).resolves.toMatchObject({ accepted: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("deduplicates fresh signed requests for the same durable render job", async () => {
     const runWorker = vi.fn(async () => "projects/test/locations/us-central1/operations/one");
     const server = createCutCloudDispatchServer({ project: "test", region: "us-central1", secret, runWorker });
