@@ -40,6 +40,7 @@ import { createPrivateAssetReadUrl } from "./asset-storage";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
 import { db } from "./db";
 import { cancelMediaProcess } from "./media-processing";
+import { retryMediaJob } from "./media-job-lease";
 
 const uuidSchema = z.string().uuid();
 const mediaKinds = new Set(["photo", "video", "audio", "broadcast-recording", "cut-render", "ugc"]);
@@ -294,7 +295,8 @@ export function registerMediaCloudRoutes(app: Express) {
     if (!job) return res.status(404).json({ message: "Media job not found" });
     if (!["failed", "cancelled"].includes(job.state)) return res.status(409).json({ message: "Only failed or cancelled media jobs can be retried" });
     if (job.attempt >= job.maxAttempts) return res.status(409).json({ message: "This media job exhausted its retry budget" });
-    const [updated] = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, errorCode: null, errorMessage: null, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, cancellationRequestedAt: null, availableAt: new Date(), startedAt: null, finishedAt: null, updatedAt: new Date() }).where(eq(mediaProcessingJobs.id, job.id)).returning();
+    const updated = await retryMediaJob(job);
+    if (!updated) return res.status(409).json({ message: "The media job changed before retry" });
     return res.json(updated);
   }));
 

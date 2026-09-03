@@ -1,0 +1,170 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
+import { db } from "../server/db";
+import { renewMediaJobLease, retryMediaJob, withMediaLeaseWrite } from "../server/media-job-lease";
+import { recoverInterruptedMediaJobs, scheduleMediaCloudProcessing, stopMediaCloudProcessing } from "../server/media-processing";
+import { assets, mediaProcessingJobs } from "../shared/schema";
+
+export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSelect) {
+  assert.equal(process.env.CREATOROS_QUALIFICATION_MODE, "true");
+  assert.equal(process.env.QUALIFICATION_ISOLATED_DATABASE, "true");
+  const url = new URL(process.env.DATABASE_URL!);
+  assert.ok(["127.0.0.1", "localhost"].includes(url.hostname));
+  assert.equal(url.pathname, "/creativesos_media");
+  const timezone = await db.execute(sql`SHOW TIME ZONE`);
+  const token = randomUUID();
+  const [job] = await db.insert(mediaProcessingJobs).values({ assetId: asset.id, ownerUserId: asset.ownerUserId,
+    kind: "probe", state: "running", leaseToken: token, leaseExpiresAt: new Date(Date.now() + 60_000),
+    idempotencyKey: `lease-publication:${randomUUID()}` }).returning();
+  const state = async () => (await db.select().from(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id)))[0];
+  const claim = { id: job.id, leaseToken: token };
+  const fresh = () => new AbortController();
+  let writes = 0;
+  const write = async (transaction: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    writes += 1;
+    await transaction.update(mediaProcessingJobs).set({ output: { publication: writes } }).where(eq(mediaProcessingJobs.id, job.id));
+    return writes;
+  };
+  try {
+    assert.equal(await withMediaLeaseWrite(claim, fresh().signal, write), 1);
+    await assert.rejects(withMediaLeaseWrite({ ...claim, leaseToken: randomUUID() }, fresh().signal, write), /lease lost/);
+    assert.equal(writes, 1);
+    const abort = fresh();
+    await assert.rejects(withMediaLeaseWrite(claim, abort.signal, async transaction => { await write(transaction); abort.abort(); }));
+    assert.deepEqual((await state()).output, { publication: 1 }, "Abort during publication must roll back");
+    const preAborted = fresh(); preAborted.abort();
+    await assert.rejects(withMediaLeaseWrite(claim, preAborted.signal, write));
+    assert.equal(writes, 2);
+    await db.update(mediaProcessingJobs).set({ leaseExpiresAt: new Date(Date.now() - 1) }).where(eq(mediaProcessingJobs.id, job.id));
+    await assert.rejects(withMediaLeaseWrite(claim, fresh().signal, write), /lease lost/);
+    assert.equal(writes, 2);
+    const conflicts: string[] = [];
+    for (const change of ["cancelled", "reassigned"] as const) {
+      await db.update(mediaProcessingJobs).set({ state: "running", leaseToken: token, cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() + 60_000) }).where(eq(mediaProcessingJobs.id, job.id));
+      let release!: () => void, ready!: (xid: string) => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const acquired = new Promise<string>(resolve => { ready = resolve; });
+      const mutation = db.transaction(async transaction => {
+        await transaction.select().from(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id)).for("update");
+        await transaction.update(mediaProcessingJobs).set(change === "cancelled"
+          ? { state: "cancelled", cancellationRequestedAt: new Date() }
+          : { leaseToken: randomUUID() }).where(eq(mediaProcessingJobs.id, job.id));
+        const rows = await transaction.execute(sql`SELECT pg_current_xact_id()::text AS xid`);
+        ready(String(rows[0].xid)); await held;
+      });
+      const xid = await Promise.race([acquired, mutation.then(() => { throw new Error("Fixture transaction exited before holding its lock"); })]);
+      const outcome = withMediaLeaseWrite(claim, fresh().signal, write)
+        .then(() => null, error => error as Error);
+      try {
+        let blocked = false;
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          const locks = await db.execute(sql`SELECT count(*)::int AS count FROM pg_locks WHERE locktype = 'transactionid' AND transactionid::text = ${xid} AND NOT granted`);
+          if (Number(locks[0].count) === 1) { blocked = true; break; }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.equal(blocked, true, "Publication must serialize with the exact job's durable mutation");
+      } finally {
+        release(); await mutation;
+        const error = await outcome;
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /lease lost/);
+      }
+      assert.equal(writes, 2, "Losing attempts must never invoke a publication write");
+      assert.deepEqual((await state()).output, { publication: 1 });
+      conflicts.push(change);
+    }
+    await db.update(mediaProcessingJobs).set({ state: "running", leaseToken: token,
+      cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() + 60_000) }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await renewMediaJobLease(claim, 60_000), true);
+    assert.equal(await renewMediaJobLease({ ...claim, leaseToken: randomUUID() }, 60_000), false);
+    const expires = new Date(Date.now() + 1_500);
+    await db.update(mediaProcessingJobs).set({ leaseExpiresAt: expires }).where(eq(mediaProcessingJobs.id, job.id));
+    let releaseRenewal!: () => void, locked!: (xid: string) => void;
+    const holdRenewal = new Promise<void>(resolve => { releaseRenewal = resolve; });
+    const renewalLock = new Promise<string>(resolve => { locked = resolve; });
+    const blocker = db.transaction(async transaction => {
+      // Deliberately do NOT change the row: a stale predicate cannot rely on
+      // PostgreSQL rechecking a newer tuple after it waits for this lock.
+      await transaction.select().from(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id)).for("update");
+      const rows = await transaction.execute(sql`SELECT pg_current_xact_id()::text AS xid`);
+      locked(String(rows[0].xid)); await holdRenewal;
+    });
+    const renewalXid = await Promise.race([renewalLock, blocker.then(() => { throw new Error("Renewal lock fixture exited early"); })]);
+    const renewed = renewMediaJobLease(claim, 60_000).then(value => ({ value }), error => ({ error }));
+    try {
+      let blocked = false;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const locks = await db.execute(sql`SELECT count(*)::int AS count FROM pg_locks WHERE locktype = 'transactionid' AND transactionid::text = ${renewalXid} AND NOT granted`);
+        if (Number(locks[0].count) === 1) { blocked = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal(blocked, true, "Renewal must contend for the unchanged job row");
+      let expired = false;
+      while (Date.now() < deadline) {
+        const rows = await db.execute(sql`SELECT clock_timestamp() > ${expires.toISOString()}::timestamptz AS expired`);
+        if (rows[0].expired === true) { expired = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal(expired, true);
+    } finally {
+      releaseRenewal(); await blocker;
+      assert.deepEqual(await renewed, { value: false }, "A delayed heartbeat must not revive an expired lease");
+    }
+    assert.equal((await state()).leaseExpiresAt?.getTime(), expires.getTime());
+    await db.update(mediaProcessingJobs).set({ cancellationRequestedAt: new Date() }).where(eq(mediaProcessingJobs.id, job.id));
+    await recoverInterruptedMediaJobs();
+    assert.equal((await state()).state, "running", "Recovery must never re-queue a cancellation-requested attempt");
+    await db.update(mediaProcessingJobs).set({ cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() + 5_000) }).where(eq(mediaProcessingJobs.id, job.id));
+    const scheduledAt = Date.now();
+    scheduleMediaCloudProcessing();
+    try {
+      // The initial pass sees a live claim. Only the next real polling tick
+      // can recover this subsequently expired lease; no process restart occurs.
+      assert.equal((await state()).leaseToken, token);
+      let recovered = false;
+      while (Date.now() - scheduledAt < 15_000) {
+        const current = await state();
+        if (current.leaseToken !== token) {
+          assert.ok(["queued", "running", "succeeded"].includes(current.state));
+          recovered = true; break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.equal(recovered, true, "The running worker must recover an expired lease on its ordinary polling loop");
+      assert.ok(Date.now() - scheduledAt >= 9_000, "Recovery must come from a subsequent real polling tick");
+    } finally { await stopMediaCloudProcessing(); }
+    await db.update(mediaProcessingJobs).set({ state: "failed", attempt: 1, maxAttempts: 3 }).where(eq(mediaProcessingJobs.id, job.id));
+    const retryClaim = { id: job.id, ownerUserId: asset.ownerUserId, attempt: 1 };
+    assert.equal(await retryMediaJob({ ...retryClaim, ownerUserId: -1 }), undefined);
+    const retries = await Promise.all([retryMediaJob(retryClaim), retryMediaJob(retryClaim)]);
+    assert.equal(retries.filter(Boolean).length, 1, "Only one concurrent retry may change the durable attempt");
+    const newerToken = randomUUID();
+    await db.update(mediaProcessingJobs).set({ state: "running", attempt: 2, leaseToken: newerToken }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob(retryClaim), undefined);
+    assert.equal((await state()).leaseToken, newerToken, "A stale retry must preserve newer running work");
+    await db.update(mediaProcessingJobs).set({ state: "failed" }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob(retryClaim), undefined, "A stale retry must not consume a later failed attempt");
+    await db.update(mediaProcessingJobs).set({ attempt: 3 }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob({ ...retryClaim, attempt: 3 }), undefined, "Retry budgets must be checked atomically");
+    for (const exhaustedState of ["running", "queued"] as const) {
+      await db.update(mediaProcessingJobs).set({ state: exhaustedState, cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() - 1) }).where(eq(mediaProcessingJobs.id, job.id));
+      await recoverInterruptedMediaJobs();
+      const exhausted = await state();
+      assert.equal(exhausted.state, "failed");
+      assert.equal(exhausted.errorCode, "worker_retry_exhausted");
+      assert.equal(exhausted.attempt, 3, "Automatic recovery cannot create unlimited attempts");
+    }
+    return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
+      localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
+      liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true,
+      databaseTimeZone: timezone[0].TimeZone, cancellationNotRequeued: true,
+      periodicRecoveryWithoutRestart: true, concurrentRetrySingleWinner: true,
+      staleRetryDenied: true, wrongOwnerRetryDenied: true, exhaustedRetryDenied: true,
+      automaticRecoveryHonorsAttemptBudget: true };
+  } finally {
+    await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
+  }
+}

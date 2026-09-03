@@ -13,13 +13,24 @@ selected local native/browser checks, real process lifecycle and Lottie/Rive
 output tests. Independent retained CI media artifacts decode to H.264 640x360,
 60 frames and AAC. The native image `sha256:1f3cfe8cceebf8f0916c4034c75ca6967417160a5dc09464bece2648ef538036`
 is promoted with unchanged non-image policy (2 CPU, 4 GiB, one task).
-Protected app deployment `33737474247` and signed-in field verification remain
-pending at this checkpoint. Prior timing failures are not erased by this pass.
+Protected app deployment `33737474247` passed 818 root tests, 384 browser journeys
+(24 existing skips), actual media ingest and two public release checks. The exact
+clean app source and 120/120 migrations are verified live. Approved-owner source
+editing/save/reopen, immutable paired lockfiles, undo/redo and desktop/mobile
+file-bar field checks passed, with original timeline unchanged and anonymous 401.
+Actual native execution `creativesos-cut-worker-7hdzr` used the exact promoted
+image and completed in 147,879 ms under the unchanged 180,000-ms gate. Independent
+output inspection confirms H.264 1280x720, 30 frames/one second, AAC, correct text
+bands, moving Lottie/Rive artwork and source-time geometry IoU 0.9911102331094429.
+Owned qualification sessions ended; original fixtures stayed unchanged. Receipts:
+`B:/CreativesOS-task-artifacts/source-authoring-production-20260903095823303` and
+`B:/CreativesOS-task-artifacts/native-text-production-20260903095939588`.
+Prior timing failures are not erased by this pass; stable latency is still open.
 The [short-HLS candidate](../releases/2026-09-03-short-hls-packaging.md) now fixes
 the earlier tiny-clip detection/playlist edge case with actual output evidence;
 its full qualification and deployment are separate pending gates.
 
-Latest checkpoint after PR 173 deployment: exact public source
+Historical checkpoint after PR 173 deployment: exact public source
 `efed8e7ada67a0ffb4cf26be3e8e745faad6b7ab` is verified at `/api/release` and
 `/api/ready`, with 120/120 migrations and no readiness blockers. Protected
 deployment `33725833600` passed 787 root tests, 382 browser checks, 24 existing
