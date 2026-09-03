@@ -87,6 +87,13 @@ database qualification retrieves the initializer plus fragments and checks each
 decoded picture and packet duration. No duplicated frame or loosened timing
 assertion substitutes for correct packaging. Browser field proof remains open.
 
+The fMP4 browser run then passed the one-frame clip but measured 0.5 seconds for
+the 0.3-second clip. Its samples retained a 0.2-second decode-reordering offset.
+The short-only encoding path now disables B-frame reordering, and independent
+qualification additionally checks the first presentation time and final frame
+end, not only individual sample durations. Existing longer-content encoding is
+unchanged. The failed browser trace and its exact timing remain retained.
+
 ## Primary references
 
 - [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)
