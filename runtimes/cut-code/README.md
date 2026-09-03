@@ -62,13 +62,40 @@ production topology approval or enable public code execution.
   with at most eight settlement rounds. Network access remains prohibited and
   the independent host deadline still wins. See the
   [actual async-frame receipt](../../docs/releases/2026-09-02-cut-code-frame-readiness.md).
-- `FrameVideo` seeks a capsule-local MP4/WebM import at the local composition
-  frame, with source offset, speed, repetition and end-frame freeze. It uses
+- `FrameVideo` selects a capsule-local MP4/WebM presentation frame at the local
+  composition time, with source offset, speed, repetition and end-frame freeze. It uses
   `startFrom` in composition-frame units, `speed` in `(0, 8]`, and `repeat` as a
-  boolean. Up to eight simultaneous, at-most-120-second/4K sources are admitted.
-  Embedded video remains muted by default. To include its source sound, name
-  the same capsule-local MP4/WebM in an explicit `audioTracks` request.
+  boolean. Up to eight imported, at-most-20-MiB/120-second/4K sources are admitted.
+  A bounded in-container index selects the exact integer presentation timestamp;
+  browser compositor/seek readiness is not used as a frame-selection guarantee.
+  FFmpeg decodes that selected frame to a private PNG, which must finish decoding
+  before capture. Sparse variable-frame-rate sources, reordered H.264 frames,
+  nonzero container origins and VP9 alpha have focused actual-output tests.
+  Limits include 36,000 indexed frames per source, a 4 MiB probe response, 8-second
+  probe/decode deadlines and a 64 MiB decoded-frame cache. These do not enlarge
+  the independent render deadline, memory or output budgets. Embedded video
+  remains muted by default. Its sound can be included through the opt-in below
+  or by naming the same MP4/WebM in an explicit `audioTracks` request.
   No external media URL or network permission is introduced.
+
+  With `compositionAudio: true`, imported `FrameVideo` source sound is a candidate
+  capability: `volume` (0–2), `muted` and `audioStream` (0–7) share its local
+  trim/forward-speed clock. Freeze and backward alternate-repeat phases are
+  silent. Audible speed is 0.5–2; explicitly muted video retains visual speed
+  support. Native video repeat requires frame-aligned duration/speed/phase.
+  Audio ending before the video becomes silence rather than repeating its tail.
+  Silent imports stay silent. An explicit replacement soundtrack should mute the
+  video to avoid mixing the source twice. Legacy requests without the soundtrack
+  opt-in remain silent. The runtime permits at most eight imported video files
+  for automatic sound and retains its eight combined soundtrack-interval cap.
+  Container-relative audio preserves delayed onset and early EOF, including
+  nonzero absolute starting timestamps. Focused actual-output tests cover these
+  cases, lifecycle, gain/mute, pitch, ranges, stream selection and explicit mixing.
+  The latest full local run did not finish: Docker's unchanged control-command
+  deadline expired after earlier pixel/audio checks passed. Protected exact-image
+  qualification and vulnerability gates are still required. See the
+  [indexed-media checkpoint](../../docs/releases/2026-09-02-cut-code-indexed-media.md).
+  This is not a deployed public source-code editor or service.
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
@@ -227,9 +254,10 @@ production topology approval or enable public code execution.
 The runtime is deliberately not a general JavaScript timing engine: unregistered
 asynchronous state and arbitrary timers are not a reproducibility contract.
 Explicit frame holds coordinate preparation, but cannot make nondeterministic
-source data deterministic or grant external network access. Video codec/VFR
-compatibility beyond the qualified MP4 fixtures, automatic `FrameVideo` source
-sound, reverse sound, unbounded audio intervals, arbitrary dependencies, PDF output,
+  source data deterministic or grant external network access. Video codec/VFR
+  compatibility beyond the explicitly tested fixtures, protected qualification
+  of the latest automatic `FrameVideo` sound/decoder candidate, reverse sound,
+  fractional-period repeating sound, unbounded audio intervals, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Typed source authoring

@@ -7,6 +7,7 @@ declare module '@creativesos/cut' {
     readonly height: number;
     readonly fps: number;
     readonly durationInFrames: number;
+    readonly compositionAudio?: boolean;
   }
   export interface FrameState {
     frame: number;
@@ -60,8 +61,8 @@ declare module '@creativesos/cut' {
   export function Freeze(props: { frame: number; children?: ReactNode }): ReactNode;
   export function Repeat(props: { duration: number; count?: number; alternate?: boolean; children?: ReactNode }): ReactNode;
   export type PrivateVideoSource = `data:video/${'mp4' | 'webm'};base64,${string}`;
-  /** Decoded into a frame-synchronized canvas. Audio uses explicit audioTracks. */
-  export function FrameVideo(props: CanvasHTMLAttributes<HTMLCanvasElement> & { src: PrivateVideoSource; startFrom?: number; speed?: number; repeat?: boolean }): ReactNode;
+  /** Frame-synchronized canvas. compositionAudio enables imported source sound; mute when supplying a replacement track. Audible speed is 0.5..2. */
+  export function FrameVideo(props: CanvasHTMLAttributes<HTMLCanvasElement> & { src: PrivateVideoSource; startFrom?: number; speed?: number; repeat?: boolean; muted?: boolean; volume?: number; audioStream?: number }): ReactNode;
   /** Capsule-root file, local frame clock, 0.5..2 pitch-preserving speed, 0..2 per-frame gain. Video requests opt in with compositionAudio: true. */
   export function FrameAudio(props: { file: string; startFrom?: number; speed?: number; volume?: number; muted?: boolean; audioStream?: number }): ReactNode;
 

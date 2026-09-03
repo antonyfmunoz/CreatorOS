@@ -38,9 +38,10 @@ export function readCapsule(bytes, entrypoint) {
 }
 
 export async function bundleCapsule(files, entrypoint) {
+  const videoImports = new Set();
   const locate = (name) => [name, `${name}.tsx`, `${name}.ts`, `${name}.jsx`, `${name}.js`, `${name}/index.tsx`, `${name}/index.ts`].find((candidate) => files[candidate]);
   const result = await build({
-    stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {FrameContext} from './sdk.jsx';import {frameReadiness} from './frame-readiness.mjs';import Composition from 'capsule-entry';const root=createRoot(document.getElementById('stage'));window.__cutRenderFrame=(frame,config,input)=>flushSync(()=>root.render(React.createElement(FrameContext.Provider,{value:{frame,globalFrame:frame,config,input}},React.createElement(Composition,input))));window.__cutWaitForFrame=()=>frameReadiness.wait(()=>flushSync(()=>{}));`, resolveDir: runtimeRoot, sourcefile: 'bootstrap.jsx', loader: 'jsx' },
+    stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {FrameContext} from './sdk.jsx';import {frameReadiness} from './frame-readiness.mjs';import {videoSourceTime} from './media-clock.mjs';import Composition from 'capsule-entry';const root=createRoot(document.getElementById('stage'));window.__cutRenderFrame=(frame,config,input)=>flushSync(()=>root.render(React.createElement(FrameContext.Provider,{value:{frame,globalFrame:frame,config,input}},React.createElement(Composition,input))));window.__cutWaitForFrame=()=>frameReadiness.wait(()=>flushSync(()=>{}));window.__cutVideoSourceTime=videoSourceTime;`, resolveDir: runtimeRoot, sourcefile: 'bootstrap.jsx', loader: 'jsx' },
     bundle: true, platform: 'browser', format: 'iife', write: false,
     outfile: path.join(runtimeRoot, '__compiled_capsule__.js'),
     jsx: 'automatic', sourcemap: false, logLevel: 'silent',
@@ -74,6 +75,7 @@ export async function bundleCapsule(files, entrypoint) {
       });
       plugin.onLoad({ filter: /.*/, namespace: 'capsule' }, (args) => {
         const extension = path.posix.extname(args.path).slice(1).toLowerCase();
+        if (['mp4', 'webm'].includes(extension)) videoImports.add(args.path);
         const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', css: args.path.endsWith('.module.css') ? 'local-css' : 'css', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl' };
         if (!loaders[extension] || !files[args.path]) throw new Error('Unsupported capsule module type.');
         return { contents: files[args.path], loader: loaders[extension] };
@@ -85,7 +87,7 @@ export async function bundleCapsule(files, entrypoint) {
   if (javascript.length !== 1 || stylesheets.length > 1 || result.outputFiles.length !== javascript.length + stylesheets.length) throw new Error('Unexpected compiled capsule outputs.');
   // CSS remains data, never JavaScript source or HTML markup. The isolated
   // renderer transfers both fields through Playwright's structured arguments.
-  const compiled = { javascript: javascript[0].text, stylesheet: stylesheets[0]?.text ?? '' };
+  const compiled = { javascript: javascript[0].text, stylesheet: stylesheets[0]?.text ?? '', videoImports: [...videoImports].sort() };
   if (Buffer.byteLength(compiled.javascript, 'utf8') + Buffer.byteLength(compiled.stylesheet, 'utf8') > 25 * 1024 * 1024) throw new Error('Compiled capsule exceeds its output limit.');
   return compiled;
 }

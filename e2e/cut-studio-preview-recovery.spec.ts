@@ -39,6 +39,14 @@ for (const kind of ['video', 'image', 'audio'] as const) {
     const source = await uploadVideo();
     const failed = kind === 'video' ? source : kind === 'audio' ? await uploadAudio() : await uploadImage();
     const replacement = kind === 'video' ? await uploadVideo() : kind === 'audio' ? await uploadAudio() : await uploadImage();
+    let sourceRms = 0;
+    if (kind === 'audio') {
+      const decoded = execFileSync('ffmpeg', ['-v', 'error', '-i', `${directory}/tone.wav`, '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024 });
+      expect(decoded.length).toBeGreaterThan(0);
+      let energy = 0; for (let offset = 0; offset < decoded.length; offset += 4) energy += decoded.readFloatLE(offset) ** 2;
+      sourceRms = Math.sqrt(energy / (decoded.length / 4));
+      expect(sourceRms).toBeGreaterThan(.08); expect(sourceRms).toBeLessThan(.095);
+    }
     const created = await page.request.post('/api/cut/projects', { data: { sourceAssetId: source.id, name: 'Preview recovery', duration: 2, mediaKind: 'video' } });
     expect(created.ok()).toBeTruthy(); const project = await created.json();
     for (const asset of [failed, replacement]) {
@@ -74,9 +82,15 @@ for (const kind of ['video', 'image', 'audio'] as const) {
           return Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
         });
         let baseline = 0;
-        await expect.poll(async () => baseline = await rms()).toBeGreaterThan(.03);
+        // A partly silent startup window once measured .071 instead of the
+        // decoded source's .088; correct .022 quarter gain then falsely failed
+        // its unchanged .2.. .3 ratio gate. Calibrate against actual source PCM
+        // before retaining a baseline, without adding a sleep or longer timeout.
+        await expect.poll(async () => { baseline = await rms(); return baseline / sourceRms; }).toBeGreaterThan(.97);
+        expect(baseline / sourceRms).toBeLessThan(1.03);
         await player.getByLabel('Composition volume', { exact: true }).fill('0.25');
         await expect.poll(async () => { const ratio = await rms() / baseline; return ratio > .2 && ratio < .3; }).toBe(true);
+        await info.attach('replacement-preview-gain', { body: JSON.stringify({ sourceRms, baselineRms: baseline, quarterGainRms: await rms() }), contentType: 'application/json' });
       }
       await player.getByRole('button', { name: 'Pause composition', exact: true }).click();
     }

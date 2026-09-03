@@ -10,6 +10,11 @@ test('bundles real TSX and the clean-room frame SDK without running source code'
   assert.ok(bundle.javascript.includes('__cutRenderFrame'));
   assert.equal(bundle.stylesheet, '');
 });
+test('records only actual imported private videos for source-sound binding', async () => {
+  const source = `import clip from './clip.mp4';export default ()=> <div>{clip}</div>`;
+  const files = readCapsule(archive(source, { 'src/clip.mp4': new Uint8Array([0, 1, 2]), 'src/unused.webm': new Uint8Array([3, 4]) }), 'src/index.tsx');
+  assert.deepEqual((await bundleCapsule(files, 'src/index.tsx')).videoImports, ['src/clip.mp4']);
+});
 test('rejects host, network and unapproved dependency imports', async () => {
   for (const specifier of ['node:fs', 'child_process', 'https://example.com/code.js', '/etc/passwd', '../../host.ts', 'unapproved-package', 'three/addons/loaders/GLTFLoader.js', 'three/src/Three.js']) {
     const files = readCapsule(archive(`import x from '${specifier}';export default x;`), 'src/index.tsx');
