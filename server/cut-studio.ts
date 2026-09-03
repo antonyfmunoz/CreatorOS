@@ -60,7 +60,8 @@ import {
   removeStoredAsset,
 } from "./asset-storage";
 import { registerCutStudioProductionRoutes } from "./cut-studio-production";
-import { cutCloudDispatchLeaseMs, dispatchCutStudioCloudJob } from "./cut-cloud-client";
+import { dispatchCutStudioCloudJob } from "./cut-cloud-client";
+import { claimCutCloudDispatch, recordCutDispatchUnconfirmed } from "./cut-dispatch-admission";
 import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { runCutNativeProcess } from "./cut-native-process";
@@ -1348,33 +1349,21 @@ export async function processCutStudioJob(jobId: string) {
   }
 }
 
-async function claimCutCloudDispatch(jobId: string) {
-  const requestedAt = new Date();
-  const retryBefore = new Date(requestedAt.getTime() - cutCloudDispatchLeaseMs);
-  const [claimed] = await db.update(cutStudioJobs).set({ detail: "External worker requested", heartbeatAt: requestedAt }).where(and(
-    eq(cutStudioJobs.id, jobId),
-    eq(cutStudioJobs.state, "queued"),
-    isNull(cutStudioJobs.cancellationRequestedAt),
-    lt(cutStudioJobs.attempt, cutStudioJobs.maxAttempts),
-    or(isNull(cutStudioJobs.heartbeatAt), lt(cutStudioJobs.heartbeatAt, retryBefore)),
-  )).returning({ id: cutStudioJobs.id });
-  return Boolean(claimed);
-}
-
 function queueJob(jobId: string) {
   if (process.env.CUT_STUDIO_PROCESSING_MODE !== "external") {
     setImmediate(() => void processDueCutStudioJobs());
     return;
   }
   void (async () => {
-    if (!await claimCutCloudDispatch(jobId)) return;
+    const reservation = await claimCutCloudDispatch(jobId);
+    if (!reservation?.token) return;
     try {
       await dispatchCutStudioCloudJob(jobId);
     } catch (error) {
-      await db.update(cutStudioJobs).set({ detail: "External dispatch retry pending", heartbeatAt: null }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued")));
+      await recordCutDispatchUnconfirmed(jobId, reservation.token);
       console.error("CutStudio cloud dispatch failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
     }
-  })();
+  })().catch(error => console.error("CutStudio dispatch reservation failed", { jobId, errorType: error instanceof Error ? error.name : typeof error }));
 }
 
 export async function recoverInterruptedCutStudioJobs() {

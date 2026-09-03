@@ -4510,6 +4510,10 @@ export const cutStudioJobs = pgTable(
     attempt: integer("attempt").notNull().default(0),
     maxAttempts: integer("max_attempts").notNull().default(3),
     retryOfJobId: uuid("retry_of_job_id").references((): AnyPgColumn => cutStudioJobs.id, { onDelete: "set null" }),
+    dispatchAttempt: integer("dispatch_attempt").notNull().default(0),
+    maxDispatchAttempts: integer("max_dispatch_attempts").notNull().default(3),
+    dispatchToken: uuid("dispatch_token"),
+    dispatchExpiresAt: timestamp("dispatch_expires_at"),
     detail: text("detail").notNull().default("Queued"),
     progress: doublePrecision("progress").notNull().default(0),
     request: json("request")
