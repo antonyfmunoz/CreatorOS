@@ -10,6 +10,7 @@ import { cutNativeInputArgs, runCutNativeProcess } from "../server/cut-native-pr
 import { cutJobErrorDetail } from "../server/cut-render-paths";
 import { cutNativeMediaEnvironment } from "../server/cut-native-environment";
 import { readCutProbeOutput } from "../server/cut-native-probe";
+import { cutNativeInputPolicyArgs, CUT_NATIVE_INPUT_FORMATS } from "../server/cut-native-input-policy";
 
 describe("native render input and error boundaries", () => {
   it("keeps only host/runtime settings and strips application authority from actual child processes", async () => {
@@ -26,9 +27,11 @@ describe("native render input and error boundaries", () => {
   it("applies a non-overridable policy to every input without mutating the caller", () => {
     const input = ["-y", "-threads", "1", "-i", "first.mp4", "-f", "lavfi", "-i", "color=c=blue:s=32x32", "-i", "frame-%06d.png", "output.mp4"];
     const original = [...input];
-    expect(cutNativeInputArgs(input)).toEqual(["-y", "-threads", "1", "-protocol_whitelist", "file,pipe", "-i", "first.mp4", "-f", "lavfi", "-protocol_whitelist", "file,pipe", "-i", "color=c=blue:s=32x32", "-protocol_whitelist", "file,pipe", "-i", "frame-%06d.png", "output.mp4"]);
+    expect(cutNativeInputArgs(input)).toEqual(["-y", "-threads", "1", ...cutNativeInputPolicyArgs(), "-i", "first.mp4", "-f", "lavfi", ...cutNativeInputPolicyArgs(), "-i", "color=c=blue:s=32x32", ...cutNativeInputPolicyArgs(), "-i", "frame-%06d.png", "output.mp4"]);
+    expect(cutNativeInputPolicyArgs()).toEqual(["-protocol_whitelist", "file,pipe", "-format_whitelist", CUT_NATIVE_INPUT_FORMATS]);
+    for (const format of ["hls", "dash", "concat", "sdp", "imf"]) expect(CUT_NATIVE_INPUT_FORMATS.split(",")).not.toContain(format);
     expect(input).toEqual(original);
-    for (const override of ["-protocol_whitelist", "-protocol_whitelist=ALL", "-protocol_whitelist:0", "-protocol_blacklist"]) {
+    for (const override of ["-protocol_whitelist", "-protocol_whitelist=ALL", "-protocol_whitelist:0", "-protocol_blacklist", "-format_whitelist", "-format_whitelist=ALL", "-enable_drefs", "-use_absolute_path:0"]) {
       expect(() => cutNativeInputArgs([override, "ALL", "-i", "source.mp4"])).toThrow(/cannot be overridden/);
     }
   });

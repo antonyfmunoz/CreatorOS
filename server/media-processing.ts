@@ -12,6 +12,7 @@ import { db } from "./db";
 import { recordOperationalServiceEvent } from "./operations";
 import { estimatedComputeCostMicros } from "@shared/operations";
 import { reserveWorkerSlot } from "./worker-admission";
+import { runManagedMediaProcess } from "./media-process";
 
 type Probe = {
   durationMs: number;
@@ -121,35 +122,20 @@ function frameRate(value: string | undefined) {
   return Number((numerator / denominator).toFixed(3));
 }
 
-async function run(command: string, args: string[], timeoutMs: number, jobId?: string) {
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, args, { windowsHide: true });
-    if (jobId) {
+async function run(command: "ffmpeg" | "ffprobe", args: string[], timeoutMs: number, jobId?: string) {
+  return runManagedMediaProcess(command, args, timeoutMs, {
+    started(child) {
+      if (!jobId) return;
       const processes = activeProcesses.get(jobId) ?? new Set<ReturnType<typeof spawn>>();
       processes.add(child);
       activeProcesses.set(jobId, processes);
-    }
-    const release = () => {
+    },
+    finished(child) {
       if (!jobId) return;
       const processes = activeProcesses.get(jobId);
       processes?.delete(child);
       if (!processes?.size) activeProcesses.delete(jobId);
-    };
-    let stdout = "";
-    let stderr = "";
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(Object.assign(new Error(`${command} exceeded its processing deadline`), { code: "media_timeout" }));
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => { stdout += String(chunk).slice(0, 2_000_000); });
-    child.stderr.on("data", (chunk) => { stderr += String(chunk).slice(0, 20_000); });
-    child.once("error", (error) => { clearTimeout(timeout); release(); reject(error); });
-    child.once("close", (code) => {
-      clearTimeout(timeout);
-      release();
-      if (code === 0) resolve(stdout);
-      else reject(Object.assign(new Error(`${command} failed: ${stderr.slice(-1_000) || `exit ${code}`}`), { code: "media_process_failed" }));
-    });
+    },
   });
 }
 

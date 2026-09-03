@@ -6,6 +6,36 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+Latest checkpoint after PR 173 deployment: exact public source
+`efed8e7ada67a0ffb4cf26be3e8e745faad6b7ab` is verified at `/api/release` and
+`/api/ready`, with 120/120 migrations and no readiness blockers. Protected
+deployment `33725833600` passed 787 root tests, 382 browser checks, 24 existing
+desktop skips and two public identity checks, with no reported retries.
+The image/actual-output receipt below still proves the earlier PR 171 app with
+the PR 173 native worker; it is not a new field receipt for this public source.
+
+PR 174 merged native subprocess credential/diagnostic/input-protocol hardening
+at `f6fb3ce8fd500975959d15fcbf190c30d931001f` after protected Verify `33727615495`
+passed 794 root and 382 browser checks without reported retries. Its local broad
+native/browser run passed **27/28**: the same 45-second native-session deadline
+failed and remains open. Its image is built, not promoted. A separate capture
+experiment preserved all pixels only with a slower implementation, so it was
+rejected rather than shipped as a performance fix.
+
+PR 175's first sticky-file-bar candidate failed the mobile file-switch check
+twice. Corrected `f84850a` passed 794 local root tests, types/build/bundle and all
+18 local source-editing checks. Verify `33731495043` passed 794 root tests,
+384 browser checks and 24 existing skips without reported retries; CodeQL passed.
+It merged at `3f6676c1218a9c8cdfe41ced71c381087d8872b3`. Deployment and normal-user
+field proof are pending. The
+native demuxer/ingest candidate adds real local-manifest rejection and supported
+format controls; see the [input-container boundary](../releases/2026-09-03-native-media-demuxer-boundary.md).
+It is not yet a qualified deployment. Public TSX execution, full composition
+preview, broader media/3D, scaled admission, cold-worker latency and authorized
+same-input competitor comparisons still prevent a parity claim.
+
+### Earlier checkpoint, superseded only by the exact evidence above
+
 Checkpoint 2026-09-03 07:19 UTC: PR 171's exact public deployment
 `33721447399` passed (764 root, 382 browser journeys, 24 existing desktop skips,
 no reported retries and two public identity checks). Current confirmed public
