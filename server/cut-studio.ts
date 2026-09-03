@@ -65,6 +65,7 @@ import { cutJobErrorDetail, cutRenderWorkspacePaths } from "./cut-render-paths";
 import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-process-progress";
 import { runCutNativeProcess } from "./cut-native-process";
 import { watchCutJobLease } from "./cut-job-lease-watch";
+import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
@@ -337,6 +338,7 @@ const proxyRequestSchema = z.object({ mediaId: z.string().uuid() });
 const running = new Set<string>();
 const activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
 const activeJobControllers = new Map<string, AbortController>();
+const activeJobLeaseTokens = new Map<string, string>();
 let cutWorkerTimer: NodeJS.Timeout | null = null;
 let cutNodeHeartbeatTimer: NodeJS.Timeout | null = null;
 let cutWorkerRegistered = false;
@@ -364,7 +366,7 @@ const supportedCutKinds = supportedKinds(cutWorker);
 
 export async function claimCutStudioJob(jobId: string, identity: ReturnType<typeof cutWorkerIdentity>, leaseToken: string, now = new Date()) {
   const [claimed] = await db.update(cutStudioJobs).set({ state: "running", detail: "Starting", progress: 0.05, workerId: identity.id, workerRegion: identity.region, leaseToken, leaseExpiresAt: new Date(now.getTime() + cutLeaseMs), heartbeatAt: now, cancellationRequestedAt: null, startedAt: now })
-    .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"), inArray(cutStudioJobs.kind, supportedKinds(identity)))).returning();
+    .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"), isNull(cutStudioJobs.cancellationRequestedAt), inArray(cutStudioJobs.kind, supportedKinds(identity)))).returning();
   return claimed;
 }
 
@@ -373,7 +375,7 @@ async function heartbeatCutWorker(requestedStatus?: "active" | "draining" | "off
   const status = requestedStatus ?? (cutWorkerStopping ? "draining" : "active");
   await db.insert(mediaWorkerNodes).values({ ...cutWorker, status, activeJobs: Math.min(running.size, cutWorker.maxConcurrency), heartbeatAt: now, drainStartedAt: status === "draining" ? now : null, updatedAt: now }).onConflictDoUpdate({
     target: mediaWorkerNodes.id,
-    set: { region: cutWorker.region, capabilities: cutWorker.capabilities, maxConcurrency: cutWorker.maxConcurrency, activeJobs: Math.min(running.size, cutWorker.maxConcurrency), version: cutWorker.version, status, heartbeatAt: now, drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now})` : null, updatedAt: now },
+    set: { region: cutWorker.region, capabilities: cutWorker.capabilities, maxConcurrency: cutWorker.maxConcurrency, activeJobs: Math.min(running.size, cutWorker.maxConcurrency), version: cutWorker.version, status, heartbeatAt: now, drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now.toISOString()}::timestamp)` : null, updatedAt: now },
   });
   cutWorkerRegistered = status !== "offline";
   if (now.getTime() - lastCutWorkerPruneAt >= 6 * 60 * 60_000) {
@@ -383,14 +385,16 @@ async function heartbeatCutWorker(requestedStatus?: "active" | "draining" | "off
 }
 
 export async function cutJobLeaseIsOwned(jobId: string, leaseToken: string) {
-  const rows = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, new Date()))).limit(1);
+  const rows = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), isNull(cutStudioJobs.cancellationRequestedAt), gt(cutStudioJobs.leaseExpiresAt, sql`clock_timestamp() AT TIME ZONE 'UTC'`))).limit(1);
   return rows.length === 1;
 }
 
 export async function updateCutJobProgress(jobId: string, leaseToken: string, progress: number, detail: string) {
-  const rows = await db.update(cutStudioJobs).set({ progress, detail }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, new Date()))).returning({ id: cutStudioJobs.id });
-  if (!rows.length) {
-    activeJobControllers.get(jobId)?.abort();
+  // A late progress callback from the old attempt must never abort the new one.
+  const controller = activeJobLeaseTokens.get(jobId) === leaseToken ? activeJobControllers.get(jobId) : undefined;
+  const rows = await withCutJobLeaseWrite(jobId, leaseToken, transaction => transaction.update(cutStudioJobs).set({ progress, detail }).where(eq(cutStudioJobs.id, jobId)).returning({ id: cutStudioJobs.id }), controller?.signal);
+  if (!rows?.length) {
+    controller?.abort();
     throw new Error("Native job cancelled or lease lost");
   }
 }
@@ -1230,6 +1234,8 @@ export async function processCutStudioJob(jobId: string) {
   let stopLeaseWatch: (() => void) | undefined;
   const leaseToken = randomUUID();
   let leaseHeartbeat: NodeJS.Timeout | null = null;
+  let renewingLease = false;
+  let leaseHeartbeatStopped = false;
   const processingStartedAt = Date.now();
   let processingBusinessId: string | null = null;
   let processingOutcome: boolean | null = null;
@@ -1237,16 +1243,21 @@ export async function processCutStudioJob(jobId: string) {
     const now = new Date();
     const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken, now);
     if (!claimed) return;
+    activeJobLeaseTokens.set(jobId, leaseToken);
     stopLeaseWatch = watchCutJobLease(controller, () => cutJobLeaseIsOwned(jobId, leaseToken));
     // Correlate a durable claim with its Cloud execution without logging the
     // lease token, owner content, request payload or private asset URLs.
     process.stdout.write(`${JSON.stringify({ event: "cut.job.claimed", jobId, workerId: cutWorker.id, kind: claimed.kind })}\n`);
     await heartbeatCutWorker();
     leaseHeartbeat = setInterval(() => {
-      const heartbeatAt = new Date();
-      void db.update(cutStudioJobs).set({ heartbeatAt, leaseExpiresAt: new Date(heartbeatAt.getTime() + cutLeaseMs) }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken), gt(cutStudioJobs.leaseExpiresAt, heartbeatAt))).returning({ id: cutStudioJobs.id }).then((rows) => {
-        if (!rows.length) controller.abort();
-      }).catch((error) => console.error("CutStudio worker lease heartbeat failed", { jobId, errorType: error instanceof Error ? error.name : typeof error }));
+      if (renewingLease || leaseHeartbeatStopped) return;
+      renewingLease = true;
+      void renewCutJobLease(jobId, leaseToken, cutLeaseMs).then(renewed => {
+        if (!renewed && !leaseHeartbeatStopped) controller.abort();
+      }).catch((error) => {
+        if (!leaseHeartbeatStopped) controller.abort();
+        console.error("CutStudio worker lease heartbeat failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
+      }).finally(() => { renewingLease = false; });
     }, Math.max(10_000, Math.floor(cutLeaseMs / 3)));
     leaseHeartbeat.unref();
     const project = await ownedProject(claimed.ownerUserId, claimed.projectId);
@@ -1265,12 +1276,12 @@ export async function processCutStudioJob(jobId: string) {
         const words = (result.words ?? []).map((word: any) => ({ word: String(word.word ?? "").trim(), start: Number(word.start ?? 0), end: Number(word.end ?? word.start ?? 0) })).filter((word: any) => word.word);
         const segments = (result.segments ?? []).map((segment: any, index: number) => ({ id: String(segment.id ?? index), start: Number(segment.start ?? 0), end: Number(segment.end ?? 0), text: String(segment.text ?? "").trim(), words: words.filter((word: any) => word.start >= Number(segment.start ?? 0) && word.end <= Number(segment.end ?? project.duration) + 0.1) }));
         const transcript: CutTranscript = { duration: Number(result.duration ?? project.duration), language: String(result.language ?? "en"), segments: segments.length ? segments : [{ id: "0", start: 0, end: project.duration, text: String(result.text ?? ""), words }] };
-        const completed = await db.transaction(async (transaction) => {
+        const completed = await withCutJobLeaseWrite(jobId, leaseToken, async (transaction) => {
           const [row] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Transcript ready", progress: 1, output: { wordCount: words.length }, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id });
           if (!row) return false;
           await transaction.update(cutStudioProjects).set({ transcript, updatedAt: new Date() }).where(eq(cutStudioProjects.id, project.id));
           return true;
-        });
+        }, controller.signal);
         if (!completed) return;
         processingOutcome = true;
         await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.transcript.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, wordCount: words.length }, idempotencyKey: `cutstudio:${jobId}:transcript.ready` });
@@ -1278,16 +1289,16 @@ export async function processCutStudioJob(jobId: string) {
     } else if (claimed.kind === "highlights") {
       if (!project.transcript) throw Object.assign(new Error("Transcribe the media before extracting highlights"), { code: "transcript_required" });
       const candidates = highlightCandidates(project.transcript);
-      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: `${candidates.length} highlights found`, progress: 1, output: { candidates }, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id });
-      if (!completed) return;
+      const completed = await withCutJobLeaseWrite(jobId, leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "done", detail: `${candidates.length} highlights found`, progress: 1, output: { candidates }, leaseExpiresAt: null, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId)).returning({ id: cutStudioJobs.id }), controller.signal);
+      if (!completed?.length) return;
       processingOutcome = true;
     } else if (claimed.kind === "render") {
       const request = cutRenderRequestSchema.parse(claimed.request);
       const result = await renderJob(jobId, leaseToken, project, source, request);
       Object.assign(result.output, request.timeline ? { timelineRevision: request.timeline.revision, timelineSha256: request.timeline.sha256, timelineSnapshot: "captured" } : { timelineSnapshot: request.composition ? "composition" : "legacy_live" });
-      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
-        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning();
-      if (!completed) {
+      const completed = await withCutJobLeaseWrite(jobId, leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "done", detail: "Render ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
+        .where(eq(cutStudioJobs.id, jobId)).returning({ id: cutStudioJobs.id }), controller.signal);
+      if (!completed?.length) {
         await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
         await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
         return;
@@ -1296,9 +1307,9 @@ export async function processCutStudioJob(jobId: string) {
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: project.id, eventType: "cutstudio.render.ready", actorUserId: project.ownerUserId, payload: { businessId: project.businessId, jobId, artifactAssetId: result.artifact.id, ...result.output }, idempotencyKey: `cutstudio:${jobId}:render.ready` });
     } else if (claimed.kind === "proxy") {
       const result = await createProxyJob(jobId, leaseToken, project, claimed.request);
-      const [completed] = await db.update(cutStudioJobs).set({ state: "done", detail: "Editing proxy ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
-        .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning();
-      if (!completed) {
+      const completed = await withCutJobLeaseWrite(jobId, leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "done", detail: "Editing proxy ready", progress: 1, artifactAssetId: result.artifact.id, output: result.output, leaseExpiresAt: null, finishedAt: new Date() })
+        .where(eq(cutStudioJobs.id, jobId)).returning({ id: cutStudioJobs.id }), controller.signal);
+      if (!completed?.length) {
         await removeStoredAsset(result.artifact.storageKey, "private").catch(() => undefined);
         await db.delete(assets).where(eq(assets.id, result.artifact.id)).catch(() => undefined);
         return;
@@ -1309,12 +1320,16 @@ export async function processCutStudioJob(jobId: string) {
   } catch (error) {
     console.error("CutStudio job failed", { jobId, errorType: error instanceof Error ? error.name : typeof error });
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "processing_failed";
-    const failed = await db.update(cutStudioJobs).set({ state: "error", detail: cutJobErrorDetail(error), errorCode: code, leaseExpiresAt: null, finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "running"), eq(cutStudioJobs.leaseToken, leaseToken))).returning({ id: cutStudioJobs.id }).catch(() => []);
-    if (failed.length) processingOutcome = false;
+    const failed = await withCutJobLeaseWrite(jobId, leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "error", detail: cutJobErrorDetail(error), errorCode: code, leaseExpiresAt: null, finishedAt: new Date() }).where(eq(cutStudioJobs.id, jobId)).returning({ id: cutStudioJobs.id }), controller.signal);
+    if (failed?.length) processingOutcome = false;
   } finally {
+    leaseHeartbeatStopped = true;
     if (leaseHeartbeat) clearInterval(leaseHeartbeat);
     stopLeaseWatch?.();
-    if (activeJobControllers.get(jobId) === controller) activeJobControllers.delete(jobId);
+    if (activeJobControllers.get(jobId) === controller) {
+      activeJobControllers.delete(jobId);
+      activeJobLeaseTokens.delete(jobId);
+    }
     running.delete(jobId);
     process.stdout.write(`${JSON.stringify({ event: "cut.job.execution_stopped", jobId, workerId: cutWorker.id, aborted: controller.signal.aborted, childRegistered: activeProcesses.has(jobId) })}\n`);
     if (processingBusinessId && processingOutcome !== null) void recordOperationalServiceEvent({ businessId: processingBusinessId, service: "rendering", success: processingOutcome, durationMs: Date.now() - processingStartedAt, sourceType: "cut_studio_job", sourceId: jobId, quantity: Date.now() - processingStartedAt, unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(Date.now() - processingStartedAt, Number(process.env.CUT_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
