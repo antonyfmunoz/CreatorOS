@@ -59,10 +59,10 @@ describe("owned native browser cleanup", () => {
     expect(runtime.launchServer.mock.calls[1][0].wsPath).not.toBe(settings.wsPath);
   });
   it("reaps a launched owner if the private connection fails", async () => {
-    const failure = new Error("connect failed");
+    const failure = new Error("connect failed ws://127.0.0.1:43123/private-control-token");
     const owner = { wsEndpoint: () => "ws://127.0.0.1:43123/private", close: vi.fn(async () => undefined), kill: vi.fn(async () => undefined) };
     runtime.launchServer.mockResolvedValue(owner); runtime.connect.mockRejectedValue(failure);
-    await expect(launchOwnedCutNativeBrowser({ executablePath: "/chromium" })).rejects.toBe(failure);
+    await expect(launchOwnedCutNativeBrowser({ executablePath: "/chromium" })).rejects.toThrow("Native renderer control connection failed");
     expect(owner.close).toHaveBeenCalledOnce();
   });
 });

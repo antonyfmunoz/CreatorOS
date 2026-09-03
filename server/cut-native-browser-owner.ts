@@ -49,9 +49,10 @@ export async function launchOwnedCutNativeBrowser(options: NonNullable<Parameter
     const browser = await chromium.connect(owner.wsEndpoint(), { timeout: 10_000 });
     owners.set(browser, close);
     return browser;
-  } catch (error) {
+  } catch {
     await close();
-    throw error;
+    // Playwright connection errors can contain the private control endpoint.
+    throw new Error("Native renderer control connection failed");
   }
 }
 
