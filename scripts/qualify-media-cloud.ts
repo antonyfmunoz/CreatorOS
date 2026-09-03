@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -99,6 +100,45 @@ try {
   const duplicateEvent = await analytics.emitAnalyticsEvent({ userId: user.id, eventName: "content.engaged", sessionId: "qualification-session", deduplicationKey: `qualification-event:${asset.id}`, objectType: "asset", objectId: asset.id, properties: { action: "duplicate" } });
   if (!firstEvent || duplicateEvent) throw new Error("Analytics event deduplication failed");
 
+  // Run very short clips through the real SQL job, encoder, persisted master,
+  // rendition registration and independent playback, not only helper fixtures.
+  const shortClipEvidence: Array<{ frames: number; targetDuration: number; allPixelsExact: boolean }> = [];
+  for (const frames of [1, 3, 12]) {
+    const clipDirectory = path.join(temp, `short-${frames}`); await fs.mkdir(clipDirectory);
+    const clipPath = path.join(clipDirectory, "source.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=32x32:r=10", "-frames:v", String(frames), "-c:v", "libx264", "-threads", "1", clipPath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+    const clipStored = await storage.persistManagedFile({ sourcePath: clipPath, ownerUserId: user.id, kind: "video", filename: "short.mp4", mimeType: "video/mp4", visibility: "public" });
+    const [clipAsset] = await db.insert(schema.assets).values({ ownerUserId: user.id, kind: "video", storageProvider: "local", storageKey: clipStored.storageKey, publicUrl: clipStored.publicUrl, mimeType: "video/mp4", sizeBytes: clipStored.sizeBytes, visibility: "public", status: "ready", originalFilename: "short.mp4", metadata: { qualification: true } }).returning();
+    const [clipJob] = await db.insert(schema.mediaProcessingJobs).values({ assetId: clipAsset.id, ownerUserId: user.id, kind: "package", state: "queued", idempotencyKey: `short-hls-qualification:${clipAsset.id}` }).returning();
+    assert.equal(await processing.processMediaJob(clipJob.id), true, "Short clip packaging job must complete");
+    const [clipManifest] = await db.select().from(schema.mediaRenditions).where(and(eq(schema.mediaRenditions.assetId, clipAsset.id), eq(schema.mediaRenditions.renditionKey, "hls-master-v1")));
+    assert.equal(clipManifest.status, "ready");
+    const prefix = clipManifest.storageKey.slice(0, clipManifest.storageKey.lastIndexOf("/"));
+    const masterPath = path.join(clipDirectory, "master.m3u8");
+    await storage.materializeStoredAsset(clipManifest.storageKey, "public", masterPath);
+    const relativeEntries = (text: string) => text.split(/\r?\n/).filter((line) => line && !line.startsWith("#"));
+    const variants = relativeEntries(await fs.readFile(masterPath, "utf8"));
+    assert.ok(variants.length > 0);
+    let targetDuration = 0;
+    for (const variant of variants) {
+      assert.match(variant, /^[0-9]+p\.m3u8$/);
+      const variantPath = path.join(clipDirectory, variant);
+      await storage.materializeStoredAsset(`${prefix}/${variant}`, "public", variantPath);
+      const text = await fs.readFile(variantPath, "utf8");
+      targetDuration = Number(text.match(/^#EXT-X-TARGETDURATION:(\d+)$/m)?.[1]);
+      assert.ok(targetDuration >= 1 && targetDuration >= frames / 10);
+      for (const segment of relativeEntries(text)) {
+        assert.match(segment, /^[0-9]+p-[0-9]+\.ts$/);
+        await storage.materializeStoredAsset(`${prefix}/${segment}`, "public", path.join(clipDirectory, segment));
+      }
+    }
+    const decode = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-protocol_whitelist", "file,pipe", "-i", file, "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+    const expected = decode(clipPath), actual = decode(masterPath);
+    assert.equal(actual.length, frames * 32 * 32 * 3);
+    assert.ok(actual.equals(expected), "Published short HLS must retain every original picture");
+    shortClipEvidence.push({ frames, targetDuration, allPixelsExact: true });
+  }
+
   console.log(JSON.stringify({
     status: "qualified",
     assetId: asset.id,
@@ -110,6 +150,7 @@ try {
     usageHistory: "qualified",
     attribution: "qualified",
     eventDeduplication: "qualified",
+    shortClipEvidence,
   }));
 } finally {
   await closeDatabase();

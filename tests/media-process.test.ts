@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { runManagedMediaProcess } from "../server/media-process";
+import { finalizeOwnedHlsMediaPlaylist, finalizeOwnedHlsSegment } from "../server/media-hls";
 
 describe("managed media subprocess boundary", () => {
   it("rejects input-policy overrides before starting either media tool", async () => {
@@ -20,14 +21,16 @@ describe("managed media subprocess boundary", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "managed-media-hls-test-"));
     try {
       const source = path.join(directory, "source.mp4"), playlist = path.join(directory, "output.m3u8");
-      await runManagedMediaProcess("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=32x32:r=10", "-t", "1.2", "-c:v", "libx264", "-threads", "1", source], 10_000);
+      await runManagedMediaProcess("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=32x32:r=10", "-t", "0.3", "-c:v", "libx264", "-threads", "1", source], 10_000);
       const probe = JSON.parse(await runManagedMediaProcess("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", source], 10_000));
       expect(probe.streams[0]).toMatchObject({ codec_name: "h264", width: 32, height: 32 });
-      expect(Number(probe.format.duration)).toBeGreaterThan(1);
+      expect(Number(probe.format.duration)).toBeCloseTo(0.3, 3);
       await runManagedMediaProcess("ffmpeg", ["-v", "error", "-i", source, "-c", "copy", "-hls_time", "1", "-hls_playlist_type", "vod", "-hls_segment_filename", path.join(directory, "segment-%03d.ts"), playlist], 10_000);
       const manifest = await readFile(playlist, "utf8");
       expect(manifest).toContain("#EXT-X-ENDLIST");
       expect(manifest).toContain("segment-000.ts");
+      await finalizeOwnedHlsSegment(path.join(directory, "segment-000.ts"));
+      await finalizeOwnedHlsMediaPlaylist(playlist);
       // Independent playback of our generated output proves packaging survived
       // the input restriction; an uploaded manifest is never an ingest source.
       const pixels = execFileSync("ffmpeg", ["-v", "error", "-i", playlist, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { windowsHide: true, timeout: 5_000, stdio: "pipe" });

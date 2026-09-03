@@ -6,6 +6,19 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+PR 176 merged at `84235860220207d5f6f4db334442de80899ad1f7` after Verify
+`33734704543` passed 818 root tests, 384 browser checks, 24 existing skips and no
+reported retries; CodeQL passed. Exact candidate `bae1fd8` also passed all 30
+selected local native/browser checks, real process lifecycle and Lottie/Rive
+output tests. Independent retained CI media artifacts decode to H.264 640x360,
+60 frames and AAC. The native image `sha256:1f3cfe8cceebf8f0916c4034c75ca6967417160a5dc09464bece2648ef538036`
+is promoted with unchanged non-image policy (2 CPU, 4 GiB, one task).
+Protected app deployment `33737474247` and signed-in field verification remain
+pending at this checkpoint. Prior timing failures are not erased by this pass.
+The [short-HLS candidate](../releases/2026-09-03-short-hls-packaging.md) now fixes
+the earlier tiny-clip detection/playlist edge case with actual output evidence;
+its full qualification and deployment are separate pending gates.
+
 Latest checkpoint after PR 173 deployment: exact public source
 `efed8e7ada67a0ffb4cf26be3e8e745faad6b7ab` is verified at `/api/release` and
 `/api/ready`, with 120/120 migrations and no readiness blockers. Protected

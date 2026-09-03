@@ -13,6 +13,7 @@ import { recordOperationalServiceEvent } from "./operations";
 import { estimatedComputeCostMicros } from "@shared/operations";
 import { reserveWorkerSlot } from "./worker-admission";
 import { runManagedMediaProcess } from "./media-process";
+import { finalizeOwnedHlsMediaPlaylist, finalizeOwnedHlsSegment } from "./media-hls";
 
 type Probe = {
   durationMs: number;
@@ -285,6 +286,8 @@ async function processPackage(asset: Asset, inputPath: string, directory: string
   const packaged = files.filter((file) => file.endsWith(".m3u8") || file.endsWith(".ts"));
   let masterStored: Awaited<ReturnType<typeof persistManagedFileAtKey>> | null = null;
   for (const file of packaged) {
+    if (file.endsWith(".ts")) await finalizeOwnedHlsSegment(path.join(directory, file));
+    if (file.endsWith(".m3u8") && file !== "master.m3u8") await finalizeOwnedHlsMediaPlaylist(path.join(directory, file));
     const stored = await persistManagedFileAtKey({ sourcePath: path.join(directory, file), storageKey: `${prefix}/${file}`, mimeType: file.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t", visibility: "public", metadata: { owner: String(asset.ownerUserId), asset: asset.id, kind: "adaptive" } });
     if (file === "master.m3u8") masterStored = stored;
   }
