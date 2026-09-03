@@ -73,7 +73,7 @@ describe("text renderer preparation stages", () => {
     const session = { browser: vi.fn(async () => browser), close: vi.fn(async () => undefined) } as unknown as CutNativeBrowserSession;
     const renderer = createCutTextRasterizer(session);
     const input = { text: "private title", layout: cutTextLayoutSchema.parse({}), width: 320, height: 180, canvasWidth: 320, referenceWidth: 320, textColor: "#ffffff", backgroundColor: "#000000", backgroundOpacity: 0, fontPath: "private-font-path", outputPath: "private-output-path", measure: createCutPreparationTrace(scope, (event) => events.push(event)) };
-    return { events, failure, page, context, browser, renderer, input };
+    return { events, failure, page, context, browser, session, renderer, input };
   }
   it("measures font, browser, layout, capture and cleanup with unchanged isolation and screenshot settings", async () => {
     const test = fixture(); await expect(test.renderer.render(test.input)).resolves.toBeNull();
@@ -89,5 +89,14 @@ describe("text renderer preparation stages", () => {
     expect(test.events.at(-1)).toMatchObject({ stage: "context_cleanup", state: "completed" });
     expect(test.context.close).toHaveBeenCalledOnce(); expect(JSON.stringify(test.events)).not.toContain("private");
     await test.renderer.close();
+  });
+  it("rejects captured output when context cleanup fails and invalidates the job renderer", async () => {
+    const test = fixture();
+    test.context.close.mockRejectedValue(new Error("private context transport"));
+    await expect(test.renderer.render(test.input)).rejects.toThrow("Native renderer context cleanup failed");
+    expect(test.page.screenshot).toHaveBeenCalledOnce(); expect(test.session.close).toHaveBeenCalledOnce();
+    expect(test.events.at(-1)).toMatchObject({ stage: "context_cleanup", state: "failed" });
+    expect(JSON.stringify(test.events)).not.toContain("private");
+    await expect(test.renderer.render(test.input)).rejects.toThrow("Text renderer is closed");
   });
 });

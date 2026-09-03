@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import type { Browser, Page } from "playwright-core";
 import type { CutNativeBrowserSession } from "./cut-native-browser-session";
 import { closeCutNativeBrowser, launchOwnedCutNativeBrowser } from "./cut-native-browser-owner";
+import { closeCutNativeContext } from "./cut-native-context-cleanup";
 
 const require = createRequire(import.meta.url);
 const MAX_ANIMATION_FRAMES = 3_600;
@@ -161,7 +162,14 @@ export async function renderCutAnimationFrames(input: {
     }
     return { frameCount, pattern: path.join(input.outputDirectory, "frame-%06d.png") };
   } finally {
-    await context?.close().catch(() => undefined);
-    if (!input.session && browser) await closeCutNativeBrowser(browser);
+    const closeOwner = async () => {
+      if (input.session) await input.session.close();
+      else if (browser) await closeCutNativeBrowser(browser);
+    };
+    try {
+      await closeCutNativeContext(context, closeOwner);
+    } finally {
+      if (!input.session) await closeOwner();
+    }
   }
 }
