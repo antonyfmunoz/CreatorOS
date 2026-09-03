@@ -9,6 +9,7 @@ import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
 import { createCutNativeBrowserSession } from "./cut-native-browser-session";
 import { cutPreparationProgress } from "./cut-preparation-progress";
+import { createCutPreparationTrace } from "./cut-preparation-trace";
 import { cutWorkerRuntimeId } from "./cut-worker-identity";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -836,6 +837,8 @@ async function renderMultitrack(
   for (let graphicIndex = 0; graphicIndex < graphics.length; graphicIndex++) {
     const graphic = graphics[graphicIndex];
     await reportPreparation(graphicIndex);
+    const measure = createCutPreparationTrace({ jobId, layer: graphicIndex + 1, kind: graphic.kind });
+    await measure("layer", async () => {
     const rasterPath = path.join(temp, `graphic-raster-${rasterGraphicInputs.length}.png`);
     const staticMaskEffect = graphicEffect(graphic, "mask");
     const staticMaskAssetId = typeof staticMaskEffect?.parameters.maskAssetId === "string" ? staticMaskEffect.parameters.maskAssetId : null;
@@ -855,7 +858,7 @@ async function renderMultitrack(
       const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
       rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
       rasterGraphicInputs.push({ path: frames.pattern, animated: true });
-      continue;
+      return;
     } else if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       if (!privateImage?.asset.mimeType?.startsWith("image/")) throw new Error("A composition image must reference ready private image media");
@@ -876,7 +879,7 @@ async function renderMultitrack(
       if (graphic.fontAssetId && (!privateFont || privateFont.asset.kind !== "cut-font" || !privateFont.asset.mimeType || !cutStudioFontMime.test(privateFont.asset.mimeType))) throw new Error("A composition font must reference ready private TTF or OTF media");
       if (graphic.textLayout && graphic.fontReferenceWidth) {
         if (privateFont) await cutStudioFontFilter(privateFont.url); // Validate its SFNT signature before the native font loader.
-        await textRasterizer.render({ text: graphic.text, layout: graphic.textLayout, width, height, canvasWidth: size[0], referenceWidth: graphic.fontReferenceWidth, textColor: graphic.textColor, backgroundColor: graphic.backgroundColor, backgroundOpacity: graphic.backgroundOpacity, fontPath: privateFont?.url, outputPath: baseRasterPath });
+        await textRasterizer.render({ text: graphic.text, layout: graphic.textLayout, width, height, canvasWidth: size[0], referenceWidth: graphic.fontReferenceWidth, textColor: graphic.textColor, backgroundColor: graphic.backgroundColor, backgroundOpacity: graphic.backgroundOpacity, fontPath: privateFont?.url, outputPath: baseRasterPath, measure });
       } else {
         const textPath = path.join(temp, `graphic-text-${rasterGraphicInputs.length}.txt`);
         await fs.writeFile(textPath, graphic.text.replace(/[\r\n]+/g, " "), { mode: 0o600 });
@@ -896,8 +899,9 @@ async function renderMultitrack(
     }
     rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
     rasterGraphicInputs.push({ path: rasterPath, animated: false });
+    });
   }
-  } finally { signal?.removeEventListener("abort", cancelPreparation); await textRasterizer.close(); }
+  } finally { signal?.removeEventListener("abort", cancelPreparation); await createCutPreparationTrace({ jobId, layer: 0, kind: "session" })("session_cleanup", () => textRasterizer.close()); }
   for (let index = 0; index < graphics.length; index += 1) {
     const graphic = graphics[index];
     const nextLabel = `graphic${index}`;
