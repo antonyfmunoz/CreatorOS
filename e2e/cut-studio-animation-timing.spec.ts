@@ -60,6 +60,10 @@ test("authored animation offsets survive reload and match preview and private ex
   await studio.getByRole("button", { name: "Save composition", exact: true }).click(); await json(await saving);
   await page.reload(); await studio.getByLabel("Selected layer", { exact: true }).selectOption("animation");
   await expect(studio.getByLabel("Layer source start frame", { exact: true })).toHaveValue("5");
+  // The editor's thumbnail starts at frame six. Compare the same frame as the
+  // independent exported still, not two different positions on the timeline.
+  await studio.getByRole("button", { name: "Restart composition", exact: true }).click();
+  await expect(studio.getByRole("region", { name: "CutStudio composition player", exact: true })).toHaveAttribute("data-current-frame", "0");
   const transforms = studio.getByLabel("Offset animation Lottie preview", { exact: true }).locator("svg g[transform]");
   await expect.poll(async () => transforms.evaluateAll(nodes => nodes.some(node => {
     const match = /^matrix\(([^)]+)\)$/.exec(node.getAttribute("transform") ?? "");

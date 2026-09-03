@@ -29,3 +29,17 @@ required. This is not a Remotion-parity claim.
 Initial focused qualification: 19 tests in four files passed (animation timing,
 execution-source validation, Lottie policy, and immutable render snapshots).
 This result does not substitute for the pending actual browser/export checks.
+
+The first protected candidate passed all 764 root tests and the actual 30/60-FPS
+native pixel comparison, but its UI test failed in both viewport sizes (including
+the retained retries). The oracle incorrectly compared the editor's initial
+frame six against a frame-zero export reference. It now explicitly restarts the
+player and verifies frame zero before the unchanged 30-degree/geometry assertions.
+The original failed run is `33718786228`; 202 mobile and 178 desktop journeys
+passed, with one failed journey per project and 24 existing desktop skips.
+Exact corrected-source qualification is still required.
+
+Local source `2c9b0c5` passed 764 tests, types/build/bundle but failed the unchanged
+10-second native screenshot gate before the combined browser suite. A diagnostic
+using the already-installed bundled full browser passed real owned-process cleanup
+and Lottie/Rive output; this is not a default-browser or production change.
