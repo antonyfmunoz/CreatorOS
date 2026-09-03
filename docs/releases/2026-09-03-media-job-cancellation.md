@@ -18,6 +18,9 @@ still-active attempt. Success also requires a live uncancelled matching lease.
 Renewal takes the job row lock before evaluating expiry against the database
 clock, including when another transaction locks but does not change the row.
 The checksum stream waits for its actual close before source cleanup.
+Terminal success and failure writes use the same guarded row-lock transaction as
+rendition publication; expiry checks use the database clock after lock waits and
+again before commit. Aborted attempts cannot overwrite a durable cancellation.
 
 Rendition and probe metadata publication now takes the durable job row lock and
 checks the live, uncancelled attempt before committing. A local abort during the

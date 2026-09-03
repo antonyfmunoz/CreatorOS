@@ -390,7 +390,8 @@ export async function processMediaJob(jobId: string) {
       const output = await executeJob(claimed, controller.signal);
       controller.signal.throwIfAborted();
       const finishedAt = new Date();
-      const [completed] = await db.update(mediaProcessingJobs).set({
+      const completed = await withMediaLeaseWrite(claimed, controller.signal, async transaction => {
+        const [row] = await transaction.update(mediaProcessingJobs).set({
         state: "succeeded",
         progress: 1,
         output,
@@ -406,14 +407,28 @@ export async function processMediaJob(jobId: string) {
         eq(mediaProcessingJobs.leaseToken, leaseToken),
         isNull(mediaProcessingJobs.cancellationRequestedAt),
         gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
-      )).returning({ id: mediaProcessingJobs.id });
+        )).returning({ id: mediaProcessingJobs.id });
+        return row;
+      });
       if (completed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: true, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
       return Boolean(completed);
     } catch (error) {
       const message = controller.signal.aborted ? "Media processing cancelled or lease lost" : error instanceof Error ? error.message.slice(0, 1_000) : "Media processing failed";
       const code = controller.signal.aborted ? "media_cancelled" : typeof error === "object" && error && "code" in error ? String(error.code).slice(0, 120) : "media_processing_failed";
       const finishedAt = new Date();
-      const [failed] = await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, leaseExpiresAt: null, heartbeatAt: finishedAt, finishedAt, updatedAt: finishedAt }).where(and(eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"), eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt), gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`))).returning({ id: mediaProcessingJobs.id });
+      let failed: { id: string } | undefined;
+      if (!controller.signal.aborted) {
+        try {
+          failed = await withMediaLeaseWrite(claimed, controller.signal, async transaction => {
+            const [row] = await transaction.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, leaseExpiresAt: null, heartbeatAt: finishedAt, finishedAt, updatedAt: finishedAt }).where(eq(mediaProcessingJobs.id, claimed.id)).returning({ id: mediaProcessingJobs.id });
+            return row;
+          });
+        } catch (publicationError) {
+          // Cancellation/reassignment owns the terminal state. Database failure
+          // is not swallowed: recovery must retain an interrupted attempt.
+          if (!controller.signal.aborted && !(publicationError && typeof publicationError === "object" && "code" in publicationError && publicationError.code === "media_lease_lost")) throw publicationError;
+        }
+      }
       if (failed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: false, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
       return false;
     } finally {

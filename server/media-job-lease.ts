@@ -50,16 +50,23 @@ export async function withMediaLeaseWrite<T>(
     signal.throwIfAborted();
     if (!claim.leaseToken || !current || current.state !== "running"
       || current.leaseToken !== claim.leaseToken || current.cancellationRequestedAt
-      || !current.leaseExpiresAt || current.leaseExpiresAt.getTime() <= Date.now()) {
+      || !current.leaseExpiresAt) {
       throw Object.assign(new Error("Media processing cancelled or lease lost"), { code: "media_lease_lost" });
     }
+    const leaseIsLive = async () => {
+      const rows = await transaction.execute(sql`SELECT clock_timestamp() < ${current.leaseExpiresAt!.toISOString()}::timestamptz AS live`);
+      return rows[0].live === true;
+    };
+    if (!await leaseIsLive()) throw Object.assign(new Error("Media processing cancelled or lease lost"), { code: "media_lease_lost" });
+    signal.throwIfAborted();
     const result = await write(transaction);
     // A local abort during the write rolls back, rather than publishing a result
     // after the owning attempt was disposed. A remote cancel takes this row lock.
     signal.throwIfAborted();
-    if (current.leaseExpiresAt.getTime() <= Date.now()) {
+    if (!await leaseIsLive()) {
       throw Object.assign(new Error("Media processing lease expired before publication"), { code: "media_lease_lost" });
     }
+    signal.throwIfAborted();
     return result;
   });
 }
