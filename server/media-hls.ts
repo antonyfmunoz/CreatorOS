@@ -38,8 +38,8 @@ export async function finalizeOwnedHlsSegment(file: string) {
  * media timing but publish a positive target that bounds every segment. */
 export function normalizeOwnedHlsTargetDuration(manifest: string) {
   if (manifest.length > 512_000 || !manifest.startsWith("#EXTM3U\n") || !manifest.includes("#EXT-X-ENDLIST")) throw new Error("Invalid generated HLS media playlist");
-  const targets = [...manifest.matchAll(/^#EXT-X-TARGETDURATION:(\d+)$/gm)];
-  const durations = [...manifest.matchAll(/^#EXTINF:([0-9]+(?:\.[0-9]+)?),[^\n]*$/gm)].map((match) => Number(match[1]));
+  const targets = Array.from(manifest.matchAll(/^#EXT-X-TARGETDURATION:(\d+)$/gm));
+  const durations = Array.from(manifest.matchAll(/^#EXTINF:([0-9]+(?:\.[0-9]+)?),[^\n]*$/gm)).map((match) => Number(match[1]));
   if (targets.length !== 1 || !durations.length || durations.some((duration) => !Number.isFinite(duration) || duration <= 0 || duration > 86_400)) throw new Error("Invalid generated HLS segment timing");
   const target = Math.max(1, Number(targets[0][1]), Math.ceil(Math.max(...durations)));
   if (!Number.isSafeInteger(target) || target > 86_400) throw new Error("Invalid generated HLS target duration");

@@ -39,6 +39,9 @@ EXTINF timing is preserved: no added pictures, silence or artificial duration.
 - New browser cases require actual HLS playback to the end, with no progressive
   fallback or error telemetry. Exact-candidate root/browser/CI, deployment and
   public release field proof are pending at this checkpoint.
+- First protected candidate passed all 829 root tests and actual media-ingest
+  qualification, but failed TypeScript's configured downlevel iterator check.
+  The correction uses `Array.from` without changing compiler settings or gates.
 
 This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and
