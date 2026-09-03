@@ -22,3 +22,15 @@ actual saved source bytes. Qualification and deployment remain pending.
 This is an editing-ergonomics improvement, not full IDE/Remotion parity: code
 execution/preview, language services, service isolation and authorized
 same-input competitor benchmarks remain open.
+
+## Visual follow-up
+
+Initial head `252c15ec` passed types and all 16 local authoring browser journeys,
+plus 729 protected root and 378 protected browser journeys with 24 existing skips
+and no retries. Manual inspection of the retained mobile screenshot nevertheless
+found that Tab followed by focus returning to the textarea could clip its first
+lines above the scroll viewport. The candidate now reveals the focused source
+box within its own scroll container without resetting its internal text scroll
+or selection. A geometric first-line visibility assertion accompanies the real
+screenshot. These new changes require fresh qualification; the earlier pass is
+not treated as proof of the visual fix.

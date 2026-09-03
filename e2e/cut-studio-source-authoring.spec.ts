@@ -219,6 +219,11 @@ test("expanded source workspace preserves one draft, selected file, selection an
   await editor.press("Tab");
   await expect(workspace.getByRole("button", { name: "Remove selected source file", exact: true })).toBeFocused();
   await editor.focus();
+  await expect.poll(async () => {
+    const sourceBox = await editor.boundingBox();
+    const viewportBox = await workspace.getByRole("region", { name: "Source workspace viewport", exact: true }).boundingBox();
+    return Boolean(sourceBox && viewportBox && sourceBox.y >= viewportBox.y && sourceBox.y + 24 <= viewportBox.y + viewportBox.height);
+  }, { message: "Refocused code must expose its first visible line, not clip it above the scroll viewport" }).toBe(true);
   const size = await workspace.boundingBox(); expect(size!.width).toBeGreaterThan(page.viewportSize()!.width * .9);
   expect(size!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.screenshot({ path: info.outputPath("source-workspace.png") });

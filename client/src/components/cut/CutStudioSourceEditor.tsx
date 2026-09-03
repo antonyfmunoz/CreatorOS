@@ -14,6 +14,7 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const workspaceViewport = useRef<HTMLDivElement>(null);
   const selection = useRef<{ path: string; start: number; end: number; direction: "forward" | "backward" | "none"; top: number; left: number } | null>(null);
   const selected = draft.files.find((file) => file.path === selectedPath) ?? draft.files[0];
   const changeView = (next: boolean) => {
@@ -26,6 +27,14 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
     if (field && saved?.path === selected?.path) {
       field.setSelectionRange(saved.start, saved.end, saved.direction);
       field.scrollTop = saved.top; field.scrollLeft = saved.left;
+    }
+  };
+  const revealSource = () => {
+    const field = textarea.current; const viewport = workspaceViewport.current;
+    if (!field || !viewport || document.activeElement !== field) return;
+    const fieldBox = field.getBoundingClientRect(); const viewportBox = viewport.getBoundingClientRect();
+    if (fieldBox.top < viewportBox.top + 8 || fieldBox.bottom > viewportBox.bottom - 8) {
+      viewport.scrollTop += fieldBox.top - viewportBox.top - 8;
     }
   };
   useLayoutEffect(restoreSelection, [expanded]);
@@ -48,7 +57,7 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
     <label className="block text-xs text-zinc-400">Entrypoint<select aria-label="Source editor entrypoint" className={field} disabled={busy} value={draft.entrypoint} onChange={(event) => onChange({ ...draft, entrypoint: event.target.value })}>{draft.files.filter((file) => /\.tsx?$/.test(file.path)).map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     <label className="block text-xs text-zinc-400">File<select aria-label="Source editor file" className={field} value={selected?.path ?? ""} onChange={(event) => selectPath(event.target.value)}>{draft.files.map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     {selected && <>
-      <textarea ref={textarea} aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" style={{ tabSize: 2 }} maxLength={cutSourceEditorLimits.fileBytes} className={`${field} ${expanded ? "min-h-[45dvh] text-sm" : "min-h-64"} font-mono`} disabled={busy} value={selected.content} onKeyDown={(event) => {
+      <textarea ref={textarea} aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" style={{ tabSize: 2 }} maxLength={cutSourceEditorLimits.fileBytes} className={`${field} ${expanded ? "min-h-[45dvh] text-sm" : "min-h-64"} font-mono`} disabled={busy} value={selected.content} onFocus={() => { if (expanded) requestAnimationFrame(revealSource); }} onKeyDown={(event) => {
         if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.nativeEvent.isComposing) return;
         const key = event.key.toLowerCase();
         if (key !== "z" && key !== "y") return;
@@ -78,12 +87,12 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
       <DialogTrigger asChild><Button size="sm" variant="outline">Expand source editor</Button></DialogTrigger>
       {!expanded && editor}
     </div>
-    {expanded && <DialogContent className="flex h-[94dvh] w-[96vw] max-w-[1400px] flex-col gap-3 overflow-hidden border-zinc-700 bg-black p-4 text-white" onOpenAutoFocus={(event) => { event.preventDefault(); textarea.current?.focus(); restoreSelection(); }}>
+    {expanded && <DialogContent className="flex h-[94dvh] w-[96vw] max-w-[1400px] flex-col gap-3 overflow-hidden border-zinc-700 bg-black p-4 text-white" onOpenAutoFocus={(event) => { event.preventDefault(); textarea.current?.focus({ preventScroll: true }); restoreSelection(); revealSource(); }}>
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div><DialogTitle>Composition source workspace</DialogTitle><DialogDescription className="mt-2 text-xs text-zinc-400">More room for the same draft. Returning to the studio keeps your text, selected file and undo history. Saving still creates a private package; no code executes here.</DialogDescription></div>
         <DialogClose asChild><Button size="sm" variant="outline">Return to studio</Button></DialogClose>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{editor}</div>
+      <div ref={workspaceViewport} role="region" aria-label="Source workspace viewport" className="min-h-0 flex-1 overflow-y-auto">{editor}</div>
     </DialogContent>}
   </Dialog>;
 }
