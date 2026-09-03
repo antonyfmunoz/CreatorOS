@@ -7,6 +7,36 @@ import { runManagedMediaProcess } from "../server/media-process";
 import { finalizeOwnedHlsMediaPlaylist, finalizeOwnedHlsSegment } from "../server/media-hls";
 
 describe("managed media subprocess boundary", () => {
+  it("never starts a decoder after cancellation during input preparation", async () => {
+    const controller = new AbortController();
+    const started = vi.fn(), finished = vi.fn();
+    controller.abort();
+    for (const command of ["ffmpeg", "ffprobe"] as const) {
+      await expect(runManagedMediaProcess(command, ["-v", "error", "-i", "unused.mp4"], 1_000, {
+        signal: controller.signal, started, finished,
+      })).rejects.toMatchObject({ code: "media_cancelled", message: "Media processing cancelled or lease lost" });
+    }
+    expect(started).not.toHaveBeenCalled();
+    expect(finished).not.toHaveBeenCalled();
+  });
+
+  it("keeps cancellation latched between actual children and waits for the owner to exit", async () => {
+    const controller = new AbortController();
+    let pid: number | undefined, finished = false;
+    await expect(runManagedMediaProcess("ffmpeg", ["-v", "error", "-re", "-f", "lavfi", "-i", "sine=frequency=440", "-f", "null", "-"], 5_000, {
+      signal: controller.signal,
+      started(child) { pid = child.pid; controller.abort(); },
+      finished() { finished = true; },
+    })).rejects.toMatchObject({ code: "media_cancelled" });
+    expect(finished).toBe(true); expect(pid).toBeGreaterThan(0);
+    expect(() => process.kill(pid!, 0)).toThrow();
+    const laterStarted = vi.fn();
+    await expect(runManagedMediaProcess("ffprobe", ["-v", "error", "unused.mp4"], 1_000, {
+      signal: controller.signal, started: laterStarted,
+    })).rejects.toMatchObject({ code: "media_cancelled" });
+    expect(laterStarted).not.toHaveBeenCalled();
+  });
+
   it("rejects input-policy overrides before starting either media tool", async () => {
     const started = vi.fn();
     for (const command of ["ffmpeg", "ffprobe"] as const) {
