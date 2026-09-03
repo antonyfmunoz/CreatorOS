@@ -15,6 +15,7 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
   const [expanded, setExpanded] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const workspaceViewport = useRef<HTMLDivElement>(null);
+  const fileSelector = useRef<HTMLLabelElement>(null);
   const selection = useRef<{ path: string; start: number; end: number; direction: "forward" | "backward" | "none"; top: number; left: number } | null>(null);
   const selected = draft.files.find((file) => file.path === selectedPath) ?? draft.files[0];
   const changeView = (next: boolean) => {
@@ -33,11 +34,26 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
     const field = textarea.current; const viewport = workspaceViewport.current;
     if (!field || !viewport || document.activeElement !== field) return;
     const fieldBox = field.getBoundingClientRect(); const viewportBox = viewport.getBoundingClientRect();
-    if (fieldBox.top < viewportBox.top + 8 || fieldBox.bottom > viewportBox.bottom - 8) {
-      viewport.scrollTop += fieldBox.top - viewportBox.top - 8;
+    // The selected file remains sticky while the workspace scrolls. Reserve
+    // its actual height so refocusing code cannot hide the filename or place
+    // the first editable line underneath that control.
+    const sourceTop = viewportBox.top + (fileSelector.current?.getBoundingClientRect().height ?? 0) + 8;
+    if (fieldBox.top < sourceTop || fieldBox.bottom > viewportBox.bottom - 8) {
+      viewport.scrollTop += fieldBox.top - sourceTop;
     }
   };
   useLayoutEffect(restoreSelection, [expanded]);
+  // Selecting another file can preserve textarea focus (for example through
+  // keyboard/controlled selection). In that case there is no new focus event
+  // to reveal the updated source after the workspace has scrolled.
+  useLayoutEffect(revealSource, [expanded, selected?.path]);
+  useLayoutEffect(() => {
+    const viewport = workspaceViewport.current;
+    if (!expanded || !viewport) return;
+    const observer = new ResizeObserver(revealSource);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [expanded]);
   let invalid = "";
   try { validateCutSourceFiles(draft.files, draft.entrypoint); } catch (error) { invalid = error instanceof Error ? error.message : "Invalid source files"; }
   let lockfileUnavailable = "";
@@ -55,7 +71,7 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
     <p className="text-xs leading-5 text-zinc-400">Edit files as text. No code runs on this page. Save creates a new private ZIP; existing packages are never overwritten. Save with a matching lockfile for the runtime's pinned React/Three dependencies, or supply your own lockfile separately. Nothing is installed.</p>
     <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={busy || !canUndo} aria-keyshortcuts="Control+Z Meta+Z" onClick={onUndo}>Undo source edit</Button><Button size="sm" variant="outline" disabled={busy || !canRedo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" onClick={onRedo}>Redo source edit</Button><span className="text-[10px] text-zinc-500">Bounded undo history stays in memory until this project closes or another source package opens.</span></div>
     <label className="block text-xs text-zinc-400">Entrypoint<select aria-label="Source editor entrypoint" className={field} disabled={busy} value={draft.entrypoint} onChange={(event) => onChange({ ...draft, entrypoint: event.target.value })}>{draft.files.filter((file) => /\.tsx?$/.test(file.path)).map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
-    <label className="block text-xs text-zinc-400">File<select aria-label="Source editor file" className={field} value={selected?.path ?? ""} onChange={(event) => selectPath(event.target.value)}>{draft.files.map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
+    <label ref={fileSelector} className={`block text-xs text-zinc-400 ${expanded ? "sticky top-0 z-10 bg-black pb-2" : ""}`}>File<select aria-label="Source editor file" className={field} value={selected?.path ?? ""} onChange={(event) => selectPath(event.target.value)}>{draft.files.map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     {selected && <>
       <textarea ref={textarea} aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" style={{ tabSize: 2 }} maxLength={cutSourceEditorLimits.fileBytes} className={`${field} ${expanded ? "min-h-[45dvh] text-sm" : "min-h-64"} font-mono`} disabled={busy} value={selected.content} onFocus={() => { if (expanded) requestAnimationFrame(revealSource); }} onKeyDown={(event) => {
         if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.nativeEvent.isComposing) return;
