@@ -66,6 +66,7 @@ import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-proces
 import { runCutNativeProcess } from "./cut-native-process";
 import { watchCutJobLease } from "./cut-job-lease-watch";
 import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
+import { cutRenderEncoding } from "@shared/cut-render-encoding";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
@@ -1028,7 +1029,7 @@ async function renderMultitrack(
   }
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
-  const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+  const encoding = cutRenderEncoding(request);
   // Authored curves can exceed OS argument-length limits. This is generated
   // filter data in the job's private temporary directory, not executable input.
   const filterGraphArgs = await cutFilterGraphArgs(temp, filters);
@@ -1111,7 +1112,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
       const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true, ...compositionMetadata } }).returning();
       await registerCutArtifact(source.id, artifact, "rendered_from");
-      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
+      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, audioTargetBitrateKbps: cutRenderEncoding(request).audioTargetBitrateKbps, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
     }
     await materializePrivateAsset(source.storageKey, sourcePath);
     const media = await probeMedia(sourcePath);
@@ -1166,7 +1167,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     }
     const finishingFilters = masterAudioFilters(request);
     if (media.hasAudio && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
-    const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+    const encoding = cutRenderEncoding(request);
     const duration = cutDuration({ version: 2, clips });
     const inputArgs = ["-y", ...cutFilterThreadArgs(), ...cutCodecThreadArgs(), "-i", sourcePath];
     if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
@@ -1177,7 +1178,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
     const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, ...compositionMetadata } }).returning();
     await registerCutArtifact(source.id, artifact, "rendered_from");
-    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
+    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, audioTargetBitrateKbps: cutRenderEncoding(request).audioTargetBitrateKbps, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }

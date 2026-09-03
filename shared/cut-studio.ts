@@ -275,6 +275,7 @@ export const cutRenderSettingsSchema = z.object({
   audioPreset: z.enum(["original", "voice", "broadcast", "music"]).default("original"),
   masterGainDb: z.number().finite().min(-12).max(12).default(0),
   quality: z.enum(["draft", "social", "master"]).default("social"),
+  audioBitrateKbps: z.union([z.literal(96), z.literal(128), z.literal(160), z.literal(192), z.literal(256), z.literal(320)]).optional(),
   resolution: z.enum(["720p", "1080p", "2160p"]).default("1080p"),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(50), z.literal(60)]).default(30),
 });
