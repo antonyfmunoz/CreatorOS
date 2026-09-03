@@ -25,12 +25,17 @@ export function cutAnimationFrameCount(duration: number, fps: number) {
   return frames;
 }
 
-export async function cutNativeChromiumExecutable(environment: NodeJS.ProcessEnv = process.env) {
+export async function cutNativeChromiumExecutable(environment: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): Promise<string | undefined> {
+  if (environment.CUT_ANIMATION_CHROMIUM_PATH) {
+    try { await fs.access(environment.CUT_ANIMATION_CHROMIUM_PATH); }
+    catch { throw new Error("The configured native Chromium executable is unavailable"); }
+    return environment.CUT_ANIMATION_CHROMIUM_PATH;
+  }
+  // Omission selects Playwright's version-pinned headless shell. Do not borrow
+  // the user's independently updated/policy-managed Windows Chrome installation.
+  // Install the matching binary with `npx playwright install chromium`.
+  if (platform === "win32") return undefined;
   const candidates = [
-    environment.CUT_ANIMATION_CHROMIUM_PATH,
-    process.platform === "win32" && environment.PROGRAMFILES ? path.join(environment.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe") : undefined,
-    process.platform === "win32" && environment["PROGRAMFILES(X86)"] ? path.join(environment["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe") : undefined,
-    process.platform === "win32" && environment.LOCALAPPDATA ? path.join(environment.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe") : undefined,
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
     "/usr/bin/google-chrome",
