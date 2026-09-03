@@ -8,6 +8,7 @@ import { CutStudioSourceEditor, sourceDraftDirty, sourceDraftIdentity, type CutS
 import { buildCutSourceZip, starterCutSource, type CutSourceFile } from "@shared/cut-code-authoring";
 import { generateCutSourceLockfile } from "@shared/cut-code-lockfile";
 import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
+import { CutSourceHistory } from "@/lib/cut-source-history";
 import { motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
@@ -55,6 +56,8 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const actionPending = useRef(false);
   const [sourceDraft, setSourceDraft] = useState<CutSourceDraft | null>(null);
   const sourceDraftRef = useRef<CutSourceDraft | null>(null);
+  const sourceHistory = useRef(new CutSourceHistory());
+  const [sourceViewPath, setSourceViewPath] = useState("src/index.tsx");
   const serverBrief: PlanRow = { id: "brief", revision: serverRuntime?.plan?.revision ?? 0, brief: serverRuntime?.plan?.brief ?? starterBrief(project) };
   const briefRow = briefs.current.view([serverBrief])[0];
   const brief = briefRow.brief;
@@ -66,8 +69,18 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     rerenderDrafts((value) => value + 1);
     onUnsavedChange?.(compositions.current.size + workflows.current.size + briefs.current.size > 0 || sourceDraftDirty(sourceDraftRef.current));
   };
-  const changeSource = (draft: CutSourceDraft | null) => {
+  const changeSource = (draft: CutSourceDraft | null, mode: "record" | "reset" | "restore" = "record") => {
+    const previous = sourceDraftRef.current;
+    if (!draft || !previous || mode === "reset") sourceHistory.current.reset();
+    else if (mode === "record") sourceHistory.current.record(previous, draft);
+    if (draft && (mode === "reset" || !draft.files.some((file) => file.path === sourceViewPath))) setSourceViewPath(draft.entrypoint);
     sourceDraftRef.current = draft; setSourceDraft(draft); notifyDrafts();
+  };
+  const restoreSource = (direction: "undo" | "redo") => {
+    const draft = sourceDraftRef.current;
+    if (!draft || actionPending.current) return;
+    const restored = sourceHistory.current[direction](draft);
+    if (restored) changeSource({ ...restored, saved: draft.saved }, "restore");
   };
   const setBrief = (value: CutProductionBrief) => { briefs.current.edit(briefRow, value, serverBrief); notifyDrafts(); };
   const onTimelineApplied: typeof applyTimeline = (result) => { if (alive.current) applyTimeline(result); };
@@ -189,7 +202,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     void act("code:open", async () => {
       const result = await (await apiRequest("GET", `/api/cut/projects/${project.id}/code-sources/${encodeURIComponent(codeSourceAssetId)}?entrypoint=${encodeURIComponent(codeEntrypoint)}`)).json() as { files: CutSourceFile[]; entrypoint: string };
       if (!alive.current) return;
-      changeSource({ ...result, saved: sourceDraftIdentity(result) });
+      changeSource({ ...result, saved: sourceDraftIdentity(result) }, "reset");
       setMessage("Private source opened as text. Nothing was executed.");
     });
   };
@@ -288,9 +301,9 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. CreativesOS stores and validates it now. Public code rendering is not available yet; the isolated runtime still needs production integration and qualification.</p></div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
-            changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null });
+            changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null }, "reset");
           }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
-          {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
+          {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>

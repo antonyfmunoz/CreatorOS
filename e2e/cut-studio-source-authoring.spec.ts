@@ -93,17 +93,19 @@ test("source lockfile pair registers exact private assets and clears stale pair 
   const source = await editor.inputValue();
   const lockChoice = page.getByRole("combobox", { name: "Code dependency lockfile", exact: true });
   await expect(lockChoice).toHaveValue("");
-  let uploadedLock = "";
-  page.on("request", (request) => {
-    if (request.url().endsWith("/api/assets/upload-proxy") && request.postData()?.includes('name="code_lockfile"')) uploadedLock = request.postData()!;
-  });
   await page.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
   await expect(page.getByText("New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable.", { exact: true })).toBeVisible();
   const sourceId = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
   const lockId = await lockChoice.inputValue(); expect(lockId).toBeTruthy(); expect(lockId).not.toBe(sourceId);
   const opened = await (await page.request.get(`/api/cut/projects/${project.id}/code-sources/${sourceId}?entrypoint=src%2Findex.tsx`)).json();
   expect(opened.files.find((file: any) => file.path === "src/index.tsx").content).toBe(source);
-  expect(uploadedLock).toContain(generateCutSourceLockfile(opened.files));
+  const savedProject = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  const lockedMedia = savedProject.media.find((item: any) => item.assetId === lockId); expect(lockedMedia).toBeTruthy();
+  const lockUrl = `/api/cut/projects/${project.id}/media-library/${lockedMedia.id}/media-file`;
+  const downloadedLock = await page.request.get(lockUrl); expect(downloadedLock.ok(), await downloadedLock.text()).toBeTruthy();
+  expect(await downloadedLock.text()).toBe(generateCutSourceLockfile(opened.files));
+  const peer = info.project.name.startsWith("mobile") ? 2 : 1;
+  expect((await page.request.get(lockUrl, { headers: { "x-creativesos-demo-user": String(peer) } })).status()).toBe(404);
   await page.getByRole("button", { name: "Save isolated composition", exact: true }).click();
   await expect(page.getByText(/Pinned code composition saved/)).toBeVisible();
   const runtime = await (await page.request.get(`/api/cut/projects/${project.id}/creative-runtime`)).json();
@@ -148,4 +150,53 @@ test("source lockfile pair failure retains the draft and does not claim a comple
   await editor.fill(JSON.stringify({ dependencies: { react: "latest" } }));
   await expect(page.getByRole("button", { name: "Save source + matching lockfile", exact: true })).toBeDisabled();
   await expect(page.getByText(/Automatic lockfiles support only React/)).toBeVisible();
+});
+
+test("source history follows file and section edits without inventing server saves", async ({ page }, info) => {
+  await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const file = page.getByRole("combobox", { name: "Source editor file", exact: true });
+  const undo = page.getByRole("button", { name: "Undo source edit", exact: true });
+  const redo = page.getByRole("button", { name: "Redo source edit", exact: true });
+  const original = await editor.inputValue(); const first = original + "// first edit\n";
+  await expect(undo).toBeDisabled(); await editor.fill(first);
+  await file.selectOption("src/style.css"); const css = await editor.inputValue(); await editor.fill(css + "/* edit */\n");
+  await page.getByRole("button", { name: "Flows", exact: true }).click(); await page.getByRole("button", { name: "Motion", exact: true }).click();
+  await expect(file).toHaveValue("src/style.css"); await expect(editor).toHaveValue(css + "/* edit */\n");
+  await undo.click(); await expect(editor).toHaveValue(css);
+  await file.selectOption("src/index.tsx"); await expect(editor).toHaveValue(first);
+  await editor.press("Control+z"); await expect(editor).toHaveValue(original);
+  await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
+  await editor.press("Control+Shift+z"); await expect(editor).toHaveValue(first);
+  await page.getByRole("button", { name: "Save new private source ZIP", exact: true }).click();
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  await editor.fill(first + "// unsaved later edit\n"); await undo.click(); await expect(editor).toHaveValue(first);
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  await redo.click(); await expect(editor).toHaveValue(first + "// unsaved later edit\n");
+  await expect(page.getByText("Unsaved source draft. Save or download before leaving.", { exact: true })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "New source package", exact: true }).click();
+  await expect(undo).toBeDisabled(); await expect(redo).toBeDisabled(); await expect(editor).toHaveValue(original);
+});
+
+test("source history restores file deletion and entrypoint changes as source data", async ({ page }, info) => {
+  await fixture(page, info);
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const file = page.getByRole("combobox", { name: "Source editor file", exact: true });
+  const entrypoint = page.getByRole("combobox", { name: "Source editor entrypoint", exact: true });
+  const undo = page.getByRole("button", { name: "Undo source edit", exact: true });
+  const redo = page.getByRole("button", { name: "Redo source edit", exact: true });
+  await page.getByRole("textbox", { name: "New source file path", exact: true }).fill("src/Alternate.tsx");
+  await page.getByRole("button", { name: "Add source file", exact: true }).click();
+  await editor.fill("export default () => null;\n"); await entrypoint.selectOption("src/Alternate.tsx");
+  await undo.click(); await expect(entrypoint).toHaveValue("src/index.tsx"); await expect(editor).toHaveValue("export default () => null;\n");
+  await redo.click(); await expect(entrypoint).toHaveValue("src/Alternate.tsx");
+  await file.selectOption("src/style.css"); const css = await editor.inputValue();
+  await expect(file.getByRole("option", { name: "src/style.css", exact: true })).toHaveCount(1);
+  page.once("dialog", (dialog) => dialog.accept()); await page.getByRole("button", { name: "Remove selected source file", exact: true }).click();
+  await expect(file.getByRole("option", { name: "src/style.css", exact: true })).toHaveCount(0);
+  await undo.click(); await file.selectOption("src/style.css"); await expect(editor).toHaveValue(css);
+  await expect(entrypoint).toHaveValue("src/Alternate.tsx");
+  await redo.click(); await expect(file.getByRole("option", { name: "src/style.css", exact: true })).toHaveCount(0);
+  await expect(entrypoint).toHaveValue("src/Alternate.tsx");
 });

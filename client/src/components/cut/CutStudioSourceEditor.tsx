@@ -8,8 +8,7 @@ export const sourceDraftIdentity = (draft: Pick<CutSourceDraft, "files" | "entry
 export const sourceDraftDirty = (draft: CutSourceDraft | null) => Boolean(draft && sourceDraftIdentity(draft) !== draft.saved);
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 
-export function CutStudioSourceEditor({ draft, busy, onChange, onSave }: { draft: CutSourceDraft; busy: boolean; onChange: (draft: CutSourceDraft) => void; onSave: (withLockfile?: boolean) => void }) {
-  const [selectedPath, selectPath] = useState(draft.entrypoint);
+export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath: selectPath, canUndo, canRedo, onUndo, onRedo, onChange, onSave }: { draft: CutSourceDraft; busy: boolean; selectedPath: string; onSelectPath: (path: string) => void; canUndo: boolean; canRedo: boolean; onUndo: () => void; onRedo: () => void; onChange: (draft: CutSourceDraft) => void; onSave: (withLockfile?: boolean) => void }) {
   const [newPath, setNewPath] = useState("src/Title.tsx");
   const [message, setMessage] = useState("");
   const selected = draft.files.find((file) => file.path === selectedPath) ?? draft.files[0];
@@ -28,10 +27,17 @@ export function CutStudioSourceEditor({ draft, busy, onChange, onSave }: { draft
   };
   return <div aria-label="Composition source editor" className="mt-3 space-y-3 rounded-xl border border-zinc-700 p-3">
     <p className="text-xs leading-5 text-zinc-400">Edit files as text. No code runs on this page. Save creates a new private ZIP; existing packages are never overwritten. Save with a matching lockfile for the runtime's pinned React/Three dependencies, or supply your own lockfile separately. Nothing is installed.</p>
+    <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={busy || !canUndo} aria-keyshortcuts="Control+Z Meta+Z" onClick={onUndo}>Undo source edit</Button><Button size="sm" variant="outline" disabled={busy || !canRedo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" onClick={onRedo}>Redo source edit</Button><span className="text-[10px] text-zinc-500">Bounded undo history stays in memory until this project closes or another source package opens.</span></div>
     <label className="block text-xs text-zinc-400">Entrypoint<select aria-label="Source editor entrypoint" className={field} disabled={busy} value={draft.entrypoint} onChange={(event) => onChange({ ...draft, entrypoint: event.target.value })}>{draft.files.filter((file) => /\.tsx?$/.test(file.path)).map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     <label className="block text-xs text-zinc-400">File<select aria-label="Source editor file" className={field} value={selected?.path ?? ""} onChange={(event) => selectPath(event.target.value)}>{draft.files.map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     {selected && <>
-      <textarea aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={cutSourceEditorLimits.fileBytes} className={`${field} min-h-64 font-mono`} disabled={busy} value={selected.content} onChange={(event) => {
+      <textarea aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={cutSourceEditorLimits.fileBytes} className={`${field} min-h-64 font-mono`} disabled={busy} value={selected.content} onKeyDown={(event) => {
+        if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.nativeEvent.isComposing) return;
+        const key = event.key.toLowerCase();
+        if (key !== "z" && key !== "y") return;
+        event.preventDefault(); event.stopPropagation();
+        if (!busy) { if (key === "y" || event.shiftKey) onRedo(); else onUndo(); }
+      }} onChange={(event) => {
         const files = draft.files.map((file) => file.path === selected.path ? { ...file, content: event.target.value } : file);
         try { assertCutSourceTextBudget(files); onChange({ ...draft, files }); setMessage(""); }
         catch (error) { setMessage(`${error instanceof Error ? error.message : "Source is too large"} Previous draft retained.`); }
