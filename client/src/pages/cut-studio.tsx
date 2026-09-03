@@ -388,13 +388,26 @@ export default function CutStudioPage() {
     finally { setBusy(""); }
   };
 
-  const saveCodeSource = async (file: File) => {
+  const saveCodeSource = async (file: File, lockfile?: File) => {
     if (!project || currentProjectRef.current?.id !== project.id || accountIdRef.current !== authorizedProjectUserId) throw new Error("Reopen your project before saving source.");
     const owner = accountIdRef.current;
     const asset = await uploadPrivateMedia(file, "code_source");
     if (currentProjectRef.current?.id !== project.id || accountIdRef.current !== owner) throw new Error("Your session changed. The source was uploaded but was not attached; reopen the project.");
     const row = await (await apiRequest("POST", `/api/cut/projects/${project.id}/media-library`, { assetId: asset.id, name: file.name, duration: project.duration, mediaKind: "code_source" })).json() as ProjectMedia;
     if (currentProjectRef.current?.id === project.id && accountIdRef.current === owner) setMediaLibrary((items) => [...items.filter((item) => item.assetId !== row.assetId), row]);
+    if (lockfile) {
+      try {
+        if (currentProjectRef.current?.id !== project.id || accountIdRef.current !== owner) throw new Error("Project or session changed.");
+        const lockedAsset = await uploadPrivateMedia(lockfile, "code_lockfile");
+        if (currentProjectRef.current?.id !== project.id || accountIdRef.current !== owner) throw new Error("Project or session changed.");
+        const locked = await (await apiRequest("POST", `/api/cut/projects/${project.id}/media-library`, { assetId: lockedAsset.id, name: lockfile.name, duration: project.duration, mediaKind: "code_lockfile" })).json() as ProjectMedia;
+        if (currentProjectRef.current?.id !== project.id || accountIdRef.current !== owner) throw new Error("Project or session changed.");
+        setMediaLibrary((items) => [...items.filter((item) => item.assetId !== locked.assetId), locked]);
+        return { ...row, lockfileAssetId: locked.assetId };
+      } catch {
+        throw new Error("The source ZIP was saved, but the matching lockfile could not be confirmed. Your source draft is retained. Retry saves a new pair; the earlier ZIP remains in Project media.");
+      }
+    }
     return row;
   };
 

@@ -38,6 +38,7 @@ import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
 import { materializePrivateAsset } from "./asset-storage";
 import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
+import { validateCutSourceLockfilePair } from "./cut-code-lockfile";
 
 const uuid = z.string().uuid();
 const compositionInput = z.object({
@@ -186,8 +187,19 @@ async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferS
     const sourcePath = path.join(temporaryDirectory, "source.zip");
     const lockfilePath = path.join(temporaryDirectory, lockfileName);
     await Promise.all([materializePrivateAsset(source.storageKey, sourcePath), materializePrivateAsset(lockfile.storageKey, lockfilePath)]);
-    validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint);
-    validateCutCodeLockfile(lockfileName, await fs.readFile(lockfilePath));
+    const [sourceStat, lockfileStat] = await Promise.all([fs.stat(sourcePath), fs.stat(lockfilePath)]);
+    if (sourceStat.size > 25 * 1024 * 1024 || lockfileStat.size > 2 * 1024 * 1024) throw new Error("Code source or lockfile exceeds its safe size limit.");
+    let manifest = "";
+    validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint, (name, body) => {
+      if (name !== "package.json") return;
+      if (body.length > 256 * 1024) throw new Error("package.json exceeds 256 KiB.");
+      try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(body); } catch { throw new Error("package.json must be UTF-8 text."); }
+    }, "manifest");
+    const lockfileBytes = await fs.readFile(lockfilePath);
+    validateCutCodeLockfile(lockfileName, lockfileBytes);
+    let lockfileText: string;
+    try { lockfileText = new TextDecoder("utf-8", { fatal: true }).decode(lockfileBytes); } catch { throw new Error("Dependency lockfile must be UTF-8 text."); }
+    validateCutSourceLockfilePair(manifest, lockfileName, lockfileText);
   } finally {
     await fs.rm(temporaryDirectory, { recursive: true, force: true });
   }

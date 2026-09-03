@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
 import { waitForCutRender } from "./helpers/cut-render";
+import { generateCutSourceLockfile } from "../shared/cut-code-lockfile";
 
 function ownerFor(testInfo: TestInfo) { return testInfo.project.name.startsWith("mobile") ? 1 : 2; }
 async function request(page: Page, owner: number, method: string, url: string, data?: unknown, headers: Record<string, string> = {}) { return page.request.fetch(url, { method, data, headers: { "x-creativesos-demo-user": String(owner), ...headers } }); }
@@ -129,7 +130,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expectOk(sourceCapsuleUpload);
   const sourceCapsuleAsset = (await sourceCapsuleUpload.json()).asset;
   await expectOk(await request(page, owner, "POST", `/api/cut/projects/${project.id}/media-library`, { assetId: sourceCapsuleAsset.id, name: "qualification-source.zip", duration: 2, mediaKind: "code_source" }));
-  const lockfileDocument = Buffer.from(JSON.stringify({ name: "qualification-composition", lockfileVersion: 3, packages: {} }));
+  const lockfileDocument = Buffer.from(generateCutSourceLockfile([{ path: "package.json", content: JSON.stringify({ name: "qualification-composition", private: true }) }]));
   const lockfileUpload = await page.request.post("/api/assets/upload-proxy", { headers: { "x-creativesos-demo-user": String(owner) }, multipart: { kind: "cut-code-lockfile", visibility: "private", code_lockfile: { name: "package-lock.json", mimeType: "application/json", buffer: lockfileDocument } } });
   await expectOk(lockfileUpload);
   const lockfileAsset = (await lockfileUpload.json()).asset;
@@ -161,6 +162,9 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   const codePackage = studio.getByLabel("Code composition package");
   await codePackage.getByLabel("Code source capsule").selectOption(sourceCapsuleAsset.id);
   await expect(codePackage.getByLabel("Code source capsule")).toHaveValue(sourceCapsuleAsset.id);
+  // A different source never silently inherits another package's lockfile.
+  await expect(codePackage.getByLabel("Code dependency lockfile")).toHaveValue("");
+  await codePackage.getByLabel("Code dependency lockfile").selectOption(lockfileAsset.id);
   await expect(codePackage.getByLabel("Code dependency lockfile")).toHaveValue(lockfileAsset.id);
   await codePackage.getByRole("button", { name: "Save isolated composition" }).click();
   await expect(studio.getByText(/Pinned code composition saved/)).toBeVisible();

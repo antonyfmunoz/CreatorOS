@@ -37,7 +37,7 @@ function normalizedArchivePath(value: string) {
   return normalized;
 }
 
-export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, inspect?: (name: string, body: Buffer) => void) {
+export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, inspect?: (name: string, body: Buffer) => void, inspection: "editor" | "manifest" = "editor") {
   if (!input.length || input.length > MAX_SOURCE_BYTES) throw new Error("The code source ZIP exceeds the safe package limit");
   const minimumEocd = Math.max(0, input.length - 65_557);
   let eocd = -1;
@@ -113,7 +113,8 @@ export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, 
     if (!name.endsWith("/")) entries.push(name);
     // Text inspection has a smaller budget than executable-package admission.
     // Reject declared over-budget expansion before inflating any entry.
-    if (inspect && (uncompressedBytes > cutSourceEditorLimits.fileBytes || expandedBytes > cutSourceEditorLimits.totalBytes || entries.length > cutSourceEditorLimits.files)) throw new Error("This archive exceeds the text editor limits; no files were discarded.");
+    if (inspect && inspection === "editor" && (uncompressedBytes > cutSourceEditorLimits.fileBytes || expandedBytes > cutSourceEditorLimits.totalBytes || entries.length > cutSourceEditorLimits.files)) throw new Error("This archive exceeds the text editor limits; no files were discarded.");
+    if (inspect && inspection === "manifest" && name === "package.json" && uncompressedBytes > 256 * 1024) throw new Error("package.json exceeds 256 KiB.");
     records.push({ name, start: localHeaderOffset, end: recordEnd, dataStart, dataEnd, size: uncompressedBytes, method, checksum });
     offset = nameEnd + extraBytes + commentBytes;
   }
@@ -140,7 +141,7 @@ export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, 
       } catch { throw new Error("Code source deflate data is corrupt or exceeds its declared size"); }
     }
     if (body.length !== record.size || crc32(body) !== record.checksum) throw new Error("The code source entry content does not match its size and CRC32");
-    if (!record.name.endsWith("/")) inspect?.(record.name, body);
+    if (!record.name.endsWith("/") && (inspection === "editor" || record.name === "package.json")) inspect?.(record.name, body);
   }
   return { entries, entryCount, compressedBytes: input.length, expandedBytes };
 }
