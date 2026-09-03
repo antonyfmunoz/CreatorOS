@@ -6,6 +6,7 @@ import type { CutNativeBrowserSession } from "./cut-native-browser-session";
 import { closeCutNativeBrowser, launchOwnedCutNativeBrowser } from "./cut-native-browser-owner";
 import { closeCutNativeContext } from "./cut-native-context-cleanup";
 import { readCutNativeAnimationSource } from "./cut-animation-source";
+import { cutLottieFrameAtTime } from "../shared/cut-animation-time";
 
 const require = createRequire(import.meta.url);
 const MAX_ANIMATION_FRAMES = 3_600;
@@ -113,17 +114,17 @@ async function prepareRive(page: Page, bytes: Buffer, width: number, height: num
   })`);
 }
 
-async function seekFrame(page: Page, kind: CutAnimationKind, frame: number, fps: number) {
-  await page.evaluate(({ animationKind, frameNumber, frameRate }) => {
+async function seekFrame(page: Page, kind: CutAnimationKind, position: number) {
+  await page.evaluate(({ animationKind, position }) => {
     if (animationKind === "lottie") {
-      (window as unknown as { __cutAnimation: { goToAndStop(frame: number, isFrame: boolean): void } }).__cutAnimation.goToAndStop(frameNumber, true);
+      (window as unknown as { __cutAnimation: { goToAndStop(frame: number, isFrame: boolean): void } }).__cutAnimation.goToAndStop(position, true);
     } else {
       const animation = (window as unknown as { __cutRive: { animationNames: string[]; scrub(name: string, value: number): void } }).__cutRive;
       const name = animation.animationNames[0];
-      if (name) animation.scrub(name, frameNumber / frameRate);
+      if (name) animation.scrub(name, position);
     }
     return new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  }, { animationKind: kind, frameNumber: frame, frameRate: fps });
+  }, { animationKind: kind, position });
 }
 
 export async function renderCutAnimationFrames(input: {
@@ -134,6 +135,7 @@ export async function renderCutAnimationFrames(input: {
   height: number;
   fps: number;
   duration: number;
+  sourceStartSeconds?: number;
   onProgress?: (completedFrames: number, totalFrames: number) => Promise<void>;
   session?: CutNativeBrowserSession;
 }) {
@@ -141,6 +143,8 @@ export async function renderCutAnimationFrames(input: {
     throw new Error("Animation render dimensions exceed the isolated renderer budget");
   }
   const frameCount = cutAnimationFrameCount(input.duration, input.fps);
+  const sourceStartSeconds = input.sourceStartSeconds ?? 0;
+  if (!Number.isFinite(sourceStartSeconds) || sourceStartSeconds < 0 || sourceStartSeconds > 43_200) throw new Error("Animation source start exceeds its timing budget");
   const source = await readCutNativeAnimationSource(input.kind, input.sourcePath);
   await fs.mkdir(input.outputDirectory, { recursive: true });
   let browser: Browser | null = null;
@@ -156,7 +160,8 @@ export async function renderCutAnimationFrames(input: {
     if (source.kind === "lottie") await prepareLottie(page, source.animationData, input.width, input.height);
     else await prepareRive(page, source.bytes, input.width, input.height);
     for (let frame = 0; frame < frameCount; frame += 1) {
-      await seekFrame(page, input.kind, frame, input.fps);
+      const seconds = sourceStartSeconds + frame / input.fps;
+      await seekFrame(page, input.kind, source.kind === "lottie" ? cutLottieFrameAtTime(seconds, source.timing) : seconds);
       // The stage is exactly the fixed viewport. seekFrame has already waited
       // for two paint frames; repeating locator visibility/stability waits for
       // every exported frame slows all animation-heavy variant batches.

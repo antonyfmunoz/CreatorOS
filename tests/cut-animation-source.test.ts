@@ -22,7 +22,7 @@ async function source(bytes: string | Buffer) {
 describe("exact native animation byte boundary", () => {
   it("reads and validates actual bounded vector bytes", async () => {
     const { file } = await source(JSON.stringify(fixture()));
-    expect(await readCutNativeAnimationSource("lottie", file)).toEqual({ kind: "lottie", animationData: fixture() });
+    expect(await readCutNativeAnimationSource("lottie", file)).toEqual({ kind: "lottie", animationData: fixture(), timing: { frameRate: 30, inPoint: 0, outPoint: 30 } });
   });
   it.each([
     ["expression", fixture({ layers: [{ ty: 4, ks: { o: { a: 0, k: 100, x: "globalThis.privateMarker = true;" } } }] }), /expressions/],

@@ -74,6 +74,8 @@ export const cutGraphicSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
   kind: z.enum(["title", "lower_third", "callout", "shape", "path", "svg", "image", "lottie", "rive", "three"]).default("title"),
   assetId: z.string().uuid().optional(),
+  // Optional: legacy immutable snapshots must not acquire a new default field.
+  animationSourceStartSeconds: z.number().finite().min(0).max(43_200).optional(),
   text: z.string().max(20_000),
   timelineStart: z.number().finite().min(0).max(43_200),
   duration: z.number().finite().min(0.25).max(3_600),

@@ -11,6 +11,7 @@ const headerSchema = z.object({
   assets: z.array(z.unknown()).max(500).optional(),
 }).passthrough().superRefine((value, context) => {
   if (value.op <= value.ip) context.addIssue({ code: z.ZodIssueCode.custom, path: ["op"], message: "Lottie out point must follow its in point" });
+  else if (value.op - value.ip < 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ["op"], message: "Lottie must contain at least one playable frame" });
   if ((value.op - value.ip) / value.fr > 3_600) context.addIssue({ code: z.ZodIssueCode.custom, path: ["op"], message: "Lottie duration may not exceed one hour" });
 });
 
