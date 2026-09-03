@@ -160,11 +160,12 @@ async function probeFile(inputPath: string, jobId?: string): Promise<Probe> {
   };
 }
 
-async function sha256File(inputPath: string) {
+async function sha256File(inputPath: string, signal: AbortSignal) {
+  signal.throwIfAborted();
   return new Promise<string>((resolve, reject) => {
     const hash = createHash("sha256");
-    const stream = createReadStream(inputPath);
-    stream.on("error", reject);
+    const stream = createReadStream(inputPath, { signal });
+    stream.on("error", () => reject(new Error("Media source checksum failed")));
     stream.on("data", (chunk) => hash.update(chunk));
     stream.on("end", () => resolve(hash.digest("hex")));
   });
@@ -208,8 +209,15 @@ async function materialize(asset: Asset, directory: string, signal: AbortSignal)
 }
 
 async function processProbe(asset: Asset, inputPath: string, jobId: string) {
-  const [probe, sha256] = await Promise.all([probeFile(inputPath, jobId), asset.sha256 ? Promise.resolve(asset.sha256) : sha256File(inputPath)]);
   const { claim, signal } = publicationOwner(jobId);
+  // Await both owners, even when one fails, before deleting the source or
+  // releasing a job slot. The checksum stream shares cancellation with probe.
+  const [probeResult, checksumResult] = await Promise.allSettled([
+    probeFile(inputPath, jobId), asset.sha256 ? Promise.resolve(asset.sha256) : sha256File(inputPath, signal),
+  ]);
+  if (probeResult.status === "rejected") throw probeResult.reason;
+  if (checksumResult.status === "rejected") throw checksumResult.reason;
+  const probe = probeResult.value, sha256 = checksumResult.value;
   await withMediaLeaseWrite(claim, signal, async transaction => {
     await transaction.update(assets).set({ sha256, metadata: { ...asset.metadata, mediaProbe: probe, mediaProbedAt: new Date().toISOString() } }).where(eq(assets.id, asset.id));
   });
