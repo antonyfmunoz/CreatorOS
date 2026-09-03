@@ -1327,7 +1327,7 @@ const Post = ({ post, surface = "light", onDeleted }: PostProps) => {
                 <button
                   type="button"
                   onClick={() => void mediaViewerRef.current?.play()}
-                  className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black"
+                  className="absolute left-1/2 top-1/2 z-30 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black"
                   aria-label="Play video"
                 >
                   <Play className="ml-1 h-7 w-7 fill-current" />

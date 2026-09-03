@@ -96,14 +96,17 @@ export default function MediaLibraryPage() {
   }), [assets, collectionId, kind, search]);
 
   async function refresh() {
-    // Fetch directly instead of joining an initial in-flight React Query read.
-    // A fast upload can finish while that older snapshot is still returning.
-    const [nextAssets, nextCollections] = await Promise.all([
-      apiRequest("GET", `/api/media/assets?refresh=${Date.now()}`).then((response) => response.json() as Promise<MediaAsset[]>),
-      apiRequest("GET", `/api/media/collections?refresh=${Date.now()}`).then((response) => response.json() as Promise<Collection[]>),
+    // Cancel ownership of older snapshots before fetching the post-mutation
+    // state. A manual setQueryData did not stop a late initial query from
+    // replacing the freshly uploaded item with its pre-upload snapshot.
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: ["/api/media/assets"], exact: true }),
+      queryClient.cancelQueries({ queryKey: ["/api/media/collections"], exact: true }),
     ]);
-    queryClient.setQueryData(["/api/media/assets"], nextAssets);
-    queryClient.setQueryData(["/api/media/collections"], nextCollections);
+    await Promise.all([
+      queryClient.fetchQuery({ queryKey: ["/api/media/assets"], staleTime: 0, queryFn: async () => (await apiRequest("GET", `/api/media/assets?refresh=${Date.now()}`)).json() as Promise<MediaAsset[]> }),
+      queryClient.fetchQuery({ queryKey: ["/api/media/collections"], staleTime: 0, queryFn: async () => (await apiRequest("GET", `/api/media/collections?refresh=${Date.now()}`)).json() as Promise<Collection[]> }),
+    ]);
   }
 
   async function upload(file: File) {

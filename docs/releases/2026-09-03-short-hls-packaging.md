@@ -1,0 +1,110 @@
+# Short HLS packaging: actual media, not extended fixtures
+
+## Failure and scope
+
+The earlier native-input qualification exposed a three-frame (0.3-second)
+H.264 MPEG-TS segment that FFmpeg misdetected as MPEG-PS through its HLS reader.
+Increasing the fixture duration demonstrated a longer working path but did not
+fix this. The original failure remains in the qualification record.
+
+The new experiment reproduces the short-segment failure independently. Repeating
+program tables does not fix it. Standard null transport packets bring very small
+segments to a 3,760-byte minimum without changing existing bytes, packet timing,
+frame count or decoded pixels. Existing larger segments are unchanged. This is
+output-only finalization in a worker-owned directory, not an exception to the
+manifest/input/network restrictions. Native subprocess security remains intact.
+
+The same experiment found zero target-duration headers on sub-second playlists.
+Finalization now sets a positive target bounding the longest segment. Exact
+EXTINF timing is preserved: no added pictures, silence or artificial duration.
+
+## Evidence and remaining gates
+
+- Local diagnostic: original three-frame automatic playback fails; finalized
+  playback passes. One-/three-/twelve-frame pictures match their source exactly.
+- The first single-frame diagnostic accidentally used FFmpeg's default output
+  frame synchronization. Corrected independent decoding uses passthrough, so it
+  measures actual pictures rather than automatically duplicating them.
+- First focused test run: 13/15 passed. The unfinalized two-/three-frame timing
+  control itself could not auto-detect the input. Only this known synthetic
+  baseline now names its format explicitly. Final-output playback and inspection
+  continue to require automatic detection without relaxed extensions or formats.
+- Corrected focused run: 16/16 passed, including all-pixel/packet-timing equality,
+  idempotent bounded padding, invalid-output rejection, positive target headers
+  and retained uploaded-manifest denial.
+- Actual isolated database/storage qualification passes one-/three-/twelve-frame
+  jobs through the normal packaging and persisted rendition path. Independently
+  retrieved and decoded masters retain every picture. The existing full ingest,
+  rights, lineage, usage and attribution checks also remain passing.
+- New browser cases require actual HLS playback to the end, with no progressive
+  fallback or error telemetry. Exact-candidate root/browser/CI, deployment and
+  public release field proof are pending at this checkpoint.
+- First protected candidate passed all 829 root tests and actual media-ingest
+  qualification, but failed TypeScript's configured downlevel iterator check.
+  The correction uses `Array.from` without changing compiler settings or gates.
+- The first local browser run failed all four new cases waiting for an HLS
+  rendition. Inspection of its isolated database confirmed public feed assets
+  had no processing jobs at all: the feed upload route missed the ingest enqueue.
+  That route now enqueues normal durable jobs. Browser qualification explicitly
+  drains only its own asset's packaging job in a localhost-only disposable
+  database. Ambient workers remain disabled. Existing playback assertions and
+  deadlines remain unchanged; the normal route must create the job itself.
+- The next local browser run passed the four existing media journeys but failed
+  the four new packaging cases. A real-file red test confirmed a second issue:
+  legacy local upload keys doubled the `uploads` directory during retrieval.
+  The exact single-filename legacy form is normalized only during local lookup;
+  stored keys and public URLs retain their existing contract. R2 mapping is unchanged; nested managed keys and
+  path-escape rejection remain tested. Public production proof is still pending.
+- The first local-lookup candidate passed 831/832 protected root tests; an
+  existing contract test caught an unnecessary change to newly stored keys.
+  The correction preserves that contract and test, changing only lookup. Its
+  local broad run also hit native-media deadlines; those remain independent
+  retained failures, not erased by the protected native checks passing.
+
+This narrow repair is not a claim of all-browser, long-content, live-streaming,
+decoder-matrix or Remotion parity. Previous native render latency failures and
+the unapproved public executable-code service remain open.
+
+The contract-preserving candidate passed all 832 protected root tests but failed
+the new browser playback cases. A retained local trace confirms the player chose
+native HLS from a capability hint, requested the real manifests and segment, yet
+never loaded a picture. The player now prefers supported HLS.js/MSE, retaining
+native HLS for browsers without that engine. React clears its progressive source
+before the adaptive engine attaches, and each effect destroys only its own engine.
+These changes still require real browser qualification; no gate was relaxed.
+
+Both local library-upload journeys also failed. Their actual network trace shows
+the refreshed list containing the new upload, followed by an older initial list
+without it. Cancelling the older query before a cache-owned refresh replaces the
+previous manual-cache-write workaround. A deterministic browser regression holds
+the real initial response and releases it only after the real upload is visible.
+
+With managed HLS playback selected, the one-frame clip displayed but lasted only
+1/30 second instead of 1/10: the transport remuxer defaults a lone sample to
+30 fps when no following DTS exists. Sub-second generated HLS now uses fMP4,
+which carries explicit sample durations; longer content retains MPEG-TS. Actual
+database qualification retrieves the initializer plus fragments and checks each
+decoded picture and packet duration. No duplicated frame or loosened timing
+assertion substitutes for correct packaging. Browser field proof remains open.
+
+The fMP4 browser run then passed the one-frame clip but measured 0.5 seconds for
+the 0.3-second clip. Its samples retained a 0.2-second decode-reordering offset.
+The short-only encoding path now disables B-frame reordering, and independent
+qualification additionally checks the first presentation time and final frame
+end, not only individual sample durations. Existing longer-content encoding is
+unchanged. The failed browser trace and its exact timing remain retained.
+
+The desktop one-frame test also caught the bottom metadata gradient intercepting
+the central play button. That button now paints above the gradient, like the
+existing top controls. Qualification still uses a normal visible click, never a
+forced click or programmatic play to bypass the user's interaction failure.
+
+## Primary references
+
+- [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)
+- [FFmpeg transport probe implementation](https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/mpegts.c)
+- [FFmpeg null transport packet implementation](https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/mpegtsenc.c)
+- [HLS target duration](https://www.rfc-editor.org/rfc/rfc8216#section-4.3.3.1)
+
+Protocol facts informed the original finalizer; no FFmpeg implementation was
+copied into the application.
