@@ -21,7 +21,7 @@ test('follows video trim, forward speed, repeat, stream selection and source EOF
   assert.deepEqual(videoSourceAudioSample(entry, input), { id: input.id, file: 'media/clip.mp4', sourceSeconds: .5, sourceEndSeconds: 2, sourceTimebase: 'container', speed: 1, volume: .4, audioStream: 0 });
   assert.equal(videoSourceAudioSample(entry, { ...input, time: 2 }), null);
   assert.equal(videoSourceAudioSample(entry, { ...input, time: 4.5, repeat: true }).sourceSeconds, .5);
-  for (const change of [{ speed: 3 }, { volume: -1 }, { audioStream: 1 }, { repeat: true, duration: 1.015 }]) assert.throws(() => videoSourceAudioSample(entry, { ...input, ...change }));
+  for (const change of [{ speed: 3 }, { volume: -1 }, { audioStream: 1 }, { repeat: true, duration: 1.015001 }]) assert.throws(() => videoSourceAudioSample(entry, { ...input, ...change }));
   const multistream = { ...entry, audioDurations: [2, 1] };
   assert.equal(videoSourceAudioSample(multistream, { ...input, time: 1, audioStream: 1 }), null);
 });

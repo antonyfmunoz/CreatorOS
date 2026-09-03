@@ -27,8 +27,8 @@ test('bounded gain keyframes use the track clock and preserve normalized legacy 
   assert.equal(track.delaySamples, 0);
   const filter = volumeAutomationFilter(track, request.fps);
   assert.ok(filter.startsWith("aeval=exprs='val(0)*(0.5*"));
-  assert.ok(filter.includes('(t*30+15)'));
-  assert.ok(filter.includes('if(lt((t*30+15),45),1,0.2)'));
+  assert.ok(filter.includes('(n*30+720000)'));
+  assert.ok(filter.includes('if(lt((n*30+720000),2160000),1,0.2)'));
   assert.equal(volumeAutomationFilter(audioPlan(legacy)[0], 30), 'volume=1');
 });
 test('gain automation rejects malformed points, expressions and unbounded work', () => {

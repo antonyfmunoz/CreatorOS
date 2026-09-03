@@ -2,20 +2,25 @@ import { writeFile, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MAX_ARTIFACT_BYTES, outputContract } from './request.mjs';
-import { frameVolumeExpression } from './frame-audio.mjs';
+import { frameVolumeExpression, loopAudioSamples, loopAudioClock, assertLoopAudioBudget } from './frame-audio.mjs';
+import { videoSourceTime } from './media-clock.mjs';
 const execute = promisify(execFile);
 
 export function audioPlan(request) {
   const output = outputContract(request);
-  return request.audioTracks.flatMap((track) => {
+  const plan = request.audioTracks.flatMap((track) => {
     const start = Math.max(track.startFrame, output.start);
     const end = Math.min(track.endFrame, output.end + 1);
     if (end <= start) return [];
-    const sourceStart = track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps;
-    const sourceDuration = Math.min((end - start) * track.speed / request.fps, track.sourceEndSeconds === undefined ? Infinity : track.sourceEndSeconds - sourceStart);
+    if (track.sourceLoopSeconds !== undefined) loopAudioSamples(track.sourceLoopSeconds);
+    const sourceClock = track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps;
+    const sourceStart = track.sourceLoopSeconds === undefined ? sourceClock : videoSourceTime(sourceClock, track.sourceLoopSeconds, true);
+    const sourceDuration = Math.min((end - start) * track.speed / request.fps, track.sourceEndSeconds === undefined || track.sourceLoopSeconds !== undefined ? Infinity : track.sourceEndSeconds - sourceStart);
     if (sourceDuration <= 0) return [];
     return [{ ...track, localStartFrame: start - track.startFrame, sourceStart, sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });
+  assertLoopAudioBudget(plan);
+  return plan;
 }
 
 // Only normalized numeric keyframes enter this expression. The frame clock is
@@ -27,14 +32,16 @@ export function volumeAutomationFilter(track, fps) {
   }
   if (!track.volumeKeyframes?.length) return `volume=${track.volume}`;
   const points = track.volumeKeyframes;
-  const frame = `(t*${fps}+${track.localStartFrame})`;
+  // Compare integer sample/frame products; converting through seconds can
+  // choose the previous held gain for the first sample of the next frame.
+  const frame = `(n*${fps}+${track.localStartFrame * 48000})`;
   let expression = String(points.at(-1).value);
   for (let index = points.length - 2; index >= 0; index--) {
     const left = points[index], right = points[index + 1];
-    const span = left.interpolation === 'hold' ? String(left.value) : `(${left.value}+(${right.value - left.value})*(${frame}-${left.frame})/${right.frame - left.frame})`;
-    expression = `if(lt(${frame},${right.frame}),${span},${expression})`;
+    const span = left.interpolation === 'hold' ? String(left.value) : `(${left.value}+(${right.value - left.value})*(${frame}-${left.frame * 48000})/${(right.frame - left.frame) * 48000})`;
+    expression = `if(lt(${frame},${right.frame * 48000}),${span},${expression})`;
   }
-  expression = `${track.volume}*if(lt(${frame},${points[0].frame}),${points[0].value},${expression})`;
+  expression = `${track.volume}*if(lt(${frame},${points[0].frame * 48000}),${points[0].value},${expression})`;
   // aeval evaluates each output sample; volume:eval=frame would step by audio
   // decode packets and lose precision at fades and exact held-keyframe edges.
   // Some supported FFmpeg versions retain an unspecified two-channel layout
@@ -56,7 +63,14 @@ export function audioTrackFilters(track, fps) {
   const sourceClock = track.sourceTimebase === 'container'
     ? 'aresample=48000:async=1:first_pts=0,'
     : /\.(mp4|webm)$/i.test(track.file) ? 'asetpts=PTS-STARTPTS,' : '';
-  return `${sourceClock}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
+  const loopClock = track.sourceLoopSeconds === undefined ? null : loopAudioClock(track.sourceLoopSeconds);
+  assertLoopAudioBudget([track]);
+  const loop = loopClock === null ? '' : `aresample=${loopClock.sampleRate},aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopClock.samples},aloop=loop=-1:size=${loopClock.samples},asetpts=N/SR/TB,`;
+  // WSOLA's window/tail processing is not sample-transparent even at 1x.
+  // Normal-speed source must retain its original samples and loop boundaries;
+  // use pitch-preserving time stretch only when time actually changes.
+  const retime = track.speed === 1 ? '' : `atempo=${track.speed},`;
+  return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,${retime}${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
 export function soundtrackInputOptions(file) {
@@ -76,7 +90,11 @@ export function validateSoundtrackProbe(probe, track) {
   const seconds = track.sourceTimebase === 'container'
     ? Number.isFinite(streamSeconds) && streamSeconds > 0 ? Number(selected?.start_time ?? origin) + streamSeconds - origin : relativeSeconds
     : relativeSeconds;
-  if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || track.sourceStart + track.sourceDuration > seconds + .01) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
+  if (track.sourceLoopSeconds !== undefined) {
+    loopAudioSamples(track.sourceLoopSeconds);
+    if (track.sourceTimebase !== 'container' || !Number.isFinite(track.sourceStart) || track.sourceStart < 0 || track.sourceStart >= track.sourceLoopSeconds || !Number.isFinite(track.sourceEndSeconds) || track.sourceEndSeconds <= 0 || track.sourceEndSeconds > track.sourceLoopSeconds) throw new Error('Invalid private loop source bounds.');
+  }
+  if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || (track.sourceLoopSeconds === undefined && track.sourceStart + track.sourceDuration > seconds + .01)) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
   if (track.sourceEndSeconds !== undefined && track.sourceEndSeconds > seconds + .01) throw new Error('Private source sound tail exceeds the selected stream.');
   return selected;
 }
@@ -105,6 +123,7 @@ export async function mixAudioTracks(request, capsule, inputVideo, outputVideo, 
   // preparedTracks is a trusted in-process result of prepareAudioTracks, never
   // accepted from the request or capsule. It avoids re-reading media after frames.
   const plan = preparedTracks ?? await prepareAudioTracks(request, capsule);
+  assertLoopAudioBudget(plan);
   const audioOnly = request.mode === 'audio';
   if (!plan.length && !audioOnly) return 0;
   const args = ['-hide_banner', '-v', 'error', '-nostdin', '-y', '-threads', '1', ...(audioOnly ? [] : ['-i', inputVideo])];

@@ -1,26 +1,45 @@
 # CutStudio versus Remotion: evidence-separated closure register
 
-Updated 2026-09-02. This register supersedes any older suggestion that only
+Updated 2026-09-03. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
 ## Current boundary
 
 The last confirmed public source at this checkpoint is
-`9f2bc4031fda227b6cc6709f16f1da717b0bbfad`, with verified release identity and
-120/120 migration parity. Protected deployment `33687454331` passed. Its native
-GCP worker was updated to immutable image
+`824485a33efeb2edffc5d73c8a7c768aa4490f0e`, with verified release identity,
+120/120 migration parity and `release_ready` with no blockers. Protected
+deployment `33694995263` passed, but its full browser run had one retained
+recovery retry. The native GCP worker remains on immutable image
 `sha256:e1fc3d0dc0d0b87a2b68b0d781cb0062e485033aa652968447e4cae22909a231`,
-with the non-image job configuration unchanged. A new actual job/artifact on
-that worker is still pending: signed-in field testing found the revert-before-
-autosave bug before a render could be submitted. Earlier actual private
-typography/gain-snapshot artifacts belong to `7785912`, not this worker release.
+with the non-image job configuration unchanged. Actual private job
+`8c6dddc8-da6a-4360-a6ea-a6da73af1f68` completed on this image. Independently
+decoded output is H.264 406x720, 90 frames/3 seconds with AAC; measured source
+gain ratio .24976266 preserves the submitted .25 snapshot despite the later .5
+draft. Anonymous access was denied. The original three-minute wait failed due
+to pre-worker startup latency and remains failed; the same job was inspected
+after completion, not replaced with an easier job. See the
+[production receipt](../releases/2026-09-03-cut-native-worker-and-save-production.md).
 
-PR 162's opt-in device draft recovery and PR 163's autosave revert correction
-are merged. Exact-source deployment `33694995263` for
-`824485a33efeb2edffc5d73c8a7c768aa4490f0e` is **in progress**, not yet a live
-or field-tested claim. Normal-user private rendering and submitted-snapshot
-custody must be repeated after that release is confirmed.
+PRs 162/163 are deployed in that release. PR 164's current-draft recovery-write
+status and exact two-tab persistence test passed updated Verify `33700632584`
+(689 root, 193 mobile + 169 desktop, 24 existing skips, no retries) and CodeQL
+`33700632573`. It merged at `dec2f55a0f63a4735aff488220240446d42d56fa`; this
+new recovery correction is not yet a deployment or normal-user field claim.
+
+PR 161 is merged with exact indexed VFR/B-frame/VP9-alpha/source-audio proof:
+runtime `33698281193` passed 83 records/image with zero candidate HIGH/CRITICAL
+findings; Verify `33698281064` passed 360 browser checks without retries.
+PR 165 extends this to fractional source-sound loops: its exact `da0e0a2` runtime
+passed 86 records/image and zero HIGH/CRITICAL findings in `33699497738`; its
+latest merge qualification is still distinct. See the
+[fractional-sound receipt](../releases/2026-09-03-cut-fractional-source-sound.md).
+
+PR 166 is implementing a bounded data-only source-package editor: text editing,
+private immutable ZIP saves and authenticated reopen. It is still under browser
+qualification, not a deployed editor or public executable player. A full local
+browser run failed to load the development application's dependency modules
+within its unchanged navigation deadline; original evidence is retained.
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
 not a public executable-capsule service. A saved code package is not an executable
@@ -31,16 +50,16 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | Area | Evidence available | Still required for direct substitution |
 | --- | --- | --- |
 | Native declarative compositions | Owned manifests, parameter batches, private rendering, typography/fitting production artifacts | Larger representative content, editing ergonomics and quality/time comparisons |
-| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded explicit frame holds/cancellation with actual async pixels and replay tests | Public editor/player/render path; broader approved dependencies; safe user-facing error reporting and preview buffering |
+| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded frame holds/cancellation with actual pixels/replay; data-only editor candidate in PR 166 | Complete editor release/field proof, public executable player/render path; broader approved dependencies; safe diagnostics and buffering |
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
 | 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
-| Media | Private MP4/WebM retime/repeat, images/fonts and alpha; candidate timestamp-indexed VFR/B-frame/VP9-alpha decoding and synchronized source sound with focused actual outputs | Complete latest exact-image protected qualification, broader decoder matrix, long media and public source-code execution |
-| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio with actual PCM/AAC/Opus lifecycle/range tests; candidate automatic imported-video audio | Exact-candidate protected qualification; browser preview sound, reverse audio, broader interval/workload limits and public code execution |
+| Media | Private MP4/WebM retime/repeat, images/fonts and alpha; protected timestamp-indexed VFR/B-frame/VP9-alpha decoding and synchronized source sound | Keep exact-image gates green after changes; broader decoder matrix, long media and public source-code execution |
+| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio and fractional imported-video sound with actual PCM/range/replay proof | Browser code-preview sound, reverse audio, broader interval/workload limits and public code execution |
 | Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF and ProRes HQ/4444/XQ with PCM audio; decoded CRF/target-bitrate/speed-control tests; candidate lossless RGB MP4 with full-HD text/transition paint-history regressions and eight independently compared study frames | Exact-candidate protected qualification; additional codecs/containers, two-pass/hardware encoding, HDR, external-editor interoperability and long-range/chunk workflows; production exposure of executable exports |
 | Workload limits | Single-job CPU/memory/bytes/frame bounds, timeout, cancellation, cleanup | App/runtime quota reconciliation, durable tenant admission, metering, scheduling, dispatch, recovery and scaled rendering |
 | Security | Actual non-root, no-network, read-only, sandboxed browser tests; lean Noble image passed independent CI pixels and zero HIGH/CRITICAL scan in run 33614621889 | Continued exact-image vulnerability qualification, approved execution topology, privilege/credential separation, adversarial review and service deployment |
 | Asset custody | Private native asset lineage and prototype request/source/output hashes | Production source/lockfile exchange, short-lived artifact custody, revocation, deletion and recovery for executable jobs |
-| Product reliability | Protected snapshot/autosave/mixer, draft/conflict/mobile tests; merged opt-in account-scoped device EDL recovery and reverted-edit saving correction | Latest exact-source deployment and normal-user field repeats, broader multi-user races, full composition preview, offline media/backup and broad edit/render regressions |
+| Product reliability | Protected snapshot/autosave/mixer, draft/conflict/mobile tests; deployed device EDL recovery and reverted-edit saving; actual immutable private render; newer recovery status correction merged | Deploy/field-test subsequent fixes; cold-worker latency; broader multi-user races, full composition preview, offline media/backup and broad regressions |
 | Competitive verdict | Locked benchmark rules; current official feature references | Same inputs/settings, authorized current competitor run, retained artifacts/actions/costs, human quality review; no blanket parity claim |
 
 ## Release blockers versus implementation
