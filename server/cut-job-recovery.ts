@@ -8,18 +8,21 @@ export async function recoverCutJobs(jobId?: string) {
   const now = sql`clock_timestamp() AT TIME ZONE 'UTC'`;
   const cancelled = sql`${cutStudioJobs.cancellationRequestedAt} IS NOT NULL`;
   const exhausted = sql`${cutStudioJobs.attempt} >= ${cutStudioJobs.maxAttempts}`;
+  // The final accepted start retains its complete window before it can fail.
+  const dispatchExhausted = sql`(${cutStudioJobs.state} = 'queued' AND ${cutStudioJobs.dispatchAttempt} >= ${cutStudioJobs.maxDispatchAttempts} AND (${cutStudioJobs.dispatchExpiresAt} IS NULL OR ${cutStudioJobs.dispatchExpiresAt} <= (${now})))`;
+  const terminal = sql`(${exhausted} OR ${dispatchExhausted})`;
   const rows = await db.update(cutStudioJobs).set({
-    state: sql`CASE WHEN ${cancelled} THEN 'cancelled' WHEN ${exhausted} THEN 'error' ELSE 'queued' END`,
-    detail: sql`CASE WHEN ${cancelled} THEN 'Cancelled by user' WHEN ${exhausted} THEN 'Automatic recovery limit reached. Review the failure before retrying.' ELSE 'Recovering interrupted worker lease' END`,
-    errorCode: sql`CASE WHEN ${cancelled} THEN NULL WHEN ${exhausted} THEN 'worker_retry_exhausted' ELSE NULL END`,
+    state: sql`CASE WHEN ${cancelled} THEN 'cancelled' WHEN ${terminal} THEN 'error' ELSE 'queued' END`,
+    detail: sql`CASE WHEN ${cancelled} THEN 'Cancelled by user' WHEN ${exhausted} THEN 'Automatic recovery limit reached. Review the failure before retrying.' WHEN ${dispatchExhausted} THEN 'Worker start limit reached. Review the failure before retrying.' ELSE 'Recovering interrupted worker lease' END`,
+    errorCode: sql`CASE WHEN ${cancelled} THEN NULL WHEN ${exhausted} THEN 'worker_retry_exhausted' WHEN ${dispatchExhausted} THEN 'cloud_dispatch_exhausted' ELSE NULL END`,
     progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null,
     heartbeatAt: null, startedAt: null,
-    finishedAt: sql`CASE WHEN ${cancelled} OR ${exhausted} THEN ${now} ELSE NULL END`,
+    finishedAt: sql`CASE WHEN ${cancelled} OR ${terminal} THEN ${now} ELSE NULL END`,
   }).where(and(jobId ? eq(cutStudioJobs.id, jobId) : undefined,
     sql`((${cutStudioJobs.state} = 'running' AND (
       ${cutStudioJobs.leaseExpiresAt} <= (${now}) OR
       (${cutStudioJobs.leaseExpiresAt} IS NULL AND ${cutStudioJobs.startedAt} <= (${now}) - interval '35 minutes')
-    )) OR (${cutStudioJobs.state} = 'queued' AND (${cancelled} OR ${exhausted})))`,
+    )) OR (${cutStudioJobs.state} = 'queued' AND (${cancelled} OR ${terminal})))`,
   )).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
   return rows;
 }

@@ -32,7 +32,11 @@ export async function dispatchCutStudioCloudJob(jobId: string, environment: Node
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) throw Object.assign(new Error(`CutStudio cloud dispatch failed with ${response.status}`), { code: "cut_cloud_dispatch_failed", status: response.status });
-    return await response.json() as { accepted: boolean; duplicate?: boolean; execution?: string };
+    const result: unknown = await response.json();
+    if (!result || typeof result !== "object" || !("accepted" in result) || result.accepted !== true) {
+      throw Object.assign(new Error("CutStudio cloud start was not confirmed"), { code: "cut_cloud_dispatch_unconfirmed" });
+    }
+    return result as { accepted: true; duplicate?: boolean; execution?: string };
   } finally {
     activeDispatches.delete(jobId);
   }
