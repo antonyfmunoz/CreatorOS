@@ -10,7 +10,8 @@ export async function renewMediaJobLease(
   claim: Pick<MediaProcessingJob, "id" | "leaseToken">,
   leaseMs: number,
 ) {
-  if (!claim.leaseToken || !Number.isInteger(leaseMs) || leaseMs <= 0) return false;
+  const leaseToken = claim.leaseToken;
+  if (!leaseToken || !Number.isInteger(leaseMs) || leaseMs <= 0) return false;
   return db.transaction(async transaction => {
     await transaction.execute(sql`SET LOCAL lock_timeout = '5s'`);
     await transaction.execute(sql`SET LOCAL statement_timeout = '5s'`);
@@ -27,7 +28,7 @@ export async function renewMediaJobLease(
       updatedAt: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
     }).where(and(
       eq(mediaProcessingJobs.id, claim.id), eq(mediaProcessingJobs.state, "running"),
-      eq(mediaProcessingJobs.leaseToken, claim.leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt),
+      eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt),
       gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp() AT TIME ZONE 'UTC'`),
     )).returning({ id: mediaProcessingJobs.id });
     return rows.length === 1;

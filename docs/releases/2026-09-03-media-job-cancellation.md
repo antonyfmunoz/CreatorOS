@@ -9,6 +9,12 @@ clock to UTC for those columns; it does not change schema or relax the test.
 The next receipt includes the actual database timezone. This first failure is
 retained in `media-lease-exact-20260903T034833-media.log.errors`.
 
+The corrected SQL run at `68db8b9` passes with America/Los_Angeles as the
+database timezone. Protected Core `100621409553` passes all 834 tests but fails
+TypeScript's nullable-token narrowing across an async callback. Capturing the
+validated token as an immutable local fixes that typing/ownership issue; no test
+or database assertion changes. Full qualification of that correction is pending.
+
 The prior worker cancelled only currently registered decoder children. A
 cancelled job downloading its source, or moving between children, could therefore
 start more work afterward. Lease-heartbeat callbacks also looked up jobs by ID,
