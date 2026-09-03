@@ -200,3 +200,59 @@ test("source history restores file deletion and entrypoint changes as source dat
   await redo.click(); await expect(file.getByRole("option", { name: "src/style.css", exact: true })).toHaveCount(0);
   await expect(entrypoint).toHaveValue("src/Alternate.tsx");
 });
+
+test("expanded source workspace preserves one draft, selected file, selection and undo history", async ({ page }, info) => {
+  const project = await fixture(page, info);
+  const initial = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
+  const file = page.getByRole("combobox", { name: "Source editor file", exact: true });
+  await file.selectOption("src/style.css");
+  const original = await editor.inputValue(); const edited = original + "/* expanded private draft */\n";
+  await editor.fill(edited);
+  await editor.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(3, 9, "forward"));
+  const expand = page.getByRole("button", { name: "Expand source editor", exact: true });
+  await expand.click();
+  const workspace = page.getByRole("dialog", { name: "Composition source workspace", exact: true });
+  await expect(workspace).toBeVisible(); await expect(editor).toHaveCount(1);
+  await expect(editor).toBeFocused(); await expect(editor).toHaveValue(edited); await expect(file).toHaveValue("src/style.css");
+  await expect.poll(() => editor.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([3, 9]);
+  await editor.press("Tab");
+  await expect(workspace.getByRole("button", { name: "Remove selected source file", exact: true })).toBeFocused();
+  await editor.focus();
+  await expect.poll(async () => {
+    const sourceBox = await editor.boundingBox();
+    const viewportBox = await workspace.getByRole("region", { name: "Source workspace viewport", exact: true }).boundingBox();
+    return Boolean(sourceBox && viewportBox && sourceBox.y >= viewportBox.y && sourceBox.y + 24 <= viewportBox.y + viewportBox.height);
+  }, { message: "Refocused code must expose its first visible line, not clip it above the scroll viewport" }).toBe(true);
+  const size = await workspace.boundingBox(); expect(size!.width).toBeGreaterThan(page.viewportSize()!.width * .9);
+  expect(size!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.screenshot({ path: info.outputPath("source-workspace.png") });
+  await workspace.getByRole("button", { name: "Undo source edit", exact: true }).click(); await expect(editor).toHaveValue(original);
+  await workspace.getByRole("button", { name: "Redo source edit", exact: true }).click(); await expect(editor).toHaveValue(edited);
+  await workspace.getByRole("button", { name: "Return to studio", exact: true }).click();
+  await expect(workspace).toHaveCount(0); await expect(editor).toHaveCount(1); await expect(editor).toHaveValue(edited);
+  await expect(expand).toBeFocused(); await expect(file).toHaveValue("src/style.css");
+  await expand.click(); await expect(editor).toHaveValue(edited); await editor.press("Escape");
+  await expect(workspace).toHaveCount(0); await expect(editor).toHaveValue(edited);
+  const final = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
+  expect(final.revision).toBe(initial.revision); expect(final.edl).toEqual(initial.edl); expect(final.media).toEqual(initial.media);
+});
+
+test("expanded source workspace saves the actual private package and retains it after closing", async ({ page }, info) => {
+  const project = await fixture(page, info);
+  await page.getByRole("button", { name: "Expand source editor", exact: true }).click();
+  const workspace = page.getByRole("dialog", { name: "Composition source workspace", exact: true });
+  const editor = workspace.getByRole("textbox", { name: "Source file contents", exact: true });
+  const source = (await editor.inputValue()) + "// private workspace save\n";
+  await editor.fill(source);
+  await workspace.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
+  await expect(workspace.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+  await workspace.getByRole("button", { name: "Return to studio", exact: true }).click();
+  const sourceId = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
+  expect(await page.getByRole("combobox", { name: "Code dependency lockfile", exact: true }).inputValue()).toBeTruthy();
+  const stored = await page.request.get(`/api/cut/projects/${project.id}/code-sources/${sourceId}?entrypoint=src%2Findex.tsx`);
+  expect(stored.ok(), await stored.text()).toBeTruthy();
+  expect((await stored.json()).files.find((item: any) => item.path === "src/index.tsx").content).toBe(source);
+  await expect(page.getByRole("textbox", { name: "Source file contents", exact: true })).toHaveValue(source);
+  await expect(page.getByText("Source package saved to this project.", { exact: true })).toBeVisible();
+});
