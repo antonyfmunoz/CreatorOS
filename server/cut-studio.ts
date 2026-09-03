@@ -1149,22 +1149,20 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       }
     });
     filters.push(`${concatInputs.join("")}concat=n=${clips.length}:v=${media.hasVideo ? 1 : 0}:a=${media.hasAudio ? 1 : 0}${media.hasVideo ? "[video]" : ""}${media.hasAudio ? "[audio]" : ""}`);
-    let videoLabel = "video";
+    let videoLabel = media.hasVideo ? "video" : "1:v";
     let audioLabel = "audio";
-    if (media.hasVideo) {
-      const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
-      if (request.aspect === "source" && compositionManifest) {
-        const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
-        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
-      } else if (request.aspect === "source") {
-        filters.push(`[${videoLabel}]${cutSourceVideoFilters(height).join(",")},fps=${request.fps}[framed]`);
-      } else {
-        const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
-        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
-      }
-      videoLabel = "framed";
+    const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
+    if (request.aspect === "source" && compositionManifest) {
+      const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
+      filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
+    } else if (request.aspect === "source") {
+      filters.push(`[${videoLabel}]${cutSourceVideoFilters(height).join(",")},fps=${request.fps}[framed]`);
+    } else {
+      const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
+      filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
     }
-    if (media.hasVideo && request.captions && project.transcript) {
+    videoLabel = "framed";
+    if (request.captions && project.transcript) {
       videoLabel = await appendCaptionFilter(filters, videoLabel, request, project.transcript, { version: 2, clips }, temp);
     }
     const finishingFilters = masterAudioFilters(request);
@@ -1172,8 +1170,8 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     // Codec/container settings were validated before materializing inputs.
     const duration = cutDuration({ version: 2, clips });
     const inputArgs = ["-y", ...cutFilterThreadArgs(), ...cutCodecThreadArgs(), "-i", sourcePath];
-    if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
-    const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`] : ["-map", "1:v", "-r", String(request.fps)]), ...outputFormat.videoArgs, ...cutCodecThreadArgs(), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, ...outputFormat.audioArgs] : []), ...outputFormat.muxerArgs, "-shortest", outputPath];
+    if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=${Math.round(height * 16 / 9 / 2) * 2}x${height}:r=${request.fps}:d=${duration}`);
+    const args = [...inputArgs, "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, ...outputFormat.videoArgs, ...cutCodecThreadArgs(), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, ...outputFormat.audioArgs] : []), ...outputFormat.muxerArgs, ...cutRenderDurationArgs(duration), "-shortest", outputPath];
     await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
     await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, duration));
     const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: outputFormat.mimeType });
