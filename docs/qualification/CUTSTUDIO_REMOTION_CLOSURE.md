@@ -6,6 +6,55 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+Checkpoint 2026-09-03, following deployment `33755830693`: public source
+`2b0b3c430bb26200371b1bfcc4fb87b2367fcc96` is verified clean with 120/120
+migrations. That release passed 834 root tests, 396 browser cases, 24 existing
+desktop skips and two public identity checks. The responsive private library
+field test now passes under the approved owner's account on desktop and 393px
+phone: actual 0.3-second playback, no media error, anonymous 401, search/player/
+remove controls inside the viewport, and the owned session revoked. Receipt:
+`B:/CreativesOS-task-artifacts/library-preview-production-20260903131802050`.
+The phone screenshot was inspected. This is private progressive playback and
+layout proof, not public HLS or completed ingest-pipeline proof.
+
+PR 183's database-owned claim/recovery budget and idempotent manual retry merged
+as `a4b180933f03f0c13cb74a48ef588840d54510cd` after 834 root tests and 398
+browser cases (24 existing skips). Exact local SQL, retry browser, types/build/
+bundle checks passed. Deployment `33759161917` is in progress at this checkpoint;
+it is not yet a new live or native-worker-image claim.
+
+The pre-claim dispatch-budget candidate `dd4f625899a967cf98bbefdb1a69f31f350bef75`
+passed local PostgreSQL, two browser cases, 840 unit tests, types/build/bundle and
+protected Verify `33759096069`. Eight concurrent start requests admit one; unknown
+outcomes retain their window; no fourth automatic start is admitted; cancellation,
+stale responses and live workers are guarded. These are actual database tests,
+not Cloud Run starts or a hard billing cap. Main synchronization and final exact
+merge/deployment checks remain separate.
+
+Unreleased native candidates: PR 182 adds audio targets and 25/50 fps; PR 184 adds
+MP4/H.264/AAC versus WebM/VP9/Opus. Exact PR 184 source `ac0fb947` passed ten local
+browser cases, 840 unit tests, types/build/bundle and protected 406 browser cases
+(24 existing skips). Decoded files contain the selected codecs, 15 frames,
+correct blue pixels and audible-test-source audio streams; normal private
+preview playback and cross-owner denial pass. PR 186 additionally fixes the
+audio-source path's ignored framing/captions; its new qualification is still
+underway and has a retained invalid-transcript-fixture failure to correct.
+
+Do not release the audio/format controls before a matching renderer image.
+Existing GCP CLI reauthentication is required for image activation. The last
+verified native image and actual output remain the PR 176-era receipts below;
+no newer native-image promotion is implied by app deployments.
+
+Still open: public executable TSX service approval and implementation; full
+composed timeline preview; broader programmable media/motion/3D; output codec,
+alpha/HDR and standalone audio breadth; orphan artifact/retention closure;
+fleet admission and measured resource/cost ceilings; stable cold-worker latency;
+exact deployed artifact checks; and same-input competitor/operator benchmarks.
+Separate public-HLS fixture approval is unanswered. These are not all external
+provider gaps, and integration advantages do not establish parity.
+
+### Earlier checkpoint (superseded only by the specific evidence above)
+
 PR 176 merged at `84235860220207d5f6f4db334442de80899ad1f7` after Verify
 `33734704543` passed 818 root tests, 384 browser checks, 24 existing skips and no
 reported retries; CodeQL passed. Exact candidate `bae1fd8` also passed all 30
