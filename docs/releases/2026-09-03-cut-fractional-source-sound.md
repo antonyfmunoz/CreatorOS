@@ -44,9 +44,30 @@ public TSX execution or change provider/worker privileges.
   products. The existing actual envelope/held-edge/range checks passed; the next
   complete corrected loop qualification remains required.
 
-Local artifacts are under `B:/CreativesOS-task-artifacts`. Actual corrected
-container output, range/replay/source-lifecycle regressions, complete isolated
-and production-candidate suites, package/image scans and protected application
-checks are still required. These receipts are not a public feature or Remotion
-parity verdict. The isolated runtime's existing deadlines and source/output
-caps, approved separate production execution boundary and human benchmarks remain.
+## Corrected exact-source evidence
+
+At `da0e0a2dcbd9790fda0163bc0f3fa0e7cac6cbaa`, focused actual container run
+`fractional-audio-output-20260903002326023` passed 17 output checks. Full/range
+changing-tone RMS errors were .00001253786 / .00001252645; peak error was
+.00002157968. NTSC five-period drift RMS/peak were zero with nonzero signal
+RMS .06620430. All original tolerances remain unchanged.
+
+Protected runtime `33699497738` independently passed **86 records per image**:
+
+- Isolated: `sha256:71d1f925367674f965d525acd9cf383a707d0b4787414bd7137a630b6403e22f`.
+- Candidate: `sha256:cb642f180069e21a0e38e9a53d3e4b4ff3acf58720ee34050e7b96dba3efc44c`.
+- Candidate vulnerability scan: zero HIGH/CRITICAL findings.
+- Verify `33699497742`: 689 root tests; 192 mobile + 168 desktop browser passes,
+  24 pre-existing desktop skips, no retries. CodeQL `33699497772` passed.
+
+The separate full local run `fractional-source-full-20260903002816520` passed
+units/audit/build/host audio/image audio/the complete isolated suite, but its
+candidate suite failed Docker's unchanged 15-second create deadline after the
+text and composition-audio checks. The named failed container was confirmed
+absent afterward. Candidate scan was not reached locally; this is **not a local
+full-pass receipt**. It is retained alongside the independent CI success.
+
+Updating the branch to current main requires new protected checks; earlier
+receipts apply to their exact source, not an untested merge. Local artifacts
+are under `B:/CreativesOS-task-artifacts`. Public executable service integration,
+the approved separate execution boundary and human competitor benchmarks remain.
