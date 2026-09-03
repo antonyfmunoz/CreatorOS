@@ -34,7 +34,7 @@ export function createCutTextRasterizer(session: CutNativeBrowserSession = creat
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let context: Awaited<ReturnType<Browser["newContext"]>> | undefined;
     try {
-      deadline = setTimeout(() => { void close(); }, 30_000);
+      deadline = setTimeout(() => { void close().catch(() => undefined); }, 30_000);
       const browser = await measure("browser", () => session.browser());
       const page = await measure("context", async () => {
       context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block", offline: true });

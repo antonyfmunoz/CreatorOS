@@ -37,6 +37,8 @@ jobs:
       - run: npm run verify
       - name: Qualify generated source dependency lockfiles with the real installer
         run: npm run verify:cut-code-lockfiles
+      - name: Qualify native renderer process ownership and forced shutdown
+        run: npm run verify:cut-native-lifecycle
       - name: Audit production and build dependency graph
         run: npm audit --audit-level=moderate
 

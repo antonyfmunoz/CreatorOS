@@ -40,4 +40,14 @@ describe("per-job native renderer session", () => {
     expect(cutPreparationProgress(1, 2, 1).progress).toBeCloseTo(.3);
     for (const args of [[0, 0, 0], [2, 2, 0], [-1, 2, 0], [0, 501, 0], [0, 1, NaN], [0, 1, 2]]) expect(() => cutPreparationProgress(...args as [number, number, number])).toThrow();
   });
+  it("does not hide a failed shutdown or permit reuse after cleanup failed", async () => {
+    const failure = new Error("owned renderer could not be reaped");
+    const close = vi.fn(async () => { throw failure; });
+    const session = createCutNativeBrowserSession(async () => ({ close }) as unknown as Browser);
+    await session.browser();
+    await expect(session.close()).rejects.toBe(failure);
+    await expect(session.close()).rejects.toBe(failure);
+    await expect(session.browser()).rejects.toThrow(/closed/);
+    expect(close).toHaveBeenCalledOnce();
+  });
 });

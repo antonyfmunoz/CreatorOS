@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { chromium, type Browser, type Page } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 import type { CutNativeBrowserSession } from "./cut-native-browser-session";
+import { closeCutNativeBrowser, launchOwnedCutNativeBrowser } from "./cut-native-browser-owner";
 
 const require = createRequire(import.meta.url);
 const MAX_ANIMATION_FRAMES = 3_600;
@@ -21,7 +22,7 @@ export function cutAnimationFrameCount(duration: number, fps: number) {
   return frames;
 }
 
-async function chromiumExecutable(environment: NodeJS.ProcessEnv = process.env) {
+export async function cutNativeChromiumExecutable(environment: NodeJS.ProcessEnv = process.env) {
   const candidates = [
     environment.CUT_ANIMATION_CHROMIUM_PATH,
     process.platform === "win32" && environment.PROGRAMFILES ? path.join(environment.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe") : undefined,
@@ -43,8 +44,8 @@ async function chromiumExecutable(environment: NodeJS.ProcessEnv = process.env) 
 }
 
 export async function launchCutNativeRenderer() {
-  return chromium.launch({
-    executablePath: await chromiumExecutable(),
+  return launchOwnedCutNativeBrowser({
+    executablePath: await cutNativeChromiumExecutable(),
     headless: true,
     args: [
       "--disable-background-networking",
@@ -161,6 +162,6 @@ export async function renderCutAnimationFrames(input: {
     return { frameCount, pattern: path.join(input.outputDirectory, "frame-%06d.png") };
   } finally {
     await context?.close().catch(() => undefined);
-    if (!input.session) await browser?.close().catch(() => undefined);
+    if (!input.session && browser) await closeCutNativeBrowser(browser);
   }
 }
