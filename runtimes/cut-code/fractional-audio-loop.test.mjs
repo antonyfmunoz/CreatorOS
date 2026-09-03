@@ -20,6 +20,9 @@ test('a half-frame loop repeats as one continuous sample-clock interval, without
   const [plan] = audioPlan({ ...request, audioTracks: tracks });
   assert.equal(plan.duration, 20); assert.equal(plan.sourceDuration, 20);
   assert.match(audioTrackFilters(plan, 30), /atrim=end=0\.15,apad,atrim=end_sample=7200,aloop=loop=-1:size=7200,asetpts=N\/SR\/TB,atrim=start=0\.03333333333333333:duration=20/);
+  assert.doesNotMatch(audioTrackFilters(plan, 30), /atempo=/);
+  assert.match(audioTrackFilters({ ...plan, speed: .5 }, 30), /atempo=0\.5,/);
+  assert.match(audioTrackFilters({ ...plan, speed: 2 }, 30), /atempo=2,/);
   assert.doesNotThrow(() => validateSoundtrackProbe({ streams: [{ codec_type: 'audio', sample_rate: 48000, channels: 1, duration: .15 }] }, plan));
 });
 

@@ -64,7 +64,11 @@ export function audioTrackFilters(track, fps) {
   const loopClock = track.sourceLoopSeconds === undefined ? null : loopAudioClock(track.sourceLoopSeconds);
   assertLoopAudioBudget([track]);
   const loop = loopClock === null ? '' : `aresample=${loopClock.sampleRate},aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=end=${track.sourceEndSeconds},apad,atrim=end_sample=${loopClock.samples},aloop=loop=-1:size=${loopClock.samples},asetpts=N/SR/TB,`;
-  return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,atempo=${track.speed},${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
+  // WSOLA's window/tail processing is not sample-transparent even at 1x.
+  // Normal-speed source must retain its original samples and loop boundaries;
+  // use pitch-preserving time stretch only when time actually changes.
+  const retime = track.speed === 1 ? '' : `atempo=${track.speed},`;
+  return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,${retime}${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
 export function soundtrackInputOptions(file) {
