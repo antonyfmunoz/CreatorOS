@@ -65,6 +65,28 @@ This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and
 the unapproved public executable-code service remain open.
 
+The contract-preserving candidate passed all 832 protected root tests but failed
+the new browser playback cases. A retained local trace confirms the player chose
+native HLS from a capability hint, requested the real manifests and segment, yet
+never loaded a picture. The player now prefers supported HLS.js/MSE, retaining
+native HLS for browsers without that engine. React clears its progressive source
+before the adaptive engine attaches, and each effect destroys only its own engine.
+These changes still require real browser qualification; no gate was relaxed.
+
+Both local library-upload journeys also failed. Their actual network trace shows
+the refreshed list containing the new upload, followed by an older initial list
+without it. Cancelling the older query before a cache-owned refresh replaces the
+previous manual-cache-write workaround. A deterministic browser regression holds
+the real initial response and releases it only after the real upload is visible.
+
+With managed HLS playback selected, the one-frame clip displayed but lasted only
+1/30 second instead of 1/10: the transport remuxer defaults a lone sample to
+30 fps when no following DTS exists. Sub-second generated HLS now uses fMP4,
+which carries explicit sample durations; longer content retains MPEG-TS. Actual
+database qualification retrieves the initializer plus fragments and checks each
+decoded picture and packet duration. No duplicated frame or loosened timing
+assertion substitutes for correct packaging. Browser field proof remains open.
+
 ## Primary references
 
 - [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)

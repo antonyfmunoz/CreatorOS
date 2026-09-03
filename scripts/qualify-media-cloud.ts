@@ -103,7 +103,7 @@ try {
 
   // Run very short clips through the real SQL job, encoder, persisted master,
   // rendition registration and independent playback, not only helper fixtures.
-  const shortClipEvidence: Array<{ frames: number; targetDuration: number; allPixelsExact: boolean }> = [];
+  const shortClipEvidence: Array<{ frames: number; targetDuration: number; allPixelsExact: boolean; explicitFrameDuration: boolean }> = [];
   for (const frames of [1, 3, 12]) {
     const clipDirectory = path.join(temp, `short-${frames}`); await fs.mkdir(clipDirectory);
     const clipPath = path.join(clipDirectory, "source.mp4");
@@ -128,8 +128,14 @@ try {
       const text = await fs.readFile(variantPath, "utf8");
       targetDuration = Number(text.match(/^#EXT-X-TARGETDURATION:(\d+)$/m)?.[1]);
       assert.ok(targetDuration >= 1 && targetDuration >= frames / 10);
+      const initializer = text.match(/^#EXT-X-MAP:URI="([^"]+)"$/m)?.[1];
+      if (frames <= 10) {
+        assert.ok(initializer, "Short HLS requires explicit fMP4 sample timing");
+        assert.match(initializer, /^[0-9]+p-init\.mp4$/);
+        await storage.materializeStoredAsset(`${prefix}/${initializer}`, "public", path.join(clipDirectory, initializer));
+      } else assert.equal(initializer, undefined, "Longer clips retain the existing transport format");
       for (const segment of relativeEntries(text)) {
-        assert.match(segment, /^[0-9]+p-[0-9]+\.ts$/);
+        assert.match(segment, frames <= 10 ? /^[0-9]+p-[0-9]+\.m4s$/ : /^[0-9]+p-[0-9]+\.ts$/);
         await storage.materializeStoredAsset(`${prefix}/${segment}`, "public", path.join(clipDirectory, segment));
       }
     }
@@ -137,7 +143,10 @@ try {
     const expected = decode(clipPath), actual = decode(masterPath);
     assert.equal(actual.length, frames * 32 * 32 * 3);
     assert.ok(actual.equals(expected), "Published short HLS must retain every original picture");
-    shortClipEvidence.push({ frames, targetDuration, allPixelsExact: true });
+    const packets = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=duration_time", "-of", "json", masterPath], { windowsHide: true, timeout: 10_000, stdio: "pipe" }).toString()).packets;
+    assert.equal(packets.length, frames);
+    for (const packet of packets) assert.ok(Math.abs(Number(packet.duration_time) - 0.1) < 0.00001, "Every original picture must retain its duration");
+    shortClipEvidence.push({ frames, targetDuration, allPixelsExact: true, explicitFrameDuration: frames <= 10 });
   }
 
   const leasePublication = await qualifyMediaLeasePublication(asset);

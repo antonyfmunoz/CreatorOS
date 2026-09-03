@@ -278,26 +278,33 @@ async function processPackage(asset: Asset, inputPath: string, directory: string
   if (!probe.hasVideo) throw Object.assign(new Error("Adaptive packaging requires video"), { code: "media_kind_mismatch" });
   const heights = [360, 720].filter((height) => !probe.height || height <= probe.height);
   if (!heights.length) heights.push(probe.height ?? 360);
+  // A one-picture MPEG-TS segment has no following DTS from which a player
+  // can infer its duration. fMP4 stores that duration explicitly. Keep the
+  // established TS path for longer content; never add frames to short clips.
+  const shortFragmentedMp4 = probe.durationMs > 0 && probe.durationMs <= 1_000;
   const variants: Array<{ height: number; width: number; bitrate: number; playlist: string }> = [];
   for (const height of heights) {
     const width = probe.width && probe.height ? Math.max(2, Math.round(height * probe.width / probe.height / 2) * 2) : Math.round(height * 16 / 9 / 2) * 2;
     const bitrate = height <= 360 ? 900 : 2_800;
     const playlist = `${height}p.m3u8`;
-    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", `scale=${width}:${height}`, "-c:v", "libx264", "-preset", "veryfast", "-b:v", `${bitrate}k`, "-maxrate", `${Math.round(bitrate * 1.07)}k`, "-bufsize", `${bitrate * 2}k`, "-g", "60", "-keyint_min", "60", ...(probe.hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]), "-hls_time", "4", "-hls_playlist_type", "vod", "-hls_segment_filename", path.join(directory, `${height}p-%05d.ts`), path.join(directory, playlist)], 30 * 60_000, jobId);
+    // FFmpeg's HLS URL directory resolution expects forward slashes, including
+    // on Windows. Otherwise the initializer can escape into the worker's cwd.
+    const playlistPath = path.join(directory, playlist).replaceAll("\\", "/");
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", `scale=${width}:${height}`, "-c:v", "libx264", "-preset", "veryfast", "-b:v", `${bitrate}k`, "-maxrate", `${Math.round(bitrate * 1.07)}k`, "-bufsize", `${bitrate * 2}k`, "-g", "60", "-keyint_min", "60", ...(probe.hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]), "-hls_time", "4", "-hls_playlist_type", "vod", ...(shortFragmentedMp4 ? ["-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", `${height}p-init.mp4`] : []), "-hls_segment_filename", path.join(directory, `${height}p-%05d.${shortFragmentedMp4 ? "m4s" : "ts"}`), playlistPath], 30 * 60_000, jobId);
     variants.push({ height, width, bitrate, playlist });
   }
-  const master = ["#EXTM3U", "#EXT-X-VERSION:3", ...variants.flatMap((variant) => [`#EXT-X-STREAM-INF:BANDWIDTH=${(variant.bitrate + (probe.hasAudio ? 128 : 0)) * 1_000},RESOLUTION=${variant.width}x${variant.height}`, variant.playlist]), ""].join("\n");
+  const master = ["#EXTM3U", `#EXT-X-VERSION:${shortFragmentedMp4 ? 7 : 3}`, ...variants.flatMap((variant) => [`#EXT-X-STREAM-INF:BANDWIDTH=${(variant.bitrate + (probe.hasAudio ? 128 : 0)) * 1_000},RESOLUTION=${variant.width}x${variant.height}`, variant.playlist]), ""].join("\n");
   await fs.writeFile(path.join(directory, "master.m3u8"), master, "utf8");
   const { claim, signal } = publicationOwner(jobId);
   const prefix = `creativesos/${process.env.NODE_ENV ?? "development"}/public/users/${asset.ownerUserId}/adaptive/${asset.id}/${jobId}/${claim.leaseToken}`;
   const files = await fs.readdir(directory);
-  const packaged = files.filter((file) => file.endsWith(".m3u8") || file.endsWith(".ts"));
+  const packaged = files.filter((file) => file.endsWith(".m3u8") || file.endsWith(".ts") || /^[0-9]+p-(?:[0-9]+\.m4s|init\.mp4)$/.test(file));
   let masterStored: Awaited<ReturnType<typeof persistManagedFileAtKey>> | null = null;
   for (const file of packaged) {
     signal.throwIfAborted();
     if (file.endsWith(".ts")) await finalizeOwnedHlsSegment(path.join(directory, file));
     if (file.endsWith(".m3u8") && file !== "master.m3u8") await finalizeOwnedHlsMediaPlaylist(path.join(directory, file));
-    const stored = await persistManagedFileAtKey({ sourcePath: path.join(directory, file), storageKey: `${prefix}/${file}`, mimeType: file.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t", visibility: "public", metadata: { owner: String(asset.ownerUserId), asset: asset.id, kind: "adaptive" } });
+    const stored = await persistManagedFileAtKey({ sourcePath: path.join(directory, file), storageKey: `${prefix}/${file}`, mimeType: file.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : file.endsWith(".ts") ? "video/mp2t" : "video/mp4", visibility: "public", metadata: { owner: String(asset.ownerUserId), asset: asset.id, kind: "adaptive" } });
     if (file === "master.m3u8") masterStored = stored;
   }
   if (!masterStored) throw new Error("Adaptive master manifest was not persisted");
