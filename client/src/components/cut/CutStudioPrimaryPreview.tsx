@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cutPrimaryPreviewAt } from "@shared/cut-primary-preview";
 import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
-import type { CutEdl } from "@shared/cut-studio";
+import type { CutEdl, CutRenderRequest } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type Media = { id: string; assetId: string; name: string };
-type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; onOpen?: () => void };
+type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; fps?: CutRenderRequest["fps"]; onOpen?: () => void };
 
 function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady, onError }: {
   url: string; time: number; speed: number; gain: number; opacity: number; playing: boolean; audio: AudioContext | null;
@@ -42,7 +42,7 @@ function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady
     onError={() => onError("This private source is unavailable. Check your project access or media format.")}/>;
 }
 
-function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
+function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props) {
   const plan = useMemo(() => {
     try { return { ...cutPrimaryTimeline(edl), error: "" }; }
     catch (error) { return { duration: 0, segments: [], error: error instanceof Error ? error.message : "Timeline is unavailable" }; }
@@ -51,7 +51,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
   const [error, setError] = useState(""), [muted, setMuted] = useState(false);
   const [audio, setAudio] = useState<AudioContext | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
-  const fps = 30, frames = Math.max(1, Math.ceil(plan.duration * fps));
+  const frames = Math.max(1, Math.ceil(plan.duration * fps));
   const state = plan.error ? null : cutPrimaryPreviewAt(edl, frame / fps);
   const active = state?.clip ? media.find((item) => item.assetId === (state.clip!.assetId ?? sourceAssetId)) : undefined;
   const clipKey = state?.clip ? `${state.clip.id ?? "clip"}:${active?.id}:${state.clip.timelineStart}:${state.clip.start}` : "gap";
@@ -74,7 +74,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
     };
     handle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(handle);
-  }, [playing, plan.error, error, clipKey, Boolean(active), ready, frames]);
+  }, [playing, plan.error, error, clipKey, Boolean(active), ready, frames, fps]);
   const seek = (next: number) => { setPlaying(false); setFrame(Math.max(0, Math.min(frames - 1, next))); };
   const play = async () => {
     if (playing) return setPlaying(false);
@@ -86,14 +86,14 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
   };
   if (plan.error) return <p role="alert">{plan.error}</p>;
   if (edl.clips.some((clip) => (clip.track ?? "v1") === "v1" && clip.transition && !["cut", "fade_black"].includes(clip.transition))) return <p role="status">Render a preview for this sequence's transitions. Live primary preview supports hard cuts and fade to black.</p>;
-  return <div role="region" aria-label="Primary sequence player" data-preview-frame={frame} data-preview-state={playing ? "playing" : "paused"}>
+  return <div role="region" aria-label="Primary sequence player" data-preview-frame={frame} data-preview-fps={fps} data-preview-state={playing ? "playing" : "paused"}>
     <div className="aspect-video overflow-hidden rounded-xl bg-black" aria-label="Primary sequence canvas">
       {state?.clip && active ? <PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} playing={playing} audio={audio} onReady={setReady} onError={reportError}/> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <Button size="sm" onClick={() => void play()}>{playing ? "Pause sequence" : "Play sequence"}</Button>
       <Button size="sm" variant="outline" aria-label="Previous sequence frame" onClick={() => seek(frame - 1)}>←</Button>
-      <label className="min-w-24 flex-1 text-xs text-zinc-400">{(frame / fps).toFixed(2)} / {plan.duration.toFixed(2)} s
+      <label className="min-w-24 flex-1 text-xs text-zinc-400">{(frame / fps).toFixed(2)} / {plan.duration.toFixed(2)} s · {fps} fps · frame {frame + 1}/{frames}
         <input aria-label="Sequence frame" className="w-full accent-[#1d9bf0]" type="range" min={0} max={frames - 1} value={frame} onChange={(event) => seek(Number(event.target.value))}/>
       </label>
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
@@ -110,7 +110,7 @@ export function CutStudioPrimaryPreview(props: Props) {
     <DialogContent className="max-h-[90dvh] max-w-4xl overflow-y-auto border-zinc-800 bg-zinc-950 text-white">
       <DialogHeader><DialogTitle>Primary sequence preview</DialogTitle><DialogDescription>Review the current draft's primary edit timing using private project media. This is not the final composited output.</DialogDescription></DialogHeader>
       <DialogClose asChild><Button size="sm" variant="outline" className="justify-self-end">Close sequence</Button></DialogClose>
-      {open && <PrimaryPlayer {...props}/>}
+      {open && <PrimaryPlayer key={props.fps ?? 30} {...props}/>}
     </DialogContent>
   </Dialog>;
 }
