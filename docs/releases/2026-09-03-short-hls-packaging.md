@@ -42,6 +42,13 @@ EXTINF timing is preserved: no added pictures, silence or artificial duration.
 - First protected candidate passed all 829 root tests and actual media-ingest
   qualification, but failed TypeScript's configured downlevel iterator check.
   The correction uses `Array.from` without changing compiler settings or gates.
+- The first local browser run failed all four new cases waiting for an HLS
+  rendition. Inspection of its isolated database confirmed public feed assets
+  had no processing jobs at all: the feed upload route missed the ingest enqueue.
+  That route now enqueues normal durable jobs. Browser qualification explicitly
+  drains only its own asset's packaging job in a localhost-only disposable
+  database. Ambient workers remain disabled. Existing playback assertions and
+  deadlines remain unchanged; the normal route must create the job itself.
 
 This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and

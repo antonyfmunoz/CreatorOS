@@ -3208,6 +3208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   status: "ready",
                 })
                 .returning();
+              await queueMediaIngestJobs(asset);
               return asset;
             }),
           );

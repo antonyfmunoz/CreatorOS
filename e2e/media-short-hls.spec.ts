@@ -19,6 +19,10 @@ for (const frames of [1, 3]) {
     const published = await page.request.post("/api/posts/media", { multipart: { content, mediaType: "video", video: { name: "short-hls.mp4", mimeType: "video/mp4", buffer: videoBytes } } });
     expect(published.status()).toBe(201);
     const post = await published.json() as { id: number; mediaAssetId: string };
+    execFileSync(process.execPath, [path.resolve("node_modules/tsx/dist/cli.mjs"), "scripts/qualify-media-asset.ts", post.mediaAssetId], {
+      windowsHide: true, timeout: 30_000, stdio: "pipe",
+      env: { ...process.env, CREATOROS_QUALIFICATION_MODE: "true", ASSET_STORAGE_PROVIDER: "local" },
+    });
     await expect.poll(async () => {
       const response = await page.request.get(`/api/media/assets/${post.mediaAssetId}`);
       expect(response.ok()).toBe(true);
