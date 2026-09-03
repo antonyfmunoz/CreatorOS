@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { cutNativeMediaEnvironment } from "./cut-native-environment";
+import { cutNativeInputPolicyArgs } from "./cut-native-input-policy";
 
 /** Trusted executable/arguments only; never a user-supplied command endpoint. */
 export function readCutProbeOutput(command: string, args: string[], options: {
@@ -49,7 +50,7 @@ export function readCutProbeOutput(command: string, args: string[], options: {
 
 export async function probeCutMedia(sourcePath: string, signal?: AbortSignal) {
   const stdout = await readCutProbeOutput("ffprobe", [
-    "-v", "error", "-protocol_whitelist", "file,pipe", "-threads", "1", "-show_entries",
+    "-v", "error", ...cutNativeInputPolicyArgs(), "-threads", "1", "-show_entries",
     "stream=codec_type,width,height,sample_aspect_ratio:stream_tags=rotate:stream_side_data=rotation",
     "-of", "json", sourcePath,
   ], { signal, timeoutMs: 30_000, maxBytes: 1_048_576 });

@@ -1,15 +1,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createCutProcessProgressParser, cutProcessProgressArgs, type CutProcessProgress } from "./cut-process-progress";
 import { cutNativeMediaEnvironment } from "./cut-native-environment";
+import { cutNativeInputPolicyArgs } from "./cut-native-input-policy";
 
 /** Every input is already materialized locally. Scope the policy to EACH input;
  * FFmpeg resets input options between -i arguments. This is not a filesystem
  * sandbox, nor permission to accept user-authored filter graphs or arguments. */
 export function cutNativeInputArgs(args: string[]) {
-  if (args.some(arg => /^-protocol_(?:white|black)list(?:[=:]|$)/.test(arg))) {
-    throw new Error("Native input protocol policy cannot be overridden");
+  if (args.some(arg => /^-(?:protocol_(?:white|black)list|format_whitelist|enable_drefs|use_absolute_path)(?:[=:]|$)/.test(arg))) {
+    throw new Error("Native input policy cannot be overridden");
   }
-  return args.flatMap(arg => arg === "-i" ? ["-protocol_whitelist", "file,pipe", arg] : [arg]);
+  return args.flatMap(arg => arg === "-i" ? [...cutNativeInputPolicyArgs(), arg] : [arg]);
 }
 
 /** Trusted native binaries only; this is not an executable user-code service. */

@@ -1,0 +1,56 @@
+name: Native media ingest qualification
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    name: Native media ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: creativesos_media
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d creativesos_media"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/creativesos_media
+      QUALIFICATION_ISOLATED_DATABASE: "true"
+      CREATOROS_QUALIFICATION_MODE: "true"
+      ASSET_STORAGE_PROVIDER: local
+      CREATOROS_UPLOAD_DIR: ${{ runner.temp }}/creativesos-media-ingest-qualification
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install pinned media runtime
+        run: bash scripts/install-media-quality-runtime.sh
+      - run: npm ci
+      - run: node scripts/migrate-qualification.mjs
+      - run: npx tsx scripts/seed-browser-qualification.ts
+      - name: Exercise actual ingest jobs, renditions and rights
+        run: npx tsx scripts/qualify-media-cloud.ts
+      - name: Retain generated synthetic media outputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-media-ingest-outputs
+          path: ${{ runner.temp }}/creativesos-media-ingest-qualification
+          retention-days: 7
+          if-no-files-found: warn

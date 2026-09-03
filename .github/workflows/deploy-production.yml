@@ -95,9 +95,13 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  media-ingest:
+    if: github.event.inputs.confirm == 'DEPLOY' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/native-media-ingest.yml
+
   deploy:
     name: Backup, migrate, deploy, and prove identity
-    needs: qualify
+    needs: [qualify, media-ingest]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
