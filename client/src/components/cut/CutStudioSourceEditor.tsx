@@ -43,6 +43,10 @@ export function CutStudioSourceEditor({ draft, busy, selectedPath, onSelectPath:
     }
   };
   useLayoutEffect(restoreSelection, [expanded]);
+  // Selecting another file can preserve textarea focus (for example through
+  // keyboard/controlled selection). In that case there is no new focus event
+  // to reveal the updated source after the workspace has scrolled.
+  useLayoutEffect(revealSource, [expanded, selected?.path]);
   useLayoutEffect(() => {
     const viewport = workspaceViewport.current;
     if (!expanded || !viewport) return;

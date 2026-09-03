@@ -265,7 +265,7 @@ test("expanded source workspace keeps the selected file usable without covering 
   const viewport = workspace.getByRole("region", { name: "Source workspace viewport", exact: true });
   const editor = workspace.getByRole("textbox", { name: "Source file contents", exact: true });
   const file = workspace.getByRole("combobox", { name: "Source editor file", exact: true });
-  const assertFileAndCode = async () => {
+  const assertFileAndCode = async (stage: string) => {
     await expect.poll(async () => {
       const bounds = await viewport.boundingBox(), select = await file.boundingBox(), source = await editor.boundingBox();
       if (!bounds || !select || !source) return false;
@@ -275,10 +275,10 @@ test("expanded source workspace keeps the selected file usable without covering 
       });
       return unobscured && select.y >= bounds.y && select.y + select.height <= bounds.y + bounds.height
         && source.y >= select.y + select.height && source.y + 24 <= bounds.y + bounds.height;
-    }, { message: "Selected filename and first editable line must both remain visible and unobscured" }).toBe(true);
+    }, { message: `${stage}: selected filename and first editable line must both remain visible and unobscured` }).toBe(true);
   };
   await expect(editor).toBeFocused();
-  await assertFileAndCode();
+  await assertFileAndCode("Opening workspace");
   const initial = await editor.inputValue();
   await editor.fill(initial + "// sticky workspace draft\n");
   await viewport.evaluate(element => { element.scrollTop = element.scrollHeight; });
@@ -287,14 +287,19 @@ test("expanded source workspace keeps the selected file usable without covering 
     return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === element;
   })).toBe(true);
   await file.selectOption("src/style.css");
-  await editor.focus(); await assertFileAndCode();
+  // A controlled selection does not move focus away from the textarea. File
+  // changes must reveal that still-focused editor without requiring a blur.
+  await expect(editor).toBeFocused();
+  await assertFileAndCode("Switching a file with focus retained");
+  await file.focus();
+  await editor.focus(); await assertFileAndCode("Refocusing source");
   // A reduced viewport exercises resize layout, not a claim of physical mobile
   // keyboard coverage. Keep the same focused editor and unchanged draft.
   await page.setViewportSize({ ...originalViewport, height: 480 });
-  await assertFileAndCode();
+  await assertFileAndCode("Reducing viewport height");
   await page.setViewportSize(originalViewport);
   await file.selectOption("src/index.tsx");
-  await editor.focus(); await assertFileAndCode();
+  await editor.focus(); await assertFileAndCode("Restoring file and viewport");
   await expect(editor).toHaveValue(initial + "// sticky workspace draft\n");
   await page.screenshot({ path: info.outputPath("source-workspace-file-bar.png") });
   await workspace.getByRole("button", { name: "Return to studio", exact: true }).click();
