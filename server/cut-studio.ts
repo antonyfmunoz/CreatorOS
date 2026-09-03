@@ -11,7 +11,7 @@ import { createCutNativeBrowserSession } from "./cut-native-browser-session";
 import { cutPreparationProgress } from "./cut-preparation-progress";
 import { createCutPreparationTrace } from "./cut-preparation-trace";
 import { cutWorkerRuntimeId } from "./cut-worker-identity";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -77,6 +77,8 @@ import { cutCodecThreadArgs } from "./cut-codec-budget";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
+import { prepareCutInputs } from "./cut-input-preparation";
+import { probeCutMedia as probeMedia } from "./cut-native-probe";
 
 const createProjectSchema = z.object({
   sourceAssetId: z.string().uuid(),
@@ -556,19 +558,6 @@ function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jo
   });
 }
 
-async function probeMedia(url: string) {
-  let stdout = "";
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("ffprobe", ["-v", "error", "-show_streams", "-of", "json", url], { windowsHide: true });
-    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
-    child.on("error", reject);
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error("ffprobe could not inspect the source media")));
-  });
-  const streams = (JSON.parse(stdout).streams ?? []) as Array<{ codec_type?: string; width?: number; height?: number; sample_aspect_ratio?: string; side_data_list?: Array<{ rotation?: number }>; tags?: { rotate?: string } }>;
-  const video = streams.find((stream) => stream.codec_type === "video");
-  return { hasVideo: Boolean(video), hasAudio: streams.some((stream) => stream.codec_type === "audio"), videoGeometry: video ? { width: video.width, height: video.height, sampleAspectRatio: video.sample_aspect_ratio, rotation: video.side_data_list?.find((side) => side.rotation !== undefined)?.rotation ?? Number(video.tags?.rotate ?? 0) } : null };
-}
-
 async function cutStudioFontFilter(customFontPath?: string) {
   if (customFontPath) {
     const font = await fs.open(customFontPath, "r");
@@ -681,13 +670,14 @@ async function renderMultitrack(
   const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.fontAssetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
   const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
-  const inputs = await Promise.all(assetRows.map(async (asset, index) => {
+  const signal = activeJobControllers.get(jobId)?.signal;
+  const inputs = await prepareCutInputs(assetRows, async (asset, index) => {
     const extension = path.extname(asset.originalFilename ?? "") || (asset.mimeType?.startsWith("audio/") ? ".m4a" : ".mp4");
     const inputPath = path.join(temp, `source-${index}${extension}`);
-    await materializePrivateAsset(asset.storageKey, inputPath);
+    await materializePrivateAsset(asset.storageKey, inputPath, signal);
     const rendererResource = ["cut-font", "cut-lottie", "cut-rive", "cut-code-source", "cut-code-lockfile"].includes(asset.kind);
-    return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false, videoGeometry: null } : await probeMedia(inputPath) };
-  }));
+    return { asset, url: inputPath, media: rendererResource ? { hasVideo: false, hasAudio: false, videoGeometry: null } : await probeMedia(inputPath, signal) };
+  }, signal);
   // Fonts and validated animation documents are renderer resources rather
   // than audiovisual demuxer inputs. Keep them addressable while excluding
   // them from the FFmpeg input list so generated-raster indexes remain stable.
@@ -823,7 +813,6 @@ async function renderMultitrack(
   const rasterGraphicInputs: Array<{ path: string; animated: boolean }> = [];
   const nativeSession = createCutNativeBrowserSession();
   const textRasterizer = createCutTextRasterizer(nativeSession);
-  const signal = activeJobControllers.get(jobId)?.signal;
   const cancelPreparation = () => { void nativeSession.close(); };
   signal?.addEventListener("abort", cancelPreparation, { once: true });
   if (signal?.aborted) cancelPreparation();
