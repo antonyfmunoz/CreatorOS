@@ -20,3 +20,9 @@ the asset list, media bytes or playback response. These checks have not yet run.
 
 No provider setup, permission expansion, public production fixture or parity claim
 is included. Public live-HLS fixture authorization remains a separate gate.
+
+The first protected desktop run at `fd593aa` rejected all three new fixtures:
+the test submitted an unsupported generic `file` multipart field. It now uses
+the real `video` and `image` field contract. Server upload validation is unchanged;
+the failed receipt is retained in `completed-job-100624182064.log`. Final playback
+also asserts that HLS never fell back and that no error telemetry was emitted.

@@ -16,7 +16,7 @@ for (const visibility of ["public", "private"] as const) {
     } finally { rmSync(directory, { recursive: true, force: true }); }
     const filename = `library-video-${visibility}-${crypto.randomUUID()}.mp4`;
     const uploaded = await page.request.post("/api/assets/upload-proxy", {
-      multipart: { kind: "video", visibility, clientMutationId: crypto.randomUUID(), file: { name: filename, mimeType: "video/mp4", buffer } },
+      multipart: { kind: "video", visibility, clientMutationId: crypto.randomUUID(), video: { name: filename, mimeType: "video/mp4", buffer } },
     });
     expect(uploaded.status()).toBe(201);
     const { asset } = await uploaded.json();
@@ -26,6 +26,13 @@ for (const visibility of ["public", "private"] as const) {
         env: { ...process.env, CREATOROS_QUALIFICATION_MODE: "true", ASSET_STORAGE_PROVIDER: "local" },
       });
     }
+    const playbackErrors: string[] = [];
+    page.on("request", request => {
+      if (request.method() === "POST" && /\/api\/media\/playback\/sessions\/[^/]+\/events$/.test(request.url())) {
+        const event = request.postDataJSON() as { kind?: string; metadata?: { source?: string } };
+        if (event.kind === "error") playbackErrors.push(event.metadata?.source ?? "unknown");
+      }
+    });
     await page.goto("/library");
     await page.getByLabel("Search media library").fill(filename);
     const connected = page.waitForResponse(response => response.url().endsWith("/api/media/playback/sessions") && response.request().method() === "POST");
@@ -39,8 +46,9 @@ for (const visibility of ["public", "private"] as const) {
     // Exercise the actual native media control using a trusted keyboard gesture.
     await video.focus(); await video.press("Space");
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.ended)).toBe(true);
-    const playback = await video.evaluate((element: HTMLVideoElement) => ({ currentTime: element.currentTime, duration: element.duration, error: element.error?.code ?? null }));
+    const playback = await video.evaluate((element: HTMLVideoElement) => ({ currentTime: element.currentTime, duration: element.duration, adaptive: element.currentSrc.startsWith("blob:"), error: element.error?.code ?? null }));
     expect(playback.duration).toBeCloseTo(0.3, 1); expect(playback.error).toBeNull();
+    expect(playback.adaptive).toBe(visibility === "public"); expect(playbackErrors).toEqual([]);
     await page.screenshot({ path: info.outputPath("library-video.png") });
     writeFileSync(info.outputPath("library-video.json"), JSON.stringify({ visibility, assetId: asset.id, rendition: descriptor.rendition?.manifestType ?? "progressive", playback }, null, 2));
   });
@@ -52,7 +60,7 @@ test("media library ignores a previous asset's delayed preview response", async 
   for (const index of [1, 2]) {
     const response = await page.request.post("/api/assets/upload-proxy", { multipart: {
       kind: "photo", visibility: "private", clientMutationId: crypto.randomUUID(),
-      file: { name: `preview-race-${index}-${crypto.randomUUID()}.png`, mimeType: "image/png", buffer },
+      image: { name: `preview-race-${index}-${crypto.randomUUID()}.png`, mimeType: "image/png", buffer },
     } });
     expect(response.status()).toBe(201); uploaded.push((await response.json()).asset);
   }
