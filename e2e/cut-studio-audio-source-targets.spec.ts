@@ -17,8 +17,9 @@ for (const format of ["mp4", "webm"] as const) for (const aspect of ["9:16", "1:
       name: `Audio ${format} ${aspect}`, duration: 1, mediaKind: "audio" } });
     expect(created.ok()).toBe(true); const project = await created.json();
     const saved = await page.request.put(`/api/cut/projects/${project.id}/transcript`, { headers: { "If-Match": String(project.revision) },
-      data: { duration: 1, language: "en", segments: [{ id: "voice", start: 0.2, end: 0.8, text: "Voice caption" }] } });
-    expect(saved.ok()).toBe(true);
+      data: { duration: 1, language: "en", segments: [{ id: "voice", start: 0.2, end: 0.8, text: "Voice caption",
+        words: [{ word: "Voice", start: 0.2, end: 0.5 }, { word: "caption", start: 0.5, end: 0.8 }] }] } });
+    expect(saved.ok(), await saved.text()).toBe(true);
     const fps = format === "mp4" ? 25 : 50;
     const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: {
       format, aspect, fps, resolution: "720p", quality: "draft", captions: true, captionStyle: 1,
