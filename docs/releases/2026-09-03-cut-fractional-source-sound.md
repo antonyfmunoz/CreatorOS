@@ -36,6 +36,13 @@ public TSX execution or change provider/worker privileges.
 - Controlled host diagnostic `loop-unity-tail-20260903001505159` reproduced it:
   current filter RMS .03331945 versus 4.813e-9 after bypassing exactly-1x time
   stretching. Both produced 96,000 samples. No audio tolerance was relaxed.
+- The next actual run `fractional-audio-output-20260903002015137` passed the full
+  loop but failed the ranged oracle at exactly sample 4,800 (absolute sample
+  16,000): its .25 gain had not yet advanced to .75. Floating seconds placed
+  that boundary just below the intended frame. Frame-authored gains now compare
+  integer sample thresholds, and explicit keyframes compare integer sample/frame
+  products. The existing actual envelope/held-edge/range checks passed; the next
+  complete corrected loop qualification remains required.
 
 Local artifacts are under `B:/CreativesOS-task-artifacts`. Actual corrected
 container output, range/replay/source-lifecycle regressions, complete isolated

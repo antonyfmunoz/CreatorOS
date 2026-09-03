@@ -48,6 +48,8 @@ test('600 frame gains use bounded logarithmic expressions and static gains colla
   for (const char of expression) { if (char === '(') maximum = Math.max(maximum, ++depth); else if (char === ')') depth--; }
   assert.equal(depth, 0); assert.ok(maximum <= 12);
   assert.equal(frameVolumeExpression(Array(600).fill(.25), 30), '0.25');
-  assert.match(volumeAutomationFilter({ volumeSamples: [0, 1], localStartFrame: 0 }, 30), /aeval=.*t\*30/);
+  assert.match(volumeAutomationFilter({ volumeSamples: [0, 1], localStartFrame: 0 }, 30), /aeval=.*lt\(n,1600\)/);
+  assert.equal(frameVolumeExpression([.25,.25,.25,.75,.75],30), 'if(lt(n,3200),0.25,if(lt(n,4800),0.25,0.75))');
+  assert.equal(frameVolumeExpression([0,1],7), 'if(lt(n,6858),0,1)');
   for (const bad of [[], [NaN], [3], Array(601).fill(1)]) assert.throws(() => frameVolumeExpression(bad, 30));
 });

@@ -108,7 +108,10 @@ export function frameVolumeExpression(samples, fps, localStartFrame = 0) {
   const build = (first, last) => {
     if (samples.slice(first, last).every((value) => value === samples[first])) return String(samples[first]);
     const mid = Math.floor((first + last) / 2);
-    return `if(lt(t*${fps}+${localStartFrame},${mid}),${build(first, mid)},${build(mid, last)})`;
+    // The audio mixer fixes this stage at 48 kHz. Integer sample thresholds
+    // avoid t*fps rounding just below a boundary (e.g. ranged sample 4800).
+    const boundarySample = Math.ceil((mid - localStartFrame) * 48000 / fps);
+    return `if(lt(n,${boundarySample}),${build(first, mid)},${build(mid, last)})`;
   };
   return build(0, samples.length);
 }

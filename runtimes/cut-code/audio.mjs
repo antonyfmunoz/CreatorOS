@@ -32,14 +32,16 @@ export function volumeAutomationFilter(track, fps) {
   }
   if (!track.volumeKeyframes?.length) return `volume=${track.volume}`;
   const points = track.volumeKeyframes;
-  const frame = `(t*${fps}+${track.localStartFrame})`;
+  // Compare integer sample/frame products; converting through seconds can
+  // choose the previous held gain for the first sample of the next frame.
+  const frame = `(n*${fps}+${track.localStartFrame * 48000})`;
   let expression = String(points.at(-1).value);
   for (let index = points.length - 2; index >= 0; index--) {
     const left = points[index], right = points[index + 1];
-    const span = left.interpolation === 'hold' ? String(left.value) : `(${left.value}+(${right.value - left.value})*(${frame}-${left.frame})/${right.frame - left.frame})`;
-    expression = `if(lt(${frame},${right.frame}),${span},${expression})`;
+    const span = left.interpolation === 'hold' ? String(left.value) : `(${left.value}+(${right.value - left.value})*(${frame}-${left.frame * 48000})/${(right.frame - left.frame) * 48000})`;
+    expression = `if(lt(${frame},${right.frame * 48000}),${span},${expression})`;
   }
-  expression = `${track.volume}*if(lt(${frame},${points[0].frame}),${points[0].value},${expression})`;
+  expression = `${track.volume}*if(lt(${frame},${points[0].frame * 48000}),${points[0].value},${expression})`;
   // aeval evaluates each output sample; volume:eval=frame would step by audio
   // decode packets and lose precision at fades and exact held-keyframe edges.
   // Some supported FFmpeg versions retain an unspecified two-channel layout
