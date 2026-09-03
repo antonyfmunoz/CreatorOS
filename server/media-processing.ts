@@ -280,7 +280,10 @@ async function processPackage(asset: Asset, inputPath: string, directory: string
     const width = probe.width && probe.height ? Math.max(2, Math.round(height * probe.width / probe.height / 2) * 2) : Math.round(height * 16 / 9 / 2) * 2;
     const bitrate = height <= 360 ? 900 : 2_800;
     const playlist = `${height}p.m3u8`;
-    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", `scale=${width}:${height}`, "-c:v", "libx264", "-preset", "veryfast", "-b:v", `${bitrate}k`, "-maxrate", `${Math.round(bitrate * 1.07)}k`, "-bufsize", `${bitrate * 2}k`, "-g", "60", "-keyint_min", "60", ...(probe.hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]), "-hls_time", "4", "-hls_playlist_type", "vod", ...(shortFragmentedMp4 ? ["-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", `${height}p-init.mp4`] : []), "-hls_segment_filename", path.join(directory, `${height}p-%05d.${shortFragmentedMp4 ? "m4s" : "ts"}`), path.join(directory, playlist)], 30 * 60_000, jobId);
+    // FFmpeg's HLS URL directory resolution expects forward slashes, including
+    // on Windows. Otherwise the initializer can escape into the worker's cwd.
+    const playlistPath = path.join(directory, playlist).replaceAll("\\", "/");
+    await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vf", `scale=${width}:${height}`, "-c:v", "libx264", "-preset", "veryfast", "-b:v", `${bitrate}k`, "-maxrate", `${Math.round(bitrate * 1.07)}k`, "-bufsize", `${bitrate * 2}k`, "-g", "60", "-keyint_min", "60", ...(probe.hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]), "-hls_time", "4", "-hls_playlist_type", "vod", ...(shortFragmentedMp4 ? ["-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", `${height}p-init.mp4`] : []), "-hls_segment_filename", path.join(directory, `${height}p-%05d.${shortFragmentedMp4 ? "m4s" : "ts"}`), playlistPath], 30 * 60_000, jobId);
     variants.push({ height, width, bitrate, playlist });
   }
   const master = ["#EXTM3U", `#EXT-X-VERSION:${shortFragmentedMp4 ? 7 : 3}`, ...variants.flatMap((variant) => [`#EXT-X-STREAM-INF:BANDWIDTH=${(variant.bitrate + (probe.hasAudio ? 128 : 0)) * 1_000},RESOLUTION=${variant.width}x${variant.height}`, variant.playlist]), ""].join("\n");
