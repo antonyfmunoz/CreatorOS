@@ -88,7 +88,11 @@ test("two tabs retain separate drafts and opt-out deletes only device copies", a
     await second.route(`**/projects/${project.id}/edl`, (route) => route.request().method() === "PUT" ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Second synthetic save outage" }) }) : route.continue());
     const gain = second.getByRole("slider", { name: "V1 track gain", exact: true });
     await gain.press("ArrowLeft"); await gain.press("ArrowLeft");
-    await expect.poll(async () => (await localCopies(second)).length).toBe(2);
+    await expect(gain).toHaveValue("0.9");
+    // Two records can exist after the first keypress, before the second edit's
+    // asynchronous Web Lock write finishes. Verify actual retained values,
+    // not only record count, within the existing expectation deadline.
+    await expect.poll(async () => (await localCopies(second)).map((copy) => copy.edl.tracks.find((track: any) => track.track === "v1").gain).sort()).toEqual([.9, .95]);
     const copies = await localCopies(second);
     expect(new Set(copies.map((copy) => copy.writerId)).size).toBe(2);
     expect(copies.map((copy) => copy.edl.tracks.find((track: any) => track.track === "v1").gain).sort()).toEqual([.9, .95]);
@@ -100,6 +104,31 @@ test("two tabs retain separate drafts and opt-out deletes only device copies", a
     expect(await second.evaluate(() => localStorage.getItem("unrelated-draft"))).toBe("retain");
     expect((await (await second.request.get(`/api/cut/projects/${project.id}`)).json()).revision).toBe(project.revision);
   } finally { await second.close(); }
+});
+
+test("a queued device recovery write cannot claim the current draft is already retained", async ({ page }, info) => {
+  const project = await projectFixture(page, info); await holdDraft(page, project);
+  const [prior] = await localCopies(page);
+  expect(prior.edl.tracks.find((track: any) => track.track === "v1").gain).toBe(.95);
+  await page.evaluate(async (userId) => {
+    await new Promise<void>((acquired) => {
+      void navigator.locks.request(`creativesos:cut-recovery:v1:${userId}:`, { mode: "exclusive" }, () => new Promise<void>((release) => {
+        (window as any).__releaseRecoveryQualificationLock = release; acquired();
+      }));
+    });
+  }, prior.userId);
+  try {
+    const gain = page.getByRole("slider", { name: "V1 track gain", exact: true });
+    await gain.press("ArrowLeft"); await expect(gain).toHaveValue("0.9");
+    await expect(page.getByText("Current timeline recovery copy kept on this device. Not yet saved to the server.", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Keeping the current timeline recovery copy on this device…", { exact: true })).toBeVisible();
+    expect(await localCopies(page)).toEqual([prior]);
+  } finally {
+    await page.evaluate(() => { (window as any).__releaseRecoveryQualificationLock?.(); delete (window as any).__releaseRecoveryQualificationLock; });
+  }
+  await expect.poll(async () => (await localCopies(page)).map((copy) => copy.edl.tracks.find((track: any) => track.track === "v1").gain)).toEqual([.9]);
+  await expect(page.getByText("Current timeline recovery copy kept on this device. Not yet saved to the server.", { exact: true })).toBeVisible();
+  expect((await (await page.request.get(`/api/cut/projects/${project.id}`)).json()).revision).toBe(project.revision);
 });
 
 test("a different signed-in account never inherits device recovery preferences or drafts", async ({ page, context }, info) => {
