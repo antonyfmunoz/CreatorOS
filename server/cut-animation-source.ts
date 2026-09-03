@@ -26,7 +26,7 @@ export async function readCutNativeAnimationSource(kind: "lottie" | "rive", sour
   } finally { await handle.close(); }
   if (kind === "lottie") {
     const validated = validateCutStudioLottie(JSON.parse(bytes.toString("utf8")) as unknown);
-    return { kind, animationData: validated.animationData } as const;
+    return { kind, animationData: validated.animationData, timing: { frameRate: validated.frameRate, inPoint: validated.inPoint, outPoint: validated.outPoint } } as const;
   }
   validateCutStudioRiveBytes(bytes);
   return { kind, bytes } as const;

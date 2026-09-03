@@ -855,7 +855,7 @@ async function renderMultitrack(
       const privateAnimation = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       const expectedKind = graphic.kind === "lottie" ? "cut-lottie" : "cut-rive";
       if (!privateAnimation || privateAnimation.asset.kind !== expectedKind) throw new Error(`A composition ${graphic.kind} layer must reference ready private validated media`);
-      const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
+      const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, sourceStartSeconds: graphic.animationSourceStartSeconds, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
       rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
       rasterGraphicInputs.push({ path: frames.pattern, animated: true });
       return;

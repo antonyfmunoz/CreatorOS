@@ -3,6 +3,7 @@ import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/c
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import { cutLottieFrameAtTime, type CutLottieTiming } from "@shared/cut-animation-time";
 import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import { cutPlayerFrame, cutPlayerGain, cutPlayerRate } from "@shared/cut-studio-player";
 import type { AnimationItem } from "lottie-web";
@@ -112,14 +113,14 @@ function ThreePrimitiveLayer({ layer }: { layer: Layer }) {
   return <img alt={`${String(layer.style.primitive ?? "cube")} primitive`} className="h-full w-full object-contain" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}/>;
 }
 
-function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
+function LottieLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: number }) {
   const assetUrl = useContext(AssetUrlContext);
   const readiness = useCutPreviewResource(`${layer.name} animation`, layer.assetId ? assetUrl(layer.assetId) : "missing");
   const host = useRef<HTMLDivElement | null>(null);
   const animation = useRef<AnimationItem | null>(null);
-  const bounds = useRef<{ inPoint: number; outPoint: number } | null>(null);
-  const latestFrame = useRef(0);
-  latestFrame.current = Math.max(0, frame - layer.from + layer.sourceStartFrame);
+  const bounds = useRef<CutLottieTiming | null>(null);
+  const latestSeconds = useRef(0);
+  latestSeconds.current = Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps;
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
@@ -134,14 +135,12 @@ function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
         const validated = validateCutStudioLottie(await response.json() as unknown);
         const lottie = (await import("lottie-web/build/player/lottie_light")).default;
         if (!active || !host.current) return;
-        bounds.current = { inPoint: validated.inPoint, outPoint: validated.outPoint };
+        bounds.current = { frameRate: validated.frameRate, inPoint: validated.inPoint, outPoint: validated.outPoint };
         const instance = lottie.loadAnimation({ container: host.current, renderer: "svg", loop: false, autoplay: false, animationData: validated.animationData });
         animation.current = instance;
         instance.addEventListener("DOMLoaded", () => {
           if (!active) return;
-          const available = Math.max(1, validated.outPoint - validated.inPoint);
-          const local = latestFrame.current % available;
-          instance.goToAndStop(validated.inPoint + local, true);
+          instance.goToAndStop(cutLottieFrameAtTime(latestSeconds.current, validated), true);
           readiness("ready");
         });
         instance.addEventListener("data_failed", () => { if (active) { setError("Lottie preview failed"); readiness("error", "Lottie preview failed"); } });
@@ -153,10 +152,9 @@ function LottieLayer({ layer, frame }: { layer: Layer; frame: number }) {
   }, [assetUrl, layer.assetId, readiness]);
   useEffect(() => {
     if (!animation.current || !bounds.current) return;
-    const available = Math.max(1, bounds.current.outPoint - bounds.current.inPoint);
-    const local = Math.max(0, frame - layer.from + layer.sourceStartFrame) % available;
-    animation.current.goToAndStop(bounds.current.inPoint + local, true);
-  }, [frame, layer.from, layer.sourceStartFrame]);
+    const seconds = Math.max(0, frame - layer.from + layer.sourceStartFrame) / fps;
+    animation.current.goToAndStop(cutLottieFrameAtTime(seconds, bounds.current), true);
+  }, [frame, fps, layer.from, layer.sourceStartFrame]);
   if (error) return <div className="grid h-full w-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</div>;
   return <div ref={host} aria-label={`${layer.name} Lottie preview`} className="h-full w-full overflow-hidden"/>;
 }
@@ -314,7 +312,7 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
   else if ((layer.kind === "video" || layer.kind === "audio") && layer.assetId) content = <MediaLayer key={`${layer.kind}:${assetUrl(layer.assetId)}`} layer={layer} frame={frame} fps={fps} volume={state.volume} {...playback}/>;
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
-  else if (layer.kind === "lottie") content = <LottieLayer key={layer.assetId} layer={layer} frame={frame}/>;
+  else if (layer.kind === "lottie") content = <LottieLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
   else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
   else if (layer.kind === "rive") content = <RiveLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
   if (!content) return null;

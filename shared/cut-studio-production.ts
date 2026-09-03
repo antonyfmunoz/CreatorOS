@@ -583,6 +583,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       id: layer.id,
       kind: layer.kind === "caption" ? "callout" as const : layer.kind === "shape" ? "shape" as const : layer.kind === "path" ? "path" as const : layer.kind === "svg" ? "svg" as const : layer.kind === "image" ? "image" as const : layer.kind === "lottie" ? "lottie" as const : layer.kind === "rive" ? "rive" as const : layer.kind === "three" ? "three" as const : "title" as const,
       assetId: layer.assetId,
+      ...(["lottie", "rive"].includes(layer.kind) && layer.sourceStartFrame > 0 ? { animationSourceStartSeconds: layer.sourceStartFrame / fps } : {}),
       text: layer.kind === "svg" ? sanitizeCutStudioSvg(layer.text ?? "") : layer.text ?? "",
       timelineStart: layer.from / fps,
       duration: layer.durationInFrames / fps,
