@@ -1,4 +1,5 @@
 import { cutPrimaryTimeline } from "./cut-primary-timeline";
+import { cutClipFades } from "./cut-clip-fades";
 import { cutClipVolumeAt, cutTrackEffectiveGain, type CutEdl } from "./cut-studio";
 
 export function cutPrimaryPreviewAt(edl: CutEdl, seconds: number) {
@@ -8,8 +9,7 @@ export function cutPrimaryPreviewAt(edl: CutEdl, seconds: number) {
   const clip = segment?.clip;
   if (!segment || !clip) return { time, duration: plan.duration, clip: null, sourceTime: 0, speed: 1, gain: 0, opacity: 0 };
   const local = time - segment.start;
-  const fadeIn = Math.min(clip.fadeIn ?? 0, segment.duration / 2);
-  const fadeOut = Math.min(clip.fadeOut ?? 0, segment.duration / 2);
+  const { fadeIn, fadeOut } = cutClipFades(clip, segment.duration, plan.segments.indexOf(segment), plan.segments.length);
   const fade = Math.min(1, fadeIn > 0 ? local / fadeIn : 1) * Math.min(1, fadeOut > 0 ? (segment.duration - local) / fadeOut : 1);
   const settings = edl.tracks?.find((track) => track.track === "v1");
   return { time, duration: plan.duration, clip, sourceTime: clip.start + local * (clip.speed ?? 1), speed: clip.speed ?? 1,
