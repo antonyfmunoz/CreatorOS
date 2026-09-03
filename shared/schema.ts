@@ -4507,6 +4507,9 @@ export const cutStudioJobs = pgTable(
       .notNull(),
     kind: text("kind").notNull(),
     state: text("state").notNull().default("queued"),
+    attempt: integer("attempt").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    retryOfJobId: uuid("retry_of_job_id").references((): AnyPgColumn => cutStudioJobs.id, { onDelete: "set null" }),
     detail: text("detail").notNull().default("Queued"),
     progress: doublePrecision("progress").notNull().default(0),
     request: json("request")
@@ -4536,6 +4539,7 @@ export const cutStudioJobs = pgTable(
       table.projectId,
       table.createdAt,
     ),
+    retryOfIdx: uniqueIndex("cut_studio_jobs_retry_of_idx").on(table.retryOfJobId),
     stateCreatedIdx: index("cut_studio_jobs_state_created_idx").on(
       table.state,
       table.createdAt,
