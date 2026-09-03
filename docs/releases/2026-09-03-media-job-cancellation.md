@@ -55,3 +55,9 @@ still-local old attempt is aborted without releasing its slot early. Explicit
 cancellation is never re-queued. A new isolated real-timer test starts with a live
 lease, lets it expire after startup, and requires recovery by a later ten-second
 poll without restarting the worker. Qualification of this addition is pending.
+
+The retry endpoint also used a read-then-unconditional update. It now atomically
+checks owner, original attempt, retryable state and remaining attempt budget.
+Duplicate or stale retry requests return conflict instead of clearing a newer
+claim. New real-SQL tests require one concurrent winner and reject stale,
+wrong-owner and exhausted-budget retries. These additions are pending tests.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../server/db";
-import { renewMediaJobLease, withMediaLeaseWrite } from "../server/media-job-lease";
+import { renewMediaJobLease, retryMediaJob, withMediaLeaseWrite } from "../server/media-job-lease";
 import { recoverInterruptedMediaJobs, scheduleMediaCloudProcessing, stopMediaCloudProcessing } from "../server/media-processing";
 import { assets, mediaProcessingJobs } from "../shared/schema";
 
@@ -136,11 +136,25 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
       assert.equal(recovered, true, "The running worker must recover an expired lease on its ordinary polling loop");
       assert.ok(Date.now() - scheduledAt >= 9_000, "Recovery must come from a subsequent real polling tick");
     } finally { await stopMediaCloudProcessing(); }
+    await db.update(mediaProcessingJobs).set({ state: "failed", attempt: 1, maxAttempts: 3 }).where(eq(mediaProcessingJobs.id, job.id));
+    const retryClaim = { id: job.id, ownerUserId: asset.ownerUserId, attempt: 1 };
+    assert.equal(await retryMediaJob({ ...retryClaim, ownerUserId: -1 }), undefined);
+    const retries = await Promise.all([retryMediaJob(retryClaim), retryMediaJob(retryClaim)]);
+    assert.equal(retries.filter(Boolean).length, 1, "Only one concurrent retry may change the durable attempt");
+    const newerToken = randomUUID();
+    await db.update(mediaProcessingJobs).set({ state: "running", attempt: 2, leaseToken: newerToken }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob(retryClaim), undefined);
+    assert.equal((await state()).leaseToken, newerToken, "A stale retry must preserve newer running work");
+    await db.update(mediaProcessingJobs).set({ state: "failed" }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob(retryClaim), undefined, "A stale retry must not consume a later failed attempt");
+    await db.update(mediaProcessingJobs).set({ attempt: 3 }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await retryMediaJob({ ...retryClaim, attempt: 3 }), undefined, "Retry budgets must be checked atomically");
     return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
       localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
       liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true,
       databaseTimeZone: timezone[0].TimeZone, cancellationNotRequeued: true,
-      periodicRecoveryWithoutRestart: true };
+      periodicRecoveryWithoutRestart: true, concurrentRetrySingleWinner: true,
+      staleRetryDenied: true, wrongOwnerRetryDenied: true, exhaustedRetryDenied: true };
   } finally {
     await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
   }
