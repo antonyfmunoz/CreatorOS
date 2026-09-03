@@ -79,6 +79,14 @@ without it. Cancelling the older query before a cache-owned refresh replaces the
 previous manual-cache-write workaround. A deterministic browser regression holds
 the real initial response and releases it only after the real upload is visible.
 
+With managed HLS playback selected, the one-frame clip displayed but lasted only
+1/30 second instead of 1/10: the transport remuxer defaults a lone sample to
+30 fps when no following DTS exists. Sub-second generated HLS now uses fMP4,
+which carries explicit sample durations; longer content retains MPEG-TS. Actual
+database qualification retrieves the initializer plus fragments and checks each
+decoded picture and packet duration. No duplicated frame or loosened timing
+assertion substitutes for correct packaging. Browser field proof remains open.
+
 ## Primary references
 
 - [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)
