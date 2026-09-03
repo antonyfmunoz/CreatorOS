@@ -11,6 +11,8 @@ import { qualifyProres } from './qualify-prores.mjs';
 import { qualifyVideoEncoding } from './qualify-video-encoding.mjs';
 import { qualifyFrameReadiness } from './qualify-frame-readiness.mjs';
 import { qualifyFrameAudio } from './qualify-frame-audio.mjs';
+import { qualifyVideoSourceAudio } from './qualify-video-source-audio.mjs';
+import { qualifyVideoFrames } from './qualify-video-frames.mjs';
 import { qualifyLosslessRgb } from './qualify-lossless-rgb.mjs';
 import { qualifyTextFrameHistory } from './qualify-text-frame-history.mjs';
 import { qualifyTextLayout } from './qualify-text-layout.mjs';
@@ -29,6 +31,8 @@ records.push(...await qualifyLosslessRgb({ image, directory }));
 records.push(...await qualifyTextFrameHistory({ image, directory }));
 records.push(...await qualifyTextLayout({ image, directory }));
 records.push(...await qualifyFrameAudio({ image, directory }));
+records.push(...await qualifyVideoSourceAudio({ image, directory }));
+records.push(...await qualifyVideoFrames({ image, directory }));
 records.push(...await qualifyFrameReadiness({ image, directory }));
 records.push(...await qualifyVideoEncoding({ image, directory }));
 records.push(...await qualifyProres({ image, directory }));
@@ -198,9 +202,22 @@ records.push({ test: 'private-video-layer-render', ...encodedClip.receipt, probe
 const retimedSource = capsule(`import {FrameVideo,FullFrame} from '@creativesos/cut';import clip from './clip.mp4';export default ()=> <FullFrame><FrameVideo src={clip} startFrom={2} speed={2} repeat style={{width:'100%',height:'100%'}}/></FullFrame>`, { 'src/clip.mp4': clip });
 for (const [frame, channel] of [[1, 2], [2, 0]]) {
   const retimed = await renderIsolated({ request: { ...request, fps: 10, durationInFrames: 6, frame }, source: retimedSource, image });
-  assert.ok(pixel(retimed.artifact)[channel] > 240, 'Offset/speed/repeat must select the correct source frame.');
+  await writeFile(`${directory}retimed-private-video-${frame}.png`, retimed.artifact);
+  const decodedPixel = pixel(retimed.artifact);
+  assert.ok(decodedPixel[channel] > 240, `Offset/speed/repeat must select frame ${frame}; decoded pixel ${decodedPixel.join(',')}.`);
   records.push({ test: `retimed-private-video-${frame}`, ...retimed.receipt });
 }
+const looped = await renderIsolated({ request: { ...request, mode: 'sequence', fps: 10, durationInFrames: 120, frameRange: [0, 119] }, source: retimedSource, image });
+await writeFile(`${directory}retimed-private-video-120-frames.zip`, looped.artifact);
+const loopFiles = unzipSync(looped.artifact);
+const loopManifest = JSON.parse(strFromU8(loopFiles['manifest.json']));
+assert.equal(loopManifest.frames.length, 120);
+for (const { frame, filename } of loopManifest.frames) {
+  const channel = ((2 + frame * 2) % 6) < 3 ? 0 : 2;
+  const decodedPixel = pixel(Buffer.from(loopFiles[filename]));
+  assert.ok(decodedPixel[channel] > 240, `Repeated private video frame ${frame}; decoded pixel ${decodedPixel.join(',')}.`);
+}
+records.push({ test: 'retimed-private-video-120-frames', ...looped.receipt });
 console.log('PASS capsule-local video seeking and six-frame code video render (silent)');
 const sounds = {};
 for (const frequency of [440, 660]) {
@@ -291,9 +308,9 @@ const alphaSoundProbe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_ent
 assert.ok(alphaSoundProbe.streams.some(stream=>stream.codec_type==='audio'&&stream.codec_name==='opus'));assert.ok(rms(alphaSoundPath,.1,.4)>.03);assert.equal(alphaPixel(alphaSoundPath,0,300,160)[3],0,'Muxing Opus must not flatten video alpha.');
 const reusedAlphaSource=capsule(`import {FullFrame,FrameVideo} from '@creativesos/cut';import overlay from './overlay.webm';export default ()=> <FullFrame style={{background:'#0000ff'}}><FrameVideo src={overlay} style={{width:'100%',height:'100%'}}/></FullFrame>`,{'src/overlay.webm':alphaVideo.artifact});
 const reusedAlpha=await renderIsolated({request:{...request,fps:10,durationInFrames:6,frame:4},source:reusedAlphaSource,image});
+await writeFile(`${directory}reused-transparent-overlay.png`,reusedAlpha.artifact);
 assert.deepEqual(pixel(reusedAlpha.artifact),[0,0,255,255]);assert.ok(pixel(reusedAlpha.artifact,110,30)[1]>235);
 const mixedAlpha=pixel(reusedAlpha.artifact,230,30);assert.ok(Math.abs(mixedAlpha[0]-128)<8&&mixedAlpha[1]<8&&Math.abs(mixedAlpha[2]-127)<8,'Reimported alpha must composite correctly over the next scene.');
-await writeFile(`${directory}reused-transparent-overlay.png`,reusedAlpha.artifact);
 records.push({test:'transparent-vp9-alpha-motion',...alphaVideo.receipt,probe:alphaProbe,opaquePixel:opaque,partialPixel:partial,audioReceipt:alphaWithSound.receipt,reuseReceipt:reusedAlpha.receipt});
 console.log('PASS actual VP9 alpha, partial opacity, frame motion, Opus mux and private video-layer reuse');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);

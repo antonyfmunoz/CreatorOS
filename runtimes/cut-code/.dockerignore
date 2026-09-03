@@ -6,6 +6,9 @@
 !sdk.jsx
 !frame-readiness.mjs
 !frame-audio.mjs
+!video-source-audio.mjs
+!media-clock.mjs
+!video-frames.mjs
 !motion.mjs
 !text-layout.mjs
 !audio.mjs

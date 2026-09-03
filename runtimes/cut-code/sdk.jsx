@@ -57,9 +57,15 @@ export function FrameAudio({ file, startFrom = 0, speed = 1, volume = 1, muted =
     data-cut-audio-speed={speed} data-cut-audio-volume={muted ? 0 : volume} data-cut-audio-stream={audioStream}/>;
 }
 
-export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, style, ...props }) {
-  const frame = useFrame();
-  const { fps } = useComposition();
+export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, muted = false, volume = 1, audioStream = 0, style, ...props }) {
+  const id = useId();
+  const current = useContext(FrameContext);
+  const frame = current.frame;
+  const { fps, compositionAudio } = useComposition();
   if (typeof src !== 'string' || !/^data:video\/(mp4|webm);base64,/.test(src) || !Number.isInteger(startFrom) || startFrom < 0 || !Number.isFinite(speed) || speed <= 0 || speed > 8 || typeof repeat !== 'boolean') throw new Error('FrameVideo requires a private imported MP4/WebM and bounded timing.');
-  return <canvas {...props} style={style} data-cut-video-src={src} data-cut-video-time={(startFrom + frame * speed) / fps} data-cut-video-repeat={repeat ? 'yes' : 'no'}/>;
+  if (typeof muted !== 'boolean' || !Number.isFinite(volume) || volume < 0 || volume > 2 || !Number.isInteger(audioStream) || audioStream < 0 || audioStream > 7) throw new Error('Invalid video soundtrack controls.');
+  const audible = compositionAudio && !muted && !current.audioPaused;
+  if (audible && (speed < .5 || speed > 2)) throw new Error('Source audio supports 0.5 to 2 playback speed; mute faster/slower video explicitly.');
+  return <canvas {...props} style={style} data-cut-video-src={src} data-cut-video-time={(startFrom + frame * speed) / fps} data-cut-video-repeat={repeat ? 'yes' : 'no'}
+    data-cut-video-audio-id={audible ? `video${id}` : undefined} data-cut-video-speed={speed} data-cut-video-volume={volume} data-cut-video-audio-stream={audioStream}/>;
 }
