@@ -15,12 +15,21 @@ export function CutStudioRecovery({ authorizedUserId, project, draft, busy, onRe
   const [enabled, setEnabled] = useState(false);
   const [copies, setCopies] = useState<CutRecoveryCopy[]>([]);
   const [status, setStatus] = useState("");
+  const [keptDraft, setKeptDraft] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
-  const dirty = JSON.stringify(project.edl) !== JSON.stringify(draft);
+  const draftJson = JSON.stringify(draft);
+  const dirty = JSON.stringify(project.edl) !== draftJson;
+  const currentDraft = `${project.revision}:${draftJson}`;
+  const keptStatus = "Current timeline recovery copy kept on this device. Not yet saved to the server.";
+  // A prior successful write is not a receipt for a newer edit. Derive this
+  // during render, before an effect can acquire the cross-tab storage lock.
+  const displayStatus = status === keptStatus
+    ? !dirty ? "" : keptDraft === currentDraft ? keptStatus : "Keeping the current timeline recovery copy on this device…"
+    : status;
   const accountId = isSignedIn && user?.id === authorizedUserId ? user.id : undefined;
 
   useEffect(() => {
-    setEnabled(false); setCopies([]); setStatus("");
+    setEnabled(false); setCopies([]); setStatus(""); setKeptDraft(null);
     if (!accountId) return;
     let disposed = false;
     void withCutRecoveryLock(accountId, () => { if (!disposed) setEnabled(localStorage.getItem(recoveryPreferenceKey(accountId)) === "true"); })
@@ -41,7 +50,8 @@ export function CutStudioRecovery({ authorizedUserId, project, draft, busy, onRe
         for (const copy of stored) if (JSON.stringify(copy.edl) === JSON.stringify(project.edl)) removeCutRecoveryCopy(localStorage, copy);
         if (dirty) {
           writeCutRecoveryCopy(localStorage, { version: 1, ...scope, writerId: writerId.current, baseRevision: project.revision, updatedAt: Date.now(), edl: draft });
-          setStatus("Current timeline recovery copy kept on this device. Not yet saved to the server.");
+          setKeptDraft(currentDraft);
+          setStatus(keptStatus);
         } else setStatus("");
         stored = readCutRecoveryCopies(localStorage, scope);
         setCopies(stored.filter((copy) => copy.writerId !== writerId.current));
@@ -57,7 +67,7 @@ export function CutStudioRecovery({ authorizedUserId, project, draft, busy, onRe
     };
     window.addEventListener("storage", storageChanged);
     return () => { disposed = true; window.removeEventListener("storage", storageChanged); };
-  }, [accountId, enabled, project.id, project.businessId, project.revision, project.edl, draft, dirty]);
+  }, [accountId, enabled, project.id, project.businessId, project.revision, project.edl, draft, dirty, currentDraft]);
 
   if (!accountId) return null;
   const toggle = async (value: boolean) => {
@@ -85,7 +95,7 @@ export function CutStudioRecovery({ authorizedUserId, project, draft, busy, onRe
   return <section aria-label="Timeline recovery" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
     <div className="flex items-center justify-between gap-3"><span>Keep recovery copies on this device</span><Switch aria-label="Keep timeline recovery copies on this device" checked={enabled} onCheckedChange={toggle}/></div>
     <p className="mt-2 text-xs leading-5 text-zinc-500">Optional browser storage contains timeline text and edit settings, not media files, and is not encrypted by CutStudio. Avoid shared devices. Copies older than 7 days are discarded when recovery is used; confirmed saving removes matching copies. Your browser may clear them. This is not a backup or an offline media editor.</p>
-    {status && <p role="status" className="mt-2 text-xs">{status}</p>}
+    {displayStatus && <p role="status" className="mt-2 text-xs">{displayStatus}</p>}
     {copies.map((copy) => <div key={copy.writerId} className="mt-3 rounded-lg border border-zinc-700 p-3">
       <p>Recovered timeline · {new Date(copy.updatedAt).toLocaleString()}</p>
       <p className="mt-1 text-xs">Saved locally from server revision {copy.baseRevision}. {copy.baseRevision !== project.revision ? "The server has changed. Download this copy for comparison; automatic replacement is blocked." : "Restoring will replace the current timeline and save this copy. Download it first if you want to inspect it."}</p>
