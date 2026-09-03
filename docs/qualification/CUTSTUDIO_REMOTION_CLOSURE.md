@@ -6,6 +6,40 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+At the latest checkpoint, PR 170 is merged at
+`f3648cbc6d1fb3152648acfb093bbafbef021544`. Its exact candidate
+`977515cbe58659a6a43128e531fd1600fbb81539` passed Verify `33716866130`:
+760 root tests, 201 mobile and 177 desktop browser journeys, 24 existing desktop
+skips, no reported retries. CodeQL `33716866124` passed. Both browser jobs also
+rendered actual Lottie and Rive frames; the latter now explicitly checks visible
+artwork instead of merely valid PNG files. Source editing remains data-only.
+
+Production deployment `33718462648` is running, not yet a successful release.
+The last confirmed public application is still
+`559fd2ad58b5c63469f30b0733253480198b3874`. The native worker image was promoted to
+`sha256:1c0117030049ea6428035416e2451e4264a8a62c4a7343692e09ac07ae324ad4`.
+Before/after receipts confirm the same non-image job policy hash, 2 CPU, 4 GiB
+and one task. Exact-image private output and new-app normal-user field evidence
+remain pending; promotion alone is not that proof.
+
+The local Windows combined run passed root/type/build/bundle checks and actual
+native process cleanup plus Lottie/Rive output, but still encountered the unchanged
+45-second native-session browser deadline. Original failures remain retained;
+protected Linux success does not erase that local reliability gap.
+
+New native timing work addresses concrete non-provider gaps: Lottie source FPS,
+double-applied in-points in preview, source offsets omitted from native export,
+and a normal source-offset editor control. Focused tests pass; actual comparative
+pixels, full authoring/export qualification and release remain pending.
+See [animation timing](../releases/2026-09-03-cut-animation-timing.md).
+
+Public executable TSX still reports `not_implemented`. The dedicated execution
+service requires approved isolation/cost topology. Broader motion/media/3D,
+scaled admission, realistic workloads and authorized current Remotion comparisons
+remain open. Neither the native release nor the timing candidate proves parity.
+
+### Earlier dated evidence (not the current deployment state)
+
 The last confirmed public source at this checkpoint is
 `824485a33efeb2edffc5d73c8a7c768aa4490f0e`, with verified release identity,
 120/120 migration parity and `release_ready` with no blockers. Protected
