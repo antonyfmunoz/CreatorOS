@@ -91,7 +91,12 @@ async function safeManagedSourcePath(candidate: string) {
 
 function localStoragePath(storageKey: string) {
   if (path.isAbsolute(storageKey)) throw new Error("Local storage key must be relative");
-  return safeLocalUploadPath(path.resolve(managedUploadRoot(), storageKey));
+  // Legacy form uploads recorded the URL's uploads/ prefix even though the
+  // managed root already points at that directory. Only that exact one-level
+  // shape is an alias; normal managed keys and path confinement are unchanged.
+  const legacyName = storageKey.startsWith("uploads/") ? storageKey.slice(8) : "";
+  const relativeKey = legacyName && path.posix.basename(legacyName) === legacyName && path.win32.basename(legacyName) === legacyName ? legacyName : storageKey;
+  return safeLocalUploadPath(path.resolve(managedUploadRoot(), relativeKey));
 }
 
 export function directUploadStorageKey(ownerUserId: number, kind: string, filename: string, visibility: AssetVisibility) {
@@ -432,8 +437,8 @@ export async function persistUpload(file: Express.Multer.File, ownerUserId: numb
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider === "local") {
     const safeFilename = path.basename(file.filename);
-    if (!safeFilename || safeFilename !== file.filename) throw new Error("Invalid local upload filename");
-    return { storageKey: `uploads/${safeFilename}`, publicUrl: `/uploads/${safeFilename}` };
+    if (!safeFilename || safeFilename === "." || safeFilename === ".." || safeFilename !== file.filename) throw new Error("Invalid local upload filename");
+    return { storageKey: safeFilename, publicUrl: `/uploads/${safeFilename}` };
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
 

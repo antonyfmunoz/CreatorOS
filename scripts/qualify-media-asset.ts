@@ -17,6 +17,8 @@ const [{ db, closeDatabase }, { mediaProcessingJobs }, { processMediaJob }] = aw
 try {
   const jobs = await db.select().from(mediaProcessingJobs).where(and(eq(mediaProcessingJobs.assetId, assetId), eq(mediaProcessingJobs.kind, "package"), eq(mediaProcessingJobs.state, "queued")));
   assert.equal(jobs.length, 1, "The upload route must enqueue exactly one real packaging job");
-  assert.equal(await processMediaJob(jobs[0].id), true, "The scoped packaging worker must finish");
+  const completed = await processMediaJob(jobs[0].id);
+  const [result] = await db.select({ state: mediaProcessingJobs.state, errorCode: mediaProcessingJobs.errorCode }).from(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, jobs[0].id));
+  assert.equal(completed, true, `The scoped packaging worker must finish (${result?.state}/${result?.errorCode ?? "no-code"})`);
   console.log(JSON.stringify({ assetId, jobId: jobs[0].id, packaging: "qualified", ambientWorkers: false }));
 } finally { await closeDatabase(); }

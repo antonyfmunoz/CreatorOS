@@ -49,6 +49,12 @@ EXTINF timing is preserved: no added pictures, silence or artificial duration.
   drains only its own asset's packaging job in a localhost-only disposable
   database. Ambient workers remain disabled. Existing playback assertions and
   deadlines remain unchanged; the normal route must create the job itself.
+- The next local browser run passed the four existing media journeys but failed
+  the four new packaging cases. A real-file red test confirmed a second issue:
+  legacy local upload keys doubled the `uploads` directory during retrieval.
+  New local keys are now root-relative, and the exact legacy single-filename
+  form remains readable. R2 mapping is unchanged; nested managed keys and
+  path-escape rejection remain tested. Public production proof is still pending.
 
 This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and
