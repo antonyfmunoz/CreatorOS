@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { cutNativeMediaEnvironment } from "./cut-native-environment";
 
 /** Trusted executable/arguments only; never a user-supplied command endpoint. */
 export function readCutProbeOutput(command: string, args: string[], options: {
@@ -11,7 +12,7 @@ export function readCutProbeOutput(command: string, args: string[], options: {
   if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1 || !Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1) throw new Error("Invalid native probe budget");
   return new Promise<string>((resolve, reject) => {
     if (options.signal?.aborted) { reject(new Error("Media inspection cancelled or lease lost")); return; }
-    const child = spawn(command, args, { windowsHide: true });
+    const child = spawn(command, args, { windowsHide: true, env: cutNativeMediaEnvironment() });
     child.stdin.end();
     let failure: Error | undefined;
     let settled = false;
