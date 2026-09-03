@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
+import { qualifyMediaLeasePublication } from "./qualify-media-lease-publication";
 
 if (process.env.CREATOROS_QUALIFICATION_MODE !== "true" || process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
   throw new Error("Media Cloud qualification requires an isolated qualification database");
@@ -152,6 +153,7 @@ try {
     shortClipEvidence.push({ frames, targetDuration, allPixelsExact: true, explicitFrameDuration: frames <= 10 });
   }
 
+  const leasePublication = await qualifyMediaLeasePublication(asset);
   console.log(JSON.stringify({
     status: "qualified",
     assetId: asset.id,
@@ -164,6 +166,7 @@ try {
     attribution: "qualified",
     eventDeduplication: "qualified",
     shortClipEvidence,
+    leasePublication,
   }));
 } finally {
   await closeDatabase();
