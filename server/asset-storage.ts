@@ -343,22 +343,26 @@ export async function persistManagedFileAtKey(input: {
   };
 }
 
-export async function materializeStoredAsset(storageKey: string, visibility: AssetVisibility, destination: string) {
+export async function materializeStoredAsset(storageKey: string, visibility: AssetVisibility, destination: string, signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("Asset download cancelled");
   const provider = process.env.ASSET_STORAGE_PROVIDER ?? "local";
   if (provider === "local") {
     await fs.copyFile(localStoragePath(storageKey), destination);
+    // copyFile cannot be interrupted, but callers must not clean up its target
+    // until the in-flight local copy has actually settled.
+    if (signal?.aborted) throw new Error("Asset download cancelled");
     return destination;
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
   const { client, bucket } = r2BucketFor(visibility);
-  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }), { abortSignal: signal });
   if (!object.Body) throw new Error("Asset body was unavailable");
-  await pipeline(object.Body as NodeJS.ReadableStream, createWriteStream(destination));
+  await pipeline(object.Body as NodeJS.ReadableStream, createWriteStream(destination), { signal });
   return destination;
 }
 
-export async function materializePrivateAsset(storageKey: string, destination: string) {
-  return materializeStoredAsset(storageKey, "private", destination);
+export async function materializePrivateAsset(storageKey: string, destination: string, signal?: AbortSignal) {
+  return materializeStoredAsset(storageKey, "private", destination, signal);
 }
 
 export async function promotePrivateAsset(input: {

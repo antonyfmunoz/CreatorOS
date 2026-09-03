@@ -14,7 +14,11 @@ if (process.env.CREATOROS_DEMO_MODE === "true" || process.env.CREATOROS_QUALIFIC
 
 async function main() {
   const identity = cutWorkerIdentity();
-  process.stdout.write(`${JSON.stringify({ event: "cut.worker.start", workerId: identity.id, region: identity.region, capabilities: identity.capabilities, maxConcurrency: identity.maxConcurrency })}\n`);
+  // This clock includes static imports, unlike a timer started inside main().
+  // Compare with execution timestamps to separate process bootstrap from the
+  // platform's image/container startup; it is elapsed time, not CPU time.
+  const processUptimeMs = Math.round(process.uptime() * 1_000);
+  process.stdout.write(`${JSON.stringify({ event: "cut.worker.start", workerId: identity.id, region: identity.region, capabilities: identity.capabilities, maxConcurrency: identity.maxConcurrency, processUptimeMs })}\n`);
   if (process.env.CUT_WORKER_RUN_ONCE === "true") {
     const recovered = await recoverInterruptedCutStudioJobs();
     const processed = await processDueCutStudioJobs(1);

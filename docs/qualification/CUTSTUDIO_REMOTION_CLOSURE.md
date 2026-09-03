@@ -6,32 +6,56 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
-At the latest checkpoint, PR 170 is merged at
-`f3648cbc6d1fb3152648acfb093bbafbef021544`. Its exact candidate
-`977515cbe58659a6a43128e531fd1600fbb81539` passed Verify `33716866130`:
-760 root tests, 201 mobile and 177 desktop browser journeys, 24 existing desktop
-skips, no reported retries. CodeQL `33716866124` passed. Both browser jobs also
-rendered actual Lottie and Rive frames; the latter now explicitly checks visible
-artwork instead of merely valid PNG files. Source editing remains data-only.
+Checkpoint 2026-09-03 06:39 UTC: production deployment `33718462648` passed for
+`f3648cbc6d1fb3152648acfb093bbafbef021544`: 760 root tests, 378 mobile/desktop
+journeys, 24 existing desktop skips, no reported retries and two public-release
+checks. The public release endpoint confirms this exact clean source with
+120/120 migration parity. A fresh approved-owner field run passed source editing,
+immutable source/lockfile saves and reopen, undo/redo and the expanded workspace
+on both sizes. The qualification session ended. Source editing remains data-only.
 
-Production deployment `33718462648` is running, not yet a successful release.
-The last confirmed public application is still
-`559fd2ad58b5c63469f30b0733253480198b3874`. The native worker image was promoted to
-`sha256:1c0117030049ea6428035416e2451e4264a8a62c4a7343692e09ac07ae324ad4`.
-Before/after receipts confirm the same non-image job policy hash, 2 CPU, 4 GiB
-and one task. Exact-image private output and new-app normal-user field evidence
-remain pending; promotion alone is not that proof.
+A separate private production render produced independently decoded H.264,
+three wrapped text lines, visible Lottie/Rive and changed animation frames on
+execution `creativesos-cut-worker-kbcfz`. Management evidence confirmed immutable
+image `sha256:1c0117030049ea6428035416e2451e4264a8a62c4a7343692e09ac07ae324ad4`.
+Private access and original-project invariants passed. However, completion took
+252,650 ms: **the original 180-second performance gate failed and remains failed**.
+Most delay preceded the worker-start event; platform versus module-bootstrap
+causation is not established. The [startup clock candidate](../releases/2026-09-03-cut-worker-startup-clock.md)
+adds measurement, not a claimed latency fix.
 
-The local Windows combined run passed root/type/build/bundle checks and actual
-native process cleanup plus Lottie/Rive output, but still encountered the unchanged
-45-second native-session browser deadline. Original failures remain retained;
-protected Linux success does not erase that local reliability gap.
+PR 171 is merged at `12642a1d1a0b9b929758f190628de007f475352a`. It fixes Lottie
+asset-rate/in-point handling, preserves animation source offsets in export and
+adds the normal layer offset control. Its final candidate `65bd39b` passed
+Verify `33720057933`: 764 root and 382 browser checks, 24 existing skips, no
+reported retries. Exact decoded-frame comparisons and actual private authoring/
+reload/preview/export geometry passed. The first oracle failure remains retained:
+the test had read the preview's initial frame 6 instead of explicitly restarting
+at frame 0. The correction keeps the same pixel tolerance.
 
-New native timing work addresses concrete non-provider gaps: Lottie source FPS,
-double-applied in-points in preview, source offsets omitted from native export,
-and a normal source-offset editor control. Focused tests pass; actual comparative
-pixels, full authoring/export qualification and release remain pending.
-See [animation timing](../releases/2026-09-03-cut-animation-timing.md).
+Deployment `33721447399` for PR 171 is still running at this checkpoint. Its
+native worker image is already promoted to
+`sha256:5e46e1a055901d0a61db270213606a3da77d96039a5885a4829e672c74ba4bf4`.
+Build source `2c9b0c5d6b58a46f2350bb7e39821b642104a8e6` has identical native
+inputs to the merged release; only tests/docs changed afterward. Before/after
+receipts confirm the same non-image policy hash, 2 CPU, 4 GiB and one task. A new
+exact-image production timing/offset field result remains required. Promotion
+alone is not proof of output. See [animation timing](../releases/2026-09-03-cut-animation-timing.md).
+
+PR 172 is merged at `7f4bf45dffbf7b87e511e66868cbecd181b8953a`. Its pinned
+Windows headless runtime candidate `a4b7019` passed Verify
+`33721603073`: 770 root tests, 203 mobile plus 179 desktop checks, 24 existing
+skips and no reported retries. CodeQL passed. The frozen local default-path run
+passed root/types/build/bundle, real owned-process shutdown, actual Lottie/Rive
+and all 16 selected mobile/desktop authoring/export checks in 13.4 minutes.
+Earlier installed-browser and full-browser deadline failures remain retained.
+See [Windows browser selection](../releases/2026-09-03-cut-pinned-windows-browser.md).
+
+The next native-input candidate bounds concurrent preparation, drains active
+writes before failure cleanup, forwards cancellation through private R2 streaming
+and media inspection, and bounds probe lifetime/output. Its 30 focused tests
+pass, including actual stream/process cleanup and rotation/audio geometry. Full
+qualification and release are pending. See [input preparation](../releases/2026-09-03-cut-input-preparation.md).
 
 Public executable TSX still reports `not_implemented`. The dedicated execution
 service requires approved isolation/cost topology. Broader motion/media/3D,
@@ -105,7 +129,7 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | Area | Evidence available | Still required for direct substitution |
 | --- | --- | --- |
 | Native declarative compositions | Owned manifests, parameter batches, private rendering, typography/fitting production artifacts | Larger representative content, editing ergonomics and quality/time comparisons |
-| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded frame holds/cancellation with actual pixels/replay; data-only editor candidate in PR 166 | Complete editor release/field proof, public executable player/render path; broader approved dependencies; safe diagnostics and buffering |
+| React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded frame holds/cancellation with actual prototype pixels/replay; released data-only source/lockfile editor and expanded workspace with approved-owner field proof | Public executable player/render path; broader approved dependencies; safe diagnostics and buffering |
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
 | 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
 | Media | Private MP4/WebM retime/repeat, images/fonts and alpha; protected timestamp-indexed VFR/B-frame/VP9-alpha decoding and synchronized source sound | Keep exact-image gates green after changes; broader decoder matrix, long media and public source-code execution |
