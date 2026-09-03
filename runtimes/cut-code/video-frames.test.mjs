@@ -33,6 +33,14 @@ test('an absolute MP4 header end is not an extended relative video duration', ()
   assert.ok(Math.abs(index.duration - .6) < 1e-12);
   assert.equal(selectVideoFrame(index, .6, true), 0);
 });
+
+test('VP9 alpha metadata remains valid across case-preserving WebM muxers', () => {
+  for (const name of ['alpha_mode', 'ALPHA_MODE', 'Alpha_Mode']) {
+    const input = probe(); input.streams[0].codec_name = 'vp9'; input.streams[0].tags = { [name]: '1' };
+    assert.equal(videoFrameIndex(input).alpha, true);
+    input.streams[0].tags[name] = '0'; assert.equal(videoFrameIndex(input).alpha, false);
+  }
+});
 test('private video rejects ambiguous, unbounded or malformed metadata and bindings', async () => {
   for (const modify of [p=>p.frames[1].best_effort_timestamp=0,p=>p.frames[0].best_effort_timestamp='bad',p=>p.format.duration=121,p=>p.streams[0].width=100000,p=>p.streams[0].time_base='1/0',p=>p.frames=[]]) {
     const input = probe(); modify(input); assert.throws(() => videoFrameIndex(input));

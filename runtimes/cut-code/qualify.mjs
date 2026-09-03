@@ -310,9 +310,9 @@ const alphaSoundProbe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_ent
 assert.ok(alphaSoundProbe.streams.some(stream=>stream.codec_type==='audio'&&stream.codec_name==='opus'));assert.ok(rms(alphaSoundPath,.1,.4)>.03);assert.equal(alphaPixel(alphaSoundPath,0,300,160)[3],0,'Muxing Opus must not flatten video alpha.');
 const reusedAlphaSource=capsule(`import {FullFrame,FrameVideo} from '@creativesos/cut';import overlay from './overlay.webm';export default ()=> <FullFrame style={{background:'#0000ff'}}><FrameVideo src={overlay} style={{width:'100%',height:'100%'}}/></FullFrame>`,{'src/overlay.webm':alphaVideo.artifact});
 const reusedAlpha=await renderIsolated({request:{...request,fps:10,durationInFrames:6,frame:4},source:reusedAlphaSource,image});
+await writeFile(`${directory}reused-transparent-overlay.png`,reusedAlpha.artifact);
 assert.deepEqual(pixel(reusedAlpha.artifact),[0,0,255,255]);assert.ok(pixel(reusedAlpha.artifact,110,30)[1]>235);
 const mixedAlpha=pixel(reusedAlpha.artifact,230,30);assert.ok(Math.abs(mixedAlpha[0]-128)<8&&mixedAlpha[1]<8&&Math.abs(mixedAlpha[2]-127)<8,'Reimported alpha must composite correctly over the next scene.');
-await writeFile(`${directory}reused-transparent-overlay.png`,reusedAlpha.artifact);
 records.push({test:'transparent-vp9-alpha-motion',...alphaVideo.receipt,probe:alphaProbe,opaquePixel:opaque,partialPixel:partial,audioReceipt:alphaWithSound.receipt,reuseReceipt:reusedAlpha.receipt});
 console.log('PASS actual VP9 alpha, partial opacity, frame motion, Opus mux and private video-layer reuse');
 const denied = capsule(`import {FullFrame} from '@creativesos/cut';let allBlocked=true;for(const url of ['http://169.254.169.254/computeMetadata/v1/','https://example.com/','file:///etc/passwd']){try{const xhr=new XMLHttpRequest();xhr.open('GET',url,false);xhr.send();if(xhr.status===200||xhr.responseText)allBlocked=false;}catch{}}export default ()=> <FullFrame style={{background:allBlocked?'#00ff00':'#ff0000'}}/>;`);
