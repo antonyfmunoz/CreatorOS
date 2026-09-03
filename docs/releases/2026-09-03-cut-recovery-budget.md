@@ -17,13 +17,17 @@ new paid scheduler, capacity, service or warm instance.
 
 Repeated retry requests for a single failed job return one uniquely linked child
 job. Replaying a retry does not need another quota slot. The failed original is
-retained; a failed child can itself be explicitly retried. This does not claim
-global atomic admission across every distinct job-creation endpoint.
+retained; a failed child can itself be explicitly retried. Proxy, highlight and
+transcription requests now share the same owner admission lock as renders,
+composition batches and retries. Concurrent requests cannot independently pass
+the same two-active-job check. Duplicate proxy requests reuse one queued/running
+or completed artifact-backed job, without consuming another slot.
 
 Actual database qualification checks all three claims, renewal accounting,
 mixed-version rejection, cancellation, scoped and legacy recovery, eight
 concurrent retry requests, authorization/state/quota boundaries and recovery by
-the real ten-second worker timer. Existing publication and two-slot admission
+the real ten-second worker timer, six mixed auxiliary admissions and six
+duplicate proxy requests. Existing publication and two-slot admission
 tests remain unchanged. No provider call is used by this fixture.
 
 Image deployment and artifact field tests remain separate evidence. The existing

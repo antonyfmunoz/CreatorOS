@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../server/db";
 import { recoverCutJobs, retryCutJob } from "../server/cut-job-recovery";
+import { admitCutAuxiliaryJob } from "../server/cut-job-admission";
 import { renewCutJobLease } from "../server/cut-job-publication";
 import { claimCutStudioJob, cutWorkerIdentity, scheduleCutStudioProcessing, stopCutStudioProcessing } from "../server/cut-studio";
-import { cutStudioJobs, cutStudioProjects } from "../shared/schema";
+import { cutStudioJobs, cutStudioProjectMedia, cutStudioProjects } from "../shared/schema";
 
 export async function qualifyCutJobRecovery(project: typeof cutStudioProjects.$inferSelect) {
   assert.equal(process.env.QUALIFICATION_ISOLATED_DATABASE, "true");
@@ -17,7 +18,23 @@ export async function qualifyCutJobRecovery(project: typeof cutStudioProjects.$i
   const state = async (id: string) => (await db.select().from(cutStudioJobs).where(eq(cutStudioJobs.id, id)))[0];
   const expire = (id: string) => db.update(cutStudioJobs).set({ leaseExpiresAt: new Date(Date.now() - 60_000) }).where(eq(cutStudioJobs.id, id));
   let scheduled = false;
+  let fixtureMediaId: string | undefined;
   try {
+    assert.equal((await admitCutAuxiliaryJob(project.id, project.ownerUserId + 1_000_000, "highlights")).status, "not_found");
+    const admissions = await Promise.all(Array.from({ length: 6 }, (_, index) => admitCutAuxiliaryJob(project.id, project.ownerUserId, index % 2 ? "highlights" : "transcribe")));
+    assert.equal(admissions.filter(result => result.status === "created").length, 2);
+    assert.equal(admissions.filter(result => result.status === "busy").length, 4);
+    const admissionIds = admissions.flatMap(result => "job" in result && result.job ? [result.job.id] : []); ids.push(...admissionIds);
+    await db.update(cutStudioJobs).set({ state: "cancelled" }).where(inArray(cutStudioJobs.id, admissionIds));
+    const [media] = await db.insert(cutStudioProjectMedia).values({ projectId: project.id, ownerUserId: project.ownerUserId,
+      assetId: project.sourceAssetId, name: "Proxy admission", mediaKind: "video", duration: project.duration }).returning();
+    fixtureMediaId = media.id;
+    const proxies = await Promise.all(Array.from({ length: 6 }, () => admitCutAuxiliaryJob(project.id, project.ownerUserId, "proxy", media.id)));
+    assert.equal(proxies.filter(result => result.status === "created").length, 1);
+    assert.equal(proxies.filter(result => result.status === "existing").length, 5);
+    const proxyIds = [...new Set(proxies.flatMap(result => "job" in result && result.job ? [result.job.id] : []))];
+    assert.equal(proxyIds.length, 1); ids.push(...proxyIds);
+    await db.update(cutStudioJobs).set({ state: "cancelled" }).where(inArray(cutStudioJobs.id, proxyIds));
     const budget = await create();
     for (let attempt = 1; attempt <= 3; attempt++) {
       const token = randomUUID();
@@ -91,11 +108,13 @@ export async function qualifyCutJobRecovery(project: typeof cutStudioProjects.$i
     assert.equal(finished.errorCode, "transcript_required", "The ordinary tick must execute the recovered job without a provider call");
     assert.equal((await state(budget.id)).attempt, 3);
     assert.equal((await state(budget.id)).state, "error");
-    return { persistentAttemptBudget: 3, renewalDoesNotIncrement: true, legacyClaimGuard: true,
+    return { auxiliaryAdmissionRequests: 6, auxiliaryJobsAdmitted: 2, duplicateProxyRequests: 6, proxyJobsCreated: 1,
+      persistentAttemptBudget: 3, renewalDoesNotIncrement: true, legacyClaimGuard: true,
       cancelledNeverResurrected: true, scopedRecovery: true, liveLeasePreserved: true, legacyLeaseRecovery: true,
       duplicateRetryRequests: 8, createdRetryJobs: 1, ownerAndStateChecks: true, quotaReplay: true, ordinaryTickRecovery: true };
   } finally {
     if (scheduled) await stopCutStudioProcessing();
     if (ids.length) await db.delete(cutStudioJobs).where(and(eq(cutStudioJobs.ownerUserId, project.ownerUserId), inArray(cutStudioJobs.id, ids)));
+    if (fixtureMediaId) await db.delete(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, fixtureMediaId), eq(cutStudioProjectMedia.ownerUserId, project.ownerUserId)));
   }
 }

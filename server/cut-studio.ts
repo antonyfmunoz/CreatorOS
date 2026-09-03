@@ -67,6 +67,7 @@ import { runCutNativeProcess } from "./cut-native-process";
 import { watchCutJobLease } from "./cut-job-lease-watch";
 import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
 import { recoverCutJobs, retryCutJob } from "./cut-job-recovery";
+import { admitCutAuxiliaryJob } from "./cut-job-admission";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
@@ -562,12 +563,6 @@ async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect
     result.set(asset.id, lutPath);
   }
   return result;
-}
-
-async function canStartJob(userId: number) {
-  const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs)
-    .where(and(eq(cutStudioJobs.ownerUserId, userId), sql`${cutStudioJobs.state} in ('queued', 'running')`));
-  return (row?.count ?? 0) < 2;
 }
 
 function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string, progress?: (progress: CutProcessProgress) => void) {
@@ -1817,13 +1812,12 @@ export function registerCutStudioRoutes(app: Express) {
     const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
     if (!media) return res.status(404).json({ message: "Project media not found" });
     if (media.mediaKind !== "video") return res.status(409).json({ message: "Only video media needs an editing proxy" });
-    const recent = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.kind, "proxy"))).orderBy(desc(cutStudioJobs.createdAt)).limit(50);
-    const existing = recent.find((job) => job.request?.mediaId === media.id && ["queued", "running", "done"].includes(job.state));
-    if (existing) return res.status(existing.state === "done" ? 200 : 202).json(existing);
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before creating a proxy" });
-    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind: "proxy", request: { mediaId: media.id }, detail: "Editing proxy queued" }).returning();
-    queueJob(job.id);
-    res.status(202).json(job);
+    const admitted = await admitCutAuxiliaryJob(project.id, req.dbUser!.id, "proxy", media.id);
+    if (admitted.status === "not_found" || admitted.status === "media_not_found") return res.status(404).json({ message: "Project media not found" });
+    if (admitted.status === "not_video") return res.status(409).json({ message: "Only video media needs an editing proxy" });
+    if (admitted.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before creating a proxy" });
+    if (admitted.job.state === "queued") queueJob(admitted.job.id);
+    res.status(admitted.job.state === "done" ? 200 : 202).json(admitted.job);
   });
   cut.get("/api/cut/projects/:id/media-library/:mediaId/media-file", attachUser, async (req, res) => {
     noStore(res);
@@ -1943,8 +1937,10 @@ export function registerCutStudioRoutes(app: Express) {
   });
   for (const [route, kind] of [["transcribe", "transcribe"], ["highlights", "highlights"]] as const) cut.post(`/api/cut/projects/:id/${route}`, attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
-    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind, request: {} }).returning(); queueJob(job.id); res.status(202).json(job);
+    const admitted = await admitCutAuxiliaryJob(project.id, req.dbUser!.id, kind);
+    if (admitted.status === "not_found" || admitted.status === "media_not_found" || admitted.status === "not_video") return res.status(404).json({ message: "Project not found" });
+    if (admitted.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
+    queueJob(admitted.job.id); res.status(202).json(admitted.job);
   });
   cut.post("/api/cut/projects/:id/render", attachUser, async (req, res) => {
     if (req.body?.composition !== undefined || req.body?.timeline !== undefined) return res.status(400).json({ message: "Render snapshots are server-owned; use composition-render-batches for compositions" });
