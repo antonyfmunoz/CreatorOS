@@ -52,9 +52,15 @@ public executable-player claim. See the
 [source-authoring receipt](../releases/2026-09-03-cut-source-authoring.md).
 
 The next candidate adds generated pinned source/lockfile pairs, honest partial
-failure handling, stale-pair protection and server dependency reconciliation.
-Focused tests and all four real-installer cases passed; browser/protected/
-production qualification is still pending. See the [pairing receipt](../releases/2026-09-03-cut-source-lockfile-pairs.md).
+failure handling, stale-pair protection, server dependency reconciliation and
+bounded source undo/redo. The first pairing head failed its multipart test
+oracle on both viewport sizes; protected core/native/database and CodeQL passed.
+Local render-deadline failures are retained separately. The corrected oracle
+downloads actual saved private bytes and verifies peer-account denial. All 48
+focused source/history tests and all four earlier real-installer cases passed;
+full combined-source browser/protected/production qualification is pending.
+See the [pairing receipt](../releases/2026-09-03-cut-source-lockfile-pairs.md)
+and [history scope](../releases/2026-09-03-cut-source-history.md).
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
 not a public executable-capsule service. A saved code package is not an executable

@@ -57,6 +57,31 @@ limit. Its evidence remains in qualification directory
 `creativesos-browser-qualification-9accf572ae124cd98fe746abcd945604`.
 No browser journey ran in that local attempt. Do not call it a browser pass.
 
+## Retained first-candidate results
+
+At `808c9721aeee7616a06f0a64210c6bd8a2b3f39c`, protected Verify
+`33706659870` failed the new browser lockfile assertion on both viewport sizes
+and their retries. The request event supplied an empty multipart body. The
+actual UI reached the saved/selected pair, but that is not byte verification.
+Core (723 tests and the four actual-installer cases), native and database jobs
+passed; CodeQL `33706659808` passed. Browser results were 196 mobile passes plus
+one failure, and 172 desktop passes plus one failure and 24 existing skips.
+
+The first local full run retained a five-second logging-scan timeout (722 tests
+passed). The focused logging scan then passed its original limit. A full
+single-worker rerun passed 723 tests, types, build, bundle and worker checks.
+Its browser run retained six passes and four failures: the same two multipart
+assertions plus both existing programmable-cinema journeys' render deadlines.
+Evidence is retained in
+`creativesos-browser-qualification-eec937d3b2e34f3589f35e5003d73bd3`.
+No timeout, render-quality threshold or gate was weakened. The longer render
+failures are not resolved by correcting the multipart assertion.
+
+The next source adds bounded editor history and replaces the multipart oracle
+with an authenticated download of the actual saved lockfile, exact byte
+comparison and peer-account denial. All 48 focused source/archive/lockfile/history
+tests passed; full combined-source qualification remains pending.
+
 ## Primary format references
 
 - [npm frozen installation behavior](https://docs.npmjs.com/cli/v11/commands/npm-ci/)

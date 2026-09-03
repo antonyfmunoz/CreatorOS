@@ -20,7 +20,9 @@ the saved composition's source/lockfile pair.
 Tests added cover exact text/Unicode, file and entrypoint changes, mutable input
 alias protection, no-op/save updates, branching after undo, step/text eviction,
 reset boundaries, keyboard/button journeys, section persistence and honest saved
-state. Qualification is pending; no deployment or Remotion-parity claim is made.
+state. All 48 focused source/archive/lockfile/history tests passed locally.
+Full combined-source qualification is pending; no deployment or Remotion-parity
+claim is made.
 
 The base dependency-pair candidate's original browser test attempted to inspect
 multipart file bytes from a request event, which returned an empty string. This
