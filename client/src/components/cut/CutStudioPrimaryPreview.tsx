@@ -85,7 +85,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
     } catch { reportError("Audio playback is unavailable in this browser."); }
   };
   if (plan.error) return <p role="alert">{plan.error}</p>;
-  if (edl.clips.some((clip) => (clip.track ?? "v1") === "v1" && clip.transition && clip.transition !== "cut")) return <p role="status">Render a preview for this sequence's transitions. Live primary preview currently supports hard cuts.</p>;
+  if (edl.clips.some((clip) => (clip.track ?? "v1") === "v1" && clip.transition && !["cut", "fade_black"].includes(clip.transition))) return <p role="status">Render a preview for this sequence's transitions. Live primary preview supports hard cuts and fade to black.</p>;
   return <div role="region" aria-label="Primary sequence player" data-preview-frame={frame} data-preview-state={playing ? "playing" : "paused"}>
     <div className="aspect-video overflow-hidden rounded-xl bg-black" aria-label="Primary sequence canvas">
       {state?.clip && active ? <PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} playing={playing} audio={audio} onReady={setReady} onError={reportError}/> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
@@ -99,7 +99,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media }: Props) {
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || (state?.clip && !active ? "Source unavailable in this project's private library." : playing && state?.clip && !ready ? "Buffering private source…" : "Primary cuts, gaps, speed and source audio. Titles, layered tracks, color/effects and other audio tracks require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || (state?.clip && !active ? "Source unavailable in this project's private library." : playing && state?.clip && !ready ? "Buffering private source…" : "Primary cuts, fade to black, gaps, speed and source audio. Titles, layered tracks, color/effects and other audio tracks require a rendered preview.")}</p>
   </div>;
 }
 

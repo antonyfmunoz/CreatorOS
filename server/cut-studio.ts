@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
 import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
+import { cutClipFades } from "@shared/cut-clip-fades";
 import { cutFitVideoFilters, cutSourceVideoFilters, cutSourceRenditionSize } from "./cut-video-geometry";
 import { cutTextRasterFilter, cutTextRasterSource } from "./cut-text-raster";
 import { createCutTextRasterizer } from "./cut-text-layout-renderer";
@@ -729,9 +730,7 @@ async function renderMultitrack(
     const sourceIndex = inputIndex.get(assetId);
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
-    const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
-    const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
-    const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < primaryPlan.segments.length - 1 ? transitionFade : 0), outputDuration / 2);
+    const { fadeIn, fadeOut } = cutClipFades(clip, outputDuration, index, primaryPlan.segments.length);
     const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
     if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
@@ -1132,9 +1131,7 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     clips.forEach((clip, index) => {
       const speed = clip.speed ?? 1;
       const outputDuration = (clip.end - clip.start) / speed;
-      const transitionFade = clip.transition === "fade_black" ? Math.min(0.35, outputDuration / 2) : 0;
-      const fadeIn = Math.min(Math.max(clip.fadeIn ?? 0, index > 0 ? transitionFade : 0), outputDuration / 2);
-      const fadeOut = Math.min(Math.max(clip.fadeOut ?? 0, index < clips.length - 1 ? transitionFade : 0), outputDuration / 2);
+      const { fadeIn, fadeOut } = cutClipFades(clip, outputDuration, index, clips.length);
       if (media.hasVideo) {
         const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths)];
         if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
