@@ -14,7 +14,7 @@ import { reserveWorkerSlot } from "./worker-admission";
 import { runManagedMediaProcess } from "./media-process";
 import { finalizeOwnedHlsMediaPlaylist, finalizeOwnedHlsSegment } from "./media-hls";
 import { watchCutJobLease as watchMediaJobLease } from "./cut-job-lease-watch";
-import { withMediaLeaseWrite } from "./media-job-lease";
+import { renewMediaJobLease, withMediaLeaseWrite } from "./media-job-lease";
 
 type Probe = {
   durationMs: number;
@@ -165,9 +165,14 @@ async function sha256File(inputPath: string, signal: AbortSignal) {
   return new Promise<string>((resolve, reject) => {
     const hash = createHash("sha256");
     const stream = createReadStream(inputPath, { signal });
-    stream.on("error", () => reject(new Error("Media source checksum failed")));
+    let failed = false, complete = false;
+    stream.on("error", () => { failed = true; });
     stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("end", () => { complete = true; });
+    stream.on("close", () => {
+      if (failed || !complete || signal.aborted) reject(new Error("Media source checksum failed"));
+      else resolve(hash.digest("hex"));
+    });
   });
 }
 
@@ -357,12 +362,11 @@ export async function processMediaJob(jobId: string) {
     const claimed = await claimMediaJob(jobId, worker, leaseToken, now);
     if (!claimed) return false;
     activeClaims.set(jobId, claimed);
-    await heartbeatWorker();
     const ownsLease = async () => {
       const rows = await db.select({ id: mediaProcessingJobs.id }).from(mediaProcessingJobs).where(and(
         eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"),
         eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt),
-        gt(mediaProcessingJobs.leaseExpiresAt, new Date()),
+        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
       )).limit(1);
       return rows.length === 1;
     };
@@ -372,19 +376,8 @@ export async function processMediaJob(jobId: string) {
     const heartbeat = setInterval(() => {
       if (heartbeatStopped || heartbeatPending || controller.signal.aborted) return;
       heartbeatPending = true;
-      const heartbeatAt = new Date();
-      void db.update(mediaProcessingJobs).set({
-        heartbeatAt,
-        leaseExpiresAt: new Date(heartbeatAt.getTime() + leaseMs),
-        updatedAt: heartbeatAt,
-      }).where(and(
-        eq(mediaProcessingJobs.id, claimed.id),
-        eq(mediaProcessingJobs.state, "running"),
-        eq(mediaProcessingJobs.leaseToken, leaseToken),
-        isNull(mediaProcessingJobs.cancellationRequestedAt),
-        gt(mediaProcessingJobs.leaseExpiresAt, heartbeatAt),
-      )).returning({ id: mediaProcessingJobs.id }).then((rows) => {
-        if (!rows.length && !heartbeatStopped) controller.abort();
+      void renewMediaJobLease(claimed, leaseMs).then((renewed) => {
+        if (!renewed && !heartbeatStopped) controller.abort();
       }).catch((error) => {
         if (!heartbeatStopped) controller.abort();
         console.error("Media worker lease heartbeat failed", { jobId: claimed.id, errorType: error instanceof Error ? error.name : typeof error });
@@ -392,6 +385,7 @@ export async function processMediaJob(jobId: string) {
     }, Math.max(10_000, Math.floor(leaseMs / 3)));
     heartbeat.unref();
     try {
+      await heartbeatWorker();
       if (!await ownsLease()) controller.abort();
       const output = await executeJob(claimed, controller.signal);
       controller.signal.throwIfAborted();
@@ -411,7 +405,7 @@ export async function processMediaJob(jobId: string) {
         eq(mediaProcessingJobs.state, "running"),
         eq(mediaProcessingJobs.leaseToken, leaseToken),
         isNull(mediaProcessingJobs.cancellationRequestedAt),
-        gt(mediaProcessingJobs.leaseExpiresAt, finishedAt),
+        gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`),
       )).returning({ id: mediaProcessingJobs.id });
       if (completed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: true, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
       return Boolean(completed);
@@ -419,7 +413,7 @@ export async function processMediaJob(jobId: string) {
       const message = controller.signal.aborted ? "Media processing cancelled or lease lost" : error instanceof Error ? error.message.slice(0, 1_000) : "Media processing failed";
       const code = controller.signal.aborted ? "media_cancelled" : typeof error === "object" && error && "code" in error ? String(error.code).slice(0, 120) : "media_processing_failed";
       const finishedAt = new Date();
-      const [failed] = await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, leaseExpiresAt: null, heartbeatAt: finishedAt, finishedAt, updatedAt: finishedAt }).where(and(eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"), eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt), gt(mediaProcessingJobs.leaseExpiresAt, finishedAt))).returning({ id: mediaProcessingJobs.id });
+      const [failed] = await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: code, errorMessage: message, leaseExpiresAt: null, heartbeatAt: finishedAt, finishedAt, updatedAt: finishedAt }).where(and(eq(mediaProcessingJobs.id, claimed.id), eq(mediaProcessingJobs.state, "running"), eq(mediaProcessingJobs.leaseToken, leaseToken), isNull(mediaProcessingJobs.cancellationRequestedAt), gt(mediaProcessingJobs.leaseExpiresAt, sql`clock_timestamp()`))).returning({ id: mediaProcessingJobs.id });
       if (failed && claimed.businessId) await recordOperationalServiceEvent({ businessId: claimed.businessId, service: "media_processing", success: false, durationMs: finishedAt.getTime() - now.getTime(), sourceType: "media_job", sourceId: `${claimed.id}:${claimed.attempt}`, quantity: finishedAt.getTime() - now.getTime(), unit: "compute_ms", estimatedCostMicros: estimatedComputeCostMicros(finishedAt.getTime() - now.getTime(), Number(process.env.MEDIA_WORKER_COST_MICROS_PER_MINUTE) || 0) }).catch(() => undefined);
       return false;
     } finally {

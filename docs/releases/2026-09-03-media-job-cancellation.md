@@ -15,6 +15,9 @@ attempt finishes. The shared read-only lease watcher detects remote cancellation
 reassignment, expiry and failed database checks independently of lease renewal.
 Renewals cannot revive expired leases; delayed callbacks only affect their own
 still-active attempt. Success also requires a live uncancelled matching lease.
+Renewal takes the job row lock before evaluating expiry against the database
+clock, including when another transaction locks but does not change the row.
+The checksum stream waits for its actual close before source cleanup.
 
 Rendition and probe metadata publication now takes the durable job row lock and
 checks the live, uncancelled attempt before committing. A local abort during the
@@ -26,4 +29,6 @@ New tests retain the original deadlines and assert real decoder termination plus
 no later child start. Actual isolated-database tests contend for the exact row lock
 while cancelling or reassigning the job, and check valid commits, wrong-token and
 expired-lease denial plus abort rollback. These tests have not run at this checkpoint.
+The renewal fixture also holds a real unchanged row lock until the lease expires
+and asserts that the waiting heartbeat cannot bring it back to life.
 This does not claim fleet-wide admission or full CutStudio parity.

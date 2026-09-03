@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../server/db";
-import { withMediaLeaseWrite } from "../server/media-job-lease";
+import { renewMediaJobLease, withMediaLeaseWrite } from "../server/media-job-lease";
 import { assets, mediaProcessingJobs } from "../shared/schema";
 
 export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSelect) {
@@ -73,8 +73,48 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
       assert.deepEqual((await state()).output, { publication: 1 });
       conflicts.push(change);
     }
+    await db.update(mediaProcessingJobs).set({ state: "running", leaseToken: token,
+      cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() + 60_000) }).where(eq(mediaProcessingJobs.id, job.id));
+    assert.equal(await renewMediaJobLease(claim, 60_000), true);
+    assert.equal(await renewMediaJobLease({ ...claim, leaseToken: randomUUID() }, 60_000), false);
+    const expires = new Date(Date.now() + 1_500);
+    await db.update(mediaProcessingJobs).set({ leaseExpiresAt: expires }).where(eq(mediaProcessingJobs.id, job.id));
+    let releaseRenewal!: () => void, locked!: (xid: string) => void;
+    const holdRenewal = new Promise<void>(resolve => { releaseRenewal = resolve; });
+    const renewalLock = new Promise<string>(resolve => { locked = resolve; });
+    const blocker = db.transaction(async transaction => {
+      // Deliberately do NOT change the row: a stale predicate cannot rely on
+      // PostgreSQL rechecking a newer tuple after it waits for this lock.
+      await transaction.select().from(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id)).for("update");
+      const rows = await transaction.execute(sql`SELECT pg_current_xact_id()::text AS xid`);
+      locked(String(rows[0].xid)); await holdRenewal;
+    });
+    const renewalXid = await Promise.race([renewalLock, blocker.then(() => { throw new Error("Renewal lock fixture exited early"); })]);
+    const renewed = renewMediaJobLease(claim, 60_000).then(value => ({ value }), error => ({ error }));
+    try {
+      let blocked = false;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const locks = await db.execute(sql`SELECT count(*)::int AS count FROM pg_locks WHERE locktype = 'transactionid' AND transactionid::text = ${renewalXid} AND NOT granted`);
+        if (Number(locks[0].count) === 1) { blocked = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal(blocked, true, "Renewal must contend for the unchanged job row");
+      let expired = false;
+      while (Date.now() < deadline) {
+        const rows = await db.execute(sql`SELECT clock_timestamp() > ${expires.toISOString()}::timestamptz AS expired`);
+        if (rows[0].expired === true) { expired = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal(expired, true);
+    } finally {
+      releaseRenewal(); await blocker;
+      assert.deepEqual(await renewed, { value: false }, "A delayed heartbeat must not revive an expired lease");
+    }
+    assert.equal((await state()).leaseExpiresAt?.getTime(), expires.getTime());
     return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
-      localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts };
+      localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
+      liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true };
   } finally {
     await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
   }
