@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { buildCutSourceZip, validateCutSourceFiles, type CutSourceFile } from "@shared/cut-code-authoring";
+import { assertCutSourceTextBudget, buildCutSourceZip, cutSourceEditorLimits, validateCutSourceFiles, type CutSourceFile } from "@shared/cut-code-authoring";
 
 export type CutSourceDraft = { files: CutSourceFile[]; entrypoint: string; saved: string | null };
 export const sourceDraftIdentity = (draft: Pick<CutSourceDraft, "files" | "entrypoint">) => JSON.stringify([draft.entrypoint, draft.files]);
@@ -25,13 +25,17 @@ export function CutStudioSourceEditor({ draft, busy, onChange, onSave }: { draft
   };
   return <div aria-label="Composition source editor" className="mt-3 space-y-3 rounded-xl border border-zinc-700 p-3">
     <p className="text-xs leading-5 text-zinc-400">Edit files as text. No code runs on this page. Save creates a new private ZIP; existing packages are never overwritten. A matching lockfile is still required to register a composition.</p>
-    <label className="block text-xs text-zinc-400">Entrypoint<select aria-label="Source editor entrypoint" className={field} disabled={busy} value={draft.entrypoint} onChange={(event) => onChange({ ...draft, entrypoint: event.target.value })}>{draft.files.filter((file) => file.path.endsWith(".tsx")).map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
+    <label className="block text-xs text-zinc-400">Entrypoint<select aria-label="Source editor entrypoint" className={field} disabled={busy} value={draft.entrypoint} onChange={(event) => onChange({ ...draft, entrypoint: event.target.value })}>{draft.files.filter((file) => /\.tsx?$/.test(file.path)).map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     <label className="block text-xs text-zinc-400">File<select aria-label="Source editor file" className={field} value={selected?.path ?? ""} onChange={(event) => selectPath(event.target.value)}>{draft.files.map((file) => <option key={file.path}>{file.path}</option>)}</select></label>
     {selected && <>
-      <textarea aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" className={`${field} min-h-64 font-mono`} disabled={busy} value={selected.content} onChange={(event) => onChange({ ...draft, files: draft.files.map((file) => file.path === selected.path ? { ...file, content: event.target.value } : file) })}/>
+      <textarea aria-label="Source file contents" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={cutSourceEditorLimits.fileBytes} className={`${field} min-h-64 font-mono`} disabled={busy} value={selected.content} onChange={(event) => {
+        const files = draft.files.map((file) => file.path === selected.path ? { ...file, content: event.target.value } : file);
+        try { assertCutSourceTextBudget(files); onChange({ ...draft, files }); setMessage(""); }
+        catch (error) { setMessage(`${error instanceof Error ? error.message : "Source is too large"} Previous draft retained.`); }
+      }}/>
       <Button size="sm" variant="ghost" disabled={busy || selected.path === "package.json" || selected.path === draft.entrypoint} onClick={() => { if (window.confirm(`Remove ${selected.path} from this draft?`)) onChange({ ...draft, files: draft.files.filter((file) => file.path !== selected.path) }); }}>Remove selected source file</Button>
     </>}
-    <div className="flex gap-2"><input aria-label="New source file path" className={field} disabled={busy} value={newPath} onChange={(event) => setNewPath(event.target.value)} placeholder="src/Title.tsx"/><Button size="sm" variant="outline" disabled={busy || draft.files.length >= 64} onClick={() => {
+    <div className="flex gap-2"><input aria-label="New source file path" maxLength={240} className={field} disabled={busy} value={newPath} onChange={(event) => setNewPath(event.target.value)} placeholder="src/Title.tsx"/><Button size="sm" variant="outline" disabled={busy || draft.files.length >= 64} onClick={() => {
       try {
         const files = [...draft.files, { path: newPath, content: "" }]; validateCutSourceFiles(files, draft.entrypoint);
         onChange({ ...draft, files }); selectPath(newPath); setMessage("");

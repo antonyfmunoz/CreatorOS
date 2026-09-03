@@ -30,16 +30,23 @@ new recovery correction is not yet a deployment or normal-user field claim.
 PR 161 is merged with exact indexed VFR/B-frame/VP9-alpha/source-audio proof:
 runtime `33698281193` passed 83 records/image with zero candidate HIGH/CRITICAL
 findings; Verify `33698281064` passed 360 browser checks without retries.
-PR 165 extends this to fractional source-sound loops: its exact `da0e0a2` runtime
-passed 86 records/image and zero HIGH/CRITICAL findings in `33699497738`; its
-latest merge qualification is still distinct. See the
+PR 165 extends this to fractional source-sound loops: latest source `1f5d4c7`
+passed 86 records/image and zero HIGH/CRITICAL findings in `33702482401`;
+Verify `33702482406` passed 689 root tests and 362 browser journeys without
+retries (24 existing desktop skips), and CodeQL `33702482404` passed. It merged
+at `c76509584a6b7a3b06c338e85e0535cb8cc8d079`. Exact candidate image:
+`sha256:9b16b83746efe0aed37afeb3f35344a940e81a67f4a5a4c07a805d745e6e8e0c`.
+This is still not a public executable-code service. See the
 [fractional-sound receipt](../releases/2026-09-03-cut-fractional-source-sound.md).
 
-PR 166 is implementing a bounded data-only source-package editor: text editing,
-private immutable ZIP saves and authenticated reopen. It is still under browser
-qualification, not a deployed editor or public executable player. A full local
-browser run failed to load the development application's dependency modules
-within its unchanged navigation deadline; original evidence is retained.
+PR 166 implements a bounded data-only source-package editor: text editing,
+private immutable ZIP saves and authenticated reopen. At `e22d434`, protected
+Verify `33702702402` passed 703 root tests and 366 browser journeys without
+retries (24 existing skips); CodeQL `33702702367` passed. Final text-budget/BOM
+hardening and the merged-source candidate need fresh checks. It is not a deployed
+editor or public executable player. Two local runs retain startup/total-deadline
+failures separately from the protected success. See the
+[source-authoring receipt](../releases/2026-09-03-cut-source-authoring.md).
 
 The separate `runtimes/cut-code` implementation is a local/protected-CI prototype,
 not a public executable-capsule service. A saved code package is not an executable

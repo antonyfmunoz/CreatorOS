@@ -3,6 +3,16 @@ export type CutSourceFile = { path: string; content: string };
 export const cutSourceEditorLimits = { files: 64, fileBytes: 256 * 1024, totalBytes: 2 * 1024 * 1024 } as const;
 const encode = (value: string) => new TextEncoder().encode(value);
 
+export function assertCutSourceTextBudget(files: CutSourceFile[]) {
+  let bytes = 0;
+  for (const file of files) {
+    const size = encode(file.content).length;
+    if (size > cutSourceEditorLimits.fileBytes) throw new Error("Each editable source file is limited to 256 KiB.");
+    bytes += size;
+    if (bytes > cutSourceEditorLimits.totalBytes) throw new Error("Editable source packages are limited to 2 MiB of text.");
+  }
+}
+
 export function validateCutSourceFiles(files: CutSourceFile[], entrypoint: string) {
   if (!files.length || files.length > cutSourceEditorLimits.files) throw new Error("The source editor supports 1–64 text files.");
   const names = new Set<string>(); let bytes = 0;
@@ -14,7 +24,7 @@ export function validateCutSourceFiles(files: CutSourceFile[], entrypoint: strin
     names.add(file.path);
     const body = encode(file.content);
     if (body.length > cutSourceEditorLimits.fileBytes) throw new Error("Each editable source file is limited to 256 KiB.");
-    if (file.content.includes("\0") || new TextDecoder("utf-8", { fatal: true }).decode(body) !== file.content) throw new Error("Source files must be valid UTF-8 text without NUL characters.");
+    if (file.content.includes("\0") || new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(body) !== file.content) throw new Error("Source files must be valid UTF-8 text without NUL characters.");
     bytes += body.length;
   }
   if (bytes > cutSourceEditorLimits.totalBytes) throw new Error("Editable source packages are limited to 2 MiB of text.");
@@ -22,11 +32,11 @@ export function validateCutSourceFiles(files: CutSourceFile[], entrypoint: strin
     const parts = name.split("/");
     for (let n = 1; n < parts.length; n++) if (names.has(parts.slice(0, n).join("/"))) throw new Error("A source file cannot also be a folder.");
   }
-  if (!/\.tsx$/.test(entrypoint) || !names.has(entrypoint)) throw new Error("Choose an existing TSX entrypoint.");
+  if (!/\.tsx?$/.test(entrypoint) || !names.has(entrypoint)) throw new Error("Choose an existing TS or TSX entrypoint.");
   const manifest = files.find((file) => file.path === "package.json");
   if (!manifest) throw new Error("Include package.json at the source root.");
   let parsed: unknown;
-  try { parsed = JSON.parse(manifest.content); } catch { throw new Error("package.json must contain valid JSON."); }
+  try { parsed = JSON.parse(manifest.content.replace(/^\uFEFF/, "")); } catch { throw new Error("package.json must contain valid JSON."); }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("package.json must contain an object.");
   return { bytes, files: files.length };
 }

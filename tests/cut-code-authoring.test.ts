@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildCutSourceZip, starterCutSource, validateCutSourceFiles } from "../shared/cut-code-authoring";
+import { assertCutSourceTextBudget, buildCutSourceZip, starterCutSource, validateCutSourceFiles } from "../shared/cut-code-authoring";
 import { readCutCodeSourceFiles, validateCutCodeSourceArchive } from "../server/cut-code-package";
 
 describe("data-only source authoring", () => {
   it("round trips all text through the authoritative archive reader and CRC checks", () => {
-    const files = [...starterCutSource(), { path: "notes.txt", content: "Creative café 🎬\n\ufeffkeep this BOM" }];
+    const files = [...starterCutSource(), { path: "notes.txt", content: "\ufeffCreative café 🎬\n\ufeffkeep both BOMs" }];
+    files[0].content = "\ufeff" + files[0].content;
     const zip = buildCutSourceZip(files, "src/index.tsx");
     expect(validateCutCodeSourceArchive(Buffer.from(zip), "src/index.tsx").entryCount).toBe(4);
     expect(readCutCodeSourceFiles(Buffer.from(zip), "src/index.tsx")).toEqual([...files].sort((a, b) => a.path < b.path ? -1 : 1));
@@ -17,6 +18,13 @@ describe("data-only source authoring", () => {
     files[1].content = "throw new Error('never execute source while authoring')";
     files[0].content = JSON.stringify({ scripts: { postinstall: "exit 99" } });
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.tsx")), "src/index.tsx")).toHaveLength(3);
+  });
+  it("accepts non-JSX TypeScript entrypoints and enforces typing budgets independently of syntax", () => {
+    const files = starterCutSource().map((file) => file.path === "src/index.tsx" ? { path: "src/index.ts", content: "export default () => null;" } : file);
+    expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.ts")), "src/index.ts")).toHaveLength(3);
+    expect(() => assertCutSourceTextBudget([{ path: "package.json", content: "{" }])).not.toThrow();
+    expect(() => assertCutSourceTextBudget([{ path: "notes.txt", content: "é".repeat(131073) }])).toThrow(/256 KiB/);
+    expect(() => assertCutSourceTextBudget(Array.from({ length: 9 }, (_, n) => ({ path: `${n}.txt`, content: "x".repeat(262144) })))).toThrow(/2 MiB/);
   });
   it.each(["../index.tsx", "/index.tsx", "C:/index.tsx", "src\\index.tsx", "src//index.tsx", "src/./index.tsx", "src/../index.tsx", "src/payload.html", "x\0.tsx"])("rejects an unsafe or unsupported path %s", (path) => {
     expect(() => buildCutSourceZip([...starterCutSource(), { path, content: "" }], "src/index.tsx")).toThrow();

@@ -59,6 +59,9 @@ test("source draft survives upload failure, download and declined navigation wit
   await fixture(page, info);
   const editor = page.getByRole("textbox", { name: "Source file contents", exact: true });
   const original = await editor.inputValue();
+  await editor.fill("é".repeat(131073));
+  await expect(page.getByText("Each editable source file is limited to 256 KiB. Previous draft retained.", { exact: true })).toBeVisible();
+  await expect(editor).toHaveValue(original);
   await editor.fill(original + "// preserved after failed save\n");
   await page.route("**/api/assets/upload-intents", (route) => route.fulfill({ status: 503, json: { message: "Synthetic private storage outage" } }));
   await page.route("**/api/assets/upload-proxy", (route) => route.fulfill({ status: 503, json: { message: "Synthetic private storage outage" } }));
