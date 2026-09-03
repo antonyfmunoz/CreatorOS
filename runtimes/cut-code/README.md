@@ -82,7 +82,14 @@ production topology approval or enable public code execution.
   capability: `volume` (0–2), `muted` and `audioStream` (0–7) share its local
   trim/forward-speed clock. Freeze and backward alternate-repeat phases are
   silent. Audible speed is 0.5–2; explicitly muted video retains visual speed
-  support. Native video repeat requires frame-aligned duration/speed/phase.
+  support. Repeating video sound follows a continuous sample clock even when
+  source periods or starting phases fall between composition frames. A bounded
+  rational intermediate clock (48–192 kHz) handles supported fractional/NTSC
+  periods without rounding each repetition independently; unsupported clocks
+  fail explicitly. One continuous repeated source consumes one interval, while
+  remounts, changed speed/source or discontinuous authored clocks still consume
+  additional intervals. PCM loop buffers are stereo float32, capped at 64 MiB
+  per loop and 128 MiB combined, within the unchanged container memory budget.
   Audio ending before the video becomes silence rather than repeating its tail.
   Silent imports stay silent. An explicit replacement soundtrack should mute the
   video to avoid mixing the source twice. Legacy requests without the soundtrack
@@ -91,11 +98,15 @@ production topology approval or enable public code execution.
   Container-relative audio preserves delayed onset and early EOF, including
   nonzero absolute starting timestamps. Focused actual-output tests cover these
   cases, lifecycle, gain/mute, pitch, ranges, stream selection and explicit mixing.
-  The latest full local run did not finish: Docker's unchanged control-command
+  The prior full local indexed-media run did not finish: Docker's unchanged control-command
   deadline expired after earlier pixel/audio checks passed. Protected exact-image
   qualification and vulnerability gates are still required. See the
   [indexed-media checkpoint](../../docs/releases/2026-09-02-cut-code-indexed-media.md).
   This is not a deployed public source-code editor or service.
+  Fractional-loop changes are a separate candidate: a normal-speed time-stretch
+  tail defect was reproduced and corrected without changing audio tolerances;
+  actual container and full protected qualification of that correction remain.
+  See the [fractional-sound checkpoint](../../docs/releases/2026-09-03-cut-fractional-source-sound.md).
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
@@ -257,7 +268,7 @@ Explicit frame holds coordinate preparation, but cannot make nondeterministic
   source data deterministic or grant external network access. Video codec/VFR
   compatibility beyond the explicitly tested fixtures, protected qualification
   of the latest automatic `FrameVideo` sound/decoder candidate, reverse sound,
-  fractional-period repeating sound, unbounded audio intervals, arbitrary dependencies, PDF output,
+  exact-candidate fractional-period repeating sound, unbounded audio intervals, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
 ## Typed source authoring

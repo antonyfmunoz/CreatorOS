@@ -52,7 +52,9 @@ export default ()=> <FullFrame><Sequence at={3} duration={18}><Voice/></Sequence
   assert.ok(energy(pcm, .82, .88, 1320) > energy(pcm, .82, .88, 440) * 50);
   assert.ok(energy(pcm, .92, .98, 440) > energy(pcm, .92, .98, 1320) * 50, 'Repeating video restarts its source sound.');
   assert.ok(Math.abs(rms(pcm, 1.42, 1.56) / full - .1) < .01);
-  assert.equal(result.receipt.compositionAudio.trackCount, 4); assert.equal(result.receipt.audioTrackCount, 5);
+  // Source repeat now remains one continuous bounded loop interval, rather
+  // than creating a new decode/mix interval at every source cycle.
+  assert.equal(result.receipt.compositionAudio.trackCount, 3); assert.equal(result.receipt.audioTrackCount, 4);
   const records = [{ test: 'video-source-audio-lifecycle-pcm', ...result.receipt, quarterRms: quarter, fullRms: full }];
   for (const format of ['mov', 'mp4', 'webm']) {
     const request = { ...base, format, frameRange: [9, 20], audioTracks: [] };
@@ -129,7 +131,7 @@ export default ()=> <FullFrame><Sequence at={3} duration={18}><Voice/></Sequence
     assert.equal(silent.receipt.audioTrackCount, 0);
     records.push({ test: `video-source-audio-${name}`, ...silent.receipt });
   }
-  for (const code of ['export default ()=> <FrameVideo src={clip} speed={3}/>', 'export default ()=> <FrameVideo src={clip} audioStream={7}/>', 'export default ()=> <FrameVideo src={clip} startFrom={1} speed={2} repeat/>']) {
+  for (const code of ['export default ()=> <FrameVideo src={clip} speed={3}/>', 'export default ()=> <FrameVideo src={clip} audioStream={7}/>', 'export default ()=> <FrameVideo src={clip} speed={.4} repeat/>']) {
     await assert.rejects(renderIsolated({ request: { ...base, durationInFrames: 3, audioTracks: [] }, source: capsule(code), image }), (error) => /\(render\)/.test(String(error.stderr ?? error.message)) && error.code !== 'CUT_RENDER_TIMEOUT');
   }
   console.log('PASS imported source sound: private binding, local trim/gain/mute, repeat, freeze, reverse silence, pitch, ranges, explicit mix and silent-video/legacy behavior');
