@@ -1,8 +1,24 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { mediaProcessingJobs, type MediaProcessingJob } from "@shared/schema";
 import { db } from "./db";
 
 type MediaTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** A stale or duplicate retry must never clear a newer attempt's live lease. */
+export async function retryMediaJob(claim: Pick<MediaProcessingJob, "id" | "ownerUserId" | "attempt">) {
+  const now = new Date();
+  const [updated] = await db.update(mediaProcessingJobs).set({
+    state: "queued", progress: 0, errorCode: null, errorMessage: null,
+    workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null,
+    heartbeatAt: null, cancellationRequestedAt: null, availableAt: now,
+    startedAt: null, finishedAt: null, updatedAt: now,
+  }).where(and(
+    eq(mediaProcessingJobs.id, claim.id), eq(mediaProcessingJobs.ownerUserId, claim.ownerUserId),
+    eq(mediaProcessingJobs.attempt, claim.attempt), inArray(mediaProcessingJobs.state, ["failed", "cancelled"]),
+    lt(mediaProcessingJobs.attempt, mediaProcessingJobs.maxAttempts),
+  )).returning();
+  return updated;
+}
 
 /** Evaluate expiry AFTER any database lock wait, using the database clock. A
  * timestamp captured by the caller could otherwise revive an expired lease. */

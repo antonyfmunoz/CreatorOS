@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { assets, mediaProcessingJobs, mediaRenditions, mediaWorkerNodes, type Asset, type MediaProcessingJob } from "@shared/schema";
 import { nativeMediaWorkerCapabilities, normalizeMediaWorkerConfiguration } from "@shared/media-workers";
 import { materializeStoredAsset, persistManagedFile, persistManagedFileAtKey } from "./asset-storage";
@@ -86,6 +86,8 @@ export async function claimMediaJob(jobId: string, identity: MediaWorkerIdentity
   }).where(and(
     eq(mediaProcessingJobs.id, jobId),
     eq(mediaProcessingJobs.state, "queued"),
+    isNull(mediaProcessingJobs.cancellationRequestedAt),
+    lt(mediaProcessingJobs.attempt, mediaProcessingJobs.maxAttempts),
     inArray(mediaProcessingJobs.kind, identity.capabilities),
   )).returning();
   return claimed;
@@ -111,7 +113,7 @@ async function heartbeatWorker(requestedStatus?: "active" | "draining" | "offlin
       version: worker.version,
       status,
       heartbeatAt: now,
-      drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now})` : null,
+      drainStartedAt: status === "draining" ? sql`coalesce(${mediaWorkerNodes.drainStartedAt}, ${now.toISOString()}::timestamp)` : null,
       updatedAt: now,
     },
   });
@@ -455,7 +457,14 @@ export async function processDueMediaJobs(limit = worker.maxConcurrency) {
 export async function recoverInterruptedMediaJobs() {
   const cutoff = new Date(Date.now() - 60 * 60_000);
   const now = new Date();
-  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null, availableAt: now, errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: now }).where(and(eq(mediaProcessingJobs.state, "running"), or(and(isNotNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.leaseExpiresAt, now)), and(isNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.updatedAt, cutoff))))).returning({ id: mediaProcessingJobs.id });
+  const interrupted = and(eq(mediaProcessingJobs.state, "running"), or(and(isNotNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.leaseExpiresAt, now)), and(isNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.updatedAt, cutoff))));
+  const exhausted = await db.update(mediaProcessingJobs).set({ state: "failed", errorCode: "worker_retry_exhausted", errorMessage: "Media processing exhausted its interrupted-attempt budget", leaseExpiresAt: null, finishedAt: now, updatedAt: now }).where(and(
+    isNull(mediaProcessingJobs.cancellationRequestedAt), gte(mediaProcessingJobs.attempt, mediaProcessingJobs.maxAttempts),
+    or(eq(mediaProcessingJobs.state, "queued"), interrupted),
+  )).returning({ id: mediaProcessingJobs.id });
+  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null, availableAt: now, errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: now }).where(and(interrupted, isNull(mediaProcessingJobs.cancellationRequestedAt), lt(mediaProcessingJobs.attempt, mediaProcessingJobs.maxAttempts))).returning({ id: mediaProcessingJobs.id });
+  // Keep the slot until old work exits, but stop its preparation/decoder now.
+  for (const job of [...recovered, ...exhausted]) cancelMediaProcess(job.id);
   return recovered.length;
 }
 
@@ -466,7 +475,7 @@ export function scheduleMediaCloudProcessing() {
   nodeHeartbeatTimer = setInterval(() => void heartbeatWorker().catch((error) => console.error("Media worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error })), 15_000);
   nodeHeartbeatTimer.unref();
   void recoverInterruptedMediaJobs().then(() => processDueMediaJobs()).catch((error) => console.error("Media Cloud recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
-  timer = setInterval(() => void processDueMediaJobs().catch((error) => console.error("Media Cloud processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
+  timer = setInterval(() => void recoverInterruptedMediaJobs().then(() => processDueMediaJobs()).catch((error) => console.error("Media Cloud processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
   timer.unref();
 }
 

@@ -48,3 +48,25 @@ expired-lease denial plus abort rollback. These tests have not run at this check
 The renewal fixture also holds a real unchanged row lock until the lease expires
 and asserts that the waiting heartbeat cannot bring it back to life.
 This does not claim fleet-wide admission or full CutStudio parity.
+
+Further review found recovery only ran at worker startup. Every ordinary polling
+tick now recovers expired uncancelled claims before admitting queued work; any
+still-local old attempt is aborted without releasing its slot early. Explicit
+cancellation is never re-queued. A new isolated real-timer test starts with a live
+lease, lets it expire after startup, and requires recovery by a later ten-second
+poll without restarting the worker. Qualification of this addition is pending.
+
+The retry endpoint also used a read-then-unconditional update. It now atomically
+checks owner, original attempt, retryable state and remaining attempt budget.
+Duplicate or stale retry requests return conflict instead of clearing a newer
+claim. New real-SQL tests require one concurrent winner and reject stale,
+wrong-owner and exhausted-budget retries. These additions are pending tests.
+Claim admission and automatic recovery also enforce the same attempt budget.
+Exhausted interrupted/queued jobs become terminal failures rather than looping
+forever. The real database test covers both states and retains the attempt count.
+
+The first polling-loop run (`79f4eb2`) reached real worker drain and exposed a
+pre-existing raw-SQL Date parameter that postgres-js could not serialize. The
+drain timestamp now uses an explicit UTC ISO timestamp value. The failed run is
+retained in `media-lease-exact-20260903T041841-media.log.errors`; the same actual
+drain path remains in qualification, without a mock or relaxed assertion.
