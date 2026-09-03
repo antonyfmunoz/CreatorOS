@@ -27,3 +27,9 @@ The previous trace remains in
 The separate editor release `4af98a7b316f77e8b5488dbf9e363439529b6a9d`
 deployed through run `33707159720`; its public release identity and migration
 parity were read separately. This diagnostic candidate is not included there.
+
+The initial protected Core job at `043297c` retained 736 passes and one new test
+failure in run `33709784090`: the test tried to inspect `.shape` on a refined
+schema. The corrected check unwraps that refinement before enumerating the
+underlying native graphic kinds. Production behavior, deadlines and assertion
+coverage are unchanged; fresh exact-head qualification is required.

@@ -41,7 +41,7 @@ describe("privacy-safe native preparation timing", () => {
     input.jobId = "mutated";
     await measure("layer", async () => undefined);
     expect(events[0]).toMatchObject(scope); expect(events[0]).not.toHaveProperty("extra");
-    for (const kind of cutGraphicSchema.shape.kind.removeDefault().options) expect(() => createCutPreparationTrace({ ...scope, kind })).not.toThrow();
+    for (const kind of cutGraphicSchema.innerType().shape.kind.removeDefault().options) expect(() => createCutPreparationTrace({ ...scope, kind })).not.toThrow();
     for (const invalid of [{ jobId: "private title" }, { layer: NaN }, { layer: 501 }, { kind: "secret" }]) expect(() => createCutPreparationTrace({ ...scope, ...invalid } as any)).toThrow(/scope/);
     const operation = vi.fn(async () => undefined);
     await expect(measure("unknown-private-label" as any, operation)).rejects.toThrow(/stage/); expect(operation).not.toHaveBeenCalled();
