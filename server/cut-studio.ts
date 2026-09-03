@@ -66,6 +66,8 @@ import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-proces
 import { runCutNativeProcess } from "./cut-native-process";
 import { watchCutJobLease } from "./cut-job-lease-watch";
 import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
+import { recoverCutJobs, retryCutJob } from "./cut-job-recovery";
+import { admitCutAuxiliaryJob } from "./cut-job-admission";
 import { cutMaskAlpha } from "@shared/cut-mask";
 import { planCutGraphicRasters } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
@@ -364,10 +366,25 @@ function supportedKinds(identity: ReturnType<typeof cutWorkerIdentity>) {
 }
 const supportedCutKinds = supportedKinds(cutWorker);
 
-export async function claimCutStudioJob(jobId: string, identity: ReturnType<typeof cutWorkerIdentity>, leaseToken: string, now = new Date()) {
-  const [claimed] = await db.update(cutStudioJobs).set({ state: "running", detail: "Starting", progress: 0.05, workerId: identity.id, workerRegion: identity.region, leaseToken, leaseExpiresAt: new Date(now.getTime() + cutLeaseMs), heartbeatAt: now, cancellationRequestedAt: null, startedAt: now })
-    .where(and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"), isNull(cutStudioJobs.cancellationRequestedAt), inArray(cutStudioJobs.kind, supportedKinds(identity)))).returning();
-  return claimed;
+export async function claimCutStudioJob(jobId: string, identity: ReturnType<typeof cutWorkerIdentity>, leaseToken: string) {
+  return db.transaction(async transaction => {
+    await transaction.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    await transaction.execute(sql`SET LOCAL statement_timeout = '5s'`);
+    const predicate = and(eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.state, "queued"),
+      isNull(cutStudioJobs.cancellationRequestedAt), lt(cutStudioJobs.attempt, cutStudioJobs.maxAttempts),
+      inArray(cutStudioJobs.kind, supportedKinds(identity)));
+    const [available] = await transaction.select({ id: cutStudioJobs.id }).from(cutStudioJobs)
+      .where(predicate).for("update");
+    if (!available) return undefined;
+    // Claim accounting is database-owned, including during mixed-version rollout.
+    const now = sql`clock_timestamp() AT TIME ZONE 'UTC'`;
+    const [claimed] = await transaction.update(cutStudioJobs).set({ state: "running", detail: "Starting", progress: 0.05,
+      workerId: identity.id, workerRegion: identity.region, leaseToken,
+      leaseExpiresAt: sql`(${now}) + ${cutLeaseMs} * interval '1 millisecond'`,
+      heartbeatAt: now, startedAt: now, finishedAt: null, errorCode: null,
+    }).where(predicate).returning();
+    return claimed;
+  });
 }
 
 async function heartbeatCutWorker(requestedStatus?: "active" | "draining" | "offline") {
@@ -546,12 +563,6 @@ async function materializeCutLuts(project: typeof cutStudioProjects.$inferSelect
     result.set(asset.id, lutPath);
   }
   return result;
-}
-
-async function canStartJob(userId: number) {
-  const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs)
-    .where(and(eq(cutStudioJobs.ownerUserId, userId), sql`${cutStudioJobs.state} in ('queued', 'running')`));
-  return (row?.count ?? 0) < 2;
 }
 
 function runProcess(command: string, args: string[], timeoutMs = 30 * 60_000, jobId?: string, progress?: (progress: CutProcessProgress) => void) {
@@ -1240,8 +1251,7 @@ export async function processCutStudioJob(jobId: string) {
   let processingBusinessId: string | null = null;
   let processingOutcome: boolean | null = null;
   try {
-    const now = new Date();
-    const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken, now);
+    const claimed = await claimCutStudioJob(jobId, cutWorker, leaseToken);
     if (!claimed) return;
     activeJobLeaseTokens.set(jobId, leaseToken);
     stopLeaseWatch = watchCutJobLease(controller, () => cutJobLeaseIsOwned(jobId, leaseToken));
@@ -1343,6 +1353,8 @@ async function claimCutCloudDispatch(jobId: string) {
   const [claimed] = await db.update(cutStudioJobs).set({ detail: "External worker requested", heartbeatAt: requestedAt }).where(and(
     eq(cutStudioJobs.id, jobId),
     eq(cutStudioJobs.state, "queued"),
+    isNull(cutStudioJobs.cancellationRequestedAt),
+    lt(cutStudioJobs.attempt, cutStudioJobs.maxAttempts),
     or(isNull(cutStudioJobs.heartbeatAt), lt(cutStudioJobs.heartbeatAt, retryBefore)),
   )).returning({ id: cutStudioJobs.id });
   return Boolean(claimed);
@@ -1365,13 +1377,12 @@ function queueJob(jobId: string) {
 }
 
 export async function recoverInterruptedCutStudioJobs() {
-  const now = new Date();
-  const legacyCutoff = new Date(now.getTime() - 35 * 60_000);
-  const recovered = await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted worker lease", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null }).where(and(eq(cutStudioJobs.state, "running"), or(and(isNotNull(cutStudioJobs.leaseExpiresAt), lt(cutStudioJobs.leaseExpiresAt, now)), and(isNull(cutStudioJobs.leaseExpiresAt), isNotNull(cutStudioJobs.startedAt), lt(cutStudioJobs.startedAt, legacyCutoff))))).returning({ id: cutStudioJobs.id });
-  return recovered.length;
+  return (await recoverCutJobs()).length;
 }
 
 export async function processDueCutStudioJobs(limit = cutWorker.maxConcurrency) {
+  if (cutWorkerStopping) return 0;
+  await recoverInterruptedCutStudioJobs();
   const availableSlots = Math.max(0, cutWorker.maxConcurrency - running.size);
   if (!availableSlots) return 0;
   const jobs = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(eq(cutStudioJobs.state, "queued"), inArray(cutStudioJobs.kind, supportedCutKinds))).orderBy(asc(cutStudioJobs.createdAt)).limit(Math.max(1, Math.min(availableSlots, limit)));
@@ -1385,7 +1396,7 @@ export function scheduleCutStudioProcessing() {
   void heartbeatCutWorker().catch((error) => console.error("CutStudio worker registration failed", { errorType: error instanceof Error ? error.name : typeof error }));
   cutNodeHeartbeatTimer = setInterval(() => void heartbeatCutWorker().catch((error) => console.error("CutStudio worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error })), 15_000);
   cutNodeHeartbeatTimer.unref();
-  void recoverInterruptedCutStudioJobs().then(() => processDueCutStudioJobs()).catch((error) => console.error("CutStudio worker recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
+  void processDueCutStudioJobs().catch((error) => console.error("CutStudio worker recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
   cutWorkerTimer = setInterval(() => void processDueCutStudioJobs().catch((error) => console.error("CutStudio processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
   cutWorkerTimer.unref();
 }
@@ -1801,13 +1812,12 @@ export function registerCutStudioRoutes(app: Express) {
     const [media] = await db.select().from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.id, req.params.mediaId), eq(cutStudioProjectMedia.projectId, project.id), eq(cutStudioProjectMedia.ownerUserId, req.dbUser!.id))).limit(1);
     if (!media) return res.status(404).json({ message: "Project media not found" });
     if (media.mediaKind !== "video") return res.status(409).json({ message: "Only video media needs an editing proxy" });
-    const recent = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id), eq(cutStudioJobs.kind, "proxy"))).orderBy(desc(cutStudioJobs.createdAt)).limit(50);
-    const existing = recent.find((job) => job.request?.mediaId === media.id && ["queued", "running", "done"].includes(job.state));
-    if (existing) return res.status(existing.state === "done" ? 200 : 202).json(existing);
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before creating a proxy" });
-    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind: "proxy", request: { mediaId: media.id }, detail: "Editing proxy queued" }).returning();
-    queueJob(job.id);
-    res.status(202).json(job);
+    const admitted = await admitCutAuxiliaryJob(project.id, req.dbUser!.id, "proxy", media.id);
+    if (admitted.status === "not_found" || admitted.status === "media_not_found") return res.status(404).json({ message: "Project media not found" });
+    if (admitted.status === "not_video") return res.status(409).json({ message: "Only video media needs an editing proxy" });
+    if (admitted.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before creating a proxy" });
+    if (admitted.job.state === "queued") queueJob(admitted.job.id);
+    res.status(admitted.job.state === "done" ? 200 : 202).json(admitted.job);
   });
   cut.get("/api/cut/projects/:id/media-library/:mediaId/media-file", attachUser, async (req, res) => {
     noStore(res);
@@ -1927,8 +1937,10 @@ export function registerCutStudioRoutes(app: Express) {
   });
   for (const [route, kind] of [["transcribe", "transcribe"], ["highlights", "highlights"]] as const) cut.post(`/api/cut/projects/:id/${route}`, attachUser, async (req, res) => {
     noStore(res); const project = await ownedProject(req.dbUser!.id, req.params.id); if (!project) return res.status(404).json({ message: "Project not found" });
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
-    const [job] = await db.insert(cutStudioJobs).values({ projectId: project.id, ownerUserId: req.dbUser!.id, kind, request: {} }).returning(); queueJob(job.id); res.status(202).json(job);
+    const admitted = await admitCutAuxiliaryJob(project.id, req.dbUser!.id, kind);
+    if (admitted.status === "not_found" || admitted.status === "media_not_found" || admitted.status === "not_video") return res.status(404).json({ message: "Project not found" });
+    if (admitted.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
+    queueJob(admitted.job.id); res.status(202).json(admitted.job);
   });
   cut.post("/api/cut/projects/:id/render", attachUser, async (req, res) => {
     if (req.body?.composition !== undefined || req.body?.timeline !== undefined) return res.status(400).json({ message: "Render snapshots are server-owned; use composition-render-batches for compositions" });
@@ -1961,11 +1973,12 @@ export function registerCutStudioRoutes(app: Express) {
   });
   cut.get("/api/cut/jobs/:id", attachUser, async (req, res) => {
     noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job) return res.status(404).json({ message: "Job not found" });
-    if (job.state === "queued") queueJob(job.id);
-    else if (job.state === "running" && job.leaseExpiresAt && job.leaseExpiresAt < new Date()) {
-      await db.update(cutStudioJobs).set({ state: "queued", detail: "Recovering interrupted job", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.state, "running"), lt(cutStudioJobs.leaseExpiresAt, new Date())));
-      queueJob(job.id);
-      return res.json({ ...job, state: "queued", detail: "Recovering interrupted job", progress: 0 });
+    if (job.state === "queued" || job.state === "running") {
+      await recoverCutJobs(job.id);
+      const current = await readableCutJob(req.dbUser!.id, job.id);
+      if (!current) return res.status(404).json({ message: "Job not found" });
+      if (current.state === "queued") queueJob(current.id);
+      return res.json(current);
     }
     res.json(job);
   });
@@ -1986,13 +1999,12 @@ export function registerCutStudioRoutes(app: Express) {
   });
   cut.post("/api/cut/jobs/:id/retry", attachUser, async (req, res) => {
     noStore(res);
-    const [job] = await db.select().from(cutStudioJobs).where(and(eq(cutStudioJobs.id, req.params.id), eq(cutStudioJobs.ownerUserId, req.dbUser!.id))).limit(1);
-    if (!job) return res.status(404).json({ message: "Job not found" });
-    if (job.state !== "error") return res.status(409).json({ message: "Only a failed job can be retried" });
-    if (!await canStartJob(req.dbUser!.id)) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
-    const [retry] = await db.insert(cutStudioJobs).values({ projectId: job.projectId, ownerUserId: req.dbUser!.id, kind: job.kind, request: job.request, detail: "Retry queued" }).returning();
-    queueJob(retry.id);
-    res.status(202).json(retry);
+    const result = await retryCutJob(req.params.id, req.dbUser!.id);
+    if (result.status === "not_found") return res.status(404).json({ message: "Job not found" });
+    if (result.status === "not_failed") return res.status(409).json({ message: "Only a failed job can be retried" });
+    if (result.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
+    if (result.job.state === "queued") queueJob(result.job.id);
+    res.status(result.status === "created" ? 202 : 200).json(result.job);
   });
   cut.get("/api/cut/jobs/:id/media", attachUser, async (req, res) => {
     noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });

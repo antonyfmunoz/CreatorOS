@@ -5,6 +5,7 @@ import { qualifyCutWorkerAdmission } from "./qualify-cut-worker-admission";
 import { qualifyMediaWorkerAdmission } from "./qualify-media-worker-admission";
 import { qualifyCutJobCancellation } from "./qualify-cut-job-cancellation";
 import { qualifyCutJobPublication } from "./qualify-cut-job-publication";
+import { qualifyCutJobRecovery } from "./qualify-cut-job-recovery";
 import { claimMediaJob, mediaWorkerIdentity, recoverInterruptedMediaJobs } from "../server/media-processing";
 import { assets, businesses, cutStudioJobs, cutStudioProjects, mediaProcessingJobs, mediaWorkerNodes, users } from "../shared/schema";
 
@@ -16,6 +17,7 @@ let admissionReceipt: Awaited<ReturnType<typeof qualifyCutWorkerAdmission>> | un
 let mediaAdmissionReceipt: Awaited<ReturnType<typeof qualifyMediaWorkerAdmission>> | undefined;
 let cancellationReceipt: Awaited<ReturnType<typeof qualifyCutJobCancellation>> | undefined;
 let publicationReceipt: Awaited<ReturnType<typeof qualifyCutJobPublication>> | undefined;
+let recoveryReceipt: Awaited<ReturnType<typeof qualifyCutJobRecovery>> | undefined;
 
 if (process.env.QUALIFICATION_ISOLATED_DATABASE !== "true") {
   throw new Error("Worker resilience qualification requires an isolated disposable database");
@@ -80,6 +82,10 @@ try {
   if (activeCut?.state !== "running" || activeCut.workerId !== "iad-active") throw new Error("Active CutStudio lease was incorrectly recovered");
   const activeNode = await db.select().from(mediaWorkerNodes).where(and(eq(mediaWorkerNodes.id, "iad-active"), eq(mediaWorkerNodes.status, "active"))).limit(1);
   if (!activeNode.length) throw new Error("Worker registry lost the active node");
+  // Those fixtures already proved active-lease preservation. Retire only this
+  // disposable owner's Cut jobs before the retry quota/scheduler exercise.
+  await db.delete(cutStudioJobs).where(and(eq(cutStudioJobs.ownerUserId, user.id), eq(cutStudioJobs.projectId, project.id)));
+  recoveryReceipt = await qualifyCutJobRecovery(project);
   qualificationPassed = true;
 } finally {
   try {
@@ -104,7 +110,7 @@ try {
       .where(eq(users.clerkId, "worker_resilience"));
     if (leakedFixtures.length) throw new Error("Worker resilience qualification leaked browser-visible fixtures");
     if (qualificationPassed) {
-      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt, cancellation: cancellationReceipt, publication: publicationReceipt }));
+      console.log(JSON.stringify({ status: "qualified", mediaRecovered: 1, cutRecovered: 1, activeLeasesPreserved: 2, serializedClaims: 2, cloudExecutionClaimIdentity: true, workerRegistryPreserved: true, fixtureLeakage: 0, admission: admissionReceipt, mediaAdmission: mediaAdmissionReceipt, cancellation: cancellationReceipt, publication: publicationReceipt, recovery: recoveryReceipt }));
     }
   } finally {
     await closeDatabase();

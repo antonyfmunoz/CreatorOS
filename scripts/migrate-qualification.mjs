@@ -255,7 +255,7 @@ const requiredTables = [
 
 const requiredColumns = {
   media_processing_jobs: ["worker_id", "worker_region", "lease_token", "lease_expires_at", "heartbeat_at", "cancellation_requested_at"],
-  cut_studio_jobs: ["worker_id", "worker_region", "lease_token", "lease_expires_at", "heartbeat_at", "cancellation_requested_at"],
+  cut_studio_jobs: ["worker_id", "worker_region", "lease_token", "lease_expires_at", "heartbeat_at", "cancellation_requested_at", "attempt", "max_attempts", "retry_of_job_id"],
   users: ["profile_links", "push_notifications_enabled", "color_mode"],
   products: ["product_type", "billing_model", "billing_interval"],
   orders: [
