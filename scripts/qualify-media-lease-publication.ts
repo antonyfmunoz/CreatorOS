@@ -149,12 +149,21 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
     assert.equal(await retryMediaJob(retryClaim), undefined, "A stale retry must not consume a later failed attempt");
     await db.update(mediaProcessingJobs).set({ attempt: 3 }).where(eq(mediaProcessingJobs.id, job.id));
     assert.equal(await retryMediaJob({ ...retryClaim, attempt: 3 }), undefined, "Retry budgets must be checked atomically");
+    for (const exhaustedState of ["running", "queued"] as const) {
+      await db.update(mediaProcessingJobs).set({ state: exhaustedState, cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() - 1) }).where(eq(mediaProcessingJobs.id, job.id));
+      await recoverInterruptedMediaJobs();
+      const exhausted = await state();
+      assert.equal(exhausted.state, "failed");
+      assert.equal(exhausted.errorCode, "worker_retry_exhausted");
+      assert.equal(exhausted.attempt, 3, "Automatic recovery cannot create unlimited attempts");
+    }
     return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
       localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
       liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true,
       databaseTimeZone: timezone[0].TimeZone, cancellationNotRequeued: true,
       periodicRecoveryWithoutRestart: true, concurrentRetrySingleWinner: true,
-      staleRetryDenied: true, wrongOwnerRetryDenied: true, exhaustedRetryDenied: true };
+      staleRetryDenied: true, wrongOwnerRetryDenied: true, exhaustedRetryDenied: true,
+      automaticRecoveryHonorsAttemptBudget: true };
   } finally {
     await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
   }

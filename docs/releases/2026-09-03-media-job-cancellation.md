@@ -61,3 +61,6 @@ checks owner, original attempt, retryable state and remaining attempt budget.
 Duplicate or stale retry requests return conflict instead of clearing a newer
 claim. New real-SQL tests require one concurrent winner and reject stale,
 wrong-owner and exhausted-budget retries. These additions are pending tests.
+Claim admission and automatic recovery also enforce the same attempt budget.
+Exhausted interrupted/queued jobs become terminal failures rather than looping
+forever. The real database test covers both states and retains the attempt count.
