@@ -438,7 +438,7 @@ export async function persistUpload(file: Express.Multer.File, ownerUserId: numb
   if (provider === "local") {
     const safeFilename = path.basename(file.filename);
     if (!safeFilename || safeFilename === "." || safeFilename === ".." || safeFilename !== file.filename) throw new Error("Invalid local upload filename");
-    return { storageKey: safeFilename, publicUrl: `/uploads/${safeFilename}` };
+    return { storageKey: `uploads/${safeFilename}`, publicUrl: `/uploads/${safeFilename}` };
   }
   if (provider !== "r2") throw new Error("Unsupported asset storage provider");
 

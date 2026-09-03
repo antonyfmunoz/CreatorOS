@@ -14,9 +14,9 @@ it.each([false, true])("materializes a local upload through its stored key (lega
     const source = path.join(root, "synthetic.mp4"); await writeFile(source, "owned fixture bytes");
     const stored = await persistUpload({ filename: "synthetic.mp4", path: source, originalname: "synthetic.mp4", mimetype: "video/mp4" } as Express.Multer.File, 1, "video");
     expect(stored.publicUrl).toBe("/uploads/synthetic.mp4");
-    expect(stored.storageKey).toBe("synthetic.mp4");
+    expect(stored.storageKey).toBe("uploads/synthetic.mp4");
     const output = path.join(directory, "retrieved.mp4");
-    await materializeStoredAsset(legacy ? "uploads/synthetic.mp4" : stored.storageKey, "public", output);
+    await materializeStoredAsset(legacy ? stored.storageKey : "synthetic.mp4", "public", output);
     expect(await readFile(output, "utf8")).toBe("owned fixture bytes");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

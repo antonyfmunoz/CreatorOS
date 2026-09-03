@@ -52,9 +52,14 @@ EXTINF timing is preserved: no added pictures, silence or artificial duration.
 - The next local browser run passed the four existing media journeys but failed
   the four new packaging cases. A real-file red test confirmed a second issue:
   legacy local upload keys doubled the `uploads` directory during retrieval.
-  New local keys are now root-relative, and the exact legacy single-filename
-  form remains readable. R2 mapping is unchanged; nested managed keys and
+  The exact single-filename legacy form is normalized only during local lookup;
+  stored keys and public URLs retain their existing contract. R2 mapping is unchanged; nested managed keys and
   path-escape rejection remain tested. Public production proof is still pending.
+- The first local-lookup candidate passed 831/832 protected root tests; an
+  existing contract test caught an unnecessary change to newly stored keys.
+  The correction preserves that contract and test, changing only lookup. Its
+  local broad run also hit native-media deadlines; those remain independent
+  retained failures, not erased by the protected native checks passing.
 
 This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and
