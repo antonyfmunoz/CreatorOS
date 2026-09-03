@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
@@ -39,6 +39,10 @@ test('job-scoped native browser reuse preserves actual text and animation pixels
     // job browser; the job owner still closes the session in its own finally.
     const malformed = `${directory}/malformed.json`; writeFileSync(malformed, '{');
     await expect(renderCutAnimationFrames({ kind: 'lottie', sourcePath: malformed, outputDirectory: `${directory}/failed`, width: 128, height: 128, fps: 30, duration: .1, session })).rejects.toThrow();
+    const expressionSource = JSON.parse(readFileSync(fixture, 'utf8'));
+    expressionSource.layers[0].x = 'globalThis.privateExecutionMarker = true;';
+    const expressionFile = `${directory}/expression.json`; writeFileSync(expressionFile, JSON.stringify(expressionSource));
+    await expect(renderCutAnimationFrames({ kind: 'lottie', sourcePath: expressionFile, outputDirectory: `${directory}/expression-rejected`, width: 128, height: 128, fps: 30, duration: .1, session })).rejects.toThrow(/expressions are not allowed/);
     expect(browser.contexts()).toHaveLength(0);
     expect(browser.isConnected()).toBe(true);
     const alternateFont = ['C:/Windows/Fonts/times.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf'].find(existsSync);
@@ -57,7 +61,7 @@ test('job-scoped native browser reuse preserves actual text and animation pixels
     await sharedText.close();
     expect(browser.isConnected()).toBe(false);
     await expect(session.browser()).rejects.toThrow(/closed/);
-    writeFileSync(`${directory}/receipt.json`, JSON.stringify({ launches, layersHaveSeparateContexts: true, failedContextReleased: true, closed: true, evidence }, null, 2));
+    writeFileSync(`${directory}/receipt.json`, JSON.stringify({ launches, layersHaveSeparateContexts: true, failedContextReleased: true, expressionRejectedBeforeRendering: true, closed: true, evidence }, null, 2));
   } finally {
     await independentText.close(); await sharedText.close(); await session.close();
   }
