@@ -48,3 +48,10 @@ expired-lease denial plus abort rollback. These tests have not run at this check
 The renewal fixture also holds a real unchanged row lock until the lease expires
 and asserts that the waiting heartbeat cannot bring it back to life.
 This does not claim fleet-wide admission or full CutStudio parity.
+
+Further review found recovery only ran at worker startup. Every ordinary polling
+tick now recovers expired uncancelled claims before admitting queued work; any
+still-local old attempt is aborted without releasing its slot early. Explicit
+cancellation is never re-queued. A new isolated real-timer test starts with a live
+lease, lets it expire after startup, and requires recovery by a later ten-second
+poll without restarting the worker. Qualification of this addition is pending.

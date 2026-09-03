@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../server/db";
 import { renewMediaJobLease, withMediaLeaseWrite } from "../server/media-job-lease";
+import { recoverInterruptedMediaJobs, scheduleMediaCloudProcessing, stopMediaCloudProcessing } from "../server/media-processing";
 import { assets, mediaProcessingJobs } from "../shared/schema";
 
 export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSelect) {
@@ -113,10 +114,33 @@ export async function qualifyMediaLeasePublication(asset: typeof assets.$inferSe
       assert.deepEqual(await renewed, { value: false }, "A delayed heartbeat must not revive an expired lease");
     }
     assert.equal((await state()).leaseExpiresAt?.getTime(), expires.getTime());
+    await db.update(mediaProcessingJobs).set({ cancellationRequestedAt: new Date() }).where(eq(mediaProcessingJobs.id, job.id));
+    await recoverInterruptedMediaJobs();
+    assert.equal((await state()).state, "running", "Recovery must never re-queue a cancellation-requested attempt");
+    await db.update(mediaProcessingJobs).set({ cancellationRequestedAt: null, leaseExpiresAt: new Date(Date.now() + 5_000) }).where(eq(mediaProcessingJobs.id, job.id));
+    const scheduledAt = Date.now();
+    scheduleMediaCloudProcessing();
+    try {
+      // The initial pass sees a live claim. Only the next real polling tick
+      // can recover this subsequently expired lease; no process restart occurs.
+      assert.equal((await state()).leaseToken, token);
+      let recovered = false;
+      while (Date.now() - scheduledAt < 15_000) {
+        const current = await state();
+        if (current.leaseToken !== token) {
+          assert.ok(["queued", "running", "succeeded"].includes(current.state));
+          recovered = true; break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.equal(recovered, true, "The running worker must recover an expired lease on its ordinary polling loop");
+      assert.ok(Date.now() - scheduledAt >= 9_000, "Recovery must come from a subsequent real polling tick");
+    } finally { await stopMediaCloudProcessing(); }
     return { liveCommit: true, mismatchedAttemptDenied: true, preAbortDenied: true,
       localAbortRolledBack: true, expiredLeaseDenied: true, realRowLockConflicts: conflicts,
       liveRenewal: true, wrongTokenRenewalDenied: true, renewalAfterLockWaitExpiryDenied: true,
-      databaseTimeZone: timezone[0].TimeZone };
+      databaseTimeZone: timezone[0].TimeZone, cancellationNotRequeued: true,
+      periodicRecoveryWithoutRestart: true };
   } finally {
     await db.delete(mediaProcessingJobs).where(eq(mediaProcessingJobs.id, job.id));
   }

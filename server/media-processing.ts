@@ -455,7 +455,9 @@ export async function processDueMediaJobs(limit = worker.maxConcurrency) {
 export async function recoverInterruptedMediaJobs() {
   const cutoff = new Date(Date.now() - 60 * 60_000);
   const now = new Date();
-  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null, availableAt: now, errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: now }).where(and(eq(mediaProcessingJobs.state, "running"), or(and(isNotNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.leaseExpiresAt, now)), and(isNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.updatedAt, cutoff))))).returning({ id: mediaProcessingJobs.id });
+  const recovered = await db.update(mediaProcessingJobs).set({ state: "queued", progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, startedAt: null, availableAt: now, errorCode: "worker_recovered", errorMessage: "Recovered after an interrupted processing lease", updatedAt: now }).where(and(eq(mediaProcessingJobs.state, "running"), isNull(mediaProcessingJobs.cancellationRequestedAt), or(and(isNotNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.leaseExpiresAt, now)), and(isNull(mediaProcessingJobs.leaseExpiresAt), lt(mediaProcessingJobs.updatedAt, cutoff))))).returning({ id: mediaProcessingJobs.id });
+  // Keep the slot until old work exits, but stop its preparation/decoder now.
+  for (const job of recovered) cancelMediaProcess(job.id);
   return recovered.length;
 }
 
@@ -466,7 +468,7 @@ export function scheduleMediaCloudProcessing() {
   nodeHeartbeatTimer = setInterval(() => void heartbeatWorker().catch((error) => console.error("Media worker node heartbeat failed", { errorType: error instanceof Error ? error.name : typeof error })), 15_000);
   nodeHeartbeatTimer.unref();
   void recoverInterruptedMediaJobs().then(() => processDueMediaJobs()).catch((error) => console.error("Media Cloud recovery failed", { errorType: error instanceof Error ? error.name : typeof error }));
-  timer = setInterval(() => void processDueMediaJobs().catch((error) => console.error("Media Cloud processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
+  timer = setInterval(() => void recoverInterruptedMediaJobs().then(() => processDueMediaJobs()).catch((error) => console.error("Media Cloud processing failed", { errorType: error instanceof Error ? error.name : typeof error })), 10_000);
   timer.unref();
 }
 
