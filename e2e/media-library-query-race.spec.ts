@@ -29,6 +29,6 @@ test("media library keeps a new upload when an older list response arrives last"
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.getByText(filename, { exact: true })).toBeVisible();
     await page.getByText(filename, { exact: true }).click();
-    await expect(page.getByRole("button", { name: "Delete asset", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove asset", exact: true })).toBeVisible();
   } finally { release(); }
 });
