@@ -841,6 +841,13 @@
       "when": 1787727600000,
       "tag": "0119_cut_studio_code_capsules",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1788436800000,
+      "tag": "0120_cut_studio_retry_budget",
+      "breakpoints": true
     }
   ]
 }

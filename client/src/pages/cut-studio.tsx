@@ -584,8 +584,8 @@ export default function CutStudioPage() {
   const retryJob = async (job: Job) => {
     try {
       const retry = await (await apiRequest("POST", `/api/cut/jobs/${job.id}/retry`, {})).json() as Job;
-      setJobs((items) => [retry, ...items]);
-      setMessage("Retry queued");
+      setJobs((items) => [retry, ...items.filter(item => item.id !== retry.id)]);
+      setMessage(retry.state === "queued" ? "Retry queued" : `Existing retry: ${retry.detail}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not retry the job"); }
   };
 

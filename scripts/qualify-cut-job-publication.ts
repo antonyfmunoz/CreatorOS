@@ -14,6 +14,9 @@ export async function qualifyCutJobPublication(project: typeof cutStudioProjects
     kind: "render", state: "running", leaseToken: token, leaseExpiresAt: new Date(Date.now() + 60_000) }).returning();
   const state = async () => (await db.select().from(cutStudioJobs).where(eq(cutStudioJobs.id, job.id)))[0];
   const reset = async (leaseExpiresAt = new Date(Date.now() + 60_000)) => {
+    // Reset only this disposable fixture's authority, not through the normal
+    // queued-claim transition (which must reject prior cancellation).
+    await db.update(cutStudioJobs).set({ state: "error", cancellationRequestedAt: null }).where(eq(cutStudioJobs.id, job.id));
     await db.update(cutStudioJobs).set({ state: "running", leaseToken: token, cancellationRequestedAt: null,
       leaseExpiresAt, progress: 0, output: {} }).where(eq(cutStudioJobs.id, job.id));
   };
