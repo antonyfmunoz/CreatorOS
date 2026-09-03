@@ -29,6 +29,12 @@ The 14 focused source/animation/Lottie tests passed locally. Non-incremental
 types, complete root tests, real Rive/Lottie browser output, protected CI and
 deployment are still pending for this exact change.
 
+The existing protected animation qualifier now always renders the repository's
+Rive fixture as well as Lottie. Previously Rive required an optional CLI argument,
+so the default gate did not exercise its WASM fulfillment. Each Rive frame must
+contain visible artwork, not just a valid empty PNG. Explicit private fixture
+arguments remain supported. No prior animation assertion is removed.
+
 Context/page route precedence and socket interception follow the Playwright API:
 https://playwright.dev/docs/api/class-browsercontext#browser-context-route
 https://playwright.dev/docs/api/class-browsercontext#browser-context-route-web-socket

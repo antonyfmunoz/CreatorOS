@@ -37,8 +37,12 @@ async function main() {
     if (encodedStat.size < 1_000) throw new Error("The final animation video artifact is unexpectedly small");
     const evidence: Array<Record<string, unknown>> = [{ kind: "lottie", frameCount: result.frameCount, width: 128, height: 128, uniqueFrames: new Set(hashes).size, encodedBytes: encodedStat.size }];
     const riveArgument = process.argv.indexOf("--rive");
-    const riveFixture = riveArgument >= 0 ? process.argv[riveArgument + 1] : undefined;
+    const riveFixture = riveArgument >= 0 ? process.argv[riveArgument + 1] : path.join(temporary, "qualified-rive-fixture.riv");
     if (riveArgument >= 0 && !riveFixture) throw new Error("--rive requires a private local Rive fixture path");
+    if (riveArgument < 0) {
+      const encodedFixture = await fs.readFile(path.resolve("e2e/fixtures/rive-look.base64.txt"), "utf8");
+      await fs.writeFile(riveFixture!, Buffer.from(encodedFixture.trim(), "base64"));
+    }
     if (riveFixture) {
       const riveResult = await renderCutAnimationFrames({ kind: "rive", sourcePath: path.resolve(riveFixture), outputDirectory: path.join(temporary, "rive-frames"), width: 128, height: 128, fps: 30, duration: 0.1 });
       const riveFiles = (await fs.readdir(path.join(temporary, "rive-frames"))).sort();
@@ -47,9 +51,13 @@ async function main() {
         const source = await fs.readFile(path.join(temporary, "rive-frames", filename));
         const metadata = await sharp(source).metadata();
         if (metadata.width !== 128 || metadata.height !== 128 || metadata.hasAlpha !== true) throw new Error("The Rive renderer produced an invalid RGBA frame");
+        const pixels = await sharp(source).ensureAlpha().raw().toBuffer();
+        let visiblePixels = 0;
+        for (let offset = 3; offset < pixels.length; offset += 4) if (pixels[offset] > 0) visiblePixels += 1;
+        if (!visiblePixels) throw new Error("The Rive renderer produced an empty transparent frame");
         return createHash("sha256").update(source).digest("hex");
       }));
-      evidence.push({ kind: "rive", frameCount: riveResult.frameCount, width: 128, height: 128, uniqueFrames: new Set(riveHashes).size });
+      evidence.push({ kind: "rive", frameCount: riveResult.frameCount, width: 128, height: 128, uniqueFrames: new Set(riveHashes).size, everyFrameHasVisibleArtwork: true });
     }
     process.stdout.write(`${JSON.stringify({ status: "passed", evidence })}\n`);
   } finally {
