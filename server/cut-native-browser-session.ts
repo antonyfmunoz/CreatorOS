@@ -1,5 +1,6 @@
 import type { Browser } from "playwright-core";
 import { launchCutNativeRenderer } from "./cut-animation-renderer";
+import { closeCutNativeBrowser } from "./cut-native-browser-owner";
 
 /** One native data-only render job, never a shared tenant or executable-code pool. */
 export function createCutNativeBrowserSession(launch: () => Promise<Browser> = launchCutNativeRenderer) {
@@ -16,7 +17,9 @@ export function createCutNativeBrowserSession(launch: () => Promise<Browser> = l
     },
     close() {
       closed = true;
-      closing ??= pending ? pending.then((browser) => browser.close()).catch(() => undefined) : Promise.resolve();
+      // A failed launch has no returned process to close. A failed cleanup must
+      // remain an error: successful output must not conceal a live renderer.
+      closing ??= pending ? pending.then(closeCutNativeBrowser, () => undefined) : Promise.resolve();
       return closing;
     },
   };

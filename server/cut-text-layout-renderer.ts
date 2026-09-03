@@ -5,6 +5,7 @@ import { cutTextLayoutSchema, cutTextStyles, CUT_NATIVE_TEXT_MAX_CHARACTERS, typ
 import { createCutNativeBrowserSession, type CutNativeBrowserSession } from "./cut-native-browser-session";
 import { fitCutTextBox } from "../shared/cut-text-fit";
 import { untracedCutPreparation, type CutPreparationMeasure } from "./cut-preparation-trace";
+import { closeCutNativeContext } from "./cut-native-context-cleanup";
 
 export const cutDefaultFontPath = () => path.resolve("shared/assets/cut-fonts/NotoSans-Variable.ttf");
 
@@ -34,7 +35,7 @@ export function createCutTextRasterizer(session: CutNativeBrowserSession = creat
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let context: Awaited<ReturnType<Browser["newContext"]>> | undefined;
     try {
-      deadline = setTimeout(() => { void close(); }, 30_000);
+      deadline = setTimeout(() => { void close().catch(() => undefined); }, 30_000);
       const browser = await measure("browser", () => session.browser());
       const page = await measure("context", async () => {
       context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block", offline: true });
@@ -60,8 +61,11 @@ export function createCutTextRasterizer(session: CutNativeBrowserSession = creat
       await measure("capture", () => page.screenshot({ path: input.outputPath, type: "png", omitBackground: true, clip: { x: 0, y: 0, width: input.width, height: input.height }, timeout: 10_000 }));
       return fitted;
     } finally {
-      if (deadline) clearTimeout(deadline);
-      await measure("context_cleanup", async () => { await context?.close(); }).catch(() => undefined);
+      try {
+        await measure("context_cleanup", () => closeCutNativeContext(context, close));
+      } finally {
+        if (deadline) clearTimeout(deadline);
+      }
     }
   };
   return { render, close };

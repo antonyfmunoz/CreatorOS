@@ -28,6 +28,7 @@
     "verify:gcp-cutstudio": "node scripts/verify-gcp-cutstudio.mjs && vitest run tests/cut-cloud.test.ts",
     "verify:cut-animation": "tsx scripts/qualify-cut-animation-renderer.ts",
     "verify:cut-code-lockfiles": "tsx scripts/qualify-cut-code-lockfiles.ts",
+    "verify:cut-native-lifecycle": "tsx scripts/qualify-cut-native-browser-lifecycle.ts",
     "gcp:cutstudio:connect-fly": "node scripts/connect-fly-gcp-cutstudio.mjs",
     "verify:backup-restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qualify-backup-restore.ps1",
     "verify:secrets": "node scripts/scan-source-secrets.mjs",

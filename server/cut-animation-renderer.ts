@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { chromium, type Browser, type Page } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 import type { CutNativeBrowserSession } from "./cut-native-browser-session";
+import { closeCutNativeBrowser, launchOwnedCutNativeBrowser } from "./cut-native-browser-owner";
+import { closeCutNativeContext } from "./cut-native-context-cleanup";
+import { readCutNativeAnimationSource } from "./cut-animation-source";
 
 const require = createRequire(import.meta.url);
 const MAX_ANIMATION_FRAMES = 3_600;
@@ -21,7 +24,7 @@ export function cutAnimationFrameCount(duration: number, fps: number) {
   return frames;
 }
 
-async function chromiumExecutable(environment: NodeJS.ProcessEnv = process.env) {
+export async function cutNativeChromiumExecutable(environment: NodeJS.ProcessEnv = process.env) {
   const candidates = [
     environment.CUT_ANIMATION_CHROMIUM_PATH,
     process.platform === "win32" && environment.PROGRAMFILES ? path.join(environment.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe") : undefined,
@@ -43,8 +46,8 @@ async function chromiumExecutable(environment: NodeJS.ProcessEnv = process.env) 
 }
 
 export async function launchCutNativeRenderer() {
-  return chromium.launch({
-    executablePath: await chromiumExecutable(),
+  return launchOwnedCutNativeBrowser({
+    executablePath: await cutNativeChromiumExecutable(),
     headless: true,
     args: [
       "--disable-background-networking",
@@ -58,14 +61,15 @@ export async function launchCutNativeRenderer() {
   });
 }
 
-async function prepareLottie(page: Page, sourcePath: string, width: number, height: number) {
-  const source = JSON.parse(await fs.readFile(sourcePath, "utf8")) as unknown;
+async function prepareLottie(page: Page, source: Record<string, unknown>, width: number, height: number) {
   await page.setContent(`<style>html,body,#stage{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:transparent}</style><div id="stage"></div>`);
-  await page.addScriptTag({ path: require.resolve("lottie-web/build/player/lottie_svg.min.js") });
+  // Same non-expression SVG player as authoring preview. Validation rejects
+  // expressions explicitly rather than silently exporting a different result.
+  await page.addScriptTag({ path: require.resolve("lottie-web/build/player/lottie_light.min.js") });
   await page.evaluate(async (animationData) => {
     const runtime = (window as unknown as { lottie: { loadAnimation(input: Record<string, unknown>): { addEventListener(name: string, callback: () => void): void; goToAndStop(frame: number, isFrame: boolean): void; destroy(): void } } }).lottie;
     await new Promise<void>((resolve, reject) => {
-      const animation = runtime.loadAnimation({ container: document.getElementById("stage")!, renderer: "svg", loop: true, autoplay: false, animationData });
+      const animation = runtime.loadAnimation({ container: document.getElementById("stage")!, renderer: "svg", loop: true, autoplay: false, animationData, rendererSettings: { runExpressions: false } });
       animation.addEventListener("DOMLoaded", () => {
         (window as unknown as { __cutAnimation: typeof animation }).__cutAnimation = animation;
         resolve();
@@ -75,14 +79,14 @@ async function prepareLottie(page: Page, sourcePath: string, width: number, heig
   }, source);
 }
 
-async function prepareRive(page: Page, sourcePath: string, width: number, height: number) {
+async function prepareRive(page: Page, bytes: Buffer, width: number, height: number) {
   const wasmPath = require.resolve("@rive-app/canvas-lite/rive.wasm");
   await page.route("https://cutstudio.invalid/rive.wasm", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/wasm", body: await fs.readFile(wasmPath) });
   });
   await page.setContent(`<style>html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:transparent}canvas{display:block;width:${width}px;height:${height}px}</style><canvas id="stage" width="${width}" height="${height}"></canvas>`);
   await page.addScriptTag({ path: require.resolve("@rive-app/canvas-lite/rive.js") });
-  const source = (await fs.readFile(sourcePath)).toString("base64");
+  const source = bytes.toString("base64");
   await page.evaluate((encoded) => { (window as unknown as { __cutRiveSource: string }).__cutRiveSource = encoded; }, source);
   // Evaluate the runtime bootstrap as native browser JavaScript. Transpilers
   // may otherwise inject module-scoped helper names into serialized callbacks.
@@ -137,19 +141,20 @@ export async function renderCutAnimationFrames(input: {
     throw new Error("Animation render dimensions exceed the isolated renderer budget");
   }
   const frameCount = cutAnimationFrameCount(input.duration, input.fps);
+  const source = await readCutNativeAnimationSource(input.kind, input.sourcePath);
   await fs.mkdir(input.outputDirectory, { recursive: true });
   let browser: Browser | null = null;
   let context: Awaited<ReturnType<Browser["newContext"]>> | undefined;
   try {
     browser = input.session ? await input.session.browser() : await launchCutNativeRenderer();
-    context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block" });
+    context = await browser.newContext({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1, serviceWorkers: "block", offline: true, acceptDownloads: false });
+    await context.route("**/*", (route) => route.abort("blockedbyclient"));
+    await context.routeWebSocket("**/*", (socket) => socket.close({ code: 1008 }));
     const page = await context.newPage();
-    await page.route("**/*", async (route) => {
-      if (route.request().url() === "https://cutstudio.invalid/rive.wasm") return route.continue();
-      return route.abort("blockedbyclient");
-    });
-    if (input.kind === "lottie") await prepareLottie(page, input.sourcePath, input.width, input.height);
-    else await prepareRive(page, input.sourcePath, input.width, input.height);
+    // Only the trusted page-level Rive WASM response can override context-level
+    // denial; popups/workers never gain generic network access.
+    if (source.kind === "lottie") await prepareLottie(page, source.animationData, input.width, input.height);
+    else await prepareRive(page, source.bytes, input.width, input.height);
     for (let frame = 0; frame < frameCount; frame += 1) {
       await seekFrame(page, input.kind, frame, input.fps);
       // The stage is exactly the fixed viewport. seekFrame has already waited
@@ -160,7 +165,14 @@ export async function renderCutAnimationFrames(input: {
     }
     return { frameCount, pattern: path.join(input.outputDirectory, "frame-%06d.png") };
   } finally {
-    await context?.close().catch(() => undefined);
-    if (!input.session) await browser?.close().catch(() => undefined);
+    const closeOwner = async () => {
+      if (input.session) await input.session.close();
+      else if (browser) await closeCutNativeBrowser(browser);
+    };
+    try {
+      await closeCutNativeContext(context, closeOwner);
+    } finally {
+      if (!input.session) await closeOwner();
+    }
   }
 }
