@@ -34,7 +34,7 @@ export const MediaPlayer = forwardRef<HTMLVideoElement, MediaPlayerProps>(functi
   const rebuffering = useRef(false);
   const [source, setSource] = useState(fallbackSrc);
   const [tracks, setTracks] = useState<Track[]>([]);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const [adaptivePlayback, setAdaptivePlayback] = useState<SessionResponse | null>(null);
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);
 
   const send = (kind: PlaybackKind, metadata: Record<string, unknown> = {}) => {
@@ -61,8 +61,7 @@ export const MediaPlayer = forwardRef<HTMLVideoElement, MediaPlayerProps>(functi
 
   useEffect(() => {
     let cancelled = false;
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
+    setAdaptivePlayback(null);
     sessionId.current = null;
     sequence.current = 0;
     setTracks([]);
@@ -83,43 +82,58 @@ export const MediaPlayer = forwardRef<HTMLVideoElement, MediaPlayerProps>(functi
       setTracks(descriptor.textTracks);
       const selected = descriptor.rendition;
       const manifest = selected?.manifestType === "hls" || selected?.mimeType.includes("mpegurl");
-      if (!manifest || videoRef.current.canPlayType("application/vnd.apple.mpegurl")) {
+      if (!manifest) {
         setSource(descriptor.access.url);
         return;
       }
+      // Commit removal of React's progressive src before an adaptive engine
+      // takes ownership. Otherwise that commit can remove its new blob URL.
+      setSource("");
+      setAdaptivePlayback(descriptor);
+    };
+    void connect().catch(() => { if (!cancelled) setSource(fallbackSrc); });
+    return () => { cancelled = true; };
+  }, [assetId, fallbackSrc]);
 
+  useEffect(() => {
+    if (!adaptivePlayback) return;
+    let cancelled = false;
+    let ownedHls: { destroy: () => void } | null = null;
+    const descriptor = adaptivePlayback;
+    const connect = async () => {
       // The light build keeps adaptive playback below the deferred-route budget
       // while retaining the core HLS, worker, quality-switch and error APIs used
       // by this player. Subtitle parsing is supplied by native text tracks.
       const { default: Hls } = await import("hls.js/dist/hls.light.min.mjs");
       if (cancelled || !videoRef.current) return;
+      // Prefer the managed MSE engine when available. A non-empty native HLS
+      // capability hint alone did not play our real short clips in Chromium.
       if (!Hls.isSupported()) {
         const progressive = descriptor.renditionAccess.find(({ rendition }) => rendition.role === "video" || rendition.role === "audio");
-        setSource(progressive?.access.url ?? fallbackSrc);
+        setSource(videoRef.current.canPlayType("application/vnd.apple.mpegurl") ? descriptor.access.url : progressive?.access.url ?? fallbackSrc);
         return;
       }
-      setSource("");
       const hls = new Hls({ enableWorker: true, backBufferLength: 30, maxBufferLength: 30 });
-      hlsRef.current = hls;
-      hls.loadSource(descriptor.access.url);
-      hls.attachMedia(videoRef.current);
+      ownedHls = hls;
       hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => send("quality_change", { level: data.level }));
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
+        if (cancelled || !data.fatal) return;
         send("error", { source: "hls", category: data.type, detail: data.details });
         hls.destroy();
-        hlsRef.current = null;
+        ownedHls = null;
         const progressive = descriptor.renditionAccess.find(({ rendition }) => rendition.role === "video" || rendition.role === "audio");
         setSource(progressive?.access.url ?? fallbackSrc);
       });
+      hls.loadSource(descriptor.access.url);
+      hls.attachMedia(videoRef.current);
     };
     void connect().catch(() => { if (!cancelled) setSource(fallbackSrc); });
     return () => {
       cancelled = true;
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
+      ownedHls?.destroy();
+      ownedHls = null;
     };
-  }, [assetId, fallbackSrc]);
+  }, [adaptivePlayback, fallbackSrc]);
 
   return (
     <video

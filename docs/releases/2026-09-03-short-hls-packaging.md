@@ -65,6 +65,14 @@ This narrow repair is not a claim of all-browser, long-content, live-streaming,
 decoder-matrix or Remotion parity. Previous native render latency failures and
 the unapproved public executable-code service remain open.
 
+The contract-preserving candidate passed all 832 protected root tests but failed
+the new browser playback cases. A retained local trace confirms the player chose
+native HLS from a capability hint, requested the real manifests and segment, yet
+never loaded a picture. The player now prefers supported HLS.js/MSE, retaining
+native HLS for browsers without that engine. React clears its progressive source
+before the adaptive engine attaches, and each effect destroys only its own engine.
+These changes still require real browser qualification; no gate was relaxed.
+
 ## Primary references
 
 - [FFmpeg HLS and transport format options](https://ffmpeg.org/ffmpeg-formats.html)
