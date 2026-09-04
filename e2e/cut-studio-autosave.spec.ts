@@ -197,11 +197,7 @@ test("late autosave cannot replace the next project's timeline", async ({ page }
     await expect.poll(() => committed).toBe(true);
     page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
     await page.getByRole("button", { name: "Projects", exact: true }).click();
-    // Target the visible project label rather than the card's flex button box.
-    // On mobile, the card's center can fall in its parent padding after a
-    // scroll; clicking the label still exercises the real pointer path and
-    // bubbles through the project's native button.
-    await page.getByText("Next project custody", { exact: true }).click();
+    await page.getByRole("button", { name: /^Next project custody 0:01/ }).click();
     await expect(page.getByRole("heading", { name: "Next project custody", exact: true })).toBeVisible();
     release();
     await page.waitForTimeout(1100);
