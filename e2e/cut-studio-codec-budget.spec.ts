@@ -21,7 +21,10 @@ test('bounded native codecs preserve all lossless frames and master rendition co
   }
   const master = `${directory}/master.mp4`;
   run([...cutFilterThreadArgs({}, 2), ...cutCodecThreadArgs({}, 2), '-i', source, '-filter_complex', '[0:v]setpts=PTS-STARTPTS,fps=24[out]', '-map', '[out]', '-c:v', 'libx264', ...cutCodecThreadArgs({}, 2), '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', master]);
-  const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', master], { windowsHide: true, timeout: 5_000 }).toString()).streams[0];
+  // The encode itself has a bounded 15-second budget. Give the independent
+  // probe the same bound so a busy Windows process scheduler cannot turn a
+  // valid completed master into a false negative after five seconds.
+  const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', master], { windowsHide: true, timeout: 15_000 }).toString()).streams[0];
   expect(probe).toMatchObject({ codec_name: 'h264', width: 1920, height: 1080, r_frame_rate: '24/1', nb_frames: '12', pix_fmt: 'yuv420p' });
   // Evaluate the complete actual output against its uncompressed source. Thread
   // counts can change lossy bitstreams; this is not a byte-equality assertion.

@@ -6,6 +6,69 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+Checkpoint 2026-09-03 14:20 UTC: public source
+`cbb1183372f9ef38d59d8b13657a7ffceab54d3f` is verified clean with 122/122
+migrations and `release_ready`. Protected deployment `33762985646` passed
+840 root tests, 398 browser cases, 24 existing desktop skips, actual ingest and
+two public identity checks. Database claim/recovery and pre-claim dispatch
+budgets are deployed; neither is a hard billing cap or fleet admission limit.
+
+A fresh private owner field render completed in 127,587ms inside the unchanged
+180-second gate, using one dispatch and one worker claim (maximum three each).
+Actual output is H.264 1280x720, 30 frames, one second, AAC; wrapped text,
+Lottie/Rive timing and geometry IoU 0.9911102331094429 pass. SHA256 is
+`e9b9d7a9fe1fcbf9682fec2c662927c61f59573da73fb360e4d44b9faf74e919`.
+Anonymous access returns 401, original fixtures are unchanged, release identity
+matches before/after, and the owned test session is revoked. Decoded output was
+visually inspected. Receipt:
+`B:/CreativesOS-task-artifacts/native-text-production-20260903141648075`.
+Execution is `creativesos-cut-worker-k4rrz`; independent management-plane image
+verification remains pending because GCP CLI reauthentication is still required.
+The expected image is unchanged, not freshly confirmed for this execution.
+Earlier latency failures remain open; this pass is not a stable-latency claim.
+
+Read-only inspection of both earlier private three-frame library fixtures now
+confirms successful probe, thumbnail, transcode and package jobs on first
+attempt, with ready poster/video renditions. This closes their previously
+unobserved processing outcome, not public-HLS delivery or artifact-image proof.
+
+PR 187 primary fade preview merged as `d284e1a618270aa219cd3d86f6c66a7d6707f732`.
+Exact candidate `8fd4fd48` passed eight local browser cases, 845 root tests,
+types/build/bundle and protected Verify `33763693826` (402 browser cases,
+24 existing skips). Sampled preview/native blue values differed by one level;
+rendered audio faded from RMS about .0885 to .0194. It is not yet deployed.
+PR 188 fixes the separate 30-fps-only preview clock; combined candidate
+`b7face2ebf54da20928dc97889b48a6940ea87e3` is under local/protected qualification.
+PR 188 subsequently passed all 12 local browser cases, 845 root tests,
+types/build/bundle and protected Verify `33765951453` (406 browser cases).
+PR 189 includes that exact source and passed protected Verify `33766634428`
+(849 root tests, 410 browser cases), but its independent local run failed three
+of 16 cases. One cold first-page dependency-readiness delay and two test clicks
+after natural playback completion are being corrected without extending gates.
+All failures remain retained. The combined preview remains unqualified and must
+not be released until the corrected exact head passes again.
+
+PR 186 combined native audio/format/framing candidate
+`e17acc4f84f7b442e4879cdf22d857efe56f0b31` passed 18 local browser cases,
+846 root tests, types/build/bundle and protected Verify `33763005652`
+(416 browser cases, 24 existing skips). Actual private MP4/WebM exports have
+selected codecs, 25/50 frames, vertical/square framing, readable timed captions,
+audible PCM and cross-owner denial. Its initial invalid-transcript-fixture
+failure remains retained. PRs 182/184/186 are still unmerged and undeployed until
+the matching native worker image can be activated. GCP authentication remains
+the image gate; no new service, IAM, capacity or provider is authorized here.
+
+Public TSX service approval, full layered composition preview, broader media/
+motion/3D, resource-contract enforcement, orphan/retention closure, fleet/cost
+limits, cold-worker stability and same-input competitor/operator benchmarks
+remain open. The prototype's capsule limits and host limits are not equivalent:
+CPU time is not wall time, and fixed 2GiB/64MiB host bounds do not fulfill every
+saved capsule memory/output ceiling. Do not silently reinterpret them or enable
+public code dispatch until enforceable contracts agree. Public-HLS fixture
+approval remains unanswered. **This is not full Remotion parity.**
+
+### Previous checkpoint (superseded only by the specific evidence above)
+
 Checkpoint 2026-09-03, following deployment `33755830693`: public source
 `2b0b3c430bb26200371b1bfcc4fb87b2367fcc96` is verified clean with 120/120
 migrations. That release passed 834 root tests, 396 browser cases, 24 existing

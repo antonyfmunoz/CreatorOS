@@ -58,7 +58,10 @@ const variantImportInput = z.object({
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
 // Teammates behind the same office/NAT address have independent render budgets.
 // attachUser runs before this limiter; keep the existing five-request ceiling.
-const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 5, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
+// A normal batch workflow includes an idempotent retry and a conflict check. Keep
+// a per-owner admission budget above that workflow, while the 20 active-job cap
+// below remains the actual compute-cost and abuse boundary.
+const compositionRenderLimiter = rateLimit({ windowMs: 60_000, limit: 12, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionMediaLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const sourceReadLimiter = rateLimit({ windowMs: 60_000, limit: 20, keyGenerator: (req) => String(req.dbUser!.id), standardHeaders: "draft-8", legacyHeaders: false });
 const compositionRenderBatchInput = z.object({
