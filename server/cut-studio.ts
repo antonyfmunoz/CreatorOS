@@ -68,6 +68,8 @@ import { cutProcessProgressDisplay, type CutProcessProgress } from "./cut-proces
 import { runCutNativeProcess } from "./cut-native-process";
 import { watchCutJobLease } from "./cut-job-lease-watch";
 import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
+import { cutRenderEncoding } from "@shared/cut-render-encoding";
+import { cutOutputFormat } from "@shared/cut-output-format";
 import { recoverCutJobs, retryCutJob } from "./cut-job-recovery";
 import { admitCutAuxiliaryJob } from "./cut-job-admission";
 import { cutMaskAlpha } from "@shared/cut-mask";
@@ -1039,11 +1041,11 @@ async function renderMultitrack(
   }
   const finishingFilters = masterAudioFilters(request);
   if (audioLabel && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
-  const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+  const outputFormat = cutOutputFormat(request);
   // Authored curves can exceed OS argument-length limits. This is generated
   // filter data in the job's private temporary directory, not executable input.
   const filterGraphArgs = await cutFilterGraphArgs(temp, filters);
-  const args = ["-y", ...cutFilterThreadArgs(), ...mediaInputs.flatMap((input) => [...cutCodecThreadArgs(), "-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, "-c:v", "libx264", ...cutCodecThreadArgs(), "-preset", encoding.preset, "-crf", encoding.crf, ...(audioLabel ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
+  const args = ["-y", ...cutFilterThreadArgs(), ...mediaInputs.flatMap((input) => [...cutCodecThreadArgs(), "-i", input.url]), ...rasterGraphicInputs.flatMap((input) => cutRasterInputArgs(input, request.fps, primaryDuration)), ...filterGraphArgs, "-map", `[${videoLabel}]`, ...outputFormat.videoArgs, ...cutCodecThreadArgs(), ...(audioLabel ? ["-map", `[${audioLabel}]`, ...outputFormat.audioArgs] : []), ...outputFormat.muxerArgs, ...cutRenderDurationArgs(primaryDuration), "-shortest", outputPath];
   await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering multitrack edit");
   await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, primaryDuration));
 }
@@ -1102,7 +1104,8 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
   const compositionManifest = request.composition ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const project = projectForCutRender(baseProject, request);
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-cut-"));
-  const { outputName, outputPath, sourcePath } = cutRenderWorkspacePaths(temp, project.name, source.originalFilename);
+  const outputFormat = cutOutputFormat(request);
+  const { outputName, outputPath, sourcePath } = cutRenderWorkspacePaths(temp, project.name, source.originalFilename, outputFormat.format);
   try {
     let clips = project.edl.clips;
     if (request.clip) {
@@ -1118,11 +1121,11 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
-      const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
+      const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: outputFormat.mimeType });
       const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
-      const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true, ...compositionMetadata } }).returning();
+      const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: outputFormat.mimeType, sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, multitrack: true, ...compositionMetadata } }).returning();
       await registerCutArtifact(source.id, artifact, "rendered_from");
-      return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
+      return { artifact, output: { filename: outputName, format: outputFormat.format, targetVideoCodec: outputFormat.videoCodec, targetAudioCodec: outputFormat.audioCodec, duration, aspect: request.aspect, quality: request.quality, audioTargetBitrateKbps: cutRenderEncoding(request).audioTargetBitrateKbps, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, multitrack: true, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
     }
     await materializePrivateAsset(source.storageKey, sourcePath);
     const media = await probeMedia(sourcePath);
@@ -1155,38 +1158,36 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
       }
     });
     filters.push(`${concatInputs.join("")}concat=n=${clips.length}:v=${media.hasVideo ? 1 : 0}:a=${media.hasAudio ? 1 : 0}${media.hasVideo ? "[video]" : ""}${media.hasAudio ? "[audio]" : ""}`);
-    let videoLabel = "video";
+    let videoLabel = media.hasVideo ? "video" : "1:v";
     let audioLabel = "audio";
-    if (media.hasVideo) {
-      const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
-      if (request.aspect === "source" && compositionManifest) {
-        const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
-        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
-      } else if (request.aspect === "source") {
-        filters.push(`[${videoLabel}]${cutSourceVideoFilters(height).join(",")},fps=${request.fps}[framed]`);
-      } else {
-        const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
-        filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
-      }
-      videoLabel = "framed";
+    const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
+    if (request.aspect === "source" && compositionManifest) {
+      const size = cutCompositionRenditionSize(compositionManifest.width, compositionManifest.height, request.resolution);
+      filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
+    } else if (request.aspect === "source") {
+      filters.push(`[${videoLabel}]${cutSourceVideoFilters(height).join(",")},fps=${request.fps}[framed]`);
+    } else {
+      const size = request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : request.aspect === "1:1" ? [height, height] : [Math.round(height * 16 / 9 / 2) * 2, height];
+      filters.push(`[${videoLabel}]${cutFitVideoFilters(size[0], size[1]).join(",")},fps=${request.fps}[framed]`);
     }
-    if (media.hasVideo && request.captions && project.transcript) {
+    videoLabel = "framed";
+    if (request.captions && project.transcript) {
       videoLabel = await appendCaptionFilter(filters, videoLabel, request, project.transcript, { version: 2, clips }, temp);
     }
     const finishingFilters = masterAudioFilters(request);
     if (media.hasAudio && finishingFilters.length) { filters.push(`[${audioLabel}]${finishingFilters.join(",")}[finishedaudio]`); audioLabel = "finishedaudio"; }
-    const encoding = request.quality === "draft" ? { preset: "ultrafast", crf: "28", audio: "128k" } : request.quality === "master" ? { preset: "medium", crf: "16", audio: "256k" } : { preset: "veryfast", crf: "20", audio: "192k" };
+    // Codec/container settings were validated before materializing inputs.
     const duration = cutDuration({ version: 2, clips });
     const inputArgs = ["-y", ...cutFilterThreadArgs(), ...cutCodecThreadArgs(), "-i", sourcePath];
-    if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=1920x1080:d=${duration}`);
-    const args = [...inputArgs, "-filter_complex", filters.join(";"), ...(media.hasVideo ? ["-map", `[${videoLabel}]`, "-c:v", "libx264", "-preset", encoding.preset, "-crf", encoding.crf] : ["-map", "1:v", "-c:v", "libx264"]), ...cutCodecThreadArgs(), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, "-c:a", "aac", "-b:a", encoding.audio] : []), "-movflags", "+faststart", "-shortest", outputPath];
+    if (!media.hasVideo) inputArgs.push("-f", "lavfi", "-i", `color=c=black:s=${Math.round(height * 16 / 9 / 2) * 2}x${height}:r=${request.fps}:d=${duration}`);
+    const args = [...inputArgs, "-filter_complex", filters.join(";"), "-map", `[${videoLabel}]`, ...outputFormat.videoArgs, ...cutCodecThreadArgs(), ...(media.hasAudio ? ["-map", `[${audioLabel}]`, ...outputFormat.audioArgs] : []), ...outputFormat.muxerArgs, ...cutRenderDurationArgs(duration), "-shortest", outputPath];
     await updateCutJobProgress(jobId, leaseToken, 0.35, "Rendering edit");
     await runProcess("ffmpeg", args, 30 * 60_000, jobId, reportCutEncodingProgress(jobId, leaseToken, duration));
-    const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: "video/mp4" });
+    const stored = await persistPrivateFile({ sourcePath: outputPath, ownerUserId: project.ownerUserId, kind: "cut-render", filename: outputName, mimeType: outputFormat.mimeType });
     const compositionMetadata = request.composition ? { cutStudioCompositionId: request.composition.id, cutStudioCompositionRevision: request.composition.revision, cutStudioRenderBatchId: request.composition.renderBatchId, cutStudioVariantIndex: request.composition.variantIndex } : {};
-    const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: "video/mp4", sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, ...compositionMetadata } }).returning();
+    const [artifact] = await db.insert(assets).values({ ownerUserId: project.ownerUserId, businessId: project.businessId, kind: "video", storageProvider: process.env.ASSET_STORAGE_PROVIDER ?? "local", storageKey: stored.storageKey, publicUrl: null, mimeType: outputFormat.mimeType, sizeBytes: stored.sizeBytes, visibility: "private", status: "ready", originalFilename: outputName, metadata: { cutStudioProjectId: project.id, cutStudioJobId: jobId, ...compositionMetadata } }).returning();
     await registerCutArtifact(source.id, artifact, "rendered_from");
-    return { artifact, output: { filename: outputName, duration, aspect: request.aspect, quality: request.quality, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
+    return { artifact, output: { filename: outputName, format: outputFormat.format, targetVideoCodec: outputFormat.videoCodec, targetAudioCodec: outputFormat.audioCodec, duration, aspect: request.aspect, quality: request.quality, audioTargetBitrateKbps: cutRenderEncoding(request).audioTargetBitrateKbps, resolution: request.resolution, fps: request.fps, audioPreset: request.audioPreset, masterGainDb: request.masterGainDb, ...(request.composition ? { compositionId: request.composition.id, compositionRevision: request.composition.revision, renderBatchId: request.composition.renderBatchId, variantIndex: request.composition.variantIndex } : {}) } };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }
