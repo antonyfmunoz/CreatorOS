@@ -197,7 +197,7 @@ test("late autosave cannot replace the next project's timeline", async ({ page }
     await expect.poll(() => committed).toBe(true);
     page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
     await page.getByRole("button", { name: "Projects", exact: true }).click();
-    await page.getByRole("button", { name: /^Next project custody 0:01/ }).click();
+    await page.getByRole("button", { name: "Open Next project custody", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Next project custody", exact: true })).toBeVisible();
     release();
     await page.waitForTimeout(1100);
@@ -256,7 +256,7 @@ test("leaving a failed unsaved edit requires an explicit discard decision", asyn
   await projects.click(); await expect(gain).toHaveValue(draft);
   page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
   await projects.click();
-  await expect(page.getByRole("button", { name: /^Unsaved departure custody 0:01/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Unsaved departure custody", exact: true })).toBeVisible();
   const stored = await (await page.request.get(`/api/cut/projects/${project.id}`)).json();
   expect(stored.edl).toEqual(project.edl); expect(stored.revision).toBe(project.revision);
 });

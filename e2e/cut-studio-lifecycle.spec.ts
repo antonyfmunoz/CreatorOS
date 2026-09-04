@@ -708,7 +708,7 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   await expectOk(transcriptResponse);
 
   await page.goto("/cut-studio");
-  await page.getByText(project.name, { exact: true }).click();
+  await page.getByRole("button", { name: `Open ${project.name}`, exact: true }).click();
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await expect(page.getByRole("button", { name: "Snap" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Lock V2 track" }).click();
@@ -930,7 +930,7 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
   expect((await api(page, peer, "POST", `/api/cut/jobs/${cancellable.id}/cancel`, {})).status()).toBe(404);
 
   await page.goto("/cut-studio");
-  await page.getByText(project.name, { exact: true }).click();
+  await page.getByRole("button", { name: `Open ${project.name}`, exact: true }).click();
   await page.getByLabel("Speaker for segment hook").fill("Host");
   await page.getByLabel("Speaker for segment close").fill("Guest");
   await page.getByRole("button", { name: "Move segment close earlier" }).click();
