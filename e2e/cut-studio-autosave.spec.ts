@@ -183,6 +183,12 @@ test("returning to a prior edit during an in-flight save waits for its compensat
 test("late autosave cannot replace the next project's timeline", async ({ page }, info) => {
   const first = await createProject(page, info, "Earlier project custody");
   const next = await createProject(page, info, "Next project custody");
+  for (let index = 1; index <= 4; index++) {
+    const response = await page.request.post("/api/cut/projects", {
+      data: { sourceAssetId: next.sourceAssetId, name: `Later project custody ${index}`, duration: 1, mediaKind: "video" },
+    });
+    expect(response.ok()).toBeTruthy();
+  }
   await page.goto(`/cut-studio?project=${first.id}`);
   let release!: () => void;
   let committed = false;
@@ -197,7 +203,23 @@ test("late autosave cannot replace the next project's timeline", async ({ page }
     await expect.poll(() => committed).toBe(true);
     page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Leave without saving"); await dialog.accept(); });
     await page.getByRole("button", { name: "Projects", exact: true }).click();
-    await page.getByRole("button", { name: "Open Next project custody", exact: true }).click();
+    const nextProjectButton = page.getByRole("button", { name: "Open Next project custody", exact: true });
+    await nextProjectButton.scrollIntoViewIfNeeded();
+    const hitTarget = await nextProjectButton.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return {
+        card: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        hitButton: hit?.closest("button")?.getAttribute("aria-label") ?? null,
+        hitTag: hit?.tagName ?? null,
+      };
+    });
+    await info.attach("next-project-card-hit-target", { body: JSON.stringify(hitTarget), contentType: "application/json" });
+    expect(hitTarget.hitButton).toBe("Open Next project custody");
+    // The preceding center-point assertion is the browser hit test. Playwright's
+    // retry scroll can otherwise move a long virtual project grid between its
+    // actionability probe and dispatch, so dispatch at that verified real target.
+    await nextProjectButton.click({ force: true });
     await expect(page.getByRole("heading", { name: "Next project custody", exact: true })).toBeVisible();
     release();
     await page.waitForTimeout(1100);
