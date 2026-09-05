@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 const version = "0.1.0";
 const args = process.argv.slice(2);
 const command = args.includes("--version") || args.includes("-v") ? "version" : args.find((value) => !value.startsWith("-")) ?? "help";
@@ -34,6 +35,7 @@ CutStudio local-node commands:
   node status   Show this machine's paired local-node state (never its credential).
   node heartbeat [--status ready|busy|paused]
                 Send an explicit availability heartbeat to CreativesOS.
+  node work     Claim and execute at most one approved code-render job locally.
   node disconnect
                 Remove this machine's local credential. Revoke it in CutStudio too.
 
@@ -43,7 +45,8 @@ Environment:
 
 API keys are never persisted. Local-node pairing requires explicit device
 approval and stores only a node credential in this OS user's profile. It does
-not execute renders or grant cloud-compute access.`);
+not execute renders unless \`node work\` is explicitly invoked. It never grants
+cloud-compute access.`);
   process.exit(exitCode);
 }
 
@@ -89,6 +92,22 @@ async function nodeRequest(pathname, { method = "GET", body, credential } = {}) 
   return responseBody;
 }
 
+async function rawNodeRequest(pathname, { method = "GET", body, credential } = {}) {
+  let response;
+  try {
+    response = await fetch(`${appUrl}${pathname}`, {
+      method,
+      headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}), ...(credential ? { Authorization: `Bearer ${credential}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new Error("Could not reach CreativesOS.");
+  }
+  const responseBody = await response.json().catch(() => null);
+  if (!response.ok && response.status !== 204) throw new Error(responseBody?.message ?? `Local-node request failed with ${response.status}.`);
+  return { response, body: responseBody };
+}
+
 function option(name) {
   const index = args.indexOf(name);
   return index === -1 ? undefined : args[index + 1];
@@ -122,6 +141,59 @@ function nodeCapabilities() {
   };
 }
 
+function localRuntimeImage() {
+  const configured = process.env.CREATIVESOS_CUT_CODE_IMAGE ?? "creativesos-cut-code:production-candidate";
+  if (/^sha256:[a-f0-9]{64}$/i.test(configured)) return configured;
+  const inspected = spawnSync("docker", ["image", "inspect", configured, "--format", "{{.Id}}"], { encoding: "utf8", timeout: 10_000 });
+  const image = inspected.status === 0 ? inspected.stdout.trim() : "";
+  if (!/^sha256:[a-f0-9]{64}$/i.test(image)) throw new Error("No approved local CutStudio runtime image is available. Build or set CREATIVESOS_CUT_CODE_IMAGE to an immutable image ID.");
+  return image;
+}
+
+async function downloadPrivateSource(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+  if (!response.ok) throw new Error("The short-lived code source download was unavailable.");
+  const length = Number(response.headers.get("content-length") ?? 0);
+  if (length > 25 * 1024 * 1024) throw new Error("The code source exceeds the local runtime limit.");
+  const source = Buffer.from(await response.arrayBuffer());
+  if (!source.length || source.length > 25 * 1024 * 1024) throw new Error("The code source exceeds the local runtime limit.");
+  return source;
+}
+
+async function executeOneLocalJob(config) {
+  const claimed = await rawNodeRequest("/api/cut/nodes/jobs/claim", { method: "POST", credential: config.credential });
+  if (claimed.response.status === 204) return { status: "idle" };
+  const payload = claimed.body;
+  const jobId = payload?.job?.id;
+  const leaseToken = payload?.lease?.token;
+  if (typeof jobId !== "string" || typeof leaseToken !== "string" || typeof payload?.source?.archive?.url !== "string" || typeof payload?.output?.uploadUrl !== "string") throw new Error("CreativesOS returned an invalid local render lease.");
+  try {
+    const [source, runtime] = await Promise.all([downloadPrivateSource(payload.source.archive.url), Promise.resolve(payload.job.runtime)]);
+    const image = localRuntimeImage();
+    const { renderIsolated } = await import("../runtimes/cut-code/host.mjs");
+    const heartbeat = setInterval(() => {
+      void rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } }).catch(() => undefined);
+    }, 60_000);
+    let rendered;
+    try {
+      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: 120_000 });
+    } finally {
+      clearInterval(heartbeat);
+    }
+    const artifactSha256 = crypto.createHash("sha256").update(rendered.artifact).digest("hex");
+    if (artifactSha256 !== rendered.receipt?.artifactSha256) throw new Error("The local runtime receipt did not match its artifact.");
+    const upload = await fetch(payload.output.uploadUrl, { method: "PUT", headers: { "Content-Type": payload.output.mimeType }, body: rendered.artifact, signal: AbortSignal.timeout(90_000) });
+    if (!upload.ok) throw new Error("The temporary artifact upload was rejected.");
+    const completed = await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/complete`, { method: "POST", credential: config.credential, body: { leaseToken, storageKey: payload.output.storageKey, sha256: artifactSha256, filename: payload.output.filename } });
+    if (!completed.response.ok) throw new Error("CreativesOS did not accept the local render artifact.");
+    return { status: "completed", jobId, artifactId: completed.body?.artifact?.id, image };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 400) : "Local isolated rendering failed";
+    await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, body: { leaseToken, code: "local_node_render_failed", detail } }).catch(() => undefined);
+    throw error;
+  }
+}
+
 async function runNodeCommand() {
   const subcommand = args[1];
   if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) return usage();
@@ -148,6 +220,12 @@ async function runNodeCommand() {
     const result = await nodeRequest(`/api/cut/nodes/${config.nodeId}/heartbeat`, { method: "POST", credential: config.credential, body: { sequence, status } });
     await saveNodeConfig({ ...config, sequence, lastHeartbeatAt: new Date().toISOString() });
     print({ status: result.node.status, nodeId: result.node.id, sequence, lastSeenAt: result.node.lastSeenAt });
+    return;
+  }
+  if (subcommand === "work") {
+    const config = await loadNodeConfig();
+    const result = await executeOneLocalJob(config);
+    print(result);
     return;
   }
   if (subcommand === "disconnect") {

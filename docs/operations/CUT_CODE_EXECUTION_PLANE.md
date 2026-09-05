@@ -116,6 +116,7 @@ API key:
 ```text
 creativesos node connect <pairing-code> --name "Editing workstation"
 creativesos node heartbeat --status ready
+creativesos node work
 creativesos node status
 creativesos node disconnect
 ```
@@ -138,10 +139,17 @@ SHA-256, copies it to a never-exposed private key, and commits the artifact
 while the lease remains live. A late completion is rejected and its sealed copy
 is removed.
 
-This is still not a public execution claim: the CLI has not yet invoked the
-isolated runtime for a claimed job, and no live R2-backed field run or release
-migration has been proven. The broker must not be bypassed by sending a job or
-Docker access directly to a node.
+`node work` claims at most one eligible job. It resolves the local Docker image
+to an immutable SHA-256 image ID, downloads only the signed source archive,
+runs the existing no-network/read-only/non-root harness, verifies the local
+receipt, uploads only the bounded artifact to the single temporary URL, and
+submits its hash to the broker. It does not run automatically, install a
+package, accept an arbitrary image tag as the execution identity, or expose a
+Docker socket to a container.
+
+This is still not a public execution claim: no live R2-backed field run or
+release migration has been proven. The broker must not be bypassed by sending a
+job or Docker access directly to a node.
 
 ## Compute profile and billing guardrail
 
