@@ -88,8 +88,9 @@ try {
   }
 
   $sourceDirty = "false"
-  $buildTime = (Get-Date).ToUniversalTime().ToString("o")
-  $buildId = "$(Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ')-$($sourceFingerprint.Substring(0, 12))"
+  $releaseClock = [DateTime]::UtcNow
+  $buildTime = $releaseClock.ToString("o")
+  $buildId = "$($releaseClock.ToString('yyyyMMddTHHmmssZ'))-$($sourceFingerprint.Substring(0, 12))"
 
   # A production migration is never attempted without a durable, private backup
   # receipt. The endpoint is idempotent for an already-completed UTC-day backup.
