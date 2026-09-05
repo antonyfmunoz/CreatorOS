@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutLocalNodeCapabilitiesSchema, cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema } from "../shared/cut-node";
+import { cutLocalNodeCapabilitiesSchema, cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "../shared/cut-node";
 
 const capabilities = {
   isolatedCode: true,
@@ -26,5 +26,14 @@ describe("CutStudio local-node contract", () => {
     expect(cutLocalNodeHeartbeatSchema.parse({ sequence: 1, status: "ready" })).toEqual({ sequence: 1, status: "ready" });
     expect(() => cutLocalNodeHeartbeatSchema.parse({ sequence: 0, status: "ready" })).toThrow();
     expect(() => cutLocalNodeHeartbeatSchema.parse({ sequence: 2, status: "rendering" })).toThrow();
+  });
+
+  it("bounds a local job lease, progress receipt, and failure detail", () => {
+    const leaseToken = "56cf3d28-331a-4a8c-bd3e-ae8e56c5e44b";
+    expect(cutLocalNodeJobHeartbeatSchema.parse({ leaseToken, progress: 0.4, detail: "Rendering frames" })).toMatchObject({ leaseToken, progress: 0.4 });
+    expect(cutLocalNodeJobCompletionSchema.parse({ leaseToken, storageKey: "creativesos/production/private/users/1/cut-code-render/output.mp4", sha256: "a".repeat(64), filename: "cutstudio-code-render.mp4" })).toMatchObject({ leaseToken, filename: "cutstudio-code-render.mp4" });
+    expect(cutLocalNodeJobFailureSchema.parse({ leaseToken, detail: "Renderer stopped" })).toMatchObject({ code: "local_node_render_failed" });
+    expect(() => cutLocalNodeJobHeartbeatSchema.parse({ leaseToken: "not-a-lease", progress: 2 })).toThrow();
+    expect(() => cutLocalNodeJobCompletionSchema.parse({ leaseToken, storageKey: "x", sha256: "bad", filename: "../output.mp4" })).toThrow();
   });
 });

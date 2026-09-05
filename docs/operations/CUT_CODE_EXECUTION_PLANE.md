@@ -128,10 +128,20 @@ sequence-numbered and an old/replayed heartbeat is rejected. `disconnect`
 removes only the local credential; the owner must revoke the registry record
 from CutStudio when a machine is lost, sold, or no longer trusted.
 
-At this stage, the node can pair and report availability. It cannot yet claim
-or execute a `code_render` job. That requires the short-lived lease and
-artifact-receipt broker defined above; it must not be bypassed by sending a job
-or Docker access directly to a node.
+The API now exposes the broker boundary for a paired node: it can claim only
+the owner-and-business-scoped `code_render` work for which it is eligible,
+receives a five-minute lease, two short-lived private source reads, and one
+temporary private output PUT URL. It renews the lease with bounded progress or
+reports a failure. Completion is accepted only when the returned temporary key
+matches the lease, the server independently confirms its type, size, and
+SHA-256, copies it to a never-exposed private key, and commits the artifact
+while the lease remains live. A late completion is rejected and its sealed copy
+is removed.
+
+This is still not a public execution claim: the CLI has not yet invoked the
+isolated runtime for a claimed job, and no live R2-backed field run or release
+migration has been proven. The broker must not be bypassed by sending a job or
+Docker access directly to a node.
 
 ## Compute profile and billing guardrail
 
