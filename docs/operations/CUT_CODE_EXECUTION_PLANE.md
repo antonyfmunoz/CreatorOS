@@ -129,6 +129,12 @@ sequence-numbered and an old/replayed heartbeat is rejected. `disconnect`
 removes only the local credential; the owner must revoke the registry record
 from CutStudio when a machine is lost, sold, or no longer trusted.
 
+Revocation is immediate: CreativesOS marks any running `code_render` lease held
+by that node cancelled, clears its lease deadline, and rejects all subsequent
+node authentication. The isolated child has no network or platform credential;
+it may finish local CPU work after its host is stopped, but it cannot renew,
+upload an accepted result, or claim new work.
+
 The API now exposes the broker boundary for a paired node: it can claim only
 the owner-and-business-scoped `code_render` work for which it is eligible,
 receives a five-minute lease, two short-lived private source reads, and one

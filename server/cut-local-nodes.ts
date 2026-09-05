@@ -235,7 +235,16 @@ export function registerCutLocalNodeRoutes(app: Express) {
     }
   });
   app.delete("/api/cut/nodes/:id", attachUser, async (req, res) => {
-    const [node] = await db.update(cutStudioLocalNodes).set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, req.params.id), eq(cutStudioLocalNodes.ownerUserId, req.dbUser!.id), isNull(cutStudioLocalNodes.revokedAt))).returning();
+    const node = await db.transaction(async transaction => {
+      const now = new Date();
+      const [revoked] = await transaction.update(cutStudioLocalNodes).set({ status: "revoked", revokedAt: now, updatedAt: now }).where(and(eq(cutStudioLocalNodes.id, req.params.id), eq(cutStudioLocalNodes.ownerUserId, req.dbUser!.id), isNull(cutStudioLocalNodes.revokedAt))).returning();
+      if (!revoked) return null;
+      // Revocation is immediate authority loss. The local child has no network
+      // or platform credentials, but mark any durable lease terminal now so it
+      // cannot be shown as running while its host is being stopped.
+      await transaction.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled because its local node was revoked", cancellationRequestedAt: now, leaseExpiresAt: null, heartbeatAt: now, finishedAt: now }).where(and(eq(cutStudioJobs.workerId, `cut-local-node:${revoked.id}`), eq(cutStudioJobs.state, "running")));
+      return revoked;
+    });
     if (!node) return res.status(404).json({ message: "Local node not found" }); res.status(204).end();
   });
 }
