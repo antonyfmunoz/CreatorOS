@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import { fileURLToPath, pathToFileURL } from "node:url";
 const version = "0.1.0";
 const args = process.argv.slice(2);
 const command = args.includes("--version") || args.includes("-v") ? "version" : args.find((value) => !value.startsWith("-")) ?? "help";
@@ -15,6 +16,7 @@ const baseUrl = (process.env.CREATIVESOS_API_URL ?? "https://creativesos.net/api
 const apiKey = process.env.CREATIVESOS_API_KEY?.trim();
 const appUrl = (process.env.CREATIVESOS_APP_URL ?? baseUrl.replace(/\/api\/v1$/, "")).replace(/\/$/, "");
 const nodeConfigPath = path.join(process.env.APPDATA ?? os.homedir(), "CreativesOS", "cut-local-node.json");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function usage(exitCode = 0) {
   console.log(`CreativesOS CLI ${version}
@@ -150,6 +152,11 @@ function localRuntimeImage() {
   return image;
 }
 
+function localRuntimeDirectory() {
+  const configured = process.env.CREATIVESOS_CUT_CODE_RUNTIME_DIR?.trim();
+  return configured ? path.resolve(configured) : path.join(repositoryRoot, "runtimes", "cut-code");
+}
+
 async function downloadPrivateSource(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
   if (!response.ok) throw new Error("The short-lived code source download was unavailable.");
@@ -171,7 +178,8 @@ async function executeOneLocalJob(config) {
   try {
     const [source, runtime] = await Promise.all([downloadPrivateSource(payload.source.archive.url), Promise.resolve(payload.job.runtime)]);
     const image = localRuntimeImage();
-    const { renderIsolated } = await import("../runtimes/cut-code/host.mjs");
+    const runtimeDirectory = localRuntimeDirectory();
+    const { renderIsolated } = await import(pathToFileURL(path.join(runtimeDirectory, "host.mjs")).href);
     const heartbeat = setInterval(() => {
       void rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, origin, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } }).catch(() => undefined);
     }, 60_000);

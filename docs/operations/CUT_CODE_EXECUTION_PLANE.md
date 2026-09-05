@@ -164,6 +164,24 @@ This is still not a public execution claim: no live R2-backed field run or
 release migration has been proven. The broker must not be bypassed by sending a
 job or Docker access directly to a node.
 
+## Desktop distribution boundary
+
+`npm run desktop:package:dir` creates the Windows desktop artifact. The
+Electron wrapper contains only the desktop shell and local-node CLI. The
+isolated runtime is copied to `resources/cut-code-runtime` outside Electron's
+application archive because Docker must read the real seccomp policy path on
+the host. When packaged, the shell passes that path to the CLI through
+`CREATIVESOS_CUT_CODE_RUNTIME_DIR`; when run from the repository, the CLI uses
+the checked-out `runtimes/cut-code` directory instead.
+
+The artifact deliberately excludes the server dependency tree and optional
+native WebSocket acceleration module. Neither is needed for a browser shell
+that invokes a built-in-only CLI, and excluding them avoids inheriting a native
+compiler requirement into a user workstation installation. A local unpacked
+build is a packaging qualification, not a released installer: production
+distribution still requires a signed Windows installer, release provenance,
+and the field-test evidence below.
+
 ## Field-test sequence
 
 Run this only after the local-node migration is applied and the private R2

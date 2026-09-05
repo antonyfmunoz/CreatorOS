@@ -18,10 +18,17 @@ function runOneLocalNodeJob() {
   return new Promise((resolve) => {
     const cli = path.join(root, "cli", "creativesos.mjs");
     const child = spawn(process.execPath, [cli, "node", "work"], {
-      cwd: root,
-      shell: false,
-      windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    cwd: root,
+    shell: false,
+    windowsHide: true,
+    // Packaged Electron archives are not host paths that Docker can mount or
+    // pass to seccomp. electron-builder copies this runtime to resources so
+    // the same CLI path remains a real, inspectable local directory.
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      ...(app.isPackaged ? { CREATIVESOS_CUT_CODE_RUNTIME_DIR: path.join(process.resourcesPath, "cut-code-runtime") } : {}),
+    },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";

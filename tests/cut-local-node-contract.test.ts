@@ -6,6 +6,8 @@ const brokerSource = readFileSync(new URL("../server/cut-local-nodes.ts", import
 const cliSource = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
 const recoverySource = readFileSync(new URL("../server/cut-job-recovery.ts", import.meta.url), "utf8");
 const creativeRuntimeSource = readFileSync(new URL("../client/src/components/cut/CutStudioCreativeRuntime.tsx", import.meta.url), "utf8");
+const desktopSource = readFileSync(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+const packageManifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
 const capabilities = {
   isolatedCode: true,
@@ -62,5 +64,12 @@ describe("CutStudio local-node contract", () => {
     expect(creativeRuntimeSource).toContain('const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured"');
     expect(creativeRuntimeSource).toContain("Execution setup required");
     expect(creativeRuntimeSource).toContain("!localCodeExecutionReady");
+  });
+
+  it("keeps the packaged desktop runtime outside the application archive", () => {
+    expect(cliSource).toContain("CREATIVESOS_CUT_CODE_RUNTIME_DIR");
+    expect(desktopSource).toContain('path.join(process.resourcesPath, "cut-code-runtime")');
+    expect(packageManifest.build.extraResources).toEqual(expect.arrayContaining([expect.objectContaining({ from: "runtimes/cut-code", to: "cut-code-runtime" })]));
+    expect(packageManifest.build.files).toContain("!node_modules/**/*");
   });
 });
