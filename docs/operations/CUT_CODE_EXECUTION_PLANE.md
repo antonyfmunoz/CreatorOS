@@ -102,6 +102,37 @@ general application credentials.
 5. Failed, cancelled, timed-out, or stale attempts revoke their lease and
    delete temporary material. A late completion cannot resurrect a job.
 
+## Local-node pairing and lifecycle
+
+The first delivered boundary is a registry and availability protocol, not a
+remote shell and not a render dispatcher. A signed-in owner creates a one-time
+pairing code from CutStudio. The code is hashed at rest, expires in 15 minutes,
+and is consumed atomically when a node claims it. Claiming produces a separate
+random device credential; only its SHA-256 hash is kept by CreativesOS.
+
+The CLI makes this lifecycle available without storing a general CreativesOS
+API key:
+
+```text
+creativesos node connect <pairing-code> --name "Editing workstation"
+creativesos node heartbeat --status ready
+creativesos node status
+creativesos node disconnect
+```
+
+`connect` records a redacted device identity and capability declaration in the
+API, then writes the device credential to `CreativesOS/cut-local-node.json`
+inside the current OS user's profile. It does not print the credential,
+transmit it to a container, or persist a developer API key. `heartbeat` is
+sequence-numbered and an old/replayed heartbeat is rejected. `disconnect`
+removes only the local credential; the owner must revoke the registry record
+from CutStudio when a machine is lost, sold, or no longer trusted.
+
+At this stage, the node can pair and report availability. It cannot yet claim
+or execute a `code_render` job. That requires the short-lived lease and
+artifact-receipt broker defined above; it must not be bypassed by sending a job
+or Docker access directly to a node.
+
 ## Compute profile and billing guardrail
 
 The qualified local child profile is one vCPU, 2 GiB memory, PID limit 256,

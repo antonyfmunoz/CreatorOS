@@ -23,7 +23,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     res.json({ nodes: nodes.map(safe) });
   });
   app.post("/api/cut/nodes/invitations", attachUser, async (req, res) => {
-    const business = await ensureDefaultBusiness(req.dbUser!.id);
+    const business = await ensureDefaultBusiness(req.dbUser!);
     const token = crypto.randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 15 * 60_000);
     await db.transaction(async tx => {
