@@ -160,9 +160,12 @@ or reported failure releases the node back to `ready`; expired-lease recovery
 releases it only after confirming it has no newer live job and removes the
 unaccepted temporary output.
 
-This is still not a public execution claim: no live R2-backed field run or
-release migration has been proven. The broker must not be bypassed by sending a
-job or Docker access directly to a node.
+Production release v390 applied the local-node migration and reports the
+R2-backed broker as configured. This remains an explicit field-test boundary:
+the next proof is an authenticated owner pairing a workstation, executing one
+eligible code-render job, and verifying the sealed artifact and lineage. The
+broker must not be bypassed by sending a job or Docker access directly to a
+node.
 
 The public-safe release-readiness record reports this capability as
 `disabled`, `unconfigured`, or `configured`. If an operator sets
