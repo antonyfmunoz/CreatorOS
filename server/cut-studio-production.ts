@@ -71,6 +71,44 @@ const compositionRenderBatchInput = z.object({
 }).superRefine((value, context) => {
   if (new Set(value.compositionIds).size !== value.compositionIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionIds"], message: "Composition identifiers must be unique" });
 });
+// This is intentionally narrower than the local renderer's full internal
+// contract. A public code render starts with bounded still/video/sequence
+// exports; private-media injection is added only with the brokered asset
+// manifest, never by giving the code container storage credentials.
+const codeRenderRequestInput = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
+  request: z.object({
+    mode: z.enum(["still", "video", "sequence"]),
+    width: z.number().int().min(16).max(3_840),
+    height: z.number().int().min(16).max(3_840),
+    fps: z.number().int().min(1).max(60),
+    durationInFrames: z.number().int().min(1).max(600),
+    frame: z.number().int().min(0).optional(),
+    frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+    format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif"]).optional(),
+    quality: z.number().int().min(1).max(100).optional(),
+    input: z.record(z.unknown()).default({}),
+  }).strict(),
+}).superRefine((value, context) => {
+  const request = value.request;
+  if (request.width * request.height > 3_840 * 2_160) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request"], message: "Output dimensions exceed the isolated renderer limit" });
+  if (request.mode === "still") {
+    if (request.frame === undefined || request.frame >= request.durationInFrames || request.frameRange !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request"], message: "A still export requires one valid frame" });
+    if (request.format && !["png", "jpeg", "webp"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported still format" });
+  } else {
+    const range = request.frameRange ?? [0, request.durationInFrames - 1];
+    if (range[0] < 0 || range[1] < range[0] || range[1] >= request.durationInFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "frameRange"], message: "The frame range is outside the composition" });
+    if (request.mode === "video" && request.format && !["mp4", "webm", "gif"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported video format" });
+    if (request.mode === "sequence" && request.format && !["png", "jpeg", "webp"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported sequence format" });
+  }
+  if (JSON.stringify(request.input).length > 64_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "input"], message: "Composition inputs exceed 64 KiB" });
+});
+
+function codeExecutionConfigured(environment: NodeJS.ProcessEnv = process.env) {
+  // The flag is deliberately separate from the trusted Cloud Run render plane.
+  // It may be enabled only after the broker and dedicated runner are deployed.
+  return environment.CUT_CODE_EXECUTOR_ENABLED === "true" && (environment.CUT_CODE_EXECUTOR_SECRET?.length ?? 0) >= 32;
+}
 
 async function projectAccess(userId: number, projectId: string) {
   if (!uuid.safeParse(projectId).success) return null;
@@ -226,8 +264,10 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
       mode: "clean_room",
       declarative: "configured",
       packageAuthoring: "configured",
-      // A URL is configuration, not proof of an implemented executable path.
-      isolatedCode: "not_implemented",
+      // This remains unavailable until both the broker secret and the explicit
+      // production feature switch are present. The ordinary render worker is
+      // never a substitute for this capability.
+      isolatedCode: codeExecutionConfigured() ? "configured" : "not_implemented",
       networkPolicy: "deny",
     },
     generationRuntime: {
@@ -486,6 +526,72 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     for (const job of jobs) dependencies.queueRenderJob(job.id);
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.render_batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, renderBatchId: parsed.data.idempotencyKey, compositionIds: ordered.map((composition) => composition.id), jobIds: jobs.map((job) => job.id), count: jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:render-batch:${parsed.data.idempotencyKey}` });
     res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: jobs.length, jobs });
+  });
+
+  // This endpoint only creates a durable, bounded request. A dedicated runner
+  // claims `code_render` jobs through the broker; the trusted Cloud Run worker
+  // intentionally does not advertise or process that kind.
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/code-renders", attachUser, compositionRenderLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    if (!codeExecutionConfigured()) return res.status(503).json({ message: "Isolated code rendering is not activated yet" });
+    const parsed = codeRenderRequestInput.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The code render request is invalid", issues: parsed.error.issues });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+      eq(cutStudioCompositions.mode, "sandboxed_tsx"),
+    )).limit(1);
+    if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
+    const capsule = composition.codeCapsule;
+    try { await assertCodeCapsuleAssets(access.project, capsule); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    const result = await db.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.${access.project.ownerUserId}`}))`);
+      const [existing] = await transaction.select().from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.projectId, access.project.id),
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        eq(cutStudioJobs.kind, "code_render"),
+        sql`${cutStudioJobs.request}->'codeRender'->>'idempotencyKey' = ${parsed.data.idempotencyKey}`,
+      )).limit(1);
+      if (existing) return { job: existing, existing: true } as const;
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        sql`${cutStudioJobs.state} in ('queued', 'running')`,
+      ));
+      if ((active?.count ?? 0) >= 2) return { busy: true } as const;
+      const request = {
+        codeRender: {
+          idempotencyKey: parsed.data.idempotencyKey,
+          compositionId: composition.id,
+          compositionRevision: composition.revision,
+          sourceAssetId: capsule.sourceAssetId,
+          lockfileAssetId: capsule.lockfileAssetId,
+          entrypoint: capsule.entrypoint,
+          limits: {
+            maximumCpuMs: capsule.maximumCpuMs,
+            maximumMemoryMb: capsule.maximumMemoryMb,
+            maximumOutputBytes: capsule.maximumOutputBytes,
+          },
+          runtime: { version: 1, ...parsed.data.request, entrypoint: capsule.entrypoint },
+        },
+      };
+      const [job] = await transaction.insert(cutStudioJobs).values({
+        projectId: access.project.id,
+        ownerUserId: access.project.ownerUserId,
+        kind: "code_render",
+        maxAttempts: 1,
+        maxDispatchAttempts: 1,
+        detail: "Waiting for the isolated code runner",
+        request,
+      }).returning();
+      return { job, existing: false } as const;
+    });
+    if (result.busy) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.queued` });
+    res.status(result.existing ? 200 : 202).json(result.job);
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {
