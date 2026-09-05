@@ -71,10 +71,10 @@ async function request(path, requiresKey = true) {
   return body;
 }
 
-async function nodeRequest(pathname, { method = "GET", body, credential } = {}) {
+async function nodeRequest(pathname, { method = "GET", body, credential, origin = appUrl } = {}) {
   let response;
   try {
-    response = await fetch(`${appUrl}${pathname}`, {
+    response = await fetch(`${origin}${pathname}`, {
       method,
       headers: {
         Accept: "application/json",
@@ -92,10 +92,10 @@ async function nodeRequest(pathname, { method = "GET", body, credential } = {}) 
   return responseBody;
 }
 
-async function rawNodeRequest(pathname, { method = "GET", body, credential } = {}) {
+async function rawNodeRequest(pathname, { method = "GET", body, credential, origin = appUrl } = {}) {
   let response;
   try {
-    response = await fetch(`${appUrl}${pathname}`, {
+    response = await fetch(`${origin}${pathname}`, {
       method,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}), ...(credential ? { Authorization: `Bearer ${credential}` } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20_000),
@@ -161,7 +161,8 @@ async function downloadPrivateSource(url) {
 }
 
 async function executeOneLocalJob(config) {
-  const claimed = await rawNodeRequest("/api/cut/nodes/jobs/claim", { method: "POST", credential: config.credential });
+  const origin = config.appUrl;
+  const claimed = await rawNodeRequest("/api/cut/nodes/jobs/claim", { method: "POST", credential: config.credential, origin });
   if (claimed.response.status === 204) return { status: "idle" };
   const payload = claimed.body;
   const jobId = payload?.job?.id;
@@ -172,7 +173,7 @@ async function executeOneLocalJob(config) {
     const image = localRuntimeImage();
     const { renderIsolated } = await import("../runtimes/cut-code/host.mjs");
     const heartbeat = setInterval(() => {
-      void rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } }).catch(() => undefined);
+      void rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, origin, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } }).catch(() => undefined);
     }, 60_000);
     let rendered;
     try {
@@ -184,12 +185,12 @@ async function executeOneLocalJob(config) {
     if (artifactSha256 !== rendered.receipt?.artifactSha256) throw new Error("The local runtime receipt did not match its artifact.");
     const upload = await fetch(payload.output.uploadUrl, { method: "PUT", headers: { "Content-Type": payload.output.mimeType }, body: rendered.artifact, signal: AbortSignal.timeout(90_000) });
     if (!upload.ok) throw new Error("The temporary artifact upload was rejected.");
-    const completed = await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/complete`, { method: "POST", credential: config.credential, body: { leaseToken, storageKey: payload.output.storageKey, sha256: artifactSha256, filename: payload.output.filename } });
+    const completed = await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/complete`, { method: "POST", credential: config.credential, origin, body: { leaseToken, storageKey: payload.output.storageKey, sha256: artifactSha256, filename: payload.output.filename } });
     if (!completed.response.ok) throw new Error("CreativesOS did not accept the local render artifact.");
     return { status: "completed", jobId, artifactId: completed.body?.artifact?.id, image };
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 400) : "Local isolated rendering failed";
-    await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, body: { leaseToken, code: "local_node_render_failed", detail } }).catch(() => undefined);
+    await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, origin, body: { leaseToken, code: "local_node_render_failed", detail } }).catch(() => undefined);
     throw error;
   }
 }
@@ -217,7 +218,7 @@ async function runNodeCommand() {
     const status = option("--status") ?? "ready";
     if (!new Set(["ready", "busy", "paused"]).has(status)) fail("--status must be ready, busy, or paused.", 2);
     const sequence = Number(config.sequence ?? 0) + 1;
-    const result = await nodeRequest(`/api/cut/nodes/${config.nodeId}/heartbeat`, { method: "POST", credential: config.credential, body: { sequence, status } });
+    const result = await nodeRequest(`/api/cut/nodes/${config.nodeId}/heartbeat`, { method: "POST", credential: config.credential, origin: config.appUrl, body: { sequence, status } });
     await saveNodeConfig({ ...config, sequence, lastHeartbeatAt: new Date().toISOString() });
     print({ status: result.node.status, nodeId: result.node.id, sequence, lastSeenAt: result.node.lastSeenAt });
     return;

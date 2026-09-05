@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { cutLocalNodeCapabilitiesSchema, cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "../shared/cut-node";
+
+const brokerSource = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
+const cliSource = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
+const recoverySource = readFileSync(new URL("../server/cut-job-recovery.ts", import.meta.url), "utf8");
 
 const capabilities = {
   isolatedCode: true,
@@ -17,7 +22,7 @@ describe("CutStudio local-node contract", () => {
   });
 
   it("rejects capability inflation and malformed pairing input", () => {
-    expect(() => cutLocalNodeCapabilitiesSchema.parse({ ...capabilities, maxConcurrentJobs: 5 })).toThrow();
+    expect(() => cutLocalNodeCapabilitiesSchema.parse({ ...capabilities, maxConcurrentJobs: 2 })).toThrow();
     expect(() => cutLocalNodeCapabilitiesSchema.parse({ ...capabilities, memoryMb: 511 })).toThrow();
     expect(() => cutLocalNodeClaimSchema.parse({ token: "short", name: "", capabilities })).toThrow();
   });
@@ -35,5 +40,20 @@ describe("CutStudio local-node contract", () => {
     expect(cutLocalNodeJobFailureSchema.parse({ leaseToken, detail: "Renderer stopped" })).toMatchObject({ code: "local_node_render_failed" });
     expect(() => cutLocalNodeJobHeartbeatSchema.parse({ leaseToken: "not-a-lease", progress: 2 })).toThrow();
     expect(() => cutLocalNodeJobCompletionSchema.parse({ leaseToken, storageKey: "x", sha256: "bad", filename: "../output.mp4" })).toThrow();
+  });
+
+  it("enforces one server-owned local render lease and keeps a paired origin stable", () => {
+    expect(brokerSource).toContain('eq(cutStudioLocalNodes.status, "ready")');
+    expect(brokerSource).toContain('status: "busy"');
+    expect(brokerSource).toContain("This node still owns an active local render lease");
+    expect(brokerSource).toContain('status: "ready", updatedAt: new Date()');
+    expect(cliSource).toContain("origin = appUrl");
+    expect(cliSource).toContain("origin: config.appUrl");
+  });
+
+  it("releases only an expired paired-node lock and discards its temporary object", () => {
+    expect(recoverySource).toContain("removeStoredAsset(temporaryStorageKey, \"private\")");
+    expect(recoverySource).toContain('eq(cutStudioLocalNodes.status, "busy")');
+    expect(recoverySource).toContain("leaseExpiresAt} > clock_timestamp()");
   });
 });

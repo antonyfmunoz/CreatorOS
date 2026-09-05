@@ -95,8 +95,16 @@ export function registerCutLocalNodeRoutes(app: Express) {
   app.post("/api/cut/nodes/:id/heartbeat", async (req, res) => {
     const node = await authenticated(req); if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeHeartbeatSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
-    const [updated] = await db.update(cutStudioLocalNodes).set({ status: parsed.data.status, lastSequence: parsed.data.sequence, lastSeenAt: new Date(), updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), lt(cutStudioLocalNodes.lastSequence, parsed.data.sequence), isNull(cutStudioLocalNodes.revokedAt))).returning();
-    if (!updated) return res.status(409).json({ message: "A newer node heartbeat was already accepted" }); res.json({ node: safe(updated) });
+    // A running lease owns the node. An out-of-band heartbeat cannot make it
+    // ready again and permit a second concurrent local render.
+    const readyGuard = parsed.data.status === "ready" ? sql`not exists (
+      select 1 from ${cutStudioJobs}
+      where ${cutStudioJobs.workerId} = ${`cut-local-node:${node.id}`}
+        and ${cutStudioJobs.state} = 'running'
+        and ${cutStudioJobs.leaseExpiresAt} > clock_timestamp()
+    )` : sql`true`;
+    const [updated] = await db.update(cutStudioLocalNodes).set({ status: parsed.data.status, lastSequence: parsed.data.sequence, lastSeenAt: new Date(), updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), lt(cutStudioLocalNodes.lastSequence, parsed.data.sequence), isNull(cutStudioLocalNodes.revokedAt), readyGuard)).returning();
+    if (!updated) return res.status(409).json({ message: parsed.data.status === "ready" ? "This node still owns an active local render lease" : "A newer node heartbeat was already accepted" }); res.json({ node: safe(updated) });
   });
   app.post("/api/cut/nodes/jobs/claim", async (req, res) => {
     const node = await authenticated(req);
@@ -128,12 +136,17 @@ export function registerCutLocalNodeRoutes(app: Express) {
       await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
       await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
       const now = sql`clock_timestamp() AT TIME ZONE 'UTC'`;
+      // The status transition is a per-node work lock. This enforces the
+      // one-job capability server-side rather than trusting the local CLI.
+      const [busyNode] = await tx.update(cutStudioLocalNodes).set({ status: "busy", lastSeenAt: new Date(), updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), eq(cutStudioLocalNodes.status, "ready"), isNull(cutStudioLocalNodes.revokedAt))).returning({ id: cutStudioLocalNodes.id });
+      if (!busyNode) return null;
       const [claimed] = await tx.update(cutStudioJobs).set({
         state: "running", attempt: sql`${cutStudioJobs.attempt} + 1`, detail: "Claimed by paired local node", progress: 0.05,
         workerId: `cut-local-node:${node.id}`, workerRegion: "local-device", leaseToken,
         leaseExpiresAt: sql`(${now}) + ${localLeaseMs} * interval '1 millisecond'`, heartbeatAt: now, startedAt: now, finishedAt: null, errorCode: null,
         output: { ...candidate.output, localNode: { temporaryStorageKey: output.storageKey, mimeType: descriptor.mimeType, filename: descriptor.filename } },
       }).where(and(eq(cutStudioJobs.id, candidate.id), eq(cutStudioJobs.state, "queued"), isNull(cutStudioJobs.cancellationRequestedAt), lt(cutStudioJobs.attempt, cutStudioJobs.maxAttempts))).returning();
+      if (!claimed) await tx.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), eq(cutStudioLocalNodes.status, "busy"), isNull(cutStudioLocalNodes.revokedAt)));
       return claimed ?? null;
     });
     if (!job) return res.status(204).end();
@@ -149,6 +162,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
       });
     } catch {
       await withCutJobLeaseWrite(job.id, leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "error", detail: "Private source delivery was unavailable", errorCode: "local_node_source_unavailable", leaseExpiresAt: null, finishedAt: new Date() }).where(eq(cutStudioJobs.id, job.id)));
+      await db.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt))).catch(() => undefined);
       res.status(503).json({ message: "Private source delivery is not configured" });
     }
   });
@@ -169,6 +183,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
     const failed = await withCutJobLeaseWrite(job.id, parsed.data.leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "error", detail: parsed.data.detail, errorCode: parsed.data.code, progress: 0, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`))).returning({ id: cutStudioJobs.id }));
     if (!failed?.length) return res.status(409).json({ message: "The local code-render lease is no longer active" });
+    await db.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt))).catch(() => undefined);
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.code_render.failed", actorUserId: node.ownerUserId, payload: { jobId: job.id, nodeId: node.id, code: parsed.data.code }, idempotencyKey: `cutstudio:${job.id}:code-render.failed` });
     res.status(204).end();
   });
@@ -209,7 +224,9 @@ export function registerCutLocalNodeRoutes(app: Express) {
           sha256: parsed.data.sha256, metadata: { cutStudioProjectId: job.projectId, cutStudioJobId: job.id, cutStudioCompositionId: request.compositionId, execution: "paired_local_node", nodeId: node.id },
         }).returning();
         const [completed] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Local isolated render ready", progress: 1, artifactAssetId: artifact.id, output: { artifactId: artifact.id, filename: parsed.data.filename, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, execution: "paired_local_node", nodeId: node.id }, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`))).returning({ id: cutStudioJobs.id });
-        return completed ? artifact : null;
+        if (!completed) return null;
+        await transaction.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt)));
+        return artifact;
       });
       if (!accepted) {
         await removeStoredAsset(sealed.storageKey, "private").catch(() => undefined);

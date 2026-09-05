@@ -1,5 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
-import { cutStudioJobs } from "@shared/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { cutStudioJobs, cutStudioLocalNodes } from "@shared/schema";
+import { removeStoredAsset } from "./asset-storage";
 import { db } from "./db";
 
 /** One canonical recovery path for the worker tick and owner status polling.
@@ -11,6 +12,15 @@ export async function recoverCutJobs(jobId?: string) {
   // The final accepted start retains its complete window before it can fail.
   const dispatchExhausted = sql`(${cutStudioJobs.state} = 'queued' AND ${cutStudioJobs.dispatchAttempt} >= ${cutStudioJobs.maxDispatchAttempts} AND (${cutStudioJobs.dispatchExpiresAt} IS NULL OR ${cutStudioJobs.dispatchExpiresAt} <= (${now})))`;
   const terminal = sql`(${exhausted} OR ${dispatchExhausted})`;
+  const recoverable = sql`((${cutStudioJobs.state} = 'running' AND (
+      ${cutStudioJobs.leaseExpiresAt} <= (${now}) OR
+      (${cutStudioJobs.leaseExpiresAt} IS NULL AND ${cutStudioJobs.startedAt} <= (${now}) - interval '35 minutes')
+    )) OR (${cutStudioJobs.state} = 'queued' AND (${cancelled} OR ${terminal})))`;
+  // Retain pre-update worker/output values. PostgreSQL RETURNING reflects the
+  // cleared lease fields, while a paired local node needs its old identity and
+  // temporary object key for safe recovery cleanup.
+  const candidates = await db.select({ id: cutStudioJobs.id, workerId: cutStudioJobs.workerId, output: cutStudioJobs.output })
+    .from(cutStudioJobs).where(and(jobId ? eq(cutStudioJobs.id, jobId) : undefined, recoverable));
   const rows = await db.update(cutStudioJobs).set({
     state: sql`CASE WHEN ${cancelled} THEN 'cancelled' WHEN ${terminal} THEN 'error' ELSE 'queued' END`,
     detail: sql`CASE WHEN ${cancelled} THEN 'Cancelled by user' WHEN ${exhausted} THEN 'Automatic recovery limit reached. Review the failure before retrying.' WHEN ${dispatchExhausted} THEN 'Worker start limit reached. Review the failure before retrying.' ELSE 'Recovering interrupted worker lease' END`,
@@ -18,12 +28,25 @@ export async function recoverCutJobs(jobId?: string) {
     progress: 0, workerId: null, workerRegion: null, leaseToken: null, leaseExpiresAt: null,
     heartbeatAt: null, startedAt: null,
     finishedAt: sql`CASE WHEN ${cancelled} OR ${terminal} THEN ${now} ELSE NULL END`,
-  }).where(and(jobId ? eq(cutStudioJobs.id, jobId) : undefined,
-    sql`((${cutStudioJobs.state} = 'running' AND (
-      ${cutStudioJobs.leaseExpiresAt} <= (${now}) OR
-      (${cutStudioJobs.leaseExpiresAt} IS NULL AND ${cutStudioJobs.startedAt} <= (${now}) - interval '35 minutes')
-    )) OR (${cutStudioJobs.state} = 'queued' AND (${cancelled} OR ${terminal})))`,
-  )).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
+  }).where(and(jobId ? eq(cutStudioJobs.id, jobId) : undefined, recoverable)).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
+  const recoveredIds = new Set(rows.map(row => row.id));
+  const released = candidates.filter(candidate => recoveredIds.has(candidate.id));
+  const localNodeIds = new Set<string>();
+  await Promise.all(released.map(async candidate => {
+    const nodeId = candidate.workerId?.match(/^cut-local-node:([^:]+)$/)?.[1];
+    if (nodeId) localNodeIds.add(nodeId);
+    const localNode = candidate.output && typeof candidate.output === "object" && !Array.isArray(candidate.output) ? (candidate.output as Record<string, unknown>).localNode : null;
+    let temporaryStorageKey: string | null = null;
+    if (localNode && typeof localNode === "object" && !Array.isArray(localNode)) {
+      const value = (localNode as Record<string, unknown>).temporaryStorageKey;
+      if (typeof value === "string") temporaryStorageKey = value;
+    }
+    if (temporaryStorageKey) await removeStoredAsset(temporaryStorageKey, "private").catch(() => undefined);
+  }));
+  await Promise.all(Array.from(localNodeIds).map(nodeId => db.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(
+    eq(cutStudioLocalNodes.id, nodeId), eq(cutStudioLocalNodes.status, "busy"), isNull(cutStudioLocalNodes.revokedAt),
+    sql`not exists (select 1 from ${cutStudioJobs} where ${cutStudioJobs.workerId} = ${`cut-local-node:${nodeId}`} and ${cutStudioJobs.state} = 'running' and ${cutStudioJobs.leaseExpiresAt} > clock_timestamp())`,
+  )).catch(() => undefined)));
   return rows;
 }
 

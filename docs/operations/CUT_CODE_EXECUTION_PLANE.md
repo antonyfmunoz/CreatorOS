@@ -153,6 +153,13 @@ submits its hash to the broker. It does not run automatically, install a
 package, accept an arbitrary image tag as the execution identity, or expose a
 Docker socket to a container.
 
+The broker changes the node from `ready` to `busy` in the same transaction as
+the job claim. A `ready` heartbeat is rejected while that node holds a live
+lease, so a second terminal invocation cannot create parallel work. Completion
+or reported failure releases the node back to `ready`; expired-lease recovery
+releases it only after confirming it has no newer live job and removes the
+unaccepted temporary output.
+
 This is still not a public execution claim: no live R2-backed field run or
 release migration has been proven. The broker must not be bypassed by sending a
 job or Docker access directly to a node.

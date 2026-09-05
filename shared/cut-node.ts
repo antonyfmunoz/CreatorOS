@@ -3,7 +3,10 @@ import { z } from "zod";
 export const cutLocalNodeCapabilitiesSchema = z.object({
   isolatedCode: z.boolean(),
   docker: z.boolean(),
-  maxConcurrentJobs: z.number().int().min(1).max(4).default(1),
+  // The current isolated host is intentionally single-tenant. Raising this
+  // requires a separately qualified multi-container scheduler and admission
+  // policy; a capability declaration must not get ahead of that work.
+  maxConcurrentJobs: z.literal(1).default(1),
   cpuCores: z.number().int().min(1).max(256),
   memoryMb: z.number().int().min(512).max(1_048_576),
   operatingSystem: z.enum(["windows", "macos", "linux"]),
