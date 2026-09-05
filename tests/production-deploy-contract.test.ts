@@ -36,7 +36,7 @@ describe("production deployment contract", () => {
   it("embeds a non-secret exact-source identity into every production image", () => {
     const cleanIndex = deploySource.indexOf("node scripts/assert-clean-source.mjs");
     const archiveIndex = deploySource.indexOf("git archive --format=tar");
-    const fingerprintIndex = deploySource.indexOf("Get-FileHash -LiteralPath $archivePath");
+    const fingerprintIndex = deploySource.indexOf("& node -e \"const { createHash } = require('node:crypto')");
     const deployIndex = deploySource.indexOf("flyctl deploy .");
     expect(deploySource).toContain("Production releases require a clean source worktree");
     expect(cleanIndex).toBeGreaterThan(-1);

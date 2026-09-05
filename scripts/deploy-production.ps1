@@ -64,7 +64,17 @@ try {
     throw "Unable to extract the immutable release source snapshot"
   }
 
-  $sourceFingerprint = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  # Keep the release fingerprint independent of the operator's PowerShell
+  # installation. Some hardened Windows environments omit Get-FileHash, while
+  # Node is already required by this release path and provides the same SHA-256
+  # primitive without placing source contents in the shell pipeline.
+  $sourceFingerprint = (
+    & node -e "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));" $archivePath |
+      Out-String
+  ).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to calculate the release source fingerprint"
+  }
   if ($sourceFingerprint -notmatch '^[0-9a-f]{64}$') {
     throw "Unable to calculate the release source fingerprint"
   }
