@@ -8,6 +8,7 @@ const tools = [
   ["creativesos_assets", "List assets for the API key's scoped business.", "/assets"],
   ["creativesos_products", "List products for the API key's scoped business.", "/products"],
   ["creativesos_analytics_summary", "Read the analytics summary for the API key's scoped business.", "/analytics/summary"],
+  ["creativesos_cut_local_nodes", "Read paired CutStudio local-node status for the API key's scoped business. This cannot pair, execute, or revoke a node.", "/cut/local-nodes"],
   ["creativesos_openapi", "Read the current public CreativesOS OpenAPI document.", "/openapi.json", false],
 ];
 

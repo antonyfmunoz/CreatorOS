@@ -33,6 +33,7 @@ import {
   developerOAuthRefreshTokens,
   developerSandboxes,
   products,
+  cutStudioLocalNodes,
 } from "@shared/schema";
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
@@ -515,6 +516,12 @@ export function registerDeveloperPlatformRoutes(app: Express) {
           get: {
             summary: "Summarize first-party event counts",
             security: [{ bearerAuth: ["analytics:read"] }],
+          },
+        },
+        "/cut/local-nodes": {
+          get: {
+            summary: "List paired CutStudio local-node status without device credentials",
+            security: [{ bearerAuth: ["cut:read"] }],
           },
         },
       },
@@ -1065,6 +1072,25 @@ export function registerDeveloperPlatformRoutes(app: Express) {
       res.json({
         data: rows.map((row) => ({ ...row, count: Number(row.count) })),
       });
+    },
+  );
+  app.get(
+    "/api/v1/cut/local-nodes",
+    rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }),
+    requireDeveloperScope("cut:read"),
+    async (req, res) => {
+      const auth = developerAuth(req)!;
+      const rows = await db.select({
+        id: cutStudioLocalNodes.id,
+        name: cutStudioLocalNodes.name,
+        status: cutStudioLocalNodes.status,
+        capabilities: cutStudioLocalNodes.capabilities,
+        lastSeenAt: cutStudioLocalNodes.lastSeenAt,
+        revokedAt: cutStudioLocalNodes.revokedAt,
+        createdAt: cutStudioLocalNodes.createdAt,
+      }).from(cutStudioLocalNodes).where(eq(cutStudioLocalNodes.businessId, auth.businessId)).orderBy(desc(cutStudioLocalNodes.updatedAt));
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data: rows });
     },
   );
 }

@@ -5,6 +5,7 @@ export const developerApiScopes = [
   "assets:read",
   "products:read",
   "analytics:read",
+  "cut:read",
 ] as const;
 
 export const developerWebhookEventTypes = [
