@@ -5,6 +5,9 @@ import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
 import { cutClipPreviewAt } from "@shared/cut-clip-preview";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
+import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import { cutLottieFrameAtTime, type CutLottieTiming } from "@shared/cut-animation-time";
+import type { AnimationItem } from "lottie-web";
 import type { CutEdl, CutGraphic, CutRenderRequest } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -56,7 +59,38 @@ function PrimaryGraphic({ graphic, frame, fps }: { graphic: CutGraphic; frame: n
     }
   }
   if (graphic.kind === "image" && graphic.assetId) return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={{ ...style, objectFit: graphic.imageFit ?? "contain" }} src={`/api/assets/${encodeURIComponent(graphic.assetId)}/stream`} alt=""/>;
+  if (graphic.kind === "lottie" && graphic.assetId) return <PrimaryLottie graphic={graphic} frame={frame} fps={fps} style={style}/>;
   return null;
+}
+
+function PrimaryLottie({ graphic, frame, fps, style }: { graphic: CutGraphic; frame: number; fps: number; style: CSSProperties }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const animation = useRef<AnimationItem | null>(null);
+  const bounds = useRef<CutLottieTiming | null>(null);
+  const latestSeconds = useRef(0);
+  latestSeconds.current = Math.max(0, frame / fps - graphic.timelineStart + (graphic.animationSourceStartSeconds ?? 0));
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController(); let active = true;
+    animation.current?.destroy(); animation.current = null; bounds.current = null; setError("");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/assets/${encodeURIComponent(graphic.assetId!)}/stream`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Private Lottie media is unavailable");
+        const validated = validateCutStudioLottie(await response.json() as unknown);
+        const lottie = (await import("lottie-web/build/player/lottie_light")).default;
+        if (!active || !host.current) return;
+        bounds.current = { frameRate: validated.frameRate, inPoint: validated.inPoint, outPoint: validated.outPoint };
+        const instance = lottie.loadAnimation({ container: host.current, renderer: "svg", loop: false, autoplay: false, animationData: validated.animationData });
+        animation.current = instance;
+        instance.addEventListener("DOMLoaded", () => { if (active) instance.goToAndStop(cutLottieFrameAtTime(latestSeconds.current, validated), true); });
+        instance.addEventListener("data_failed", () => { if (active) setError("Lottie preview failed"); });
+      } catch (caught) { if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Lottie preview failed"); }
+    })();
+    return () => { active = false; controller.abort(); animation.current?.destroy(); animation.current = null; };
+  }, [graphic.assetId]);
+  useEffect(() => { if (animation.current && bounds.current) animation.current.goToAndStop(cutLottieFrameAtTime(latestSeconds.current, bounds.current), true); }, [frame, fps, graphic.timelineStart, graphic.animationSourceStartSeconds]);
+  return <div data-primary-preview-graphic={graphic.id} className="absolute overflow-hidden" style={style}>{error ? <span className="grid h-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</span> : <div ref={host} aria-label={`${graphic.text || "Timeline"} Lottie preview`} className="h-full w-full"/>}</div>;
 }
 
 function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onError }: { clip: NonNullable<CutEdl["clips"]>[number]; media: Media; projectId: string; frame: number; fps: number; playing: boolean; onError: (message: string) => void }) {
@@ -120,7 +154,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   const active = state?.clip ? media.find((item) => item.assetId === (state.clip!.assetId ?? sourceAssetId)) : undefined;
   const outgoing = state?.outgoing;
   const graphicTime = frame / fps;
-  const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => ["lottie", "rive"].includes(graphic.kind) && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
+  const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => graphic.kind === "rive" && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
   const activeOverlays = edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" && (clip.track ?? "").startsWith("v") && !edl.tracks?.find((track) => track.track === clip.track)?.hidden)
     .flatMap((clip) => { const overlay = media.find((item) => item.assetId === clip.assetId); return overlay ? [{ clip, media: overlay }] : []; });
   const unsupportedOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && (clip.chromaKey?.enabled || clip.colorPreset && clip.colorPreset !== "original" || clip.lutAssetId));
@@ -176,7 +210,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie or Rive graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Lottie/Rive, color/effects and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Rive graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Rive, color/effects and captions require a rendered preview.")}</p>
   </div>;
 }
 
