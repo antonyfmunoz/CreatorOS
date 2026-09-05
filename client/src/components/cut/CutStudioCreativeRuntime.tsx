@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
+import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, KeyRound, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
@@ -22,6 +22,8 @@ type JobRow = { id: string; shotId: string; provider: string; model: string; sta
 type VariantRow = { id: string; shotId: string; generationJobId?: string | null; assetId?: string | null; provider: string; model: string; seed?: number | null; status: "candidate" | "selected" | "rejected" | "superseded"; provenance: Record<string, unknown> };
 type WorkflowRow = { id: string; workflow: CutGenerativeWorkflow; revision: number };
 type ProviderRow = { id: string; label: string; configured: boolean; capabilities: readonly string[] };
+type LocalNodeInvitation = { token: string; expiresAt: string };
+type LocalNodeRow = { id: string; name: string; status: "ready" | "busy" | "paused" | "revoked"; lastSeenAt: string | null; capabilities: { isolatedCode: boolean; docker: boolean; operatingSystem: string; cpuCores: number; memoryMb: number } };
 type RuntimePayload = {
   compositionRuntime: { declarative: string; packageAuthoring: string; isolatedCode: string; networkPolicy: string };
   generationRuntime: { dispatchEnabled: boolean; providers: ProviderRow[] };
@@ -97,6 +99,8 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [codeEntrypoint, setCodeEntrypoint] = useState("src/index.tsx");
   const [codeSourceAssetId, setCodeSourceAssetId] = useState("");
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
+  const [nodeInvitation, setNodeInvitation] = useState<LocalNodeInvitation | null>(null);
+  const [localNodes, setLocalNodes] = useState<LocalNodeRow[]>([]);
 
   const refresh = async () => {
     const generation = ++refreshGeneration.current;
@@ -104,12 +108,16 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     if (!alive.current || generation !== refreshGeneration.current) return;
     setRuntime(next);
   };
+  const refreshNodes = async () => {
+    const result = await (await apiRequest("GET", "/api/cut/nodes")).json() as { nodes: LocalNodeRow[] };
+    if (alive.current) setLocalNodes(result.nodes);
+  };
 
   useEffect(() => {
     alive.current = true;
-    setRuntime(null); setMessage("");
+    setRuntime(null); setMessage(""); setNodeInvitation(null);
     onUnsavedChange?.(false);
-    void refresh().catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
+    void Promise.all([refresh(), refreshNodes()]).catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
     return () => { alive.current = false; ++refreshGeneration.current; };
   }, [project.id]);
   useEffect(() => {
@@ -194,7 +202,27 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
     await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
     await refresh();
-    setMessage("Pinned code composition saved. The isolated executor still needs implementation and qualification; adding a provider URL alone does not enable execution.");
+    setMessage("Pinned code composition saved. Pair a trusted local node before queueing a bounded isolated render.");
+  });
+
+  const createNodeInvitation = () => act("node:pair", async () => {
+    const invitation = await (await apiRequest("POST", "/api/cut/nodes/invitations", {})).json() as LocalNodeInvitation;
+    setNodeInvitation(invitation);
+    setMessage("One-time local-node pairing code created. It expires in 15 minutes and is shown only here.");
+  });
+
+  const revokeNode = (node: LocalNodeRow) => act(`node:revoke:${node.id}`, async () => {
+    await apiRequest("DELETE", `/api/cut/nodes/${node.id}`);
+    await refreshNodes(); setMessage(`${node.name} was revoked. Its local credential can no longer claim work.`);
+  });
+
+  const queueCodeRender = (composition: CompositionRow) => act(`code-render:${composition.id}`, async () => {
+    const idempotencyKey = `code.${composition.id}.${crypto.randomUUID()}`;
+    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/code-renders`, {
+      idempotencyKey,
+      request: { mode: "still", width: 1080, height: 1080, fps: 30, durationInFrames: 30, frame: 0, format: "png", input: {} },
+    });
+    await refresh(); setMessage("Bounded local still render queued. Run `creativesos node work` on a paired, ready machine to execute it.");
   });
 
   const loadSource = () => {
@@ -298,7 +326,8 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
         <div className="rounded-xl border border-zinc-800 bg-black p-3" aria-label="Code composition package">
-          <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. CreativesOS stores and validates it now. Public code rendering is not available yet; the isolated runtime still needs production integration and qualification.</p></div>
+          <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. A paired local node runs it only in the isolated no-network runtime; CreativesOS never sends it to the normal render worker.</p></div>
+          <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-bold text-zinc-200">Trusted local node</p><p className="mt-1 text-[9px] leading-4 text-zinc-500">Pair your own workstation, then run one queued job explicitly from its CLI. The code is single-use and never stored in the browser.</p></div><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createNodeInvitation()}>{busy === "node:pair" ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><KeyRound className="mr-1 h-3.5 w-3.5"/>Pair node</>}</Button></div>{nodeInvitation && <div className="mt-3 rounded-md border border-zinc-700 bg-black p-2"><p className="select-all break-all font-mono text-[10px] text-[#1d9bf0]">{nodeInvitation.token}</p><p className="mt-1 text-[9px] text-zinc-500">On the trusted machine: <span className="font-mono text-zinc-300">creativesos node connect &lt;this-code&gt;</span> · expires {new Date(nodeInvitation.expiresAt).toLocaleTimeString()}</p></div>}<div className="mt-3 space-y-2">{localNodes.length === 0 ? <p className="text-[9px] text-zinc-600">No paired local node yet.</p> : localNodes.map((node) => <div key={node.id} className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-black px-2 py-2"><div className="min-w-0"><p className="truncate text-[10px] font-bold">{node.name}</p><p className="text-[9px] text-zinc-500">{node.status} · {node.capabilities.operatingSystem} · {node.capabilities.cpuCores} cores · {node.capabilities.isolatedCode ? "isolated runtime" : "Docker unavailable"}{node.lastSeenAt ? ` · seen ${new Date(node.lastSeenAt).toLocaleTimeString()}` : ""}</p></div>{node.status !== "revoked" && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { if (window.confirm(`Revoke ${node.name}? It will no longer be able to claim local renders.`)) void revokeNode(node); }}>Revoke</Button>}</div>)}</div></div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
             changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null }, "reset");
@@ -309,7 +338,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
           <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
         </div>
-        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>Package saved; isolated code execution still requires implementation and qualification.</p></div>}</div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container.</p><Button className="mt-2" size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void queueCodeRender(composition)}>{busy === `code-render:${composition.id}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Play className="mr-1 h-3.5 w-3.5"/>}Queue local still</Button></div>}</div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">
