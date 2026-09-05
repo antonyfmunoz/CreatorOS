@@ -5,6 +5,7 @@ import { cutLocalNodeCapabilitiesSchema, cutLocalNodeClaimSchema, cutLocalNodeHe
 const brokerSource = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
 const cliSource = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
 const recoverySource = readFileSync(new URL("../server/cut-job-recovery.ts", import.meta.url), "utf8");
+const creativeRuntimeSource = readFileSync(new URL("../client/src/components/cut/CutStudioCreativeRuntime.tsx", import.meta.url), "utf8");
 
 const capabilities = {
   isolatedCode: true,
@@ -55,5 +56,11 @@ describe("CutStudio local-node contract", () => {
     expect(recoverySource).toContain("removeStoredAsset(temporaryStorageKey, \"private\")");
     expect(recoverySource).toContain('eq(cutStudioLocalNodes.status, "busy")');
     expect(recoverySource).toContain("leaseExpiresAt} > clock_timestamp()");
+  });
+
+  it("does not offer a knowingly unavailable local render", () => {
+    expect(creativeRuntimeSource).toContain('const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured"');
+    expect(creativeRuntimeSource).toContain("Execution setup required");
+    expect(creativeRuntimeSource).toContain("!localCodeExecutionReady");
   });
 });
