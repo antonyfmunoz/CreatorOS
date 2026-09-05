@@ -14,6 +14,27 @@ path is a user-approved local node (CLI first, optional desktop wrapper), not
 a managed cloud worker. A URL, a container image, or an unchecked feature flag
 is not evidence that this contract is met.
 
+## Projection interface standard
+
+CreativesOS is a standalone UMH projection, not merely a website. Every
+durable CutStudio capability must be available through the projection's shared
+capability contract and then presented through these first-class surfaces:
+
+| Surface | Role in this capability |
+| --- | --- |
+| Web app | Main collaborative authoring, preview, review, billing disclosure and device selection experience. |
+| Desktop app | Optional native workspace that wraps the same local-node capability with installation, pairing, file access and device controls. |
+| CLI | The canonical local-node executable for headless workstations, CI, scripts and power users. It owns pairing, status, explicit job approval and local sandbox launch. |
+| Versioned API | The authority for projects, authorization, durable jobs, device registry, receipts, artifacts and entitlements. No UI has a private-only backend path. |
+| MCP | Narrow, user-authorized tools for an AI agent to inspect projects, prepare a bounded render request, query node status, and request (never silently approve) a local or managed render. |
+| Automation/agent runtime | Delegated workflows built on the same API and policy contract; it cannot bypass device approval, rights checks, credits, concurrency or audit receipts. |
+
+The interfaces are peers over one domain contract, not six separate products.
+The web application does not get a privileged render path; the CLI is not an
+unbounded shell; and MCP never receives a raw Docker socket or long-lived
+device credential. Each request carries an actor, projection/tenant scope,
+idempotency key, policy decision and auditable result.
+
 ## Live baseline — 2026-09-04
 
 The `creativesos-504623` project currently has:
