@@ -9,8 +9,10 @@ that capsule or give it access to the database, private-object credentials,
 application secrets, metadata endpoints, or the public network.
 
 This document is the deployment contract for turning the already-qualified
-`runtimes/cut-code` renderer into a production feature. A URL, a container
-image, or an unchecked feature flag is not evidence that this contract is met.
+`runtimes/cut-code` renderer into a production feature. The initial product
+path is a user-approved local node (CLI first, optional desktop wrapper), not
+a managed cloud worker. A URL, a container image, or an unchecked feature flag
+is not evidence that this contract is met.
 
 ## Live baseline — 2026-09-04
 
@@ -19,23 +21,27 @@ The `creativesos-504623` project currently has:
 - `creativesos-cut-worker`, a healthy Cloud Run Job for trusted render work;
 - `creativesos-cut-dispatch`, a public HMAC-authenticated dispatcher for that
   job; and
-- a dedicated `creativesos-cut-code-runner` service account with **no project
-  roles**.
+- a reserved `creativesos-cut-code-runner` service account with **no project
+  roles**, for a future opt-in managed fallback.
 
 The normal worker has database and R2 credentials, ordinary egress, and a
 two-hour task timeout. It is intentionally unsuitable for user-authored TSX.
-Do not add `code_render` to that worker's capability list.
+Do not add `code_render` to that worker's capability list. No Compute Engine
+VM has been created.
 
 ## Required topology
 
 ```
 signed-in editor
-      │ authenticated request
+      │ pairs a named, user-approved device
+      ▼
+CreativesOS local node (CLI first; desktop wrapper optional)
+      │ authenticated, one-time lease + short-lived signed URLs
       ▼
 CreativesOS API / durable job record
-      │ one-time lease + short-lived signed URLs
+      │ returns only this device's approved work
       ▼
-trusted code-runner host (dedicated VM or equivalent)
+trusted local code-runner host
       │ read-only source/request mount
       ▼
 one disposable Docker container
@@ -47,11 +53,12 @@ one disposable Docker container
 CreativesOS API verifies receipt and seals private artifact
 ```
 
-The host is trusted infrastructure; the child composition is not. The host may
-hold a narrowly scoped broker credential, but the child never sees that
+The host is user-approved local infrastructure; the child composition is not.
+The host may hold a narrowly scoped, revocable device credential, but the child never sees that
 credential, Docker socket, service-account token, source host paths, or an
-upload credential. A VM must have no inbound public rule. If it needs Internet
-egress to reach the broker, that belongs to the host only; the child remains
+upload credential. The local node makes outbound HTTPS requests only; it has no
+inbound listener. If a managed fallback is later introduced, it must also have
+no inbound public rule. Network access belongs to the host only; the child remains
 `--network none` and the runtime must prove only loopback is visible.
 
 ## Minimum broker protocol
@@ -62,11 +69,11 @@ general application credentials.
 
 1. The API validates ownership, capsule source + lockfile, runtime limits, and
    per-owner admission before inserting a `code_render` job.
-2. A runner presents an HMAC-authenticated, replay-bounded claim request. The
+2. A paired local node presents an authenticated, replay-bounded claim request. The
    API atomically leases one eligible job and returns only its immutable
    runtime request, source download URL, and an output PUT URL scoped to one
    temporary private key.
-3. The runner downloads the source, calls `renderIsolated`, and uploads the
+3. The local node downloads the source, calls `renderIsolated`, and uploads the
    bounded artifact to that one key. The container remains networkless.
 4. The runner posts the signed receipt. The API independently checks the
    artifact size/hash/media type, seals it to a fresh private key, inserts the
@@ -77,12 +84,12 @@ general application credentials.
 ## Compute profile and billing guardrail
 
 The qualified local child profile is one vCPU, 2 GiB memory, PID limit 256,
-read-only root, and a 120-second wall-clock deadline. The host VM is a
-separate operational choice: it must have enough headroom for Chromium and
-FFmpeg plus one child, be capped at one concurrent child, and be stopped when
-idle. It must not be introduced as an always-on unmetered instance.
+read-only root, and a 120-second wall-clock deadline. The user's device bears
+the compute cost and can set its own availability, concurrency, and resource
+limit. The CLI must show those settings and require explicit pairing; it must
+never become a remote shell or silently consume local resources.
 
-Before the first billed runner is created, retain these receipts:
+Before a managed, billed fallback is ever created, retain these receipts:
 
 - exact host and child image digests;
 - service-account IAM policy proving no database/R2 secret access;
@@ -94,7 +101,7 @@ Before the first billed runner is created, retain these receipts:
 
 ## Explicit non-claims
 
-This plane is not enabled merely because Compute Engine is enabled, the runner
-service account exists, or a local harness passes. Until the broker,
-least-privileged host, immutable images, job lifecycle, and field evidence are
+This plane is not enabled merely because Compute Engine is enabled, the reserved
+runner service account exists, or a local harness passes. Until device pairing,
+the broker, local-node job lifecycle, immutable images, and field evidence are
 all present, the product must continue reporting executable code as unavailable.
