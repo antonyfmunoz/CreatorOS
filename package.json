@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "creativesos": "cli/creativesos.mjs"
+  },
   "engines": {
     "node": "22.x"
   },
   "scripts": {
     "dev": "tsx server/index.ts",
+    "cli": "node cli/creativesos.mjs",
     "dev:demo": "cross-env CREATOROS_DEMO_MODE=true VITE_CREATOROS_DEMO_MODE=true tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
