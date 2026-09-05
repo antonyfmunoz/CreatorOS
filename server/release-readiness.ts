@@ -93,7 +93,9 @@ export function getReleaseReadiness(
     localCodeExecutionRequested &&
     environment.CUT_CODE_EXECUTOR_SECRET &&
     environment.CUT_CODE_EXECUTOR_SECRET.length >= 32 &&
-    privateAssetDelivery,
+    privateAssetDelivery &&
+    environment.R2_BUCKET_NAME &&
+    environment.R2_PUBLIC_BASE_URL,
   );
 
   const blockers: string[] = [];

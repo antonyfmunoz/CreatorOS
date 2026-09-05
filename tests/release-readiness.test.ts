@@ -7,6 +7,8 @@ const liveEnvironment = {
   R2_ACCOUNT_ID: "account",
   R2_ACCESS_KEY_ID: "access",
   R2_SECRET_ACCESS_KEY: "secret",
+  R2_BUCKET_NAME: "creativesos-public",
+  R2_PUBLIC_BASE_URL: "https://media.example",
   CLERK_PUBLISHABLE_KEY: "pk_live_example",
   CLERK_SECRET_KEY: "sk_live_example",
   UMH_INSTALLATION_ID: "creativesos-pilot",
