@@ -7,6 +7,10 @@ This studio-specific scorecard inherits the two-bar acceptance model in
 Functional completion, standalone parity and connected superiority are
 reported separately.
 
+The measurable per-competitor scoring, hard gates, acceptance evidence and
+revalidation rules are canonical in
+[`qualification/CUTSTUDIO_COMPETITIVE_PARITY_RUBRIC.md`](./qualification/CUTSTUDIO_COMPETITIVE_PARITY_RUBRIC.md).
+
 ## Product standard
 
 CutStudio and Broadcast are not measured by whether they visually imitate a
