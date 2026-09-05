@@ -4,6 +4,7 @@ import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
 import { cutClipPreviewAt } from "@shared/cut-clip-preview";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
+import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import type { CutEdl, CutGraphic, CutRenderRequest } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -39,6 +40,21 @@ function PrimaryGraphic({ graphic, frame, fps }: { graphic: CutGraphic; frame: n
   if (graphic.kind === "shape") return <div data-primary-preview-graphic={graphic.id} className="absolute" style={{ ...style, backgroundColor: graphic.backgroundColor, borderRadius: `${graphic.borderRadius}%` }}/>;
   if (graphic.kind === "path") return <svg data-primary-preview-graphic={graphic.id} className="absolute overflow-visible" viewBox="0 0 100 100" style={style}><path d={graphic.text} fill={graphic.fillColor ?? "none"} stroke={graphic.textColor} strokeWidth={graphic.strokeWidth}/></svg>;
   if (graphic.kind === "svg") return <div data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={style} dangerouslySetInnerHTML={{ __html: sanitizeCutStudioSvg(graphic.text) }}/>;
+  if (graphic.kind === "three") {
+    try {
+      const svg = renderCutThreePrimitiveSvg(parseCutThreePrimitiveStyle({
+        primitive: graphic.primitive ?? undefined,
+        color: graphic.backgroundColor,
+        secondaryColor: graphic.secondaryColor,
+        edgeColor: graphic.edgeColor,
+        wireframe: graphic.wireframe,
+        depth: graphic.depth,
+      }));
+      return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full object-contain" style={style} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt={`${graphic.text || "3D"} graphic`}/>;
+    } catch {
+      return <div data-primary-preview-graphic={graphic.id} className="absolute grid place-items-center border border-dashed border-amber-500/60 text-[8px] text-amber-200" style={style}>Invalid 3D graphic</div>;
+    }
+  }
   if (graphic.kind === "image" && graphic.assetId) return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={{ ...style, objectFit: graphic.imageFit ?? "contain" }} src={`/api/assets/${encodeURIComponent(graphic.assetId)}/stream`} alt=""/>;
   return null;
 }
@@ -104,7 +120,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   const active = state?.clip ? media.find((item) => item.assetId === (state.clip!.assetId ?? sourceAssetId)) : undefined;
   const outgoing = state?.outgoing;
   const graphicTime = frame / fps;
-  const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => ["lottie", "rive", "three"].includes(graphic.kind) && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
+  const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => ["lottie", "rive"].includes(graphic.kind) && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
   const activeOverlays = edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" && (clip.track ?? "").startsWith("v") && !edl.tracks?.find((track) => track.track === clip.track)?.hidden)
     .flatMap((clip) => { const overlay = media.find((item) => item.assetId === clip.assetId); return overlay ? [{ clip, media: overlay }] : []; });
   const unsupportedOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && (clip.chromaKey?.enabled || clip.colorPreset && clip.colorPreset !== "original" || clip.lutAssetId));
@@ -160,7 +176,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie, Rive, or 3D graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Lottie/Rive/3D, color/effects and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie or Rive graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Lottie/Rive, color/effects and captions require a rendered preview.")}</p>
   </div>;
 }
 
