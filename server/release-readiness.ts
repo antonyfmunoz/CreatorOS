@@ -88,6 +88,13 @@ export function getReleaseReadiness(
   const cutStudioRenderPlane = environment.CUT_STUDIO_PROCESSING_MODE === "external"
     ? Boolean(environment.CUT_CLOUD_DISPATCH_URL && environment.CUT_CLOUD_DISPATCH_SECRET && environment.CUT_CLOUD_DISPATCH_SECRET.length >= 32)
     : true;
+  const localCodeExecutionRequested = environment.CUT_CODE_EXECUTOR_ENABLED === "true";
+  const localCodeExecution = Boolean(
+    localCodeExecutionRequested &&
+    environment.CUT_CODE_EXECUTOR_SECRET &&
+    environment.CUT_CODE_EXECUTOR_SECRET.length >= 32 &&
+    privateAssetDelivery,
+  );
 
   const blockers: string[] = [];
   if (!clerkProduction)
@@ -96,6 +103,8 @@ export function getReleaseReadiness(
     blockers.push("private_asset_delivery_unconfigured");
   if (!cutStudioRenderPlane)
     blockers.push("cut_studio_render_plane_unconfigured");
+  if (localCodeExecutionRequested && !localCodeExecution)
+    blockers.push("cut_studio_local_code_broker_unconfigured");
 
   return {
     status: blockers.length === 0 ? "release_ready" : "release_gated",
@@ -170,6 +179,11 @@ export function getReleaseReadiness(
       renderPlane: environment.CUT_STUDIO_PROCESSING_MODE === "external"
         ? cutStudioRenderPlane ? "configured" : "unconfigured"
         : "embedded",
+      localCodeExecution: localCodeExecution
+        ? "configured"
+        : localCodeExecutionRequested
+          ? "unconfigured"
+          : "disabled",
       nonDestructiveEdl: "configured",
       timelineMarkers: "configured",
       boundarySnapping: "configured",

@@ -92,6 +92,7 @@ describe("CreativesOS release readiness", () => {
       cutStudio: {
         privateIngest: "configured",
         renderPlane: "embedded",
+        localCodeExecution: "disabled",
         nonDestructiveEdl: "configured",
         timelineMarkers: "configured",
         boundarySnapping: "configured",
@@ -306,6 +307,7 @@ describe("CreativesOS release readiness", () => {
     expect(result.cutStudio).toEqual({
       privateIngest: "unconfigured",
       renderPlane: "embedded",
+      localCodeExecution: "disabled",
       nonDestructiveEdl: "configured",
       timelineMarkers: "configured",
       boundarySnapping: "configured",
@@ -373,6 +375,29 @@ describe("CreativesOS release readiness", () => {
     expect(result.status).toBe("release_gated");
     expect(result.blockers).toContain("cut_studio_render_plane_unconfigured");
     expect(result.cutStudio.renderPlane).toBe("unconfigured");
+  });
+
+  it("fails closed when a local code broker is requested without private delivery", () => {
+    const result = getReleaseReadiness({
+      CLERK_PUBLISHABLE_KEY: "pk_live_example",
+      CLERK_SECRET_KEY: "sk_live_example",
+      CUT_CODE_EXECUTOR_ENABLED: "true",
+      CUT_CODE_EXECUTOR_SECRET: "a".repeat(32),
+    });
+    expect(result.status).toBe("release_gated");
+    expect(result.blockers).toContain("cut_studio_local_code_broker_unconfigured");
+    expect(result.cutStudio.localCodeExecution).toBe("unconfigured");
+  });
+
+  it("reports a fully configured local code broker without exposing its secret", () => {
+    const result = getReleaseReadiness({
+      ...liveEnvironment,
+      CUT_CODE_EXECUTOR_ENABLED: "true",
+      CUT_CODE_EXECUTOR_SECRET: "a".repeat(32),
+    });
+    expect(result.status).toBe("release_ready");
+    expect(result.cutStudio.localCodeExecution).toBe("configured");
+    expect(JSON.stringify(result)).not.toContain("a".repeat(32));
   });
 
   it("keeps deferred room providers informational instead of release-blocking", () => {

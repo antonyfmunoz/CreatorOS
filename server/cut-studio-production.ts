@@ -106,8 +106,13 @@ const codeRenderRequestInput = z.object({
 
 function codeExecutionConfigured(environment: NodeJS.ProcessEnv = process.env) {
   // The flag is deliberately separate from the trusted Cloud Run render plane.
-  // It may be enabled only after the broker and dedicated runner are deployed.
-  return environment.CUT_CODE_EXECUTOR_ENABLED === "true" && (environment.CUT_CODE_EXECUTOR_SECRET?.length ?? 0) >= 32;
+  // It may be enabled only after the broker, private object plane, and
+  // dedicated runner are deployed. A secret alone cannot safely deliver a
+  // source capsule or accept a local node's sealed result.
+  return environment.CUT_CODE_EXECUTOR_ENABLED === "true"
+    && (environment.CUT_CODE_EXECUTOR_SECRET?.length ?? 0) >= 32
+    && environment.ASSET_STORAGE_PROVIDER === "r2"
+    && Boolean(environment.R2_ACCOUNT_ID && environment.R2_ACCESS_KEY_ID && environment.R2_SECRET_ACCESS_KEY && environment.R2_BUCKET_NAME && environment.R2_PRIVATE_BUCKET_NAME && environment.R2_PUBLIC_BASE_URL);
 }
 
 async function projectAccess(userId: number, projectId: string) {

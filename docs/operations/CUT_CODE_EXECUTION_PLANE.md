@@ -164,6 +164,13 @@ This is still not a public execution claim: no live R2-backed field run or
 release migration has been proven. The broker must not be bypassed by sending a
 job or Docker access directly to a node.
 
+The public-safe release-readiness record reports this capability as
+`disabled`, `unconfigured`, or `configured`. If an operator sets
+`CUT_CODE_EXECUTOR_ENABLED=true` without both a 32-character broker secret and
+private R2 delivery, the release is gated as misconfigured rather than exposing
+a button that can never complete a render. The readiness record contains only
+state labels—never the secret, bucket name, account identifier, or signed URL.
+
 ## Desktop distribution boundary
 
 `npm run desktop:package:dir` creates the Windows desktop artifact. The
