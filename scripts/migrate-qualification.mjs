@@ -5,6 +5,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { assertMigrationManifest } from "./migration-manifest.mjs";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required to qualify migrations");
@@ -90,6 +91,8 @@ const requiredTables = [
   "cut_studio_audio_templates",
   "cut_studio_project_media",
   "cut_studio_jobs",
+  "cut_studio_local_nodes",
+  "cut_studio_local_node_invitations",
   "cut_studio_versions",
   "cut_studio_review_links",
   "cut_studio_review_comments",
@@ -381,6 +384,7 @@ const requiredColumns = {
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(scriptDirectory, "../migrations");
+assertMigrationManifest(migrationsFolder);
 const migrationFiles = readMigrationFiles({ migrationsFolder });
 const client = postgres(process.env.DATABASE_URL, { max: 1 });
 const db = drizzle(client);
