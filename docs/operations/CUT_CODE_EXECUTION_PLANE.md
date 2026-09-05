@@ -151,6 +151,38 @@ This is still not a public execution claim: no live R2-backed field run or
 release migration has been proven. The broker must not be bypassed by sending a
 job or Docker access directly to a node.
 
+## Field-test sequence
+
+Run this only after the local-node migration is applied and the private R2
+asset plane is configured in the same deployed environment. The signed source
+and output URLs are deliberately unavailable against a local-only production
+configuration.
+
+1. Start Docker Desktop on the trusted workstation and build the pinned runtime
+   from `runtimes/cut-code`. Confirm the resulting image ID begins with
+   `sha256:`; do not configure a mutable tag as the runtime identity.
+2. In CutStudio, create a one-time node code, then on that workstation run
+   `creativesos node connect <code>` and `creativesos node heartbeat --status ready`.
+   Confirm the CutStudio node list shows the expected device, OS, capability,
+   and recent heartbeat.
+3. Create a fresh assistant-authored TSX source package and matching lockfile,
+   save an isolated composition, then queue its bounded local still export.
+4. Run `creativesos node work`. Confirm that it claims no more than one job,
+   resolves an immutable image ID, creates no public inbound listener, and
+   reports a completed artifact back to the project.
+5. Download the private artifact through the ordinary authenticated CutStudio
+   media route. Confirm its hash, dimensions, type, and source lineage match
+   the receipt and composition request. Verify the temporary upload key is no
+   longer readable and the final private key differs from it.
+6. Repeat once with a deliberately invalid source or stopped Docker engine.
+   Confirm the job records a bounded failure; then revoke the node and confirm
+   it cannot renew, complete, or claim another job.
+
+Keep the migration receipt, image digest, isolated-harness output, successful
+artifact receipt, rejection/revocation response, and deployment identity with
+the release. This is required field evidence, not a checklist that can be
+replaced by code review.
+
 ## Compute profile and billing guardrail
 
 The qualified local child profile is one vCPU, 2 GiB memory, PID limit 256,
