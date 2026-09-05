@@ -4559,6 +4559,33 @@ export const cutStudioJobs = pgTable(
   }),
 );
 
+// A paired local node runs user-approved isolated work without receiving the
+// user's web session, database access, or general storage credentials.
+export const cutStudioLocalNodes = pgTable("cut_studio_local_nodes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  capabilities: json("capabilities").$type<import("./cut-node").CutLocalNodeCapabilities>().notNull(),
+  deviceSecretHash: text("device_secret_hash").notNull().unique(),
+  status: text("status").notNull().default("ready"),
+  lastSequence: integer("last_sequence").notNull().default(0),
+  lastSeenAt: timestamp("last_seen_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ ownerUpdatedIdx: index("cut_studio_local_nodes_owner_updated_idx").on(table.ownerUserId, table.updatedAt) }));
+
+export const cutStudioLocalNodeInvitations = pgTable("cut_studio_local_node_invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ ownerExpiresIdx: index("cut_studio_local_node_invitations_owner_expires_idx").on(table.ownerUserId, table.expiresAt) }));
+
 export const cutStudioVersions = pgTable(
   "cut_studio_versions",
   {
