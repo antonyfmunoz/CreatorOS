@@ -1,8 +1,8 @@
 # CutStudio competitive parity rubric
 
 **Status:** canonical acceptance rubric for CutStudio motion graphics and
-cinematic-generation comparisons.  
-**Companion documents:** [Creation Studios competitive standard](../CREATION_STUDIOS_COMPETITIVE_STANDARD.md), [golden benchmark](CREATION_STUDIOS_GOLDEN_BENCHMARK.md), and [Remotion closure register](CUTSTUDIO_REMOTION_CLOSURE.md).  
+cinematic-generation comparisons.
+**Companion documents:** [Creation Studios competitive standard](../CREATION_STUDIOS_COMPETITIVE_STANDARD.md), [golden benchmark](CREATION_STUDIOS_GOLDEN_BENCHMARK.md), and [Remotion closure register](CUTSTUDIO_REMOTION_CLOSURE.md).
 **Last revised:** 2026-09-04
 
 ## The rule
@@ -102,7 +102,7 @@ domain metric is allowed only when it is predeclared and independently reviewed.
 - quality review: picture, animation timing, typography, captions, audio and
   brand accuracy;
 - reliability record: retries, failure modes, recovery, cancellation and data
-  or asset loss; 
+  or asset loss;
 - access/tenant verification and cost/elapsed/active-time ledger;
 - sealed evidence package created with `npm run benchmarks:evidence`.
 
@@ -227,4 +227,3 @@ Creative reviewers own output acceptability. The product owner approves target
 workflows and exclusions. Security/operations own production runtime,
 entitlements, cost ceilings and incident/recovery sign-off. No one role may
 unilaterally certify 100%.
-
