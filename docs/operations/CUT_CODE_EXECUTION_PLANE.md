@@ -89,6 +89,28 @@ the compute cost and can set its own availability, concurrency, and resource
 limit. The CLI must show those settings and require explicit pairing; it must
 never become a remote shell or silently consume local resources.
 
+## Managed fallback commercial rule
+
+Managed rendering is an optional paid utility, never a platform-funded default.
+Before a user can send an executable composition to managed compute, the API
+must reserve that user's purchased render credits or a metered allowance using
+the existing payments ledger. It must release the reservation when dispatch
+does not start, reconcile measured duration/compute profile after completion,
+and block dispatch when no entitlement remains. A user who keeps a local node
+paired consumes no managed-render credit.
+
+The product surface must disclose the destination before confirmation:
+
+- **This device** — uses the paired local node; no CreativesOS render charge.
+- **Managed render** — shows the render profile, estimated credit/usage cost,
+  included allowance if any, and the user's remaining balance before work
+  starts.
+
+The platform may charge a margin for managed execution, but it must not promise
+unlimited code rendering or absorb open-ended Chromium/FFmpeg/GPU usage. The
+same admission ledger covers retries: a duplicate dispatch cannot consume twice,
+and a platform-caused failed start releases its reservation.
+
 Before a managed, billed fallback is ever created, retain these receipts:
 
 - exact host and child image digests;
