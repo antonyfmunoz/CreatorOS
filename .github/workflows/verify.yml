@@ -97,6 +97,33 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           build
 
+  desktop-windows:
+    name: Windows desktop package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Package the unsigned Windows desktop shell
+        run: npm run desktop:package:dir
+      - name: Verify the packaged CLI and external isolated runtime
+        shell: pwsh
+        run: |
+          $app = Join-Path $PWD "release/desktop/win-unpacked/CreativesOS.exe"
+          $cli = Join-Path $PWD "release/desktop/win-unpacked/resources/app.asar/cli/creativesos.mjs"
+          $runtime = Join-Path $PWD "release/desktop/win-unpacked/resources/cut-code-runtime/host.mjs"
+          if (!(Test-Path -LiteralPath $app) -or !(Test-Path -LiteralPath $cli) -or !(Test-Path -LiteralPath $runtime)) { throw "The desktop package is missing a required local-node component." }
+          $env:ELECTRON_RUN_AS_NODE = "1"
+          & $app $cli --version
+          if ($LASTEXITCODE -ne 0) { throw "The packaged CreativesOS CLI could not run." }
+          $runtimeUri = (New-Object System.Uri((Resolve-Path -LiteralPath $runtime))).AbsoluteUri
+          & $app -e "import('$runtimeUri').then(() => console.log('runtime-import-ok'))"
+          if ($LASTEXITCODE -ne 0) { throw "The packaged isolated runtime could not import." }
+
   database:
     name: Database and durable workflows
     runs-on: ubuntu-latest
