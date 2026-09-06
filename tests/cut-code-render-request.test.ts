@@ -15,6 +15,8 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "mp4" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [90, 120], format: "mp4" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "sequence", frameRange: [0, 30], format: "gif" }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", quality: 90 }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "webp", quality: 90 }).success).toBe(true);
   });
 
   it("holds the resource and input ceilings before durable work is queued", () => {

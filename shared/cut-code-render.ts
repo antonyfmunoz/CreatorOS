@@ -31,6 +31,8 @@ export const cutCodeRenderRequestSchema = z.object({
     const formats = cutCodeRenderFormats[request.mode];
     if (request.format && !formats.includes(request.format as never)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["format"], message: `Unsupported ${request.mode} format` });
   }
+  const resolvedFormat = request.format ?? defaultCutCodeRenderFormat(request.mode);
+  if (request.quality !== undefined && !["jpeg", "webp"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quality"], message: "Quality is supported only for JPEG/WebP output" });
   if (JSON.stringify(request.input).length > 64_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["input"], message: "Composition inputs exceed 64 KiB" });
 });
 
