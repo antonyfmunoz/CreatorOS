@@ -63,7 +63,8 @@ describe("CutStudio local-node contract", () => {
   it("does not offer a knowingly unavailable local render", () => {
     expect(creativeRuntimeSource).toContain('const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured"');
     expect(creativeRuntimeSource).toContain("Execution setup required");
-    expect(creativeRuntimeSource).toContain("!localCodeExecutionReady");
+    expect(creativeRuntimeSource).toContain("ready={localCodeExecutionReady}");
+    expect(creativeRuntimeSource).toContain("disabled={busy || !ready}");
   });
 
   it("keeps the packaged desktop runtime outside the application archive", () => {

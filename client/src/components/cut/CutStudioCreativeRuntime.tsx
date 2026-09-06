@@ -11,6 +11,7 @@ import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { CutSourceHistory } from "@/lib/cut-source-history";
 import { motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
+import { cutCodeRenderFormats, cutCodeRenderRequestSchema, defaultCutCodeRenderFormat, type CutCodeRenderMode, type CutCodeRenderRequest } from "@shared/cut-code-render";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
@@ -37,6 +38,49 @@ type RuntimePayload = {
 };
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
+
+function CodeRenderControls({ composition, busy, ready, onQueue }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void }) {
+  const [mode, setMode] = useState<CutCodeRenderMode>("still");
+  const [width, setWidth] = useState(1080);
+  const [height, setHeight] = useState(1080);
+  const [fps, setFps] = useState(30);
+  const [durationInFrames, setDurationInFrames] = useState(30);
+  const [frame, setFrame] = useState(0);
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd, setRangeEnd] = useState(29);
+  const [format, setFormat] = useState("png");
+  const [quality, setQuality] = useState(90);
+  const [inputJson, setInputJson] = useState("{}");
+  const [error, setError] = useState("");
+
+  const setExportMode = (next: CutCodeRenderMode) => {
+    setMode(next); setFormat(defaultCutCodeRenderFormat(next));
+  };
+  const readNumber = (event: React.ChangeEvent<HTMLInputElement>, setValue: (value: number) => void) => setValue(event.currentTarget.valueAsNumber);
+  const request = (): CutCodeRenderRequest => {
+    let input: unknown;
+    try { input = JSON.parse(inputJson); }
+    catch { throw new Error("Composition input must be valid JSON"); }
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Composition input must be a JSON object");
+    const candidate = {
+      mode, width, height, fps, durationInFrames, format, quality, input: input as Record<string, unknown>,
+      ...(mode === "still" ? { frame } : { frameRange: [rangeStart, rangeEnd] as [number, number] }),
+    };
+    const parsed = cutCodeRenderRequestSchema.safeParse(candidate);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "The local render settings are invalid");
+    return parsed.data;
+  };
+  const label = `${composition.name} local render`;
+  return <div className="mt-3 space-y-2 border-t border-[#1d9bf0]/20 pt-3" aria-label={label}>
+    <div className="grid grid-cols-3 gap-2"><label className="text-[9px] text-zinc-500">Output<select aria-label={`${label} output`} className={field} value={mode} disabled={busy} onChange={(event) => setExportMode(event.target.value as CutCodeRenderMode)}>{(["still", "video", "sequence"] as const).map((value) => <option key={value} value={value}>{value === "still" ? "Still" : value === "video" ? "Video" : "Frame sequence"}</option>)}</select></label><label className="text-[9px] text-zinc-500">Format<select aria-label={`${label} format`} className={field} value={format} disabled={busy} onChange={(event) => setFormat(event.target.value)}>{cutCodeRenderFormats[mode].map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label><label className="text-[9px] text-zinc-500">Quality<input aria-label={`${label} quality`} className={field} type="number" min="1" max="100" value={quality} disabled={busy} onChange={(event) => readNumber(event, setQuality)}/></label></div>
+    <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Width<input aria-label={`${label} width`} className={field} type="number" min="16" max="3840" value={width} disabled={busy} onChange={(event) => readNumber(event, setWidth)}/></label><label className="text-[9px] text-zinc-500">Height<input aria-label={`${label} height`} className={field} type="number" min="16" max="3840" value={height} disabled={busy} onChange={(event) => readNumber(event, setHeight)}/></label><label className="text-[9px] text-zinc-500">FPS<input aria-label={`${label} fps`} className={field} type="number" min="1" max="60" value={fps} disabled={busy} onChange={(event) => readNumber(event, setFps)}/></label><label className="text-[9px] text-zinc-500">Frames<input aria-label={`${label} duration`} className={field} type="number" min="1" max="600" value={durationInFrames} disabled={busy} onChange={(event) => readNumber(event, setDurationInFrames)}/></label></div>
+    {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
+    <label className="block text-[9px] text-zinc-500">Composition input JSON<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
+    <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. Private media is never injected into code directly.</p>
+    {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}
+    <Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button>
+  </div>;
+}
 
 
 function starterBrief(project: ProjectInput): CutProductionBrief {
@@ -217,13 +261,13 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     await refreshNodes(); setMessage(`${node.name} was revoked. Its local credential can no longer claim work.`);
   });
 
-  const queueCodeRender = (composition: CompositionRow) => act(`code-render:${composition.id}`, async () => {
+  const queueCodeRender = (composition: CompositionRow, request: CutCodeRenderRequest) => act(`code-render:${composition.id}`, async () => {
     const idempotencyKey = `code.${composition.id}.${crypto.randomUUID()}`;
     await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/code-renders`, {
       idempotencyKey,
-      request: { mode: "still", width: 1080, height: 1080, fps: 30, durationInFrames: 30, frame: 0, format: "png", input: {} },
+      request,
     });
-    await refresh(); setMessage("Bounded local still render queued. Run `creativesos node work` on a paired, ready machine to execute it.");
+    await refresh(); setMessage(`Bounded local ${request.mode === "sequence" ? "frame-sequence" : request.mode} render queued. Run \`creativesos node work\` on a paired, ready machine to execute it.`);
   });
 
   const loadSource = () => {
@@ -339,7 +383,10 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
           <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
         </div>
-        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><Button className="mt-2" size="sm" variant="outline" disabled={Boolean(busy) || !localCodeExecutionReady} onClick={() => void queueCodeRender(composition)}>{busy === `code-render:${composition.id}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Play className="mr-1 h-3.5 w-3.5"/>}{localCodeExecutionReady ? "Queue local still" : "Execution setup required"}</Button></div>}</div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3">
+          <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>
+          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)}/></div>}
+        </div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">

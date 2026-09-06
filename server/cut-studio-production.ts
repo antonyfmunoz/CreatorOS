@@ -33,6 +33,7 @@ import {
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
+import { cutCodeRenderSubmissionSchema } from "@shared/cut-code-render";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
@@ -71,38 +72,9 @@ const compositionRenderBatchInput = z.object({
 }).superRefine((value, context) => {
   if (new Set(value.compositionIds).size !== value.compositionIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionIds"], message: "Composition identifiers must be unique" });
 });
-// This is intentionally narrower than the local renderer's full internal
-// contract. A public code render starts with bounded still/video/sequence
-// exports; private-media injection is added only with the brokered asset
-// manifest, never by giving the code container storage credentials.
-const codeRenderRequestInput = z.object({
-  idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
-  request: z.object({
-    mode: z.enum(["still", "video", "sequence"]),
-    width: z.number().int().min(16).max(3_840),
-    height: z.number().int().min(16).max(3_840),
-    fps: z.number().int().min(1).max(60),
-    durationInFrames: z.number().int().min(1).max(600),
-    frame: z.number().int().min(0).optional(),
-    frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-    format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif"]).optional(),
-    quality: z.number().int().min(1).max(100).optional(),
-    input: z.record(z.unknown()).default({}),
-  }).strict(),
-}).superRefine((value, context) => {
-  const request = value.request;
-  if (request.width * request.height > 3_840 * 2_160) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request"], message: "Output dimensions exceed the isolated renderer limit" });
-  if (request.mode === "still") {
-    if (request.frame === undefined || request.frame >= request.durationInFrames || request.frameRange !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request"], message: "A still export requires one valid frame" });
-    if (request.format && !["png", "jpeg", "webp"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported still format" });
-  } else {
-    const range = request.frameRange ?? [0, request.durationInFrames - 1];
-    if (range[0] < 0 || range[1] < range[0] || range[1] >= request.durationInFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "frameRange"], message: "The frame range is outside the composition" });
-    if (request.mode === "video" && request.format && !["mp4", "webm", "gif"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported video format" });
-    if (request.mode === "sequence" && request.format && !["png", "jpeg", "webp"].includes(request.format)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "format"], message: "Unsupported sequence format" });
-  }
-  if (JSON.stringify(request.input).length > 64_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["request", "input"], message: "Composition inputs exceed 64 KiB" });
-});
+// Public code renders stay narrower than the local renderer's internal
+// contract: bounded still/video/sequence output only. The shared validator is
+// also used by the browser controls, while this route remains authoritative.
 
 function codeExecutionConfigured(environment: NodeJS.ProcessEnv = process.env) {
   // The flag is deliberately separate from the trusted Cloud Run render plane.
@@ -544,7 +516,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (!access) return res.status(404).json({ message: "Project not found" });
     if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
     if (!codeExecutionConfigured()) return res.status(503).json({ message: "Isolated code rendering is not activated yet" });
-    const parsed = codeRenderRequestInput.safeParse(req.body);
+    const parsed = cutCodeRenderSubmissionSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "The code render request is invalid", issues: parsed.error.issues });
     const [composition] = await db.select().from(cutStudioCompositions).where(and(
       eq(cutStudioCompositions.id, req.params.compositionId),
