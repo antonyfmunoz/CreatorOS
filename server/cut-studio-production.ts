@@ -315,7 +315,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       await materializePrivateAsset(source.storageKey, filename);
       if ((await fs.stat(filename)).size > 25 * 1024 * 1024) return res.status(400).json({ message: "Source ZIP exceeds 25 MiB" });
       const files = readCutCodeSourceFiles(await fs.readFile(filename), entry.data);
-      return res.json({ files, entrypoint: entry.data, sourceAssetId: req.params.assetId, execution: "not_implemented" });
+      // Source inspection is never execution. Surface the actual capability
+      // state so a signed-in editor can distinguish the paired-local path from
+      // an intentionally absent hosted arbitrary-code service.
+      return res.json({ files, entrypoint: entry.data, sourceAssetId: req.params.assetId, execution: codeExecutionConfigured() ? "paired_local_node" : "not_activated" });
     } catch {
       // Never return source content, filesystem paths or provider errors as diagnostics.
       return res.status(400).json({ message: "This ZIP cannot be opened in the text editor. It must be a valid package with the specified entrypoint, at most 64 UTF-8 text files, 256 KiB per file and 2 MiB total. Use ZIP import for other packages; no files were changed." });

@@ -247,7 +247,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     setCodeSourceAssetId(result.assetId); setCodeEntrypoint(draft.entrypoint);
     // A previous source's lockfile must never remain selected for a new source.
     setCodeLockfileAssetId(result.lockfileAssetId ?? "");
-    setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Public execution remains unavailable.");
+    setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition, then run it only through a paired trusted local node." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Hosted arbitrary-code execution remains unavailable.");
   });
 
   const saveBrief = () => act("brief", async () => {
