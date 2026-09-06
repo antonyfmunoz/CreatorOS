@@ -21,4 +21,10 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("onProjectMediaChanged");
     expect(client).toContain('job.mode !== "video" && job.mode !== "still"');
   });
+  it("retries only a failed code render with its original durable request", () => {
+    expect(server).toContain('cut.post("/api/cut/projects/:id/code-renders/:jobId/retry"');
+    expect(server).toContain('eq(cutStudioJobs.kind, "code_render")');
+    expect(server).toContain('eq(cutStudioJobs.state, "error")');
+    expect(client).toContain("retryCodeRender(job)");
+  });
 });

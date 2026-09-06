@@ -62,6 +62,11 @@ describe("CutStudio local-node contract", () => {
     expect(recoverySource).toContain("leaseExpiresAt} > clock_timestamp()");
   });
 
+  it("preserves bounded execution budgets when creating an explicit retry", () => {
+    expect(recoverySource).toContain("maxAttempts: job.maxAttempts");
+    expect(recoverySource).toContain("maxDispatchAttempts: job.maxDispatchAttempts");
+  });
+
   it("does not offer a knowingly unavailable local render", () => {
     expect(creativeRuntimeSource).toContain('const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured"');
     expect(creativeRuntimeSource).toContain("Execution setup required");

@@ -40,6 +40,7 @@ import { emitProjectionEvent } from "./umh";
 import { materializePrivateAsset } from "./asset-storage";
 import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
 import { validateCutSourceLockfilePair } from "./cut-code-lockfile";
+import { retryCutJob } from "./cut-job-recovery";
 
 const uuid = z.string().uuid();
 const compositionInput = z.object({
@@ -592,6 +593,25 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (!cancelled) return res.status(409).json({ message: "Only a queued local code render can be cancelled here" });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancelled", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelled.id }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` });
     res.json(cancelled);
+  });
+
+  // Retrying is explicit. The immutable capsule, lockfile and bounded runtime
+  // request are copied from the failed job, so the user does not accidentally
+  // re-run newer unsaved source or expand the original execution limits.
+  cut.post("/api/cut/projects/:id/code-renders/:jobId/retry", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const [failed] = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(
+      eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id),
+      eq(cutStudioJobs.ownerUserId, access.project.ownerUserId), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "error"),
+    )).limit(1);
+    if (!failed) return res.status(409).json({ message: "Only a failed local code render can be retried" });
+    const result = await retryCutJob(failed.id, access.project.ownerUserId);
+    if (result.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
+    if (result.status === "not_found" || result.status === "not_failed") return res.status(409).json({ message: "The local code render is no longer retryable" });
+    if (result.status === "created") await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.retried", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, failedJobId: failed.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.retried` });
+    res.status(result.status === "created" ? 202 : 200).json(result.job);
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {

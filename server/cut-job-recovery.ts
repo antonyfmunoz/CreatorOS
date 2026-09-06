@@ -69,8 +69,12 @@ export async function retryCutJob(jobId: string, ownerUserId: number) {
     const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs)
       .where(and(eq(cutStudioJobs.ownerUserId, ownerUserId), sql`${cutStudioJobs.state} IN ('queued', 'running')`));
     if (active.count >= 2) return { status: "busy" as const };
+    // A retry is a new, explicitly approved attempt, not a chance to silently
+    // widen the original worker-dispatch budget (especially for paired local
+    // code execution, which intentionally has one claim per request).
     const [retry] = await transaction.insert(cutStudioJobs).values({ projectId: job.projectId, ownerUserId,
-      kind: job.kind, request: job.request, retryOfJobId: job.id, detail: "Retry queued" }).returning();
+      kind: job.kind, request: job.request, retryOfJobId: job.id, maxAttempts: job.maxAttempts,
+      maxDispatchAttempts: job.maxDispatchAttempts, detail: "Retry queued" }).returning();
     return { status: "created" as const, job: retry };
   });
 }
