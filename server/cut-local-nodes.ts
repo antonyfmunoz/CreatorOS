@@ -6,7 +6,7 @@ import path from "node:path";
 import type { Express, Request } from "express";
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "@shared/cut-node";
-import { assets, cutStudioJobs, cutStudioLocalNodeInvitations, cutStudioLocalNodes, cutStudioProjects } from "@shared/schema";
+import { assets, cutStudioJobs, cutStudioLocalNodeInvitations, cutStudioLocalNodes, cutStudioProjectMedia, cutStudioProjects } from "@shared/schema";
 import { attachUser } from "./auth";
 import { createDirectUpload, createPrivateAssetReadUrl, inspectDirectUpload, materializePrivateAsset, removeStoredAsset, sealPrivateAssetCopy } from "./asset-storage";
 import { ensureDefaultBusiness } from "./businesses";
@@ -225,6 +225,17 @@ export function registerCutLocalNodeRoutes(app: Express) {
         }).returning();
         const [completed] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Local isolated render ready", progress: 1, artifactAssetId: artifact.id, output: { artifactId: artifact.id, filename: parsed.data.filename, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, execution: "paired_local_node", nodeId: node.id }, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`))).returning({ id: cutStudioJobs.id });
         if (!completed) return null;
+        // A video or still is immediately reusable by the project. A frame
+        // sequence remains a sealed ZIP artifact instead of being mislabeled as
+        // timeline media the browser cannot preview.
+        if (descriptor.assetKind === "video" || descriptor.assetKind === "image") {
+          const runtime = request.runtime;
+          const fps = Number(runtime.fps);
+          const range = Array.isArray(runtime.frameRange) ? runtime.frameRange : null;
+          const frames = range && Number.isInteger(range[0]) && Number.isInteger(range[1]) ? Number(range[1]) - Number(range[0]) + 1 : 1;
+          const duration = Number.isFinite(fps) && fps > 0 ? Math.max(1 / fps, frames / fps) : 1;
+          await transaction.insert(cutStudioProjectMedia).values({ projectId: job.projectId, assetId: artifact.id, ownerUserId: node.ownerUserId, name: parsed.data.filename, mediaKind: descriptor.assetKind, duration }).onConflictDoNothing();
+        }
         await transaction.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt)));
         return artifact;
       });

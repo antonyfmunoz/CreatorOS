@@ -52,6 +52,8 @@ describe("CutStudio local-node contract", () => {
     expect(brokerSource).toContain('status: "ready", updatedAt: new Date()');
     expect(cliSource).toContain("origin = appUrl");
     expect(cliSource).toContain("origin: config.appUrl");
+    expect(brokerSource).toContain("cutStudioProjectMedia");
+    expect(brokerSource).toContain('descriptor.assetKind === "video" || descriptor.assetKind === "image"');
   });
 
   it("releases only an expired paired-node lock and discards its temporary object", () => {
