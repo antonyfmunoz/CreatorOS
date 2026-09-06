@@ -16,4 +16,9 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain('job.state === "queued"');
     expect(client).toContain("cancelCodeRender(job)");
   });
+  it("makes completed private output discoverable and refreshes reusable project media", () => {
+    expect(client).toContain('/api/cut/jobs/${encodeURIComponent(job.id)}/media-file');
+    expect(client).toContain("onProjectMediaChanged");
+    expect(client).toContain('job.mode !== "video" && job.mode !== "still"');
+  });
 });

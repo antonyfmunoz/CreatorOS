@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, KeyRound, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
+import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Download, KeyRound, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
@@ -94,7 +94,7 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File, lockfile?: File) => Promise<{ assetId: string; lockfileAssetId?: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
+export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onProjectMediaChanged, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File, lockfile?: File) => Promise<{ assetId: string; lockfileAssetId?: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onProjectMediaChanged?: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
   const [serverRuntime, setRuntime] = useState<RuntimePayload | null>(null);
   const compositions = useRef(new CutCreativeDrafts<CompositionRow, "manifest">("manifest"));
   const workflows = useRef(new CutCreativeDrafts<WorkflowRow, "workflow">("workflow"));
@@ -102,6 +102,8 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [, rerenderDrafts] = useState(0);
   const alive = useRef(true);
   const refreshGeneration = useRef(0);
+  const completedCodeRenders = useRef(new Set<string>());
+  const projectMediaChangedRef = useRef(onProjectMediaChanged);
   const actionPending = useRef(false);
   const [sourceDraft, setSourceDraft] = useState<CutSourceDraft | null>(null);
   const sourceDraftRef = useRef<CutSourceDraft | null>(null);
@@ -155,6 +157,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     if (!alive.current || generation !== refreshGeneration.current) return;
     setRuntime(next);
   };
+  useEffect(() => { projectMediaChangedRef.current = onProjectMediaChanged; }, [onProjectMediaChanged]);
   const refreshNodes = async () => {
     const result = await (await apiRequest("GET", "/api/cut/nodes")).json() as { nodes: LocalNodeRow[] };
     if (alive.current) setLocalNodes(result.nodes);
@@ -162,11 +165,27 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
 
   useEffect(() => {
     alive.current = true;
+    completedCodeRenders.current.clear();
     setRuntime(null); setMessage(""); setNodeInvitation(null);
     onUnsavedChange?.(false);
     void Promise.all([refresh(), refreshNodes()]).catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
     return () => { alive.current = false; ++refreshGeneration.current; };
   }, [project.id]);
+  // A local runner completes out of band. Poll only while a durable request is
+  // active, then refresh the outer project once a reusable still/video arrives
+  // in its project media library. A frame sequence stays a downloadable sealed
+  // ZIP artifact and is not falsely presented as timeline media.
+  useEffect(() => {
+    const codeRenders = runtime?.codeRenders ?? [];
+    for (const job of codeRenders) {
+      if (job.state !== "done" || !job.artifactAssetId || (job.mode !== "video" && job.mode !== "still") || completedCodeRenders.current.has(job.id)) continue;
+      completedCodeRenders.current.add(job.id);
+      projectMediaChangedRef.current?.();
+    }
+    if (!codeRenders.some((job) => job.state === "queued" || job.state === "running")) return;
+    const timer = window.setTimeout(() => { void refresh().catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Local render status could not refresh"); }); }, 5_000);
+    return () => window.clearTimeout(timer);
+  }, [project.id, runtime?.codeRenders]);
   useEffect(() => {
     setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
   }, [media]);
@@ -392,7 +411,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
         </div>
         {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3">
           <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>
-          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => <div key={job.id} className="mt-2 flex items-center gap-2 rounded-md border border-zinc-700 bg-black px-2 py-1.5"><span className="min-w-0 flex-1"><span className="block truncate font-medium">{job.mode} · {job.format} · {job.state}</span><span className="block truncate text-[9px] text-zinc-500">{job.detail}{job.state === "running" ? ` · ${Math.round(job.progress * 100)}%` : ""}</span></span>{job.state === "queued" && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void cancelCodeRender(job)}>Cancel</Button>}</div>)}</div>}
+          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => <div key={job.id} className="mt-2 flex items-center gap-2 rounded-md border border-zinc-700 bg-black px-2 py-1.5"><span className="min-w-0 flex-1"><span className="block truncate font-medium">{job.mode} · {job.format} · {job.state}</span><span className="block truncate text-[9px] text-zinc-500">{job.detail}{job.state === "running" ? ` · ${Math.round(job.progress * 100)}%` : ""}</span></span>{job.state === "queued" && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void cancelCodeRender(job)}>Cancel</Button>}{job.state === "done" && job.artifactAssetId && <Button size="sm" variant="outline" asChild><a href={`/api/cut/jobs/${encodeURIComponent(job.id)}/media-file`} target="_blank" rel="noreferrer"><Download className="mr-1 h-3.5 w-3.5"/>Open output</a></Button>}</div>)}</div>}
         </div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
