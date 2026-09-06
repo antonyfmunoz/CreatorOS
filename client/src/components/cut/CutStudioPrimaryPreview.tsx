@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cutPrimaryPreviewAt } from "@shared/cut-primary-preview";
+import { cutPrimaryAudioPreviewAt } from "@shared/cut-primary-audio-preview";
 import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
 import { cutClipPreviewAt } from "@shared/cut-clip-preview";
@@ -146,6 +147,35 @@ function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onEr
   </div>;
 }
 
+function PrimaryAudioOverlay({ item, media, projectId, playing, audio, muted, onError }: { item: ReturnType<typeof cutPrimaryAudioPreviewAt>["items"][number]; media: Media; projectId: string; playing: boolean; audio: AudioContext | null; muted: boolean; onError: (message: string) => void }) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  const graph = useRef<{ source: MediaElementAudioSourceNode; gain: GainNode } | null>(null);
+  useEffect(() => {
+    if (!audio || !ref.current) return;
+    if (!graph.current) graph.current = { source: audio.createMediaElementSource(ref.current), gain: audio.createGain() };
+    graph.current.source.connect(graph.current.gain); graph.current.gain.connect(audio.destination);
+    return () => { graph.current?.source.disconnect(); graph.current?.gain.disconnect(); };
+  }, [audio]);
+  useEffect(() => { if (graph.current) graph.current.gain.gain.value = muted ? 0 : item.gain; }, [audio, item.gain, muted]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const sync = () => {
+      if (!Number.isFinite(element.duration)) return;
+      element.playbackRate = item.speed;
+      if (Math.abs(element.currentTime - item.sourceTime) > (playing ? .12 : .008)) element.currentTime = item.sourceTime;
+      if (playing && element.paused) void element.play().catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        onError("Layered audio playback could not start. Pause, then play again to grant browser playback permission.");
+      });
+      else if (!playing) element.pause();
+    };
+    sync(); element.addEventListener("loadedmetadata", sync);
+    return () => element.removeEventListener("loadedmetadata", sync);
+  }, [item.sourceTime, item.speed, onError, playing]);
+  return <audio ref={ref} aria-label={`Audio track ${item.track}: ${item.clip.label ?? media.name}`} crossOrigin="anonymous" preload="auto" muted={!audio} src={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} onError={() => onError("A private layered audio source is unavailable. Check your project access or media format.")}/>;
+}
+
 function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady, onError, label = "Primary sequence video" }: {
   url: string; time: number; speed: number; gain: number; opacity: number; playing: boolean; audio: AudioContext | null;
   onReady: (ready: boolean) => void; onError: (message: string) => void; label?: string;
@@ -194,6 +224,11 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   const active = state?.clip ? media.find((item) => item.assetId === (state.clip!.assetId ?? sourceAssetId)) : undefined;
   const outgoing = state?.outgoing;
   const graphicTime = frame / fps;
+  const audioPreview = cutPrimaryAudioPreviewAt(edl, graphicTime);
+  const activeAudio = audioPreview.items.flatMap((item) => {
+    const audioMedia = media.find((entry) => entry.assetId === item.clip.assetId);
+    return audioMedia ? [{ item, media: audioMedia }] : [];
+  });
   const activeOverlays = edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" && (clip.track ?? "").startsWith("v") && !edl.tracks?.find((track) => track.track === clip.track)?.hidden)
     .flatMap((clip) => { const overlay = media.find((item) => item.assetId === clip.assetId); return overlay ? [{ clip, media: overlay }] : []; });
   const unsupportedOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && (clip.chromaKey?.enabled || clip.colorPreset && clip.colorPreset !== "original" || clip.lutAssetId));
@@ -238,6 +273,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       {outgoing && outgoingMedia && <div className="absolute inset-0 bg-black"><PrimaryMedia key={outgoingKey} label="Outgoing sequence video" url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(outgoingMedia.id)}/media-file`} time={outgoing.sourceTime} speed={outgoing.clip.speed ?? 1} gain={0} opacity={outgoing.opacity} playing={false} audio={null} onReady={setOutgoingReady} onError={reportError}/></div>}
       {state?.clip && active ? <div className="absolute inset-0 bg-black" style={{ opacity: state.mix }}><PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} playing={playing && (!outgoing || outgoingReady)} audio={audio} onReady={setReady} onError={reportError}/></div> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
       {activeOverlays.map(({ clip, media: overlay }) => <PrimaryVideoOverlay key={clip.id ?? overlay.id} clip={clip} media={overlay} projectId={projectId} frame={frame} fps={fps} playing={playing} onError={reportError}/>)}
+      {activeAudio.map(({ item, media: audioMedia }) => <PrimaryAudioOverlay key={`${item.clip.id ?? audioMedia.id}:${item.track}`} item={item} media={audioMedia} projectId={projectId} playing={playing} audio={audio} muted={muted} onError={reportError}/>)}
       {(edl.graphics ?? []).map((graphic) => <PrimaryGraphic key={graphic.id} graphic={graphic} frame={frame} fps={fps}/>)}
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -249,7 +285,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, color/effects and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : audioPreview.requiresRenderedDucking ? "The active side-chain ducking treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, ordinary layered audio, supported visual overlays, and supported timeline graphics. Color/effects and captions require a rendered preview.")}</p>
   </div>;
 }
 
