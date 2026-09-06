@@ -236,6 +236,7 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
     db.select().from(cutStudioGenerationJobs).where(inArray(cutStudioGenerationJobs.shotId, shotIds)).orderBy(desc(cutStudioGenerationJobs.createdAt)),
     db.select().from(cutStudioShotVariants).where(inArray(cutStudioShotVariants.shotId, shotIds)).orderBy(desc(cutStudioShotVariants.createdAt)),
   ]) : [[], []];
+  const codeRenders = await db.select({ id: cutStudioJobs.id, state: cutStudioJobs.state, detail: cutStudioJobs.detail, progress: cutStudioJobs.progress, request: cutStudioJobs.request, artifactAssetId: cutStudioJobs.artifactAssetId, cancellationRequestedAt: cutStudioJobs.cancellationRequestedAt, createdAt: cutStudioJobs.createdAt }).from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.kind, "code_render"))).orderBy(desc(cutStudioJobs.createdAt)).limit(20);
   return {
     compositionRuntime: {
       mode: "clean_room",
@@ -257,6 +258,15 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
     elements,
     shots,
     jobs,
+    codeRenders: codeRenders.flatMap((job) => {
+      const candidate = job.request?.codeRender;
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const codeRender = candidate as Record<string, unknown>;
+      const runtime = codeRender.runtime;
+      if (typeof codeRender.compositionId !== "string" || !runtime || typeof runtime !== "object" || Array.isArray(runtime)) return [];
+      const settings = runtime as Record<string, unknown>;
+      return [{ id: job.id, compositionId: codeRender.compositionId, state: job.state, detail: job.detail, progress: job.progress, mode: typeof settings.mode === "string" ? settings.mode : "unknown", format: typeof settings.format === "string" ? settings.format : "unknown", artifactAssetId: job.artifactAssetId, cancellationRequestedAt: job.cancellationRequestedAt, createdAt: job.createdAt }];
+    }),
     variants,
   };
 }
@@ -572,6 +582,16 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (result.busy) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.queued` });
     res.status(result.existing ? 200 : 202).json(result.job);
+  });
+
+  cut.delete("/api/cut/projects/:id/code-renders/:jobId", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled before the paired local node claimed it", cancellationRequestedAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "queued"))).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
+    if (!cancelled) return res.status(409).json({ message: "Only a queued local code render can be cancelled here" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancelled", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelled.id }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` });
+    res.json(cancelled);
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {
