@@ -25,6 +25,15 @@ if ($LASTEXITCODE -ne 0) {
   throw "Production releases require a clean source worktree"
 }
 
+# Local-only Fly releases need the Docker daemon for the image build. Fail
+# before creating a backup receipt or applying migrations when the workstation
+# cannot build an image, rather than discovering that after the expensive
+# production preflight has already run.
+$dockerVersion = (& docker version --format '{{.Server.Version}}' | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerVersion)) {
+  throw "Docker must be running before a local-only production deployment"
+}
+
 $releaseTempRoot = Join-Path ([IO.Path]::GetTempPath()) "creativesos-release-$([guid]::NewGuid().ToString('N'))"
 $snapshotPath = Join-Path $releaseTempRoot "source"
 $archivePath = Join-Path $releaseTempRoot "source.tar"

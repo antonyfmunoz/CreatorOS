@@ -92,6 +92,10 @@ describe("production deployment contract", () => {
     expect(deploySource).toContain("/api/internal/operations/backup");
     expect(deploySource).toContain('backupReceipt.status -ne "completed"');
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
+    const dockerPreflightIndex = deploySource.indexOf("docker version --format '{{.Server.Version}}'");
+    expect(dockerPreflightIndex).toBeGreaterThan(deploySource.indexOf("Production releases require a clean source worktree"));
+    expect(dockerPreflightIndex).toBeLessThan(deploySource.indexOf("/api/internal/operations/backup"));
+    expect(deploySource).toContain("Docker must be running before a local-only production deployment");
   });
 
   it("fails protected verification on moderate or higher findings anywhere in the dependency graph", () => {
