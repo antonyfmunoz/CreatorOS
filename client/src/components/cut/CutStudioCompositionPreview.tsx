@@ -184,6 +184,7 @@ function RiveLayer({ layer, frame, fps }: { layer: Layer; frame: number; fps: nu
       schedule: (callback) => requestAnimationFrame(callback),
       cancel: (id) => cancelAnimationFrame(id),
       defer: (callback) => queueMicrotask(callback),
+      pixelRatio: () => Math.max(1, Math.min(2, window.devicePixelRatio || 1)),
     });
     preview.current = playback;
     void (async () => {

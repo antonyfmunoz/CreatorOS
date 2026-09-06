@@ -17,6 +17,10 @@ export function createCutRivePreviewController(options: {
   schedule: (callback: () => void) => number;
   cancel: (id: number) => void;
   defer: (callback: () => void) => void;
+  // Keep previews crisp without allowing a misreported device scale to create
+  // an unbounded canvas allocation. Callers may omit this in non-browser
+  // environments, where one physical pixel per CSS pixel is the safe default.
+  pixelRatio?: () => number;
 }) {
   let active = true;
   let ready = false;
@@ -36,6 +40,10 @@ export function createCutRivePreviewController(options: {
   const nextFrame = (callback: () => void) => {
     pendingFrame = options.schedule(guard(() => { pendingFrame = null; callback(); }));
   };
+  const pixelRatio = () => {
+    const reported = options.pixelRatio?.() ?? 1;
+    return Number.isFinite(reported) ? Math.max(1, Math.min(2, reported)) : 1;
+  };
   const seek = guard(() => {
     if (!ready) return;
     const instance = options.instance();
@@ -50,7 +58,7 @@ export function createCutRivePreviewController(options: {
       if (!instance) throw new Error("Rive preview instance is unavailable");
       const name = instance.animationNames[0];
       if (name) instance.play(name);
-      instance.resizeDrawingSurfaceToCanvas(1);
+      instance.resizeDrawingSurfaceToCanvas(pixelRatio());
       nextFrame(() => {
         if (name) instance.pause(name);
         ready = true;

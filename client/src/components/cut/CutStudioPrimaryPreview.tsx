@@ -104,14 +104,16 @@ function PrimaryRive({ graphic, frame, fps, style }: { graphic: CutGraphic; fram
   const latestSeconds = useRef(0);
   latestSeconds.current = Math.max(0, frame / fps - graphic.timelineStart + (graphic.animationSourceStartSeconds ?? 0));
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const abort = new AbortController(); let active = true;
-    instance.current?.cleanup(); instance.current = null; setError("");
+    instance.current?.cleanup(); instance.current = null; setError(""); setLoaded(false);
     const playback = createCutRivePreviewController({
       instance: () => instance.current, seconds: () => latestSeconds.current,
-      loaded: () => undefined,
+      loaded: () => { if (active) setLoaded(true); },
       failed: () => { if (active) setError("Rive preview failed"); },
       schedule: (callback) => requestAnimationFrame(callback), cancel: (id) => cancelAnimationFrame(id), defer: (callback) => queueMicrotask(callback),
+      pixelRatio: () => Math.max(1, Math.min(2, window.devicePixelRatio || 1)),
     });
     controller.current = playback;
     void (async () => {
@@ -128,7 +130,7 @@ function PrimaryRive({ graphic, frame, fps, style }: { graphic: CutGraphic; fram
     return () => { active = false; abort.abort(); playback.dispose(); controller.current = null; instance.current?.cleanup(); instance.current = null; };
   }, [graphic.assetId]);
   useEffect(() => { controller.current?.seek(); }, [frame, fps, graphic.timelineStart, graphic.animationSourceStartSeconds]);
-  return <div data-primary-preview-graphic={graphic.id} className="absolute overflow-hidden" style={style}>{error ? <span className="grid h-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</span> : <canvas ref={canvas} width={640} height={360} aria-label={`${graphic.text || "Timeline"} Rive preview`} className="h-full w-full"/>}</div>;
+  return <div data-primary-preview-graphic={graphic.id} data-rive-loaded={loaded ? "true" : "false"} className="absolute overflow-hidden" style={style}>{error ? <span className="grid h-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</span> : <canvas ref={canvas} width={640} height={360} aria-label={`${graphic.text || "Timeline"} Rive preview`} className="h-full w-full"/>}</div>;
 }
 
 function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onError }: { clip: NonNullable<CutEdl["clips"]>[number]; media: Media; projectId: string; frame: number; fps: number; playing: boolean; onError: (message: string) => void }) {
