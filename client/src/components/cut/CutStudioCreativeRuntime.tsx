@@ -461,9 +461,11 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
             changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null }, "reset");
+            setCodeInputContractJson(JSON.stringify({ version: 1, fields: { headline: { type: "string", required: true, maxLength: 80 }, accent: { type: "string", default: "#1d9bf0", pattern: "^#[0-9a-fA-F]{6}$" } } }, null, 2));
           }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start the 3D SVG template?")) return;
             changeSource({ files: starterCutSource("three_svg"), entrypoint: "src/index.tsx", saved: null }, "reset");
+            setCodeInputContractJson(JSON.stringify({ version: 1, fields: { rotationSpeed: { type: "number", default: 1, minimum: 0.1, maximum: 4 }, accent: { type: "string", default: "#1d9bf0", pattern: "^#[0-9a-fA-F]{6}$" } } }, null, 2));
           }}>New 3D SVG package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
           {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>

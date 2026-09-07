@@ -296,8 +296,11 @@ inputs, and ordinary external video URLs before a render request is submitted.
 it; `useInputs<YourInputs>()` supplies an author-selected input shape.
 
 Types do **not** validate untrusted JSON, numeric bounds, source files or URLs at
-runtime. Admission, bundling, input/media validation and isolation remain
-mandatory. The standalone CLI package deliberately ships only this local runtime
+runtime. A pinned CutStudio code composition may additionally carry a small,
+value-only input contract (`string`, finite `number`, or `boolean`, with required
+fields, defaults and bounds). The browser and broker normalize that contract
+before a job is durable; it is not an executable schema language and does not
+replace admission, bundling, input/media validation or isolation. The standalone CLI package deliberately ships only this local runtime
 context and its read-only MCP peer; it is not a public framework SDK, general
 app-side code execution surface, or Remotion compatibility layer.
 

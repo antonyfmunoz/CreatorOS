@@ -26,6 +26,10 @@ describe("data-only source authoring", () => {
     expect(files.find((file) => file.path === "src/index.tsx")?.content).toContain("SvgScene");
     expect(() => buildCutSourceZip(files, "src/index.tsx")).not.toThrow();
   });
+  it("ships typed inputs in the motion and Three starters", () => {
+    expect(starterCutSource().find((file) => file.path === "src/index.tsx")?.content).toContain("useInputs<Inputs>()");
+    expect(starterCutSource("three_svg").find((file) => file.path === "src/index.tsx")?.content).toContain("rotationSpeed");
+  });
   it("accepts non-JSX TypeScript entrypoints and enforces typing budgets independently of syntax", () => {
     const files = starterCutSource().map((file) => file.path === "src/index.tsx" ? { path: "src/index.ts", content: "export default () => null;" } : file);
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.ts")), "src/index.ts")).toHaveLength(3);
