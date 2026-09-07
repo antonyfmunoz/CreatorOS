@@ -152,7 +152,8 @@ function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onEr
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${transform.width * 100}%`, height: `${transform.height * 100}%`, opacity: state.opacity,
     transform: `scale(${state.scale})`, transformOrigin: "top left",
   };
-  return <div data-primary-preview-overlay={clip.id ?? media.id} className="absolute overflow-hidden" style={style}>
+  const maskUrl = clip.maskAssetId ? `/api/assets/${encodeURIComponent(clip.maskAssetId)}/stream` : undefined;
+  return <div data-primary-preview-overlay={clip.id ?? media.id} data-primary-preview-mask={maskUrl ? "enabled" : "none"} className="absolute overflow-hidden" style={{ ...style, ...(maskUrl ? { maskImage: `url("${maskUrl}")`, WebkitMaskImage: `url("${maskUrl}")`, maskMode: "luminance", maskSize: "100% 100%", WebkitMaskSize: "100% 100%", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat" } : {}) }}>
     <PrimaryMedia label={`Overlay ${clip.label ?? media.name}`} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} time={state.sourceTime} speed={clip.speed ?? 1} gain={0} opacity={1} filter={cutClipCssColorPreview(clip)} playing={playing} audio={null} onReady={() => undefined} onError={onError}/>
   </div>;
 }
