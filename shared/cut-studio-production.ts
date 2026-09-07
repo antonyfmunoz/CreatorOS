@@ -6,6 +6,7 @@ import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text
 import { cutLayerMaskAsset } from "./cut-mask";
 import { cutImageFit } from "./cut-image-fit";
 import { CUT_GRAPHIC_CURVE_PROPERTIES, cutGraphicCurvesSchema, type CutGraphicCurves } from "./cut-graphic-curves";
+import { cutCodeInputContractSchema } from "./cut-code-render";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -162,6 +163,7 @@ export const cutCodeCapsuleSchema = z.object({
   lockfileAssetId: z.string().uuid(),
   runtime: z.literal("isolated_node"),
   networkPolicy: z.literal("deny"),
+  inputContract: cutCodeInputContractSchema.nullable().default(null),
   maximumCpuMs: z.number().int().min(100).max(120_000).default(10_000),
   maximumMemoryMb: z.number().int().min(128).max(4_096).default(512),
   // The paired local runtime rejects outputs above its fixed artifact ceiling.

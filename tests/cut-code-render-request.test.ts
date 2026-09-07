@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderRequestSchema, cutCodeRenderSubmissionSchema, defaultCutCodeRenderFormat } from "../shared/cut-code-render";
+import { cutCodeInputContractSchema, cutCodeRenderBatchSubmissionSchema, cutCodeRenderRequestSchema, cutCodeRenderSubmissionSchema, defaultCutCodeRenderFormat, normalizeCutCodeRenderInput } from "../shared/cut-code-render";
 
 const base = { width: 1920, height: 1080, fps: 30, durationInFrames: 120, input: {} };
 
@@ -37,5 +37,17 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still, { ...still, input: { headline: "Second" } }] }).success).toBe(true);
     expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still] }).success).toBe(false);
     expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still, still] }).success).toBe(false);
+  });
+
+  it("normalizes declared typed composition inputs and rejects undeclared data", () => {
+    const contract = cutCodeInputContractSchema.parse({ version: 1, fields: {
+      headline: { type: "string", required: true, maxLength: 80 },
+      hue: { type: "number", minimum: 0, maximum: 360, default: 210 },
+      showLogo: { type: "boolean", default: true },
+    } });
+    expect(normalizeCutCodeRenderInput({ headline: "Launch" }, contract)).toEqual({ headline: "Launch", hue: 210, showLogo: true });
+    expect(() => normalizeCutCodeRenderInput({ headline: "Launch", hidden: "no" }, contract)).toThrow("not declared");
+    expect(() => normalizeCutCodeRenderInput({ headline: "Launch", hue: 361 }, contract)).toThrow("exceeds its maximum");
+    expect(() => normalizeCutCodeRenderInput({ hue: 120 }, contract)).toThrow("required");
   });
 });

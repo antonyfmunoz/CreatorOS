@@ -11,7 +11,7 @@ import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { CutSourceHistory } from "@/lib/cut-source-history";
 import { codeCompositionManifest, motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
-import { cutCodeRenderFormats, cutCodeRenderRequestSchema, defaultCutCodeRenderFormat, type CutCodeRenderMode, type CutCodeRenderRequest } from "@shared/cut-code-render";
+import { cutCodeInputContractSchema, cutCodeRenderFormats, cutCodeRenderRequestSchema, defaultCutCodeRenderFormat, normalizeCutCodeRenderInput, type CutCodeInputContract, type CutCodeRenderMode, type CutCodeRenderRequest } from "@shared/cut-code-render";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
@@ -63,7 +63,7 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
   const requestForInput = (input: unknown): CutCodeRenderRequest => {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Composition input must be a JSON object");
     const candidate = {
-      mode, width, height, fps, durationInFrames, format, input: input as Record<string, unknown>,
+      mode, width, height, fps, durationInFrames, format, input: normalizeCutCodeRenderInput(input as Record<string, unknown>, composition.codeCapsule?.inputContract),
       ...(["jpeg", "webp"].includes(format) ? { quality } : {}),
       ...(mode === "still" ? { frame } : { frameRange: [rangeStart, rangeEnd] as [number, number] }),
     };
@@ -89,7 +89,7 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
     <label className="block text-[9px] text-zinc-500">Composition input JSON<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
     <label className="block text-[9px] text-zinc-500">Optional input batch JSON (2–20 inputs)<textarea aria-label={`${label} input batch JSON`} className={`${field} min-h-16 resize-y font-mono`} value={batchInputJson} disabled={busy} onChange={(event) => setBatchInputJson(event.target.value)}/></label>
-    <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. Private media is never injected into code directly.</p>
+    <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. {composition.codeCapsule?.inputContract ? "This composition also enforces its declared input contract and defaults." : "No input contract is declared yet."} Private media is never injected into code directly.</p>
     {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}
     <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueueBatch(batchRequests()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render batch is invalid"); } }}>Queue local batch</Button></div>
   </div>;
@@ -159,6 +159,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [codeEntrypoint, setCodeEntrypoint] = useState("src/index.tsx");
   const [codeSourceAssetId, setCodeSourceAssetId] = useState("");
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
+  const [codeInputContractJson, setCodeInputContractJson] = useState("");
   const [editingCodeCompositionId, setEditingCodeCompositionId] = useState<string | null>(null);
   const [nodeInvitation, setNodeInvitation] = useState<LocalNodeInvitation | null>(null);
   const [localNodes, setLocalNodes] = useState<LocalNodeRow[]>([]);
@@ -291,7 +292,12 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     const editing = editingCodeCompositionId ? runtime?.compositions.find((composition) => composition.id === editingCodeCompositionId && composition.mode === "sandboxed_tsx") : null;
     if (editingCodeCompositionId && !editing) throw new Error("The composition changed elsewhere. Reload it before saving a new revision.");
     const manifest = editing?.manifest ?? codeCompositionManifest(codeName.trim(), project.duration);
-    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 67_108_864 };
+    let inputContract: CutCodeInputContract | null = null;
+    if (codeInputContractJson.trim()) {
+      try { inputContract = cutCodeInputContractSchema.parse(JSON.parse(codeInputContractJson)); }
+      catch (error) { throw new Error(error instanceof Error ? `Input contract: ${error.message}` : "Input contract must be valid JSON"); }
+    }
+    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", inputContract, maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 67_108_864 };
     if (editing) {
       await apiRequest("PUT", `/api/cut/projects/${project.id}/compositions/${editing.id}`, { name: codeName.trim(), mode: "sandboxed_tsx", manifest, codeCapsule }, { "If-Match": String(editing.revision) });
     } else {
@@ -354,6 +360,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     setCodeEntrypoint(composition.codeCapsule.entrypoint);
     setCodeSourceAssetId(composition.codeCapsule.sourceAssetId);
     setCodeLockfileAssetId(composition.codeCapsule.lockfileAssetId);
+    setCodeInputContractJson(composition.codeCapsule.inputContract ? JSON.stringify(composition.codeCapsule.inputContract, null, 2) : "");
     changeSource(null, "reset");
     setMessage("Composition selected for a new revision. Open its private source ZIP, edit and save a matching source/lockfile pair, then save the revision.");
   };
@@ -461,6 +468,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
+          <label className="mt-2 block text-[9px] text-zinc-500">Optional typed input contract JSON<textarea aria-label="Code composition input contract" className={`${field} min-h-20 resize-y font-mono`} value={codeInputContractJson} onChange={(event) => setCodeInputContractJson(event.target.value)} placeholder={'{"version":1,"fields":{"headline":{"type":"string","required":true,"maxLength":80}}}'}/></label>
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
           <div className="mt-2 flex gap-2"><Button className="flex-1" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}{editingCodeCompositionId ? "Save source revision" : "Save isolated composition"}</Button>{editingCodeCompositionId && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { setEditingCodeCompositionId(null); setMessage("Composition revision cancelled. No source or render changed."); }}>Cancel revision</Button>}</div>
         </div>

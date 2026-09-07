@@ -33,7 +33,7 @@ import {
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
-import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderSubmissionSchema } from "@shared/cut-code-render";
+import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderSubmissionSchema, normalizeCutCodeRenderInput } from "@shared/cut-code-render";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
@@ -539,6 +539,9 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const capsule = composition.codeCapsule;
     try { await assertCodeCapsuleAssets(access.project, capsule); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    let normalizedRequest;
+    try { normalizedRequest = { ...parsed.data.request, input: normalizeCutCodeRenderInput(parsed.data.request.input, capsule.inputContract) }; }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition input does not match this code contract" }); }
     const result = await db.transaction(async (transaction) => {
       await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.${access.project.ownerUserId}`}))`);
       const [existing] = await transaction.select().from(cutStudioJobs).where(and(
@@ -566,7 +569,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
             maximumMemoryMb: capsule.maximumMemoryMb,
             maximumOutputBytes: capsule.maximumOutputBytes,
           },
-          runtime: { version: 1, ...parsed.data.request, entrypoint: capsule.entrypoint },
+          runtime: { version: 1, ...normalizedRequest, entrypoint: capsule.entrypoint },
         },
       };
       const [job] = await transaction.insert(cutStudioJobs).values({
@@ -605,6 +608,9 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const capsule = composition.codeCapsule;
     try { await assertCodeCapsuleAssets(access.project, capsule); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    let normalizedRequests;
+    try { normalizedRequests = parsed.data.requests.map((request) => ({ ...request, input: normalizeCutCodeRenderInput(request.input, capsule.inputContract) })); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "A batch input does not match this code contract" }); }
     const result = await db.transaction(async (transaction) => {
       await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.owner.${access.project.ownerUserId}`}))`);
       const existing = await transaction.select().from(cutStudioJobs).where(and(
@@ -614,9 +620,9 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
         sql`${cutStudioJobs.request}->'codeRender'->>'renderBatchId' = ${parsed.data.idempotencyKey}`,
       )).orderBy(asc(cutStudioJobs.createdAt));
       if (existing.length) {
-        const matches = existing.length === parsed.data.requests.length && existing.every((job, batchIndex) => {
+        const matches = existing.length === normalizedRequests.length && existing.every((job, batchIndex) => {
           const saved = typeof job.request === "object" && job.request && "codeRender" in job.request ? (job.request as { codeRender?: { runtime?: unknown } }).codeRender : undefined;
-          return JSON.stringify(saved?.runtime) === JSON.stringify({ version: 1, ...parsed.data.requests[batchIndex], entrypoint: capsule.entrypoint });
+          return JSON.stringify(saved?.runtime) === JSON.stringify({ version: 1, ...normalizedRequests[batchIndex], entrypoint: capsule.entrypoint });
         });
         if (!matches) return { status: 409, message: "This idempotency key already belongs to a different local render batch" } as const;
         return { jobs: existing } as const;
@@ -625,14 +631,14 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
         eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
         sql`${cutStudioJobs.state} in ('queued', 'running')`,
       ));
-      if ((active?.count ?? 0) + parsed.data.requests.length > 20) return { status: 429, message: "At most 20 CutStudio jobs can be active; wait for renders to finish before adding this batch" } as const;
-      const jobs = await transaction.insert(cutStudioJobs).values(parsed.data.requests.map((request, batchIndex) => ({
+      if ((active?.count ?? 0) + normalizedRequests.length > 20) return { status: 429, message: "At most 20 CutStudio jobs can be active; wait for renders to finish before adding this batch" } as const;
+      const jobs = await transaction.insert(cutStudioJobs).values(normalizedRequests.map((request, batchIndex) => ({
         projectId: access.project.id,
         ownerUserId: access.project.ownerUserId,
         kind: "code_render" as const,
         maxAttempts: 1,
         maxDispatchAttempts: 1,
-        detail: `Local render batch ${batchIndex + 1} of ${parsed.data.requests.length} waiting for the isolated code runner`,
+        detail: `Local render batch ${batchIndex + 1} of ${normalizedRequests.length} waiting for the isolated code runner`,
         request: {
           codeRender: {
             idempotencyKey: `${parsed.data.idempotencyKey}.${batchIndex + 1}`,

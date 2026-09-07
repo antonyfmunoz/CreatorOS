@@ -55,4 +55,11 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain('"If-Match": String(editing.revision)');
     expect(client).toContain("New pinned source revision saved. Existing render receipts remain immutable");
   });
+  it("enforces a declared value-only input contract before durable work is created", () => {
+    expect(server).toContain("normalizeCutCodeRenderInput");
+    expect(server).toContain("Composition input does not match this code contract");
+    expect(server).toContain("A batch input does not match this code contract");
+    expect(client).toContain("Optional typed input contract JSON");
+    expect(client).toContain("Code composition input contract");
+  });
 });
