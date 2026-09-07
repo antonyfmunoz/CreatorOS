@@ -188,7 +188,11 @@ async function executeOneLocalJob(config) {
     let rendered;
     try {
       const limits = payload.limits;
-      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes: limits?.maximumOutputBytes });
+      // Historic capsules may predate the 64 MiB runtime artifact ceiling.
+      // Their declared maximum is an upper bound, never an entitlement to make
+      // the local sandbox exceed its fixed safe output limit.
+      const maximumOutputBytes = Math.min(Number(limits?.maximumOutputBytes), 64 * 1024 * 1024);
+      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes });
     } finally {
       clearInterval(heartbeat);
     }
