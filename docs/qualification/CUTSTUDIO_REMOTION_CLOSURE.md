@@ -1,6 +1,6 @@
 # CutStudio versus Remotion: evidence-separated closure register
 
-Updated 2026-09-03. This register supersedes any older suggestion that only
+Updated 2026-09-07. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
@@ -9,11 +9,13 @@ qualification, released application behavior and competitive parity are distinct
 ## September 7 local-node and projection-surface checkpoint
 
 The code-composition local execution plane is no longer merely a source-level
-prototype. Production source `d1c81acda5bfbc55769f8117b740dacf4340ea2c`
+prototype. Production source `88848d2fe276b0c4e67402f1f15ee8393a803698`
 is verified clean at `/api/release`; `/api/health` is `ok`, migration parity is
 124/124, and the public OpenAPI document exposes scoped read-only CutStudio
-project and local-node endpoints. The later SDK-only source commit is tracked
-separately and is not represented as a production-app deployment here.
+project and local-node endpoints. This release additionally fences stale paired
+machines at 90 seconds and makes one-shot CLI work explicitly arm then pause;
+the foreground `creativesos node serve` mode keeps an owner-authorized local
+queue alive only while its fresh heartbeat is running.
 
 An approved owner field test paired a Windows local node, used the immutable
 local runtime image, and explicitly claimed a bounded code-render job through
@@ -39,7 +41,8 @@ local-node/revocation test, a signed desktop installer with release provenance,
 an approved registry publication of the standalone CLI package, a real
 developer credential/MCP read receipt, and any future managed-compute
 commercial/admission decision. These are not substitutes for the broader
-Remotion/Higgsfield comparison gates below.
+Remotion/Higgsfield comparison gates below. The UI text and paused node status
+were also checked in a signed-in browser after this exact release.
 
 Checkpoint 2026-09-03 14:20 UTC: public source
 `cbb1183372f9ef38d59d8b13657a7ffceab54d3f` is verified clean with 122/122

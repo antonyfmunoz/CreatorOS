@@ -1,9 +1,11 @@
-# CutStudio code-rendering prototype
+# CutStudio local code-rendering runtime
 
 This is a separate native, clean-room React/TSX motion-graphics runtime. It is
-**not wired to public application jobs, approved for multi-tenant production,
-or a claim of Remotion parity**. Application readiness must continue to report
-executable code as not implemented until its end-to-end dispatcher is qualified.
+wired only through an explicitly paired owner-controlled local node: a bounded
+job is durable, the local CLI or desktop action claims it, and the isolated
+container returns a sealed private artifact. It is **not** a managed
+multi-tenant execution service or a claim of Remotion parity. The normal web
+process and trusted cloud render worker never execute a source capsule.
 
 The [lean Noble candidate](../../docs/releases/2026-09-02-cut-code-noble-candidate.md)
 passed the full local artifact/isolation suite and a zero HIGH/CRITICAL image
@@ -283,8 +285,9 @@ it; `useInputs<YourInputs>()` supplies an author-selected input shape.
 
 Types do **not** validate untrusted JSON, numeric bounds, source files or URLs at
 runtime. Admission, bundling, input/media validation and isolation remain
-mandatory. There is no public npm SDK or general app-side code execution in this
-change, and the declarations are not a Remotion compatibility layer.
+mandatory. The standalone CLI package deliberately ships only this local runtime
+context and its read-only MCP peer; it is not a public framework SDK, general
+app-side code execution surface, or Remotion compatibility layer.
 
 `npm test` typechecks a valid TSX composition and negative examples using the
 pinned TypeScript compiler. It also compares declaration exports to the actual
@@ -319,7 +322,7 @@ syscall for Chromium's child user-namespace sandbox while keeping **all containe
 capabilities dropped**. It does not grant a host or container capability.
 
 Microsoft describes the base image as testing/development-only. This harness is
-therefore a local qualification boundary, not a public-execution deployment:
+therefore a local-first execution boundary, not a public managed-execution deployment:
 https://playwright.dev/docs/docker. Production needs a reviewed execution image,
 isolated compute/network/IAM, durable dispatch/cancellation, private asset exchange,
 per-tenant cost admission, vulnerability scanning, receipts, recovery and red-team
