@@ -5,6 +5,7 @@ import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
 import { cutClipPreviewAt } from "@shared/cut-clip-preview";
 import { cutClipCssColorPreview, cutClipRequiresRenderedColorPreview } from "@shared/cut-clip-color-preview";
+import { cutCaptionPreviewAt } from "@shared/cut-caption-preview";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
@@ -13,12 +14,20 @@ import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import type { AnimationItem } from "lottie-web";
 import type { Rive as RiveInstance } from "@rive-app/canvas-lite";
 import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
-import type { CutEdl, CutGraphic, CutRenderRequest } from "@shared/cut-studio";
+import type { CutEdl, CutGraphic, CutRenderRequest, CutTranscript } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type Media = { id: string; assetId: string; name: string };
-type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; fps?: CutRenderRequest["fps"]; onOpen?: () => void };
+type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; transcript?: CutTranscript | null; captions?: boolean; captionStyle?: 1 | 2 | 3 | 4; fps?: CutRenderRequest["fps"]; onOpen?: () => void };
+
+function PrimaryCaptions({ transcript, sourceSeconds, enabled, style }: { transcript?: CutTranscript | null; sourceSeconds: number | null; enabled: boolean; style: 1 | 2 | 3 | 4 }) {
+  const caption = cutCaptionPreviewAt(transcript, sourceSeconds ?? Number.NaN);
+  if (!enabled || !caption) return null;
+  const text = style === 4 && caption.activeWord ? caption.activeWord : `${caption.speaker ? `${caption.speaker}: ` : ""}${caption.text}`;
+  const styleClass = style === 2 ? "text-yellow-300 [text-shadow:0_2px_3px_rgba(0,0,0,.95)]" : style === 3 ? "rounded-md bg-black/70 px-3 py-1.5 text-white" : style === 4 ? "scale-110 rounded-md bg-black/60 px-3 py-1.5 text-white [text-shadow:0_2px_3px_rgba(0,0,0,.95)]" : "text-white [text-shadow:0_2px_3px_rgba(0,0,0,.95)]";
+  return <div aria-live="off" aria-label="Preview captions" data-primary-preview-caption-style={style} className={`pointer-events-none absolute inset-x-8 bottom-5 z-20 text-center text-base font-black leading-tight sm:text-xl ${styleClass}`}>{text}</div>;
+}
 
 function primaryGraphicClip(graphic: CutGraphic, progress: number) {
   if (graphic.revealKind === "wipe") {
@@ -211,7 +220,7 @@ function PrimaryMedia({ url, time, speed, gain, opacity, filter = "none", playin
     onError={() => onError("This private source is unavailable. Check your project access or media format.")}/>;
 }
 
-function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props) {
+function PrimaryPlayer({ projectId, sourceAssetId, edl, media, transcript, captions = true, captionStyle = 1, fps = 30 }: Props) {
   const plan = useMemo(() => {
     try { return { ...cutPrimaryTimeline(edl), error: "" }; }
     catch (error) { return { duration: 0, segments: [], error: error instanceof Error ? error.message : "Timeline is unavailable" }; }
@@ -276,6 +285,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       {activeOverlays.map(({ clip, media: overlay }) => <PrimaryVideoOverlay key={clip.id ?? overlay.id} clip={clip} media={overlay} projectId={projectId} frame={frame} fps={fps} playing={playing} onError={reportError}/>)}
       {activeAudio.map(({ item, media: audioMedia }) => <PrimaryAudioOverlay key={`${item.clip.id ?? audioMedia.id}:${item.track}`} item={item} media={audioMedia} projectId={projectId} playing={playing} audio={audio} muted={muted} onError={reportError}/>)}
       {(edl.graphics ?? []).map((graphic) => <PrimaryGraphic key={graphic.id} graphic={graphic} frame={frame} fps={fps}/>)}
+      <PrimaryCaptions transcript={transcript} sourceSeconds={state?.sourceTime ?? null} enabled={captions} style={captionStyle}/>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <Button size="sm" onClick={() => void play()}>{playing ? "Pause sequence" : "Play sequence"}</Button>
@@ -286,7 +296,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : renderedOnlyOverlays.length ? "The active private LUT or chroma-key treatment requires a rendered preview. Color presets and adjustment controls are shown as a browser approximation." : audioPreview.requiresRenderedDucking ? "The active side-chain ducking treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, ordinary layered audio, supported visual overlays, timeline graphics, and browser-approximated color presets and adjustments. Private LUT, chroma key, calibrated color, and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : renderedOnlyOverlays.length ? "The active private LUT or chroma-key treatment requires a rendered preview. Color presets, adjustment controls, and captions are shown as edit-time browser previews." : audioPreview.requiresRenderedDucking ? "The active side-chain ducking treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, ordinary layered audio, supported visual overlays, timeline graphics, browser-approximated color presets and adjustments, and timed edit-preview captions. Private LUT, chroma key, calibrated color, and final caption typography require a rendered preview.")}</p>
   </div>;
 }
 
