@@ -120,6 +120,8 @@ jobs:
           $env:ELECTRON_RUN_AS_NODE = "1"
           & $app $cli --version
           if ($LASTEXITCODE -ne 0) { throw "The packaged CreativesOS CLI could not run." }
+          $nodeHelp = (& $app $cli node --help | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $nodeHelp -notmatch "node serve") { throw "The packaged CreativesOS CLI is missing its explicit local-node service command." }
           $runtimeUri = (New-Object System.Uri((Resolve-Path -LiteralPath $runtime))).AbsoluteUri
           & $app -e "import('$runtimeUri').then(() => console.log('runtime-import-ok'))"
           if ($LASTEXITCODE -ne 0) { throw "The packaged isolated runtime could not import." }

@@ -18,5 +18,6 @@ describe("standalone CreativesOS CLI package", () => {
     expect(packer).toContain('name !== "node_modules"');
     expect(packer).toContain('!name.endsWith(".test.mjs")');
     expect(packer).toContain('await rm(releaseRoot, { recursive: true, force: true })');
+    expect(packer).toContain("creativesos node serve");
   });
 });
