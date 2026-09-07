@@ -9,7 +9,9 @@ import { renderIsolated } from './host.mjs';
 const directory = await mkdtemp(path.join(os.tmpdir(), 'creativesos-three-scene-'));
 const source = Buffer.from(zipSync({
   'package.json': strToU8(JSON.stringify({ dependencies: { react: '18.3.1', three: '0.185.1' } })),
-  'src/index.tsx': strToU8(`import {FullFrame,SvgScene,useFrame} from '@creativesos/cut';import {BoxGeometry,Mesh,MeshBasicMaterial,PerspectiveCamera,Scene} from 'three';export default function ThreeScene(){const frame=useFrame();const scene=new Scene();const cube=new Mesh(new BoxGeometry(1.4,1.4,1.4),new MeshBasicMaterial({color:'#00ff00'}));cube.rotation.y=frame*.12;scene.add(cube);const camera=new PerspectiveCamera(45,16/9,.1,10);camera.position.z=3;return <FullFrame><SvgScene scene={scene} camera={camera} width={320} height={180}/></FullFrame>}`),
+  // This intentionally keeps both Three objects stable, matching the editable
+  // CutStudio starter. A frame-reactive SVG bridge must still recapture it.
+  'src/index.tsx': strToU8(`import React,{useMemo}from 'react';import {FullFrame,SvgScene,useFrame}from '@creativesos/cut';import * as THREE from 'three';export default function ThreeScene(){const frame=useFrame();const scene=useMemo(()=>{const next=new THREE.Scene();const cube=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.4,1.4),new THREE.MeshBasicMaterial({color:'#00ff00'}));cube.name='hero-cube';next.add(cube);return next},[]);const camera=useMemo(()=>{const next=new THREE.PerspectiveCamera(45,16/9,.1,10);next.position.z=3;return next},[]);const cube=scene.getObjectByName('hero-cube');if(cube)cube.rotation.y=frame*.12;return <FullFrame><SvgScene scene={scene} camera={camera} width={320} height={180}/></FullFrame>}`),
 }));
 
 try {

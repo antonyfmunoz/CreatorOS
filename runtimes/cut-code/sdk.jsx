@@ -81,6 +81,10 @@ export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, mute
 export function SvgScene({ scene, camera, width, height, style, ...props }) {
   const target = useRef(null);
   const composition = useComposition();
+  // A scene may intentionally retain its identity (for example via useMemo)
+  // while its geometry changes from the composition frame. Make capture follow
+  // that frame rather than requiring authors to recreate a Three scene.
+  const frame = useFrame();
   const renderWidth = width ?? composition.width;
   const renderHeight = height ?? composition.height;
   if (!scene?.isScene || !camera?.isCamera) throw new Error('SvgScene requires a Three Scene and Camera.');
@@ -98,6 +102,6 @@ export function SvgScene({ scene, camera, width, height, style, ...props }) {
     svg.style.height = '100%';
     host.replaceChildren(svg);
     return () => host.replaceChildren();
-  }, [scene, camera, renderWidth, renderHeight]);
+  }, [scene, camera, renderWidth, renderHeight, frame]);
   return <div {...props} ref={target} style={{ width: renderWidth, height: renderHeight, overflow: 'hidden', ...style }}/>;
 }
