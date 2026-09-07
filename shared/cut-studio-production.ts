@@ -164,7 +164,8 @@ export const cutCodeCapsuleSchema = z.object({
   networkPolicy: z.literal("deny"),
   maximumCpuMs: z.number().int().min(100).max(120_000).default(10_000),
   maximumMemoryMb: z.number().int().min(128).max(4_096).default(512),
-  maximumOutputBytes: z.number().int().min(1_024).max(1_073_741_824).default(268_435_456),
+  // The paired local runtime rejects outputs above its fixed artifact ceiling.
+  maximumOutputBytes: z.number().int().min(1_024).max(67_108_864).default(67_108_864),
 });
 
 export const cutProductionBriefSchema = z.object({

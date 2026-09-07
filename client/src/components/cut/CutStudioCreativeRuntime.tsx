@@ -278,7 +278,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     if (sourceDraftDirty(sourceDraftRef.current)) throw new Error("Save or discard your source draft before registering its saved package.");
     if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
     const manifest = codeCompositionManifest(codeName.trim(), project.duration);
-    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
+    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 67_108_864 };
     await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
     await refresh();
     setMessage("Pinned code composition saved. Pair a trusted local node before queueing a bounded isolated render.");
