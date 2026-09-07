@@ -40,7 +40,8 @@ production topology approval or enable public code execution.
   captured by the same isolated browser path as the rest of a composition.
   Capture is keyed to the composition frame even when authors retain their
   Three scene and camera with `useMemo`. The qualified fixture proves that
-  frame-driven geometry changes reach PNG pixels in that stable-object pattern.
+  frame-driven geometry changes reach PNG pixels in one live frame sequence,
+  not merely in separate still renders.
 - CutStudio exposes a **New 3D SVG package** starter for this approved surface.
   It declares only the exact React 18.3.1 and Three 0.185.1 pins, so saving it
   with the matching lockfile remains a closed dependency graph. It is a
