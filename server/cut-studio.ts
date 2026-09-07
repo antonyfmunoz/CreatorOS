@@ -793,7 +793,7 @@ async function renderMultitrack(
         const maskInput = inputIndex.get(clip.maskAssetId);
         const mask = inputById.get(clip.maskAssetId);
         if (maskInput === undefined || !mask?.asset.mimeType?.startsWith("image/")) throw new Error("A video composition mask must be ready private image media");
-        filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight}:force_original_aspect_ratio=fill,format=gray[overlaymask${overlayIndex}]`);
+        filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
       const overlayX = motionOverlayExpression(clip, "x", size[0]);

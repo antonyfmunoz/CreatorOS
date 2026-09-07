@@ -7,5 +7,7 @@ describe("native video composition mask contract", () => {
     expect(source).toContain("clip.maskAssetId");
     expect(source).toContain("A video composition mask must be ready private image media");
     expect(source).toContain("alphamerge[${overlayLabel}]");
+    expect(source).toContain("format=gray[overlaymask${overlayIndex}]");
+    expect(source).not.toContain("force_original_aspect_ratio=fill");
   });
 });
