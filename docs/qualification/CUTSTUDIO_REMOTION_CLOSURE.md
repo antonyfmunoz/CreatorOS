@@ -6,6 +6,41 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+## September 7 local-node and projection-surface checkpoint
+
+The code-composition local execution plane is no longer merely a source-level
+prototype. Production source `d1c81acda5bfbc55769f8117b740dacf4340ea2c`
+is verified clean at `/api/release`; `/api/health` is `ok`, migration parity is
+124/124, and the public OpenAPI document exposes scoped read-only CutStudio
+project and local-node endpoints. The later SDK-only source commit is tracked
+separately and is not represented as a production-app deployment here.
+
+An approved owner field test paired a Windows local node, used the immutable
+local runtime image, and explicitly claimed a bounded code-render job through
+the broker. It returned both a private PNG still and a private MP4 video. The
+authenticated CutStudio UI showed each completed artifact, loaded the in-app
+video preview, and inserted the MP4 back into the editable project timeline as
+a saved second clip. This proves the local broker, isolation harness, private
+artifact sealing, preview and editor handoff for that exact short self-contained
+composition. It does **not** prove arbitrary package compatibility, long-media
+scale, a managed executor, or competitor parity.
+
+The same capability now has verified source-level peers: a packaged Windows
+desktop artifact carries the isolated runtime outside `app.asar`; a standalone
+`@creativesos/cli` release artifact contains only the CLI, MCP server and
+runtime (not the application or deployment templates); the versioned API and
+TypeScript SDK expose scoped read-only project/node inspection; and the MCP
+server discovers those read-only tools. MCP cannot pair, execute, revoke, edit,
+or silently approve work. A future agent-triggered render requires a durable
+approval contract and a separate write scope; it must not be added to `cut:read`.
+
+Remaining field/distribution gates for this plane are a deliberately failing
+local-node/revocation test, a signed desktop installer with release provenance,
+an approved registry publication of the standalone CLI package, a real
+developer credential/MCP read receipt, and any future managed-compute
+commercial/admission decision. These are not substitutes for the broader
+Remotion/Higgsfield comparison gates below.
+
 Checkpoint 2026-09-03 14:20 UTC: public source
 `cbb1183372f9ef38d59d8b13657a7ffceab54d3f` is verified clean with 122/122
 migrations and `release_ready`. Protected deployment `33762985646` passed
