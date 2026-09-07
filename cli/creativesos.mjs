@@ -191,7 +191,13 @@ async function executeOneLocalJob(config) {
       // Historic capsules may predate the 64 MiB runtime artifact ceiling.
       // Their declared maximum is an upper bound, never an entitlement to make
       // the local sandbox exceed its fixed safe output limit.
-      const maximumOutputBytes = Math.min(Number(limits?.maximumOutputBytes), 64 * 1024 * 1024);
+      const declaredMaximumOutputBytes = Number(limits?.maximumOutputBytes);
+      // Old persisted leases did not always contain this limit. Missing or
+      // malformed legacy data must not become NaN and prevent a safe render;
+      // fall back only to the runtime's fixed ceiling, never above it.
+      const maximumOutputBytes = Number.isSafeInteger(declaredMaximumOutputBytes) && declaredMaximumOutputBytes >= 1024
+        ? Math.min(declaredMaximumOutputBytes, 64 * 1024 * 1024)
+        : 64 * 1024 * 1024;
       rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes });
     } finally {
       clearInterval(heartbeat);

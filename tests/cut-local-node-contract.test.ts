@@ -81,6 +81,12 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).not.toContain('await runNodeCommand();\n  process.exit(0);');
   });
 
+  it("keeps legacy or missing output budgets inside the hardened runtime ceiling", () => {
+    expect(cliSource).toContain("Number.isSafeInteger(declaredMaximumOutputBytes)");
+    expect(cliSource).toContain("declaredMaximumOutputBytes >= 1024");
+    expect(cliSource).toContain(": 64 * 1024 * 1024;");
+  });
+
   it("offers a foreground, user-started local worker without expanding its single-job authority", () => {
     expect(cliSource).toContain("node serve [--poll-ms <2000-60000>]");
     expect(cliSource).toContain('if (subcommand === "serve")');
