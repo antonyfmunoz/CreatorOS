@@ -19,7 +19,8 @@ try {
   // One sequence keeps the browser and React tree alive across frames. This
   // catches a capture bridge that only responds to new scene identities.
   const request = { version: 1, mode: 'sequence', format: 'png', width: 320, height: 180, fps: 30, durationInFrames: 30, frameRange: [0, 10], entrypoint: 'src/index.tsx', input: {} };
-  const rendered = await renderIsolated({ request, source, image });
+  // Match the limits emitted by the public CutStudio code-composition editor.
+  const rendered = await renderIsolated({ request, source, image, timeoutMs: 10_000, memoryMb: 512, maximumOutputBytes: 67_108_864 });
   const frames = unzipSync(rendered.artifact);
   assert.ok(frames['frame-000000.png']?.length && frames['frame-000010.png']?.length, 'The stable-scene sequence must contain its requested frames.');
   const initial = Buffer.from(frames['frame-000000.png']);
