@@ -17,6 +17,12 @@ Status: locally qualified release candidate; not deployed
   pair, and updates the same composition with an optimistic `If-Match`
   revision. Older completed outputs remain immutable receipts of their pinned
   source and are not overwritten.
+- A code capsule may declare a small value-only input contract. Required text,
+  finite numeric and boolean fields, explicit defaults, numeric/string bounds,
+  finite option sets and Unicode-safe patterns are normalized in both the
+  browser and server before a job is durable. Unknown fields never reach the
+  untrusted package. The supplied motion and 3D starters demonstrate the same
+  TypeScript `useInputs<T>()` shape and saved contract.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -29,6 +35,8 @@ Status: locally qualified release candidate; not deployed
   tests/cut-code-authoring.test.ts` — 27 passing assertions for bounded
   requests/batches, queue contract, source authoring and revision handling.
 - `npm run check` — TypeScript passes.
+- `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
+  including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
 - Earlier in this workstream, the signed-in `antonyfm` account completed a real
   private local frame-sequence job on its paired Windows node. That exercise
