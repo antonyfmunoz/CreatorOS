@@ -11,6 +11,9 @@ describe("CutStudio local code-render output handoff", () => {
     expect(runtime).toContain('"Add to timeline"');
     expect(runtime).toContain('"Add as graphic"');
     expect(runtime).toContain("The render is syncing into this project's private media library");
+    expect(runtime).toContain("previewCodeRenderId");
+    expect(runtime).toContain('aria-label={`Preview ${reusableOutput.name}`}');
+    expect(runtime).toContain("/media-library/${encodeURIComponent(reusableOutput.id)}/media-file");
   });
 
   it("routes videos to a timeline layer and stills to the private image-graphic renderer", () => {
