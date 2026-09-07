@@ -49,4 +49,10 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Optional input batch JSON (2–20 inputs)");
     expect(client).toContain("queueCodeRenderBatch");
   });
+  it("updates a pinned source as a revision instead of replacing prior render receipts", () => {
+    expect(client).toContain("beginCodeCompositionRevision");
+    expect(client).toContain('"Save source revision"');
+    expect(client).toContain('"If-Match": String(editing.revision)');
+    expect(client).toContain("New pinned source revision saved. Existing render receipts remain immutable");
+  });
 });

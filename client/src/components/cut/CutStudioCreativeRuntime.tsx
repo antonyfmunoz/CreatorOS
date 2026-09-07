@@ -159,6 +159,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [codeEntrypoint, setCodeEntrypoint] = useState("src/index.tsx");
   const [codeSourceAssetId, setCodeSourceAssetId] = useState("");
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
+  const [editingCodeCompositionId, setEditingCodeCompositionId] = useState<string | null>(null);
   const [nodeInvitation, setNodeInvitation] = useState<LocalNodeInvitation | null>(null);
   const [localNodes, setLocalNodes] = useState<LocalNodeRow[]>([]);
   const [previewCodeRenderId, setPreviewCodeRenderId] = useState<string | null>(null);
@@ -287,11 +288,18 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const createCodeComposition = () => act("composition:code", async () => {
     if (sourceDraftDirty(sourceDraftRef.current)) throw new Error("Save or discard your source draft before registering its saved package.");
     if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
-    const manifest = codeCompositionManifest(codeName.trim(), project.duration);
+    const editing = editingCodeCompositionId ? runtime?.compositions.find((composition) => composition.id === editingCodeCompositionId && composition.mode === "sandboxed_tsx") : null;
+    if (editingCodeCompositionId && !editing) throw new Error("The composition changed elsewhere. Reload it before saving a new revision.");
+    const manifest = editing?.manifest ?? codeCompositionManifest(codeName.trim(), project.duration);
     const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 67_108_864 };
-    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
+    if (editing) {
+      await apiRequest("PUT", `/api/cut/projects/${project.id}/compositions/${editing.id}`, { name: codeName.trim(), mode: "sandboxed_tsx", manifest, codeCapsule }, { "If-Match": String(editing.revision) });
+    } else {
+      await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
+    }
     await refresh();
-    setMessage("Pinned code composition saved. Pair a trusted local node before queueing a bounded isolated render.");
+    setEditingCodeCompositionId(null);
+    setMessage(editing ? "New pinned source revision saved. Existing render receipts remain immutable; future local jobs use this revision." : "Pinned code composition saved. Pair a trusted local node before queueing a bounded isolated render.");
   });
 
   const createNodeInvitation = () => act("node:pair", async () => {
@@ -338,6 +346,16 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
       changeSource({ ...result, saved: sourceDraftIdentity(result) }, "reset");
       setMessage("Private source opened as text. Nothing was executed.");
     });
+  };
+  const beginCodeCompositionRevision = (composition: CompositionRow) => {
+    if (!composition.codeCapsule || sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and revise this pinned composition?")) return;
+    setEditingCodeCompositionId(composition.id);
+    setCodeName(composition.name);
+    setCodeEntrypoint(composition.codeCapsule.entrypoint);
+    setCodeSourceAssetId(composition.codeCapsule.sourceAssetId);
+    setCodeLockfileAssetId(composition.codeCapsule.lockfileAssetId);
+    changeSource(null, "reset");
+    setMessage("Composition selected for a new revision. Open its private source ZIP, edit and save a matching source/lockfile pair, then save the revision.");
   };
   const saveSource = (withLockfile = false) => act("code:save", async () => {
     const draft = sourceDraftRef.current;
@@ -444,10 +462,10 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
-          <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
+          <div className="mt-2 flex gap-2"><Button className="flex-1" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}{editingCodeCompositionId ? "Save source revision" : "Save isolated composition"}</Button>{editingCodeCompositionId && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { setEditingCodeCompositionId(null); setMessage("Composition revision cancelled. No source or render changed."); }}>Cancel revision</Button>}</div>
         </div>
         {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3">
-          <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>
+          <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" ? <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button> : <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => beginCodeCompositionRevision(composition)}>Revise source</Button>}</div>
           {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)} onQueueBatch={(requests) => void queueCodeRenderBatch(composition, requests)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
             const reusableOutput = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
             const isCompositedOutput = job.mode === "video" || job.mode === "still";
