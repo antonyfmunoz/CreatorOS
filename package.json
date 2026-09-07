@@ -1,6 +1,7 @@
 {
   "name": "rest-express",
   "version": "1.0.0",
+  "private": true,
   "description": "CreativesOS desktop workspace and local-first CutStudio node.",
   "author": "CreativesOS",
   "type": "module",
@@ -15,6 +16,7 @@
   "scripts": {
     "dev": "tsx server/index.ts",
     "cli": "node cli/creativesos.mjs",
+    "cli:pack": "node scripts/pack-creativesos-cli.mjs",
     "mcp": "node mcp/creativesos-mcp.mjs",
     "desktop": "electron desktop/main.mjs",
     "desktop:package": "npm run build && electron-builder --win nsis --publish never",
