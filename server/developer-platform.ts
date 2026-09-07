@@ -34,6 +34,7 @@ import {
   developerSandboxes,
   products,
   cutStudioLocalNodes,
+  cutStudioProjects,
 } from "@shared/schema";
 import { attachUser } from "./auth";
 import { ensureDefaultBusiness, userCanManageBusiness } from "./businesses";
@@ -521,6 +522,12 @@ export function registerDeveloperPlatformRoutes(app: Express) {
         "/cut/local-nodes": {
           get: {
             summary: "List paired CutStudio local-node status without device credentials",
+            security: [{ bearerAuth: ["cut:read"] }],
+          },
+        },
+        "/cut/projects": {
+          get: {
+            summary: "List CutStudio projects without source media or editable timeline data",
             security: [{ bearerAuth: ["cut:read"] }],
           },
         },
@@ -1071,6 +1078,58 @@ export function registerDeveloperPlatformRoutes(app: Express) {
         .orderBy(desc(sql`count(*)`));
       res.json({
         data: rows.map((row) => ({ ...row, count: Number(row.count) })),
+      });
+    },
+  );
+  app.get(
+    "/api/v1/cut/projects",
+    rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }),
+    requireDeveloperScope("cut:read"),
+    async (req, res) => {
+      const auth = developerAuth(req)!;
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+      const cursor = parseDeveloperCursor(
+        typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+      );
+      if (req.query.cursor && !cursor)
+        return res.status(400).json({
+          error: { code: "invalid_cursor", message: "The cursor is invalid" },
+        });
+      const rows = await db
+        .select({
+          id: cutStudioProjects.id,
+          name: cutStudioProjects.name,
+          mediaKind: cutStudioProjects.mediaKind,
+          duration: cutStudioProjects.duration,
+          revision: cutStudioProjects.revision,
+          updatedAt: cutStudioProjects.updatedAt,
+          createdAt: cutStudioProjects.createdAt,
+        })
+        .from(cutStudioProjects)
+        .where(
+          and(
+            eq(cutStudioProjects.businessId, auth.businessId),
+            cursor
+              ? or(
+                  lt(cutStudioProjects.createdAt, cursor.createdAt),
+                  and(
+                    eq(cutStudioProjects.createdAt, cursor.createdAt),
+                    lt(cutStudioProjects.id, cursor.id),
+                  ),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(cutStudioProjects.createdAt), desc(cutStudioProjects.id))
+        .limit(limit + 1);
+      const page = rows.slice(0, limit);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({
+        data: page,
+        nextCursor:
+          rows.length > limit && page.length
+            ? developerCursor(page[page.length - 1])
+            : null,
       });
     },
   );

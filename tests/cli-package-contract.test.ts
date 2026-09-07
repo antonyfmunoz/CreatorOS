@@ -13,6 +13,7 @@ describe("standalone CreativesOS CLI package", () => {
   it("ships only the CLI and the inspected local code-runtime context", () => {
     expect(packer).toContain('name: "@creativesos/cli"');
     expect(packer).toContain('"cli/creativesos.mjs"');
+    expect(packer).toContain('"mcp/creativesos-mcp.mjs"');
     expect(packer).toContain('"runtimes", "cut-code"');
     expect(packer).toContain('name !== "node_modules"');
     expect(packer).toContain('!name.endsWith(".test.mjs")');

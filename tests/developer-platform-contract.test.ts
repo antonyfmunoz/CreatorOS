@@ -36,6 +36,7 @@ describe("developer platform contract", () => {
     expect(createDeveloperOAuthAppSchema.safeParse({ name: "Reporting app", redirectUris: [], scopes: ["admin:*"] }).success).toBe(false);
   });
   it("keeps local-node inspection explicitly read-only", () => {
+    expect(runtimeSource).toContain('"/api/v1/cut/projects"');
     expect(runtimeSource).toContain('"/api/v1/cut/local-nodes"');
     expect(runtimeSource).toContain('requireDeveloperScope("cut:read")');
     expect(runtimeSource).not.toContain("deviceSecretHash: cutStudioLocalNodes");

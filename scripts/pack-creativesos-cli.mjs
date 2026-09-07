@@ -12,8 +12,10 @@ const packageSource = JSON.parse(await readFile(path.join(repositoryRoot, "packa
 // application root is private and must never be published as the CLI.
 await rm(releaseRoot, { recursive: true, force: true });
 await mkdir(path.join(releaseRoot, "cli"), { recursive: true });
+await mkdir(path.join(releaseRoot, "mcp"), { recursive: true });
 
 await cp(path.join(repositoryRoot, "cli", "creativesos.mjs"), path.join(releaseRoot, "cli", "creativesos.mjs"));
+await cp(path.join(repositoryRoot, "mcp", "creativesos-mcp.mjs"), path.join(releaseRoot, "mcp", "creativesos-mcp.mjs"));
 await cp(runtimeSource, runtimeTarget, {
   recursive: true,
   filter: (source) => {
@@ -29,11 +31,11 @@ const cliPackage = {
   license: packageSource.license,
   type: "module",
   engines: { node: "22.x" },
-  bin: { creativesos: "cli/creativesos.mjs" },
-  files: ["cli", "runtimes/cut-code", "README.md", "package.json"],
+  bin: { creativesos: "cli/creativesos.mjs", "creativesos-mcp": "mcp/creativesos-mcp.mjs" },
+  files: ["cli", "mcp", "runtimes/cut-code", "README.md", "package.json"],
 };
 
 await writeFile(path.join(releaseRoot, "package.json"), `${JSON.stringify(cliPackage, null, 2)}\n`, "utf8");
-await writeFile(path.join(releaseRoot, "README.md"), `# CreativesOS CLI\n\nThis package provides the user-authorized CreativesOS CLI and CutStudio local-node runtime.\n\nInstall from an approved registry release, then run \`creativesos --help\`. Pairing a device and executing a render are explicit user actions; the CLI never stores a general API key or starts a local render automatically.\n\nThe bundled runtime is used only as a Docker build context for the isolated, network-disabled CutStudio container. Build or select an approved immutable local runtime image before running \`creativesos node work\`.\n`, "utf8");
+await writeFile(path.join(releaseRoot, "README.md"), `# CreativesOS CLI\n\nThis package provides the user-authorized CreativesOS CLI, its read-only MCP server, and the CutStudio local-node runtime.\n\nInstall from an approved registry release, then run \`creativesos --help\` or \`creativesos-mcp\`. Pairing a device and executing a render are explicit user actions; neither surface stores a general API key or starts a local render automatically.\n\nThe bundled runtime is used only as a Docker build context for the isolated, network-disabled CutStudio container. Build or select an approved immutable local runtime image before running \`creativesos node work\`.\n`, "utf8");
 
 console.log(`Prepared standalone CLI package at ${releaseRoot}`);
