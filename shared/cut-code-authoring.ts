@@ -71,7 +71,15 @@ export function buildCutSourceZip(files: CutSourceFile[], entrypoint: string) {
   return result;
 }
 
-export function starterCutSource(): CutSourceFile[] {
+export type CutSourceStarter = "motion" | "three_svg";
+
+// Keep starters as inert text. The editor may safely offer them without
+// evaluating the package; execution is still confined to the local runtime.
+export function starterCutSource(starter: CutSourceStarter = "motion"): CutSourceFile[] {
+  if (starter === "three_svg") return [
+    { path: "package.json", content: JSON.stringify({ name: "cut-three-svg-composition", private: true, type: "module", dependencies: { react: "18.3.1", three: "0.185.1" } }, null, 2) + "\n" },
+    { path: "src/index.tsx", content: "import React, { useMemo } from 'react';\nimport * as THREE from 'three';\nimport { FullFrame, SvgScene, useFrame } from '@creativesos/cut';\n\nexport default function Composition() {\n  const frame = useFrame();\n  const scene = useMemo(() => {\n    const next = new THREE.Scene();\n    const cube = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.45, 1.45), new THREE.MeshBasicMaterial({ color: '#1d9bf0' }));\n    cube.name = 'hero-cube';\n    next.add(cube);\n    return next;\n  }, []);\n  const camera = useMemo(() => {\n    const next = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);\n    next.position.z = 5;\n    return next;\n  }, []);\n  const cube = scene.getObjectByName('hero-cube');\n  if (cube) cube.rotation.set(frame / 42, frame / 55, frame / 70);\n  return <FullFrame style={{ background: '#09090b' }}><SvgScene scene={scene} camera={camera} width={1080} height={1080} style={{ width: '100%', height: '100%' }} /></FullFrame>;\n}\n" },
+  ];
   return [
     { path: "package.json", content: JSON.stringify({ name: "cut-composition", private: true, type: "module", dependencies: { react: "18.3.1" } }, null, 2) + "\n" },
     { path: "src/index.tsx", content: "import React from 'react';\nimport { FullFrame, useFrame } from '@creativesos/cut';\nimport './style.css';\n\nexport default function Composition() {\n  const frame = useFrame();\n  return <FullFrame className=\"title\">\n    <h1 style={{ transform: `translateY(${Math.max(0, 30 - frame)}px)` }}>Your story</h1>\n  </FullFrame>;\n}\n" },

@@ -39,6 +39,11 @@ production topology approval or enable public code execution.
   and `Camera`, renders their current frame to a bounded SVG surface, and is
   captured by the same isolated browser path as the rest of a composition.
   The qualified fixture proves frame-driven geometry changes reach PNG pixels.
+- CutStudio exposes a **New 3D SVG package** starter for this approved surface.
+  It declares only the exact React 18.3.1 and Three 0.185.1 pins, so saving it
+  with the matching lockfile remains a closed dependency graph. It is a
+  starting point for editable vector scenes, not a claim of GPU, texture,
+  shader, lighting or arbitrary-addon support.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and

@@ -19,6 +19,13 @@ describe("data-only source authoring", () => {
     files[0].content = JSON.stringify({ scripts: { postinstall: "exit 99" } });
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.tsx")), "src/index.tsx")).toHaveLength(3);
   });
+  it("offers an inert, pinned Three SVG starter that is ready for a matching lockfile", () => {
+    const files = starterCutSource("three_svg");
+    const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.content);
+    expect(manifest.dependencies).toEqual({ react: "18.3.1", three: "0.185.1" });
+    expect(files.find((file) => file.path === "src/index.tsx")?.content).toContain("SvgScene");
+    expect(() => buildCutSourceZip(files, "src/index.tsx")).not.toThrow();
+  });
   it("accepts non-JSX TypeScript entrypoints and enforces typing budgets independently of syntax", () => {
     const files = starterCutSource().map((file) => file.path === "src/index.tsx" ? { path: "src/index.ts", content: "export default () => null;" } : file);
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.ts")), "src/index.ts")).toHaveLength(3);

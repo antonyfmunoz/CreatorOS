@@ -17,6 +17,12 @@ describe("CutStudio closed dependency lockfile generation", () => {
     expect(lock.packages[""].dependencies).toEqual({ react: "18.3.1" });
     expect(Object.keys(lock.packages)).toEqual(["", "node_modules/js-tokens", "node_modules/loose-envify", "node_modules/react"]);
   });
+  it("generates the qualified Three closure for the 3D SVG starter", () => {
+    const source = starterCutSource("three_svg");
+    const lock = JSON.parse(generateCutSourceLockfile(source));
+    expect(lock.packages[""].dependencies).toEqual({ react: "18.3.1", three: "0.185.1" });
+    expect(lock.packages["node_modules/three"]).toEqual(cutPinnedPackageRecords.three);
+  });
   it("includes exact transitive and peer dependencies for the full pinned set deterministically", () => {
     const a = generateCutSourceLockfile(files({ dependencies: { three: "0.185.1", "react-dom": "18.3.1", react: "18.3.1" } }));
     const b = generateCutSourceLockfile(files({ dependencies: { react: "18.3.1", "react-dom": "18.3.1", three: "0.185.1" } }));

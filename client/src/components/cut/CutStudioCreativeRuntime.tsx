@@ -418,7 +418,10 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
             changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null }, "reset");
-          }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
+          }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
+            if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start the 3D SVG template?")) return;
+            changeSource({ files: starterCutSource("three_svg"), entrypoint: "src/index.tsx", saved: null }, "reset");
+          }}>New 3D SVG package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
           {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
