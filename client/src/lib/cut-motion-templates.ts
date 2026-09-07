@@ -2,6 +2,29 @@ import type { CutCompositionManifest } from "@shared/cut-studio-production";
 
 type MotionTemplateProject = { sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio" };
 
+// A programmable composition executes its own source package in the isolated
+// runtime. It must not silently inherit the project's timeline media: that
+// would turn an otherwise self-contained code render into an unexpected
+// private-asset dependency. Authors can add explicit project media through a
+// future, capability-scoped input API instead.
+export function codeCompositionManifest(name: string, duration: number): CutCompositionManifest {
+  const fps = 30 as const;
+  return {
+    version: 1,
+    name,
+    width: 1920,
+    height: 1080,
+    fps,
+    durationInFrames: Math.max(1, Math.round(duration * fps)),
+    background: "#000000",
+    parameters: [],
+    layers: [],
+    fonts: [],
+    audioReactiveSignals: [],
+    metadata: { runtime: "isolated_node", sourceModel: "self_contained" },
+  };
+}
+
 export function motionTemplate(project: MotionTemplateProject, template: "kinetic" | "lower_third" | "product"): CutCompositionManifest {
   const fps = 30 as const;
   const durationInFrames = Math.max(30, Math.round(project.duration * fps));

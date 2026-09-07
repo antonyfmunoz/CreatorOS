@@ -9,7 +9,7 @@ import { buildCutSourceZip, starterCutSource, type CutSourceFile } from "@shared
 import { generateCutSourceLockfile } from "@shared/cut-code-lockfile";
 import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { CutSourceHistory } from "@/lib/cut-source-history";
-import { motionTemplate } from "@/lib/cut-motion-templates";
+import { codeCompositionManifest, motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
 import { cutCodeRenderFormats, cutCodeRenderRequestSchema, defaultCutCodeRenderFormat, type CutCodeRenderMode, type CutCodeRenderRequest } from "@shared/cut-code-render";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
@@ -277,7 +277,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const createCodeComposition = () => act("composition:code", async () => {
     if (sourceDraftDirty(sourceDraftRef.current)) throw new Error("Save or discard your source draft before registering its saved package.");
     if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
-    const manifest = { ...motionTemplate(project, "kinetic"), name: codeName.trim() };
+    const manifest = codeCompositionManifest(codeName.trim(), project.duration);
     const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
     await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
     await refresh();

@@ -74,6 +74,11 @@ describe("CutStudio local-node contract", () => {
     expect(creativeRuntimeSource).toContain("disabled={busy || !ready}");
   });
 
+  it("lets a successful local-node command drain its fetch handles before process exit", () => {
+    expect(cliSource).toContain('if (command === "node") await runNodeCommand();');
+    expect(cliSource).not.toContain('await runNodeCommand();\n  process.exit(0);');
+  });
+
   it("keeps the packaged desktop runtime outside the application archive", () => {
     expect(cliSource).toContain("CREATIVESOS_CUT_CODE_RUNTIME_DIR");
     expect(desktopSource).toContain('path.join(process.resourcesPath, "cut-code-runtime")');

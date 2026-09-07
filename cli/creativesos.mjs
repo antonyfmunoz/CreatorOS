@@ -257,15 +257,13 @@ function print(value) {
 
 if (["help", "--help", "-h"].includes(command)) usage();
 if (["--version", "-v", "version"].includes(command)) { console.log(version); process.exit(0); }
-if (command === "node") {
-  await runNodeCommand();
-  process.exit(0);
+if (command === "node") await runNodeCommand();
+else {
+  const routes = { profile: "/profile", assets: "/assets", products: "/products", analytics: "/analytics/summary" };
+  if (command === "openapi") print(await request("/openapi.json", false));
+  else if (command === "doctor") {
+    const document = await request("/openapi.json", false);
+    print({ status: "ok", api: baseUrl, openapi: document?.openapi ?? "unknown", credential: apiKey ? "present (not validated)" : "not configured" });
+  } else if (routes[command]) print(await request(routes[command]));
+  else usage(2);
 }
-
-const routes = { profile: "/profile", assets: "/assets", products: "/products", analytics: "/analytics/summary" };
-if (command === "openapi") print(await request("/openapi.json", false));
-else if (command === "doctor") {
-  const document = await request("/openapi.json", false);
-  print({ status: "ok", api: baseUrl, openapi: document?.openapi ?? "unknown", credential: apiKey ? "present (not validated)" : "not configured" });
-} else if (routes[command]) print(await request(routes[command]));
-else usage(2);
