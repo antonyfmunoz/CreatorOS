@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 const server = readFileSync(new URL("../server/cut-studio-production.ts", import.meta.url), "utf8");
 const client = readFileSync(new URL("../client/src/components/cut/CutStudioCreativeRuntime.tsx", import.meta.url), "utf8");
+const localNodeServer = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
+const cli = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
 
 describe("CutStudio local code-render queue contract", () => {
   it("surfaces only project-scoped code jobs and permits cancellation before claim", () => {
@@ -11,10 +13,23 @@ describe("CutStudio local code-render queue contract", () => {
     expect(server).toContain('eq(cutStudioJobs.state, "queued")');
     expect(server).toContain("Cancelled before the paired local node claimed it");
   });
-  it("shows the durable job state without offering cancellation of an active lease", () => {
+  it("offers cancellation before claim and a cooperative stop request for a live lease", () => {
     expect(client).toContain("runtime.codeRenders.filter");
     expect(client).toContain('job.state === "queued"');
+    expect(client).toContain('job.state === "running" && !cancellationPending');
+    expect(client).toContain('job.state === "running" ? "Cancellation requested');
     expect(client).toContain("cancelCodeRender(job)");
+    expect(server).toContain('detail: "Cancellation requested; stopping paired local node"');
+    expect(server).toContain('eventType: "cutstudio.code_render.cancellation_requested"');
+  });
+  it("stops the claimed container before releasing the paired node", () => {
+    expect(localNodeServer).toContain('status: "cancelling", cancelRequested: true');
+    expect(localNodeServer).toContain("finalizeRequestedCancellation");
+    expect(localNodeServer).toContain('state: "cancelled", detail: "Cancelled on the paired local node"');
+    expect(localNodeServer).toContain('isNull(cutStudioJobs.cancellationRequestedAt)');
+    expect(cli).toContain("const cancellation = new AbortController()");
+    expect(cli).toContain("heartbeat.body?.cancelRequested === true");
+    expect(cli).toContain("signal: cancellation.signal");
   });
   it("makes completed private output discoverable and refreshes reusable project media", () => {
     expect(client).toContain('/api/cut/jobs/${encodeURIComponent(job.id)}/media-file');

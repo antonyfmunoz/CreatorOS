@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
 import {
@@ -589,10 +589,22 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access) return res.status(404).json({ message: "Project not found" });
     if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
-    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled before the paired local node claimed it", cancellationRequestedAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "queued"))).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
-    if (!cancelled) return res.status(409).json({ message: "Only a queued local code render can be cancelled here" });
-    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancelled", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelled.id }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` });
-    res.json(cancelled);
+    const now = new Date();
+    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled before the paired local node claimed it", cancellationRequestedAt: now, finishedAt: now }).where(and(eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "queued"))).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
+    if (cancelled) {
+      await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancelled", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelled.id, phase: "queued" }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` });
+      return res.json(cancelled);
+    }
+    // A live local process keeps its lease and node reservation until it sees
+    // this request on its short heartbeat and tears down the isolated
+    // container. Releasing it here would allow a second process on the same
+    // workstation before the first one has actually stopped.
+    const [cancelling] = await db.update(cutStudioJobs).set({ cancellationRequestedAt: now, detail: "Cancellation requested; stopping paired local node" }).where(and(
+      eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "running"), isNull(cutStudioJobs.cancellationRequestedAt),
+    )).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state, cancellationRequestedAt: cutStudioJobs.cancellationRequestedAt });
+    if (!cancelling) return res.status(409).json({ message: "This local code render can no longer be cancelled" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancellation_requested", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelling.id }, idempotencyKey: `cutstudio:${cancelling.id}:code-render.cancellation-requested` });
+    res.status(202).json(cancelling);
   });
 
   // Retrying is explicit. The immutable capsule, lockfile and bounded runtime

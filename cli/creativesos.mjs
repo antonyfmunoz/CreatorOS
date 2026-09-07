@@ -182,9 +182,23 @@ async function executeOneLocalJob(config) {
     const image = localRuntimeImage();
     const runtimeDirectory = localRuntimeDirectory();
     const { renderIsolated } = await import(pathToFileURL(path.join(runtimeDirectory, "host.mjs")).href);
-    const heartbeat = setInterval(() => {
-      void rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, origin, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } }).catch(() => undefined);
-    }, 60_000);
+    const cancellation = new AbortController();
+    let heartbeatInFlight = false;
+    const heartbeatOnce = async () => {
+      if (heartbeatInFlight || cancellation.signal.aborted) return;
+      heartbeatInFlight = true;
+      try {
+        const heartbeat = await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/heartbeat`, { method: "POST", credential: config.credential, origin, body: { leaseToken, progress: 0.5, detail: "Rendering in isolated local container" } });
+        if (heartbeat.body?.cancelRequested === true) cancellation.abort(new Error("This local render was cancelled by its editor."));
+      } finally {
+        heartbeatInFlight = false;
+      }
+    };
+    // A user cancellation reaches the node through this short, authenticated
+    // heartbeat. Network errors do not cancel healthy private work; only the
+    // server-owned cancellation signal may abort the isolated container.
+    await heartbeatOnce();
+    const heartbeat = setInterval(() => { void heartbeatOnce().catch(() => undefined); }, 5_000);
     let rendered;
     try {
       const limits = payload.limits;
@@ -198,10 +212,11 @@ async function executeOneLocalJob(config) {
       const maximumOutputBytes = Number.isSafeInteger(declaredMaximumOutputBytes) && declaredMaximumOutputBytes >= 1024
         ? Math.min(declaredMaximumOutputBytes, 64 * 1024 * 1024)
         : 64 * 1024 * 1024;
-      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes });
+      rendered = await renderIsolated({ request: runtime, source, image, signal: cancellation.signal, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes });
     } finally {
       clearInterval(heartbeat);
     }
+    cancellation.signal.throwIfAborted();
     const artifactSha256 = crypto.createHash("sha256").update(rendered.artifact).digest("hex");
     if (artifactSha256 !== rendered.receipt?.artifactSha256) throw new Error("The local runtime receipt did not match its artifact.");
     const upload = await fetch(payload.output.uploadUrl, { method: "PUT", headers: { "Content-Type": payload.output.mimeType }, body: rendered.artifact, signal: AbortSignal.timeout(90_000) });

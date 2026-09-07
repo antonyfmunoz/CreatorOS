@@ -56,12 +56,44 @@ function codeRenderRequest(job: typeof cutStudioJobs.$inferSelect) {
   };
 }
 
+function temporaryOutputKey(job: typeof cutStudioJobs.$inferSelect) {
+  const output = job.output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return null;
+  const localNode = (output as Record<string, unknown>).localNode;
+  if (!localNode || typeof localNode !== "object" || Array.isArray(localNode)) return null;
+  const key = (localNode as Record<string, unknown>).temporaryStorageKey;
+  return typeof key === "string" ? key : null;
+}
+
 async function locallyOwnedLease(node: typeof cutStudioLocalNodes.$inferSelect, jobId: string, leaseToken: string) {
   const [job] = await db.select().from(cutStudioJobs).where(and(
     eq(cutStudioJobs.id, jobId), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.ownerUserId, node.ownerUserId),
     eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`), eq(cutStudioJobs.leaseToken, leaseToken),
   )).limit(1);
   return job ?? null;
+}
+
+/** Confirm a user-requested cancellation only after the paired process has
+ * observed it and stopped. This keeps the node busy until its actual container
+ * is being torn down, so a cancellation cannot create concurrent local work. */
+async function finalizeRequestedCancellation(node: typeof cutStudioLocalNodes.$inferSelect, jobId: string, leaseToken: string) {
+  const result = await db.transaction(async transaction => {
+    await transaction.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    await transaction.execute(sql`SET LOCAL statement_timeout = '5s'`);
+    const [current] = await transaction.select().from(cutStudioJobs).where(eq(cutStudioJobs.id, jobId)).for("update");
+    if (!current || current.kind !== "code_render" || current.ownerUserId !== node.ownerUserId || current.workerId !== `cut-local-node:${node.id}` || current.leaseToken !== leaseToken || current.state !== "running" || !current.cancellationRequestedAt) return null;
+    const temporaryStorageKey = temporaryOutputKey(current);
+    const now = new Date();
+    const [cancelled] = await transaction.update(cutStudioJobs).set({
+      state: "cancelled", detail: "Cancelled on the paired local node", progress: 0,
+      leaseExpiresAt: null, heartbeatAt: now, finishedAt: now,
+    }).where(eq(cutStudioJobs.id, current.id)).returning({ id: cutStudioJobs.id, projectId: cutStudioJobs.projectId });
+    if (!cancelled) return null;
+    await transaction.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: now }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt)));
+    return { ...cancelled, temporaryStorageKey };
+  });
+  if (result?.temporaryStorageKey) await removeStoredAsset(result.temporaryStorageKey, "private").catch(() => undefined);
+  return result;
 }
 
 export function registerCutLocalNodeRoutes(app: Express) {
@@ -175,6 +207,9 @@ export function registerCutLocalNodeRoutes(app: Express) {
     const node = await authenticated(req); if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeJobHeartbeatSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
+    // Do not extend a lease after its owner has asked to cancel it. The client
+    // must stop its isolated container and confirm the terminal cancellation.
+    if (job.cancellationRequestedAt) return res.json({ status: "cancelling", cancelRequested: true });
     const live = await withCutJobLeaseWrite(job.id, parsed.data.leaseToken, transaction => transaction.update(cutStudioJobs).set({
       heartbeatAt: sql`clock_timestamp() AT TIME ZONE 'UTC'`, leaseExpiresAt: sql`(clock_timestamp() AT TIME ZONE 'UTC') + ${localLeaseMs} * interval '1 millisecond'`,
       ...(parsed.data.progress === undefined ? {} : { progress: parsed.data.progress }), ...(parsed.data.detail ? { detail: parsed.data.detail } : {}),
@@ -186,6 +221,12 @@ export function registerCutLocalNodeRoutes(app: Express) {
     const node = await authenticated(req); if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeJobFailureSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
+    if (job.cancellationRequestedAt) {
+      const cancelled = await finalizeRequestedCancellation(node, job.id, parsed.data.leaseToken);
+      if (!cancelled) return res.status(409).json({ message: "The local code-render lease is no longer active" });
+      await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: cancelled.projectId, eventType: "cutstudio.code_render.cancelled", actorUserId: node.ownerUserId, payload: { jobId: cancelled.id, nodeId: node.id, phase: "running" }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` }).catch(() => undefined);
+      return res.status(204).end();
+    }
     const failed = await withCutJobLeaseWrite(job.id, parsed.data.leaseToken, transaction => transaction.update(cutStudioJobs).set({ state: "error", detail: parsed.data.detail, errorCode: parsed.data.code, progress: 0, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`))).returning({ id: cutStudioJobs.id }));
     if (!failed?.length) return res.status(409).json({ message: "The local code-render lease is no longer active" });
     await db.update(cutStudioLocalNodes).set({ status: "ready", updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), isNull(cutStudioLocalNodes.revokedAt))).catch(() => undefined);
@@ -228,7 +269,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
           publicUrl: null, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, visibility: "private", status: "ready", originalFilename: parsed.data.filename,
           sha256: parsed.data.sha256, metadata: { cutStudioProjectId: job.projectId, cutStudioJobId: job.id, cutStudioCompositionId: request.compositionId, execution: "paired_local_node", nodeId: node.id },
         }).returning();
-        const [completed] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Local isolated render ready", progress: 1, artifactAssetId: artifact.id, output: { artifactId: artifact.id, filename: parsed.data.filename, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, execution: "paired_local_node", nodeId: node.id }, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`))).returning({ id: cutStudioJobs.id });
+        const [completed] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Local isolated render ready", progress: 1, artifactAssetId: artifact.id, output: { artifactId: artifact.id, filename: parsed.data.filename, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, execution: "paired_local_node", nodeId: node.id }, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`), isNull(cutStudioJobs.cancellationRequestedAt))).returning({ id: cutStudioJobs.id });
         if (!completed) return null;
         // A video or still is immediately reusable by the project. A frame
         // sequence remains a sealed ZIP artifact instead of being mislabeled as
