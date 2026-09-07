@@ -862,6 +862,13 @@
       "when": 1788642000000,
       "tag": "0122_cut_studio_local_nodes",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1788814041072,
+      "tag": "0123_cut_studio_code_render_jobs",
+      "breakpoints": true
     }
   ]
 }
