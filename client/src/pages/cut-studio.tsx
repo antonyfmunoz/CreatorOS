@@ -14,6 +14,7 @@ import { audioRmsDb, breakApartCutCompound, createCutCompound, cutDuration, esti
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
 import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
 import { updateCutTrackSettings, cutTrackEffectiveGain, cutClipVolumeAt } from "@shared/cut-studio";
+import { cutClipCssColorPreview } from "@shared/cut-clip-color-preview";
 
 type ProjectMedia = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile"; createdAt: string };
 type ProjectLut = { id: string; name: string; sizeBytes: number; metadata?: { cubeLut?: { title?: string | null; size?: number } } };
@@ -33,15 +34,6 @@ type AudioRoutingTemplate = { id: string; name: string; payload: CutAudioRouting
 function formatTime(value: number) {
   const seconds = Math.max(0, value || 0);
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
-}
-
-function previewColorFilter(clip: CutEdl["clips"][number] | undefined) {
-  const filters: string[] = [];
-  if (clip?.colorPreset === "cinematic") filters.push("contrast(1.08)", "saturate(.9)", "brightness(.98)", "sepia(.08)");
-  else if (clip?.colorPreset === "vivid") filters.push("contrast(1.08)", "saturate(1.25)");
-  else if (clip?.colorPreset === "monochrome") filters.push("grayscale(1)");
-  if (clip?.colorAdjust) filters.push(`brightness(${1 + clip.colorAdjust.brightness})`, `contrast(${clip.colorAdjust.contrast})`, `saturate(${clip.colorAdjust.saturation})`, `sepia(${Math.abs(clip.colorAdjust.temperature) * .12})`);
-  return filters.join(" ") || "none";
 }
 
 async function mediaDuration(file: File) {
@@ -1153,7 +1145,7 @@ export default function CutStudioPage() {
           <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950" aria-label="Timeline monitor">
             <span className="absolute left-3 top-2 z-10 rounded bg-black/75 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">Timeline monitor</span>
             {project.mediaKind === "video" && <div className="absolute right-3 top-2 z-10"><CutStudioPrimaryPreview projectId={project.id} sourceAssetId={project.sourceAssetId} edl={edl} media={mediaLibrary} fps={fps} onOpen={() => { mediaRef.current?.pause(); sourceMediaRef.current?.pause(); stopAudioMeter(); }}/></div>}
-            {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: previewColorFilter(clip) }} src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
+            {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: cutClipCssColorPreview(clip) }} src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
             {(edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} data-graphic-kind={graphic.kind} className={`pointer-events-none absolute font-bold ${graphic.kind === "shape" ? "" : "max-w-[80%] rounded px-3 py-2"}`} style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, width: graphic.kind === "shape" ? `${graphic.width * 100}%` : undefined, height: graphic.kind === "shape" ? `${graphic.height * 100}%` : undefined, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
           </div>
           </div>
