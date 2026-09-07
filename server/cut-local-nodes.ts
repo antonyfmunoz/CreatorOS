@@ -25,6 +25,10 @@ async function authenticated(req: Request) {
 }
 
 const localLeaseMs = 5 * 60_000;
+// A paired local machine is not a durable cloud worker. It must prove it is
+// still present before it can receive a private source capsule or output URL.
+// The CLI service renews this well inside the bound while idle.
+const localNodeHeartbeatMaxAgeMs = 90_000;
 const outputDescriptor = (runtime: Record<string, unknown>) => {
   if (runtime.mode === "sequence") return { format: "zip", mimeType: "application/zip", filename: "cutstudio-code-render.zip", assetKind: "file" };
   const format = typeof runtime.format === "string" ? runtime.format : runtime.mode === "video" ? "mp4" : "png";
@@ -110,6 +114,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     const node = await authenticated(req);
     if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     if (node.status !== "ready" || !node.capabilities.isolatedCode || !node.capabilities.docker) return res.status(409).json({ message: "This node is not ready for isolated code execution" });
+    if (!node.lastSeenAt || Date.now() - node.lastSeenAt.getTime() > localNodeHeartbeatMaxAgeMs) return res.status(409).json({ message: "This node heartbeat is stale. Send a fresh ready heartbeat before claiming work." });
     const [candidateRow] = await db.select({ job: cutStudioJobs }).from(cutStudioJobs).innerJoin(cutStudioProjects, eq(cutStudioProjects.id, cutStudioJobs.projectId)).where(and(
       eq(cutStudioJobs.ownerUserId, node.ownerUserId), eq(cutStudioProjects.businessId, node.businessId), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "queued"),
       isNull(cutStudioJobs.cancellationRequestedAt), lt(cutStudioJobs.attempt, cutStudioJobs.maxAttempts),

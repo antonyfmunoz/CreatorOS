@@ -265,6 +265,19 @@ async function runNodeService() {
   }
 }
 
+async function runOneNodeJob() {
+  let config = await loadNodeConfig();
+  // A one-shot run arms this machine only for the duration of its explicit
+  // command. This avoids leaving a closed laptop falsely eligible for work.
+  ({ config } = await sendNodeHeartbeat(config, "ready"));
+  try {
+    return await executeOneLocalJob(config);
+  } finally {
+    try { await sendNodeHeartbeat(config, "paused"); }
+    catch (error) { console.error(`CreativesOS: could not mark the local node paused: ${error instanceof Error ? error.message : "unknown error"}`); }
+  }
+}
+
 async function runNodeCommand() {
   const subcommand = args[1];
   if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) return usage();
@@ -292,8 +305,7 @@ async function runNodeCommand() {
     return;
   }
   if (subcommand === "work") {
-    const config = await loadNodeConfig();
-    const result = await executeOneLocalJob(config);
+    const result = await runOneNodeJob();
     print(result);
     return;
   }

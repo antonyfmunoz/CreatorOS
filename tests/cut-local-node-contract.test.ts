@@ -54,6 +54,8 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).toContain("origin: config.appUrl");
     expect(brokerSource).toContain("cutStudioProjectMedia");
     expect(brokerSource).toContain('descriptor.assetKind === "video" || descriptor.assetKind === "image"');
+    expect(brokerSource).toContain("localNodeHeartbeatMaxAgeMs = 90_000");
+    expect(brokerSource).toContain("This node heartbeat is stale");
   });
 
   it("releases only an expired paired-node lock and discards its temporary object", () => {
@@ -86,6 +88,9 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).toContain('await executeOneLocalJob(config);');
     expect(cliSource).toContain('sendNodeHeartbeat(config, "paused")');
     expect(cliSource).toContain("maxConcurrentJobs: 1");
+    expect(cliSource).toContain("async function runOneNodeJob()");
+    expect(cliSource).toContain("await sendNodeHeartbeat(config, \"ready\")");
+    expect(cliSource).toContain("await sendNodeHeartbeat(config, \"paused\")");
   });
 
   it("keeps the packaged desktop runtime outside the application archive", () => {
