@@ -79,6 +79,15 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).not.toContain('await runNodeCommand();\n  process.exit(0);');
   });
 
+  it("offers a foreground, user-started local worker without expanding its single-job authority", () => {
+    expect(cliSource).toContain("node serve [--poll-ms <2000-60000>]");
+    expect(cliSource).toContain('if (subcommand === "serve")');
+    expect(cliSource).toContain('await runNodeService();');
+    expect(cliSource).toContain('await executeOneLocalJob(config);');
+    expect(cliSource).toContain('sendNodeHeartbeat(config, "paused")');
+    expect(cliSource).toContain("maxConcurrentJobs: 1");
+  });
+
   it("keeps the packaged desktop runtime outside the application archive", () => {
     expect(cliSource).toContain("CREATIVESOS_CUT_CODE_RUNTIME_DIR");
     expect(desktopSource).toContain('path.join(process.resourcesPath, "cut-code-runtime")');

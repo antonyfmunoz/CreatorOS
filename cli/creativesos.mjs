@@ -38,6 +38,8 @@ CutStudio local-node commands:
   node heartbeat [--status ready|busy|paused]
                 Send an explicit availability heartbeat to CreativesOS.
   node work     Claim and execute at most one approved code-render job locally.
+  node serve [--poll-ms <2000-60000>]
+                Keep this foreground process available for approved local jobs.
   node disconnect
                 Remove this machine's local credential. Revoke it in CutStudio too.
 
@@ -47,8 +49,8 @@ Environment:
 
 API keys are never persisted. Local-node pairing requires explicit device
 approval and stores only a node credential in this OS user's profile. It does
-not execute renders unless \`node work\` is explicitly invoked. It never grants
-cloud-compute access.`);
+not execute renders unless \`node work\` or the foreground \`node serve\` command
+is explicitly invoked. It never grants cloud-compute access.`);
   process.exit(exitCode);
 }
 
@@ -203,6 +205,66 @@ async function executeOneLocalJob(config) {
   }
 }
 
+function pollInterval() {
+  const supplied = option("--poll-ms");
+  if (supplied === undefined) return 5_000;
+  if (!/^\d+$/.test(supplied)) fail("--poll-ms must be a whole number between 2000 and 60000.", 2);
+  const value = Number(supplied);
+  if (!Number.isSafeInteger(value) || value < 2_000 || value > 60_000) fail("--poll-ms must be between 2000 and 60000.", 2);
+  return value;
+}
+
+const sleep = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function sendNodeHeartbeat(config, status) {
+  const sequence = Number(config.sequence ?? 0) + 1;
+  const result = await nodeRequest(`/api/cut/nodes/${config.nodeId}/heartbeat`, {
+    method: "POST", credential: config.credential, origin: config.appUrl, body: { sequence, status },
+  });
+  const next = { ...config, sequence, lastHeartbeatAt: new Date().toISOString() };
+  await saveNodeConfig(next);
+  return { config: next, node: result.node };
+}
+
+async function runNodeService() {
+  let config = await loadNodeConfig();
+  const interval = pollInterval();
+  let stopping = false;
+  const stop = () => { stopping = true; };
+  // Stopping is graceful: finish or fail the current isolated job through its
+  // normal lease path, then advertise paused rather than abandoning a lease.
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  ({ config } = await sendNodeHeartbeat(config, "ready"));
+  print({ status: "serving", nodeId: config.nodeId, pollMs: interval, message: "Waiting for approved local CutStudio jobs. Press Ctrl+C to pause after the current job." });
+  let lastHeartbeatAt = Date.now();
+  try {
+    while (!stopping) {
+      try {
+        const result = await executeOneLocalJob(config);
+        if (result.status === "completed") print(result);
+      } catch (error) {
+        print({ status: "failed", message: error instanceof Error ? error.message : "Local isolated rendering failed" });
+      }
+      if (stopping) break;
+      if (Date.now() - lastHeartbeatAt >= 45_000) {
+        ({ config } = await sendNodeHeartbeat(config, "ready"));
+        lastHeartbeatAt = Date.now();
+      }
+      await sleep(interval);
+    }
+  } finally {
+    try {
+      ({ config } = await sendNodeHeartbeat(config, "paused"));
+      print({ status: "paused", nodeId: config.nodeId });
+    } catch (error) {
+      // The local credential stays on disk, so a later explicit serve command
+      // can recover availability if the network disappeared during shutdown.
+      console.error(`CreativesOS: could not mark the local node paused: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+  }
+}
+
 async function runNodeCommand() {
   const subcommand = args[1];
   if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) return usage();
@@ -225,16 +287,18 @@ async function runNodeCommand() {
     const config = await loadNodeConfig();
     const status = option("--status") ?? "ready";
     if (!new Set(["ready", "busy", "paused"]).has(status)) fail("--status must be ready, busy, or paused.", 2);
-    const sequence = Number(config.sequence ?? 0) + 1;
-    const result = await nodeRequest(`/api/cut/nodes/${config.nodeId}/heartbeat`, { method: "POST", credential: config.credential, origin: config.appUrl, body: { sequence, status } });
-    await saveNodeConfig({ ...config, sequence, lastHeartbeatAt: new Date().toISOString() });
-    print({ status: result.node.status, nodeId: result.node.id, sequence, lastSeenAt: result.node.lastSeenAt });
+    const result = await sendNodeHeartbeat(config, status);
+    print({ status: result.node.status, nodeId: result.node.id, sequence: result.config.sequence, lastSeenAt: result.node.lastSeenAt });
     return;
   }
   if (subcommand === "work") {
     const config = await loadNodeConfig();
     const result = await executeOneLocalJob(config);
     print(result);
+    return;
+  }
+  if (subcommand === "serve") {
+    await runNodeService();
     return;
   }
   if (subcommand === "disconnect") {
