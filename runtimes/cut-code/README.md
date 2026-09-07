@@ -35,6 +35,10 @@ production topology approval or enable public code execution.
   WebGL/WebGPU compatibility is not qualified by the SVG tests. SVGRenderer does
   not support textures, shadows or advanced shading; it is not a replacement
   for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
+  `SvgScene` is the explicit frame-capture bridge: it accepts a Three `Scene`
+  and `Camera`, renders their current frame to a bounded SVG surface, and is
+  captured by the same isolated browser path as the rest of a composition.
+  The qualified fixture proves frame-driven geometry changes reach PNG pixels.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and

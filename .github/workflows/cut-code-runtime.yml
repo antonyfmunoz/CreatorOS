@@ -36,6 +36,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Prove sample-evaluated audio envelopes and range continuity
         run: npm run qualify:audio
+      - name: Prove a frame-driven pinned Three scene reaches captured pixels
+        run: npm run qualify:three
       - name: Build pinned local qualification image
         run: docker build -t creativesos-cut-code:qualification .
       - name: Prove envelopes with the container's exact media tools

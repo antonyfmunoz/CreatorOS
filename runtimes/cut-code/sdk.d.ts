@@ -1,6 +1,7 @@
 /** Authoring contract for the native CutStudio SDK, not Remotion API compatibility. */
 declare module '@creativesos/cut' {
   import type { ReactNode, Context, HTMLAttributes, CanvasHTMLAttributes, CSSProperties } from 'react';
+  import type { Camera, Scene } from 'three';
 
   export interface CompositionConfig {
     readonly width: number;
@@ -65,6 +66,8 @@ declare module '@creativesos/cut' {
   export function FrameVideo(props: CanvasHTMLAttributes<HTMLCanvasElement> & { src: PrivateVideoSource; startFrom?: number; speed?: number; repeat?: boolean; muted?: boolean; volume?: number; audioStream?: number }): ReactNode;
   /** Capsule-root file, local frame clock, 0.5..2 pitch-preserving speed, 0..2 per-frame gain. Video requests opt in with compositionAudio: true. */
   export function FrameAudio(props: { file: string; startFrom?: number; speed?: number; volume?: number; muted?: boolean; audioStream?: number }): ReactNode;
+  /** Pinned Three core rendered through the approved deterministic SVG bridge; not WebGL/WebGPU or arbitrary addon support. */
+  export function SvgScene(props: HTMLAttributes<HTMLDivElement> & { scene: Scene; camera: Camera; width?: number; height?: number }): ReactNode;
 
   export type EasingFunction = (progress: number) => number;
   export type Extrapolation = 'clamp' | 'extend' | 'wrap';

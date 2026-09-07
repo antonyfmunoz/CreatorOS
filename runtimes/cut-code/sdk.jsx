@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useId } from 'react';
+import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
+import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { frameReadiness } from './frame-readiness.mjs';
 import { validateFrameAudio } from './frame-audio.mjs';
 export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
@@ -68,4 +69,35 @@ export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, mute
   if (audible && (speed < .5 || speed > 2)) throw new Error('Source audio supports 0.5 to 2 playback speed; mute faster/slower video explicitly.');
   return <canvas {...props} style={style} data-cut-video-src={src} data-cut-video-time={(startFrom + frame * speed) / fps} data-cut-video-repeat={repeat ? 'yes' : 'no'}
     data-cut-video-audio-id={audible ? `video${id}` : undefined} data-cut-video-speed={speed} data-cut-video-volume={volume} data-cut-video-audio-stream={audioStream}/>;
+}
+
+/**
+ * A deliberately narrow bridge for frame-driven Three scenes. SVGRenderer is
+ * used instead of WebGL so the isolated browser still has deterministic,
+ * no-GPU capture semantics. The capsule may use only the pinned Three core and
+ * approved SVG renderer; textures, shader code, network assets and arbitrary
+ * Three addons remain outside the execution contract.
+ */
+export function SvgScene({ scene, camera, width, height, style, ...props }) {
+  const target = useRef(null);
+  const composition = useComposition();
+  const renderWidth = width ?? composition.width;
+  const renderHeight = height ?? composition.height;
+  if (!scene?.isScene || !camera?.isCamera) throw new Error('SvgScene requires a Three Scene and Camera.');
+  if (!Number.isInteger(renderWidth) || !Number.isInteger(renderHeight) || renderWidth < 1 || renderHeight < 1 || renderWidth > 3840 || renderHeight > 3840 || renderWidth * renderHeight > 8_294_400) throw new Error('SvgScene dimensions exceed the bounded composition contract.');
+  useLayoutEffect(() => {
+    const host = target.current;
+    if (!host) return undefined;
+    const renderer = new SVGRenderer();
+    renderer.setSize(renderWidth, renderHeight);
+    renderer.render(scene, camera);
+    const svg = renderer.domElement;
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.display = 'block';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    host.replaceChildren(svg);
+    return () => host.replaceChildren();
+  }, [scene, camera, renderWidth, renderHeight]);
+  return <div {...props} ref={target} style={{ width: renderWidth, height: renderHeight, overflow: 'hidden', ...style }}/>;
 }
