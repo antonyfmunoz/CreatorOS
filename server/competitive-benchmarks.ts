@@ -631,6 +631,8 @@ const benchmarkTemplateInputs: BenchmarkTemplateInput[] = [
       "Adobe Premiere",
       "DaVinci Resolve",
       "Descript",
+      "Remotion",
+      "Higgsfield",
     ],
     outputSpecification: {
       requiredOutcomes: [
@@ -639,6 +641,10 @@ const benchmarkTemplateInputs: BenchmarkTemplateInput[] = [
         "audio mix",
         "titles",
         "captions",
+        "parameterized motion composition",
+        "deterministic source package and render output",
+        "3D transform-origin fidelity",
+        "private generated asset handoff into the editable timeline",
         "vertical derivative",
         "approval history",
         "high-quality exports",

@@ -71,7 +71,7 @@ import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
 import { recoverCutJobs, retryCutJob } from "./cut-job-recovery";
 import { admitCutAuxiliaryJob } from "./cut-job-admission";
 import { cutMaskAlpha } from "@shared/cut-mask";
-import { planCutGraphicRasters } from "./cut-graphic-geometry";
+import { planCutGraphicRasters, projectCutGraphicCorners } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
 import { cutGraphicColorFilters } from "./cut-graphic-color";
 import { reserveWorkerSlot } from "./worker-admission";
@@ -225,23 +225,6 @@ function graphicScaleExpression(graphic: NonNullable<CutEdl["graphics"]>[number]
     expression = `if(lt(on/${fps}\\,${end})\\,${from}+${delta}*${eased}\\,${expression})`;
   }
   return expression;
-}
-
-function projectedGraphicCorners(width: number, height: number, rotationX: number, rotationY: number, perspective: number) {
-  const radiansX = rotationX * Math.PI / 180;
-  const radiansY = rotationY * Math.PI / 180;
-  const focalLength = perspective > 0 ? perspective : 1_000_000_000;
-  const centerX = width / 2; const centerY = height / 2;
-  const project = (x: number, y: number) => {
-    const rotatedY = y * Math.cos(radiansX);
-    const depthAfterX = y * Math.sin(radiansX);
-    const rotatedX = x * Math.cos(radiansY) + depthAfterX * Math.sin(radiansY);
-    const depth = -x * Math.sin(radiansY) + depthAfterX * Math.cos(radiansY);
-    const divisor = Math.max(1, focalLength + depth);
-    const factor = focalLength / divisor;
-    return [Number((centerX + rotatedX * factor).toFixed(3)), Number((centerY + rotatedY * factor).toFixed(3))] as const;
-  };
-  return [project(-centerX, -centerY), project(centerX, -centerY), project(-centerX, centerY), project(centerX, centerY)] as const;
 }
 
 function geometricRevealAlpha(kind: "wipe" | "clock_wipe" | "iris", direction: "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" | null, progressInput: number) {
@@ -955,7 +938,7 @@ async function renderMultitrack(
     if (has3dTransform) {
       for (let pointIndex = 0; pointIndex < transform3dPoints.length; pointIndex += 1) {
         const point = transform3dPoints[pointIndex];
-        const [topLeft, topRight, bottomLeft, bottomRight] = projectedGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective);
+        const [topLeft, topRight, bottomLeft, bottomRight] = projectCutGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective, graphic.anchorX ?? .5, graphic.anchorY ?? .5);
         const nextPoint = transform3dPoints[pointIndex + 1];
         const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : graphic.duration;
         const timeline = transform3dPoints.length > 1

@@ -19,7 +19,6 @@ export function planCutGraphicRaster(graphic: GraphicGeometry, outputWidth: numb
   const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
   const maximumWidth = even(width * maximumScale); const maximumHeight = even(height * maximumScale);
   const has3d = [graphic, ...(graphic.motionKeyframes ?? [])].some((point) => Math.abs(point.rotationX) > .0001 || Math.abs(point.rotationY) > .0001);
-  if (has3d && ((graphic.anchorX ?? .5) !== .5 || (graphic.anchorY ?? .5) !== .5)) throw new Error("Non-centered pivots are supported for 2D graphics; native 3D pivot support is not implemented yet");
   const rotated = [graphic, ...(graphic.motionKeyframes ?? [])].some((point) => Math.abs(point.rotation) > .0001);
   const virtualWidth = has3d ? even(maximumWidth * maximumScale / minimumScale) : maximumWidth;
   const virtualHeight = has3d ? even(maximumHeight * maximumScale / minimumScale) : maximumHeight;
@@ -40,4 +39,29 @@ export function planCutGraphicRasters(graphics: GraphicGeometry[], outputWidth: 
 export function cutGraphicPivotOffset(width: number, height: number, canvasWidth: number, canvasHeight: number, scale: number, rotation: number, anchorX = .5, anchorY = .5) {
   const radians = rotation * Math.PI / 180; const x = (anchorX - .5) * width * scale; const y = (anchorY - .5) * height * scale;
   return { x: anchorX * width - Math.cos(radians) * x + Math.sin(radians) * y - canvasWidth / 2, y: anchorY * height - Math.sin(radians) * x - Math.cos(radians) * y - canvasHeight / 2 };
+}
+
+/**
+ * Destination corners for FFmpeg's perspective filter. CSS transforms rotate
+ * around `transform-origin`, not always an element's centre. Keeping that
+ * origin fixed here makes the native render use the same authored 3D pivot as
+ * the CutStudio previews (including an origin outside the layer bounds).
+ */
+export function projectCutGraphicCorners(width: number, height: number, rotationX: number, rotationY: number, perspective: number, anchorX = .5, anchorY = .5) {
+  const radiansX = rotationX * Math.PI / 180;
+  const radiansY = rotationY * Math.PI / 180;
+  const focalLength = perspective > 0 ? perspective : 1_000_000_000;
+  const pivotX = width * anchorX;
+  const pivotY = height * anchorY;
+  const project = (sourceX: number, sourceY: number) => {
+    const x = sourceX - pivotX;
+    const y = sourceY - pivotY;
+    const rotatedY = y * Math.cos(radiansX);
+    const depthAfterX = y * Math.sin(radiansX);
+    const rotatedX = x * Math.cos(radiansY) + depthAfterX * Math.sin(radiansY);
+    const depth = -x * Math.sin(radiansY) + depthAfterX * Math.cos(radiansY);
+    const factor = focalLength / Math.max(1, focalLength + depth);
+    return [Number((pivotX + rotatedX * factor).toFixed(3)), Number((pivotY + rotatedY * factor).toFixed(3))] as const;
+  };
+  return [project(0, 0), project(width, 0), project(0, height), project(width, height)] as const;
 }
