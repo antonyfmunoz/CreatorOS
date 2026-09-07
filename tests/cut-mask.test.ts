@@ -18,8 +18,14 @@ describe("private mask semantics", () => {
   });
   it("fails unsupported native masks before compiling an executable edit", () => {
     const id = "11111111-1111-4111-8111-111111111111";
-    for (const kind of ["video", "audio", "lottie", "rive", "data"]) {
+    for (const kind of ["audio", "lottie", "rive", "data"]) {
       expect(() => compileCompositionToEdl({ version: 1, name: "Unsupported mask", width: 480, height: 270, fps: 30, durationInFrames: 30, layers: [{ id: "media", name: "Media", kind, assetId: id, from: 0, durationInFrames: 30, effects: [{ id: "mask", kind: "mask", parameters: { maskAssetId: id } }] }] }, { version: 3, clips: [] })).toThrow(/not supported yet/);
     }
+  });
+  it("carries a video layer's private mask into the native timeline", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const mask = "22222222-2222-4222-8222-222222222222";
+    const edl = compileCompositionToEdl({ version: 1, name: "Masked video", width: 480, height: 270, fps: 30, durationInFrames: 30, layers: [{ id: "media", name: "Media", kind: "video", assetId: id, from: 0, durationInFrames: 30, effects: [{ id: "mask", kind: "mask", parameters: { maskAssetId: mask } }] }] }, { version: 3, clips: [] });
+    expect(edl.clips[0]).toMatchObject({ assetId: id, maskAssetId: mask });
   });
 });

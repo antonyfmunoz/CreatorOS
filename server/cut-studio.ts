@@ -667,7 +667,7 @@ async function renderMultitrack(
   temp: string,
   outputPath: string,
 ) {
-  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => clip.assetId ? [clip.assetId] : []), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.fontAssetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
+  const requestedAssetIds = Array.from(new Set([source.id, ...clips.flatMap((clip) => [clip.assetId, clip.maskAssetId].filter((value): value is string => Boolean(value))), ...graphics.flatMap((graphic) => [graphic.assetId, graphic.fontAssetId, graphic.revealMaskAssetId, ...(graphic.motionKeyframes ?? []).map((keyframe) => keyframe.revealMaskAssetId), ...graphic.effects.flatMap((effect) => effect.kind === "mask" && typeof effect.parameters.maskAssetId === "string" ? [effect.parameters.maskAssetId] : [])].filter((value): value is string => Boolean(value)))]));
   const assetRows = await db.select().from(assets).where(and(eq(assets.ownerUserId, project.ownerUserId), eq(assets.visibility, "private"), eq(assets.status, "ready"), inArray(assets.id, requestedAssetIds)));
   if (assetRows.length !== requestedAssetIds.length) throw new Error("One or more multitrack sources are unavailable");
   const signal = activeJobControllers.get(jobId)?.signal;
@@ -787,7 +787,15 @@ async function renderMultitrack(
         const opacityExpression = motionPropertyExpression(clip, "opacity", 1, "T");
         overlayFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression})'`);
       } else overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
-      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[overlay${overlayIndex}]`);
+      const overlayLabel = `overlay${overlayIndex}`;
+      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[${clip.maskAssetId ? `${overlayLabel}raw` : overlayLabel}]`);
+      if (clip.maskAssetId) {
+        const maskInput = inputIndex.get(clip.maskAssetId);
+        const mask = inputById.get(clip.maskAssetId);
+        if (maskInput === undefined || !mask?.asset.mimeType?.startsWith("image/")) throw new Error("A video composition mask must be ready private image media");
+        filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight}:force_original_aspect_ratio=fill,format=gray[overlaymask${overlayIndex}]`);
+        filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
+      }
       const overlayX = motionOverlayExpression(clip, "x", size[0]);
       const overlayY = motionOverlayExpression(clip, "y", size[1]);
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);

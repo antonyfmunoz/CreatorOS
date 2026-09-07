@@ -14,7 +14,7 @@ export function cutLayerMaskAsset(layer: MaskedLayer): string | null {
   ].filter((id): id is string => typeof id === "string" && Boolean(id))));
   if (!ids.length) return null;
   if (ids.length > 1) throw new Error("A layer must use one private mask across its effects and transitions.");
-  if (!["text", "caption", "shape", "path", "svg", "image", "three"].includes(layer.kind)) throw new Error("Private masks are supported on static graphic layers; video, audio and animation masks are not supported yet.");
+  if (!["text", "caption", "shape", "path", "svg", "image", "three", "video"].includes(layer.kind)) throw new Error("Private masks are supported on static graphic and video layers; audio and animation masks are not supported yet.");
   return ids[0];
 }
 

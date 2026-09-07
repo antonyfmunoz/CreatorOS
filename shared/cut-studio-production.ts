@@ -557,6 +557,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       end: sourceStart + duration,
       label: layer.name,
       assetId: layer.assetId,
+      ...(layer.kind === "video" && cutLayerMaskAsset(layer) ? { maskAssetId: cutLayerMaskAsset(layer)! } : {}),
       track: `${trackPrefix}${trackIndex}`,
       timelineStart: layer.from / fps,
       volume: layer.volume,

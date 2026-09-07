@@ -48,6 +48,7 @@ export const cutClipSchema = z.object({
     similarity: z.number().finite().min(0.01).max(1),
     blend: z.number().finite().min(0).max(1),
   }).optional(),
+  maskAssetId: z.string().uuid().optional(),
   transform: z.object({
     x: z.number().finite().min(0).max(1),
     y: z.number().finite().min(0).max(1),
