@@ -41,7 +41,7 @@ type RuntimePayload = {
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 
-function CodeRenderControls({ composition, busy, ready, onQueue }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void }) {
+function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void; onQueueBatch: (requests: CutCodeRenderRequest[]) => void }) {
   const [mode, setMode] = useState<CutCodeRenderMode>("still");
   const [width, setWidth] = useState(1080);
   const [height, setHeight] = useState(1080);
@@ -53,16 +53,14 @@ function CodeRenderControls({ composition, busy, ready, onQueue }: { composition
   const [format, setFormat] = useState("png");
   const [quality, setQuality] = useState(90);
   const [inputJson, setInputJson] = useState("{}");
+  const [batchInputJson, setBatchInputJson] = useState("[]");
   const [error, setError] = useState("");
 
   const setExportMode = (next: CutCodeRenderMode) => {
     setMode(next); setFormat(defaultCutCodeRenderFormat(next));
   };
   const readNumber = (event: React.ChangeEvent<HTMLInputElement>, setValue: (value: number) => void) => setValue(event.currentTarget.valueAsNumber);
-  const request = (): CutCodeRenderRequest => {
-    let input: unknown;
-    try { input = JSON.parse(inputJson); }
-    catch { throw new Error("Composition input must be valid JSON"); }
+  const requestForInput = (input: unknown): CutCodeRenderRequest => {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Composition input must be a JSON object");
     const candidate = {
       mode, width, height, fps, durationInFrames, format, input: input as Record<string, unknown>,
@@ -73,15 +71,27 @@ function CodeRenderControls({ composition, busy, ready, onQueue }: { composition
     if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "The local render settings are invalid");
     return parsed.data;
   };
+  const request = () => {
+    try { return requestForInput(JSON.parse(inputJson)); }
+    catch (cause) { throw cause instanceof Error && cause.message !== "Unexpected end of JSON input" ? cause : new Error("Composition input must be valid JSON"); }
+  };
+  const batchRequests = () => {
+    let inputs: unknown;
+    try { inputs = JSON.parse(batchInputJson); }
+    catch { throw new Error("Batch input must be valid JSON"); }
+    if (!Array.isArray(inputs) || inputs.length < 2 || inputs.length > 20) throw new Error("Batch input must be an array of 2–20 composition input objects");
+    return inputs.map(requestForInput);
+  };
   const label = `${composition.name} local render`;
   return <div className="mt-3 space-y-2 border-t border-[#1d9bf0]/20 pt-3" aria-label={label}>
     <div className="grid grid-cols-3 gap-2"><label className="text-[9px] text-zinc-500">Output<select aria-label={`${label} output`} className={field} value={mode} disabled={busy} onChange={(event) => setExportMode(event.target.value as CutCodeRenderMode)}>{(["still", "video", "sequence"] as const).map((value) => <option key={value} value={value}>{value === "still" ? "Still" : value === "video" ? "Video" : "Frame sequence"}</option>)}</select></label><label className="text-[9px] text-zinc-500">Format<select aria-label={`${label} format`} className={field} value={format} disabled={busy} onChange={(event) => setFormat(event.target.value)}>{cutCodeRenderFormats[mode].map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label><label className="text-[9px] text-zinc-500">Quality<input aria-label={`${label} quality`} className={field} type="number" min="1" max="100" value={quality} disabled={busy || !["jpeg", "webp"].includes(format)} onChange={(event) => readNumber(event, setQuality)}/></label></div>
     <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Width<input aria-label={`${label} width`} className={field} type="number" min="16" max="3840" value={width} disabled={busy} onChange={(event) => readNumber(event, setWidth)}/></label><label className="text-[9px] text-zinc-500">Height<input aria-label={`${label} height`} className={field} type="number" min="16" max="3840" value={height} disabled={busy} onChange={(event) => readNumber(event, setHeight)}/></label><label className="text-[9px] text-zinc-500">FPS<input aria-label={`${label} fps`} className={field} type="number" min="1" max="60" value={fps} disabled={busy} onChange={(event) => readNumber(event, setFps)}/></label><label className="text-[9px] text-zinc-500">Frames<input aria-label={`${label} duration`} className={field} type="number" min="1" max="600" value={durationInFrames} disabled={busy} onChange={(event) => readNumber(event, setDurationInFrames)}/></label></div>
     {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
     <label className="block text-[9px] text-zinc-500">Composition input JSON<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
+    <label className="block text-[9px] text-zinc-500">Optional input batch JSON (2–20 inputs)<textarea aria-label={`${label} input batch JSON`} className={`${field} min-h-16 resize-y font-mono`} value={batchInputJson} disabled={busy} onChange={(event) => setBatchInputJson(event.target.value)}/></label>
     <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. Private media is never injected into code directly.</p>
     {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}
-    <Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button>
+    <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueueBatch(batchRequests()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render batch is invalid"); } }}>Queue local batch</Button></div>
   </div>;
 }
 
@@ -303,6 +313,14 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     });
     await refresh(); setMessage(`Bounded local ${request.mode === "sequence" ? "frame-sequence" : request.mode} render queued. Run \`creativesos node work\` on a paired, ready machine to execute it.`);
   });
+  const queueCodeRenderBatch = (composition: CompositionRow, requests: CutCodeRenderRequest[]) => act(`code-render-batch:${composition.id}`, async () => {
+    const idempotencyKey = `code-batch.${composition.id}.${crypto.randomUUID()}`;
+    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/code-render-batches`, {
+      idempotencyKey,
+      requests,
+    });
+    await refresh(); setMessage(`${requests.length} bounded local ${requests[0].mode === "sequence" ? "frame-sequence" : requests[0].mode} renders queued. Each paired node claims only one private job at a time.`);
+  });
   const cancelCodeRender = (job: CodeRenderRow) => act(`code-render:cancel:${job.id}`, async () => {
     await apiRequest("DELETE", `/api/cut/projects/${project.id}/code-renders/${job.id}`);
     await refresh(); setMessage(job.state === "running" ? "Cancellation requested. The paired node will stop this isolated render on its next heartbeat." : "Queued local render cancelled before a paired node claimed it.");
@@ -430,7 +448,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
         </div>
         {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3">
           <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>
-          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
+          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)} onQueueBatch={(requests) => void queueCodeRenderBatch(composition, requests)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
             const reusableOutput = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
             const isCompositedOutput = job.mode === "video" || job.mode === "still";
             const previewUrl = reusableOutput ? `/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(reusableOutput.id)}/media-file` : null;

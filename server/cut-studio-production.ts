@@ -33,7 +33,7 @@ import {
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
-import { cutCodeRenderSubmissionSchema } from "@shared/cut-code-render";
+import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderSubmissionSchema } from "@shared/cut-code-render";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
@@ -583,6 +583,80 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (result.busy) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.queued` });
     res.status(result.existing ? 200 : 202).json(result.job);
+  });
+
+  // Batches remain a set of durable, independently cancellable jobs. They do
+  // not grant a node more than its single active lease, and admission includes
+  // every queued/running CutStudio job for the owner.
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/code-render-batches", attachUser, compositionRenderLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    if (!codeExecutionConfigured()) return res.status(503).json({ message: "Isolated code rendering is not activated yet" });
+    const parsed = cutCodeRenderBatchSubmissionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The code render batch is invalid", issues: parsed.error.issues });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+      eq(cutStudioCompositions.mode, "sandboxed_tsx"),
+    )).limit(1);
+    if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
+    const capsule = composition.codeCapsule;
+    try { await assertCodeCapsuleAssets(access.project, capsule); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    const result = await db.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.owner.${access.project.ownerUserId}`}))`);
+      const existing = await transaction.select().from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.projectId, access.project.id),
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        eq(cutStudioJobs.kind, "code_render"),
+        sql`${cutStudioJobs.request}->'codeRender'->>'renderBatchId' = ${parsed.data.idempotencyKey}`,
+      )).orderBy(asc(cutStudioJobs.createdAt));
+      if (existing.length) {
+        const matches = existing.length === parsed.data.requests.length && existing.every((job, batchIndex) => {
+          const saved = typeof job.request === "object" && job.request && "codeRender" in job.request ? (job.request as { codeRender?: { runtime?: unknown } }).codeRender : undefined;
+          return JSON.stringify(saved?.runtime) === JSON.stringify({ version: 1, ...parsed.data.requests[batchIndex], entrypoint: capsule.entrypoint });
+        });
+        if (!matches) return { status: 409, message: "This idempotency key already belongs to a different local render batch" } as const;
+        return { jobs: existing } as const;
+      }
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        sql`${cutStudioJobs.state} in ('queued', 'running')`,
+      ));
+      if ((active?.count ?? 0) + parsed.data.requests.length > 20) return { status: 429, message: "At most 20 CutStudio jobs can be active; wait for renders to finish before adding this batch" } as const;
+      const jobs = await transaction.insert(cutStudioJobs).values(parsed.data.requests.map((request, batchIndex) => ({
+        projectId: access.project.id,
+        ownerUserId: access.project.ownerUserId,
+        kind: "code_render" as const,
+        maxAttempts: 1,
+        maxDispatchAttempts: 1,
+        detail: `Local render batch ${batchIndex + 1} of ${parsed.data.requests.length} waiting for the isolated code runner`,
+        request: {
+          codeRender: {
+            idempotencyKey: `${parsed.data.idempotencyKey}.${batchIndex + 1}`,
+            renderBatchId: parsed.data.idempotencyKey,
+            batchIndex,
+            compositionId: composition.id,
+            compositionRevision: composition.revision,
+            sourceAssetId: capsule.sourceAssetId,
+            lockfileAssetId: capsule.lockfileAssetId,
+            entrypoint: capsule.entrypoint,
+            limits: {
+              maximumCpuMs: capsule.maximumCpuMs,
+              maximumMemoryMb: capsule.maximumMemoryMb,
+              maximumOutputBytes: capsule.maximumOutputBytes,
+            },
+            runtime: { version: 1, ...request, entrypoint: capsule.entrypoint },
+          },
+        },
+      }))).returning();
+      return { jobs } as const;
+    });
+    if (!result.jobs) return res.status(result.status).json({ message: result.message });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, renderBatchId: parsed.data.idempotencyKey, jobIds: result.jobs.map((job) => job.id), count: result.jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:code-render-batch:${parsed.data.idempotencyKey}` });
+    res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: result.jobs.length, jobs: result.jobs });
   });
 
   cut.delete("/api/cut/projects/:id/code-renders/:jobId", attachUser, async (req, res) => {

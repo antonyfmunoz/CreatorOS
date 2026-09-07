@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutCodeRenderRequestSchema, cutCodeRenderSubmissionSchema, defaultCutCodeRenderFormat } from "../shared/cut-code-render";
+import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderRequestSchema, cutCodeRenderSubmissionSchema, defaultCutCodeRenderFormat } from "../shared/cut-code-render";
 
 const base = { width: 1920, height: 1080, fps: 30, durationInFrames: 120, input: {} };
 
@@ -30,5 +30,12 @@ describe("CutStudio local code-render request contract", () => {
     expect(defaultCutCodeRenderFormat("video")).toBe("mp4");
     expect(defaultCutCodeRenderFormat("sequence")).toBe("png");
     expect(cutCodeRenderSubmissionSchema.safeParse({ idempotencyKey: "code.12345678", request: { ...base, mode: "still", frame: 0, format: "png" } }).success).toBe(true);
+  });
+
+  it("accepts only bounded, distinct batch inputs", () => {
+    const still = { ...base, mode: "still" as const, frame: 0, format: "png" as const };
+    expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still, { ...still, input: { headline: "Second" } }] }).success).toBe(true);
+    expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still] }).success).toBe(false);
+    expect(cutCodeRenderBatchSubmissionSchema.safeParse({ idempotencyKey: "code-batch.12345678", requests: [still, still] }).success).toBe(false);
   });
 });

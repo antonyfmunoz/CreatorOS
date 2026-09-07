@@ -45,6 +45,21 @@ export const cutCodeRenderSubmissionSchema = z.object({
 
 export type CutCodeRenderSubmission = z.infer<typeof cutCodeRenderSubmissionSchema>;
 
+// A batch is intentionally only an array of independently bounded render
+// requests. The broker still leases exactly one job to each paired device, so
+// batch submission cannot turn a workstation into an unbounded executor.
+export const cutCodeRenderBatchSubmissionSchema = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_.:-]{8,160}$/),
+  requests: z.array(cutCodeRenderRequestSchema).min(2).max(20),
+}).strict().superRefine((value, context) => {
+  const identities = value.requests.map((request) => JSON.stringify(request));
+  if (new Set(identities).size !== identities.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["requests"], message: "Every batch render must have distinct settings or composition input" });
+  }
+});
+
+export type CutCodeRenderBatchSubmission = z.infer<typeof cutCodeRenderBatchSubmissionSchema>;
+
 export function defaultCutCodeRenderFormat(mode: CutCodeRenderMode) {
   return cutCodeRenderFormats[mode][0];
 }

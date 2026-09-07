@@ -42,4 +42,11 @@ describe("CutStudio local code-render queue contract", () => {
     expect(server).toContain('eq(cutStudioJobs.state, "error")');
     expect(client).toContain("retryCodeRender(job)");
   });
+  it("admits bounded code batches without granting any node more than one lease", () => {
+    expect(server).toContain('cut.post("/api/cut/projects/:id/compositions/:compositionId/code-render-batches"');
+    expect(server).toContain('At most 20 CutStudio jobs can be active');
+    expect(server).toContain('eventType: "cutstudio.code_render.batch_queued"');
+    expect(client).toContain("Optional input batch JSON (2–20 inputs)");
+    expect(client).toContain("queueCodeRenderBatch");
+  });
 });
