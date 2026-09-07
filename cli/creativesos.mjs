@@ -187,7 +187,8 @@ async function executeOneLocalJob(config) {
     }, 60_000);
     let rendered;
     try {
-      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: 120_000 });
+      const limits = payload.limits;
+      rendered = await renderIsolated({ request: runtime, source, image, timeoutMs: limits?.maximumCpuMs, memoryMb: limits?.maximumMemoryMb, maximumOutputBytes: limits?.maximumOutputBytes });
     } finally {
       clearInterval(heartbeat);
     }
