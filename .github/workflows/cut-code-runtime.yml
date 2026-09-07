@@ -34,12 +34,14 @@ jobs:
       - run: npm audit --audit-level=moderate
       - name: Install artifact inspection tools
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Build the local image used by isolated pixel qualifications
+        run: |
+          docker build -t creativesos-cut-code:qualification .
+          docker tag creativesos-cut-code:qualification creativesos-cut-code:production-candidate
       - name: Prove sample-evaluated audio envelopes and range continuity
         run: npm run qualify:audio
-      - name: Prove a frame-driven pinned Three scene reaches captured pixels
+      - name: Prove a stable pinned Three scene reaches distinct sequence pixels
         run: npm run qualify:three
-      - name: Build pinned local qualification image
-        run: docker build -t creativesos-cut-code:qualification .
       - name: Prove envelopes with the container's exact media tools
         run: npm run qualify:audio -- --container
       - name: Prove actual output and cancellation boundaries
@@ -86,6 +88,8 @@ jobs:
           test "$(docker image inspect "$parent_tag" --format '{{.Id}}')" = "$parent"
       - name: Prove the same pixels, audio, cancellation and isolation boundaries
         run: npm run qualify
+      - name: Prove stable Three geometry changes within one candidate sequence
+        run: npm run qualify:three
       - name: Install checksum-pinned vulnerability scanner
         run: |
           mkdir -p "$RUNNER_TEMP/cut-trivy"
