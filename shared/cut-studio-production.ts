@@ -79,7 +79,7 @@ export const cutCompositionLayerSchema = z.object({
   // A composition is a project-scoped declarative manifest reference. It is
   // intentionally not an arbitrary URL or executable module.
   compositionId: z.string().uuid().optional(),
-  compositionParameters: scalarRecord.default({}),
+  compositionParameters: scalarRecord.optional(),
   sourceStartFrame: z.number().int().min(0).max(2_592_000).default(0),
   text: z.string().max(20_000).optional(),
   x: z.number().finite().min(-4).max(4).default(0),
@@ -417,7 +417,7 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
     const referencedRaw = options.resolveComposition(layer.compositionId!);
     if (!referencedRaw) throw new Error("Nested composition is unavailable in this project");
     if (stack.includes(layer.compositionId!)) throw new Error("Nested compositions cannot contain a cycle");
-    const referenced = resolveCompositionParameters(referencedRaw, layer.compositionParameters);
+    const referenced = resolveCompositionParameters(referencedRaw, layer.compositionParameters ?? {});
     if (referenced.width !== manifest.width || referenced.height !== manifest.height || referenced.fps !== manifest.fps) throw new Error("Nested compositions must use the same width, height, and frame rate as their parent");
     if (referenced.durationInFrames !== layer.durationInFrames || layer.sourceStartFrame !== 0) throw new Error("Nested composition containers must use the referenced composition's full duration and a zero source offset");
     for (const font of referenced.fonts) {
@@ -433,7 +433,7 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
   });
 
   const layers = expand(root, [], options.rootCompositionId ? [options.rootCompositionId] : [], 0);
-  return cutCompositionManifestSchema.parse({ ...root, layers, fonts: [...fonts.values()], audioReactiveSignals: [...signals.values()] });
+  return cutCompositionManifestSchema.parse({ ...root, layers, fonts: Array.from(fonts.values()), audioReactiveSignals: Array.from(signals.values()) });
 }
 export type CutCompositionVariantBatch = z.infer<typeof cutCompositionVariantBatchSchema>;
 export type CutCodeCapsule = z.infer<typeof cutCodeCapsuleSchema>;
