@@ -9,6 +9,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4" })).toMatchObject({ mode: "video", frameRange: [0, 119], format: "mp4" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mov", proresProfile: "4444" })).toMatchObject({ mode: "video", format: "mov", proresProfile: "4444" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "audio", frameRange: [0, 119], format: "m4a" })).toMatchObject({ mode: "audio", format: "m4a" });
+    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", videoEncoding: { crf: 18, preset: "slow" } })).toMatchObject({ mode: "video", videoEncoding: { crf: 18, preset: "slow" } });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "sequence", frameRange: [20, 45], format: "png" })).toMatchObject({ mode: "sequence", frameRange: [20, 45], format: "png" });
   });
 
@@ -18,6 +19,8 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [90, 120], format: "mp4" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "sequence", frameRange: [0, 30], format: "gif" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", proresProfile: "422hq" }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", videoEncoding: { crf: 18, bitrateKbps: 2000 } }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "webm", videoEncoding: { losslessRgb: true } }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", quality: 90 }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "webp", quality: 90 }).success).toBe(true);
   });

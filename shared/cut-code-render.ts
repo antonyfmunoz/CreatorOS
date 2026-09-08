@@ -10,6 +10,15 @@ export const cutCodeRenderFormats = {
   audio: ["wav", "mp3", "m4a"],
 } as const;
 
+const cutCodeMp4Presets = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const;
+export const cutCodeVideoEncodingSchema = z.object({
+  crf: z.number().int().optional(),
+  bitrateKbps: z.number().int().optional(),
+  preset: z.enum(cutCodeMp4Presets).optional(),
+  cpuUsed: z.number().int().min(0).max(8).optional(),
+  losslessRgb: z.boolean().optional(),
+}).strict();
+
 const cutCodeInputKey = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/);
 const cutCodeInputFieldBase = { label: z.string().trim().min(1).max(80).optional(), required: z.boolean().default(false) };
 export const cutCodeInputFieldSchema = z.discriminatedUnion("type", [
@@ -73,6 +82,7 @@ export const cutCodeRenderRequestSchema = z.object({
   frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
   format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif", "mov", "wav", "mp3", "m4a"]).optional(),
   proresProfile: z.enum(["422hq", "4444", "4444xq"]).optional(),
+  videoEncoding: cutCodeVideoEncodingSchema.optional(),
   quality: z.number().int().min(1).max(100).optional(),
   input: z.record(z.unknown()).default({}),
 }).strict().superRefine((request, context) => {
@@ -89,6 +99,19 @@ export const cutCodeRenderRequestSchema = z.object({
   const resolvedFormat = request.format ?? defaultCutCodeRenderFormat(request.mode);
   if (request.quality !== undefined && !["jpeg", "webp"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quality"], message: "Quality is supported only for JPEG/WebP output" });
   if (request.proresProfile !== undefined && resolvedFormat !== "mov") context.addIssue({ code: z.ZodIssueCode.custom, path: ["proresProfile"], message: "A ProRes profile requires MOV output" });
+  if (request.videoEncoding) {
+    const encoding = request.videoEncoding;
+    if (request.mode !== "video" || !["mp4", "webm"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding"], message: "Video encoding controls require MP4 or WebM video output" });
+    if (encoding.losslessRgb) {
+      if (resolvedFormat !== "mp4" || encoding.crf !== undefined || encoding.bitrateKbps !== undefined || encoding.cpuUsed !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding"], message: "Lossless RGB requires MP4 without CRF, bitrate, or CPU overrides" });
+    } else {
+      if (encoding.crf !== undefined && encoding.bitrateKbps !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding"], message: "Choose constant quality or a target bitrate, not both" });
+      if (encoding.bitrateKbps !== undefined && (encoding.bitrateKbps < 64 || encoding.bitrateKbps > 100_000)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding", "bitrateKbps"], message: "Video bitrate must be within 64–100000 Kbps" });
+      if (encoding.crf !== undefined && (encoding.crf < (resolvedFormat === "mp4" ? 1 : 0) || encoding.crf > (resolvedFormat === "mp4" ? 51 : 63))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding", "crf"], message: "CRF is outside the selected codec range" });
+      if (resolvedFormat === "mp4" && encoding.cpuUsed !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding", "cpuUsed"], message: "WebM CPU usage does not apply to MP4" });
+      if (resolvedFormat === "webm" && encoding.preset !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["videoEncoding", "preset"], message: "MP4 presets do not apply to WebM" });
+    }
+  }
   if (JSON.stringify(request.input).length > 64_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["input"], message: "Composition inputs exceed 64 KiB" });
 });
 

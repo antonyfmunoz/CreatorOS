@@ -74,4 +74,11 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("ProRes profile");
     expect(client).toContain("...(format === \"mov\" ? { proresProfile } : {})");
   });
+  it("exposes only the runtime's bounded codec-specific encoding controls", () => {
+    expect(client).toContain("Constant quality (CRF)");
+    expect(client).toContain("Target bitrate");
+    expect(client).toContain("Lossless RGB master");
+    expect(client).toContain("VP9 CPU usage");
+    expect(client).toContain("...(videoEncoding ? { videoEncoding } : {})");
+  });
 });
