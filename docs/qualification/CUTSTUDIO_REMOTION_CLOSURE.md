@@ -6,6 +6,40 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
+### September 7 candidate: private code-media and enforceable admission (not deployed)
+
+Candidate source `1eaab7c` (branch `codex/cut-next-root`) closes several
+previously hidden-but-qualified local-runtime controls at the product boundary:
+direct private binary ZIP plus matching-lockfile import, bounded GIF sampling
+and looping, MOV ProRes profiles, codec controls, audio-only exports,
+composition-authored audio, and up to eight explicit capsule-contained
+soundtracks with timing, stream selection, gain and ordered volume automation.
+The server verifies every declared soundtrack exists in the sealed private ZIP
+before it creates durable work. It also revalidates historic capsule JSON at
+queue time, and the persisted memory declaration now matches the Docker
+sandbox's enforceable 128 MiB–2 GiB range rather than allowing a 4 GiB value
+that the runtime would later reject.
+
+Focused application contracts pass 60 tests; TypeScript and the browser/server
+production bundle pass. The unchanged clean-room runtime suite passes its
+actual private-audio admission, automation, receipt-binding, composition-audio,
+GIF, codec and output tests. Source secret scanning is clean (1,359 files),
+the bundle remains inside all recorded budgets, lockfile qualification passes,
+and the distribution-worker dry-run type/deployment contract passes. These are
+local candidate facts, not deployed output evidence.
+
+On 2026-09-07, public production smoke passed on `creativesos.net`; its
+verified release identity was clean source `e58c7970cd506c6ec0e6c220bb6f737ed94bddf4`
+with migration parity 124/124. That source is an ancestor of this candidate,
+but does not contain it. Authenticated output/recovery field proof for the
+candidate therefore remains pending protected deployment and must not be
+inferred from the active signed-in browser session.
+
+This improves P0 request/custody correctness but does not close: public
+execution approval, preview/export equivalence for arbitrary code capsules,
+broader approved dependency/media/3D coverage, scale/cost evidence, or the
+same-input Remotion/operator benchmark and connected-superiority measurement.
+
 ## September 7 local-node and projection-surface checkpoint
 
 The code-composition local execution plane is no longer merely a source-level
