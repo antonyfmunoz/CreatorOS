@@ -91,6 +91,7 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
   const [gifRepeatMode, setGifRepeatMode] = useState<"infinite" | "count">("infinite");
   const [gifRepeatCount, setGifRepeatCount] = useState(0);
   const [compositionAudio, setCompositionAudio] = useState(false);
+  const [audioTracksJson, setAudioTracksJson] = useState("[]");
   const [quality, setQuality] = useState(90);
   const [inputJson, setInputJson] = useState("{}");
   const [batchInputJson, setBatchInputJson] = useState("[]");
@@ -110,6 +111,10 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
   const readNumber = (event: React.ChangeEvent<HTMLInputElement>, setValue: (value: number) => void) => setValue(event.currentTarget.valueAsNumber);
   const requestForInput = (input: unknown): CutCodeRenderRequest => {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Composition input must be a JSON object");
+    let audioTracks: unknown;
+    try { audioTracks = JSON.parse(audioTracksJson); }
+    catch { throw new Error("Private soundtrack tracks must be valid JSON"); }
+    if (!Array.isArray(audioTracks)) throw new Error("Private soundtrack tracks must be a JSON array");
     const videoEncoding = mode !== "video" || !["mp4", "webm"].includes(format) || encodingMode === "default" ? undefined
       : encodingMode === "lossless" ? { losslessRgb: true, preset }
         : encodingMode === "bitrate" ? { bitrateKbps, ...(format === "mp4" ? { preset } : { cpuUsed }) }
@@ -120,6 +125,7 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
       ...(["jpeg", "webp"].includes(format) ? { quality } : {}),
       ...(format === "mov" ? { proresProfile } : {}),
       ...(gifOptions ? { gifOptions } : {}),
+      ...(audioTracks.length ? { audioTracks } : {}),
       ...(compositionAudio ? { compositionAudio: true as const } : {}),
       ...(videoEncoding ? { videoEncoding } : {}),
       ...(mode === "still" ? { frame } : { frameRange: [rangeStart, rangeEnd] as [number, number] }),
@@ -148,6 +154,10 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Width<input aria-label={`${label} width`} className={field} type="number" min="16" max="3840" value={width} disabled={busy} onChange={(event) => readNumber(event, setWidth)}/></label><label className="text-[9px] text-zinc-500">Height<input aria-label={`${label} height`} className={field} type="number" min="16" max="3840" value={height} disabled={busy} onChange={(event) => readNumber(event, setHeight)}/></label><label className="text-[9px] text-zinc-500">FPS<input aria-label={`${label} fps`} className={field} type="number" min="1" max="60" value={fps} disabled={busy} onChange={(event) => readNumber(event, setFps)}/></label><label className="text-[9px] text-zinc-500">Frames<input aria-label={`${label} duration`} className={field} type="number" min="1" max="600" value={durationInFrames} disabled={busy} onChange={(event) => readNumber(event, setDurationInFrames)}/></label></div>
     {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
     <CodeCompositionInputs contract={composition.codeCapsule?.inputContract} inputJson={inputJson} disabled={busy} onChange={setInputJson}/>
+    {["video", "audio"].includes(mode) && <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+      <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Private soundtrack tracks (advanced)</summary>
+      <label className="mt-2 block text-[9px] text-zinc-500">A JSON array of up to eight tracks from the private source package. Each track uses a capsule-relative <code>file</code> such as <code>audio/bed.mp3</code>, optional frame timing/gain, and optional ordered volume keyframes. URLs and project-storage paths are rejected.<textarea aria-label={`${label} private soundtrack tracks`} className={`${field} min-h-20 resize-y font-mono`} value={audioTracksJson} disabled={busy} onChange={(event) => setAudioTracksJson(event.target.value)}/></label>
+    </details>}
     <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2" open={!composition.codeCapsule?.inputContract}>
       <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Advanced composition input JSON</summary>
       <label className="mt-2 block text-[9px] text-zinc-500">Use this for advanced structured values. The declared contract, when present, still rejects undeclared or invalid values.<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>

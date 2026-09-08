@@ -93,6 +93,12 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("rangeEnd >= rangeStart");
     expect(client).toContain("...(compositionAudio ? { compositionAudio: true as const } : {})");
   });
+  it("allows advanced soundtracks only from the private source capsule", () => {
+    expect(client).toContain("Private soundtrack tracks (advanced)");
+    expect(client).toContain("private soundtrack tracks");
+    expect(client).toContain("capsule-relative");
+    expect(client).toContain("...(audioTracks.length ? { audioTracks } : {})");
+  });
   it("imports a binary-capable private package without asking the text editor to reinterpret it", () => {
     expect(client).toContain('aria-label="Import private source package"');
     expect(client).toContain('aria-label="Choose source ZIP"');

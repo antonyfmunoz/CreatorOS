@@ -47,6 +47,12 @@ Status: locally qualified release candidate; not deployed
   matching lockfile directly. This makes binary capsule assets—such as the
   bounded private audio/video inputs used by the runtime—usable without asking
   the browser's text editor to decode, edit, or discard them.
+- Code exports can also declare up to eight explicit private soundtrack tracks
+  from that source capsule. Track paths are capsule-relative and restricted to
+  approved local audio/video containers; URL, host-path and project-storage
+  references are rejected before a job is queued. Per-track timing, stream
+  selection, gain and ordered bounded volume automation use the same admission
+  rules as the local renderer, including no soundtrack for GIF output.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -62,9 +68,9 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
-- Focused application contracts — 36 assertions cover guided input,
+- Focused application contracts — 41 assertions cover guided input,
   ProRes/audio/GIF request admission, composition-audio duration/format
-  admission, GIF sampling/loop UI handoff, media
+  admission, private source-package soundtrack admission, GIF sampling/loop UI handoff, media
   classification, and direct output-custody MIME allowlisting.
 - `npm --prefix runtimes/cut-code run qualify` — completed on 2026-09-08 UTC
   against isolated image
