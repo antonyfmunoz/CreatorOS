@@ -23,6 +23,17 @@ Status: locally qualified release candidate; not deployed
   browser and server before a job is durable. Unknown fields never reach the
   untrusted package. The supplied motion and 3D starters demonstrate the same
   TypeScript `useInputs<T>()` shape and saved contract.
+- When a composition declares that contract, its render card now renders the
+  declared text, number, option and boolean parameters directly. The advanced
+  JSON/batch path remains available, but neither UI path can bypass the server
+  normalizer.
+- The durable local-node path now exposes renderer capabilities that were
+  already isolated-qualified but previously hidden by the application: MOV
+  ProRes 422 HQ/4444/4444 XQ outputs, bounded WAV/MP3/M4A audio-only outputs,
+  and bounded MP4/WebM CRF, target-bitrate, speed and lossless-RGB settings.
+  Output MIME type and project-media kind are recomputed from a shared
+  allowlist before a short-lived upload URL is issued; MOV and audio outputs
+  cannot be mislabeled as a generic browser asset.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -38,6 +49,9 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
+- Focused application contracts — 32 assertions covering guided input,
+  ProRes/audio request admission, media handoff and direct output-custody MIME
+  allowlisting pass after the output-surface additions.
 - `npm --prefix runtimes/cut-code run qualify` — completed on 2026-09-08 UTC
   against isolated image
   `sha256:631240f38c97866e56d66b8f49927ea3423d609ddf61ab7849379c9b6d55d812`
