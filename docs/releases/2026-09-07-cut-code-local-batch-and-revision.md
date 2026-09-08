@@ -52,7 +52,11 @@ Status: locally qualified release candidate; not deployed
   approved local audio/video containers; URL, host-path and project-storage
   references are rejected before a job is queued. Per-track timing, stream
   selection, gain and ordered bounded volume automation use the same admission
-  rules as the local renderer, including no soundtrack for GIF output.
+  rules as the local renderer, including no soundtrack for GIF output. The
+  server also indexes the already-private ZIP during queue admission and
+  rejects a request whose declared soundtrack file is not actually in that
+  sealed source package; a paired node never has to discover that error after
+  claiming durable work.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -68,7 +72,7 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
-- Focused application contracts — 41 assertions cover guided input,
+- Focused application contracts — 59 passing tests cover guided input,
   ProRes/audio/GIF request admission, composition-audio duration/format
   admission, private source-package soundtrack admission, GIF sampling/loop UI handoff, media
   classification, and direct output-custody MIME allowlisting.

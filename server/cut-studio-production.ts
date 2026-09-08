@@ -38,7 +38,7 @@ import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
 import { materializePrivateAsset } from "./asset-storage";
-import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
+import { assertCutCodeCapsuleMediaFiles, readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
 import { validateCutSourceLockfilePair } from "./cut-code-lockfile";
 import { retryCutJob } from "./cut-job-recovery";
 
@@ -178,7 +178,7 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   if (riveIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-rive" || !asset.mimeType || !/^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(asset.mimeType); })) throw new Error("Every Rive layer must reference ready private validated Rive media");
 }
 
-async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>) {
+async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>, soundtrackFiles: readonly string[] = []) {
   const capsuleIds = [capsule.sourceAssetId, capsule.lockfileAssetId];
   const rows = await db.select({
     assetId: assets.id,
@@ -209,11 +209,12 @@ async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferS
     const [sourceStat, lockfileStat] = await Promise.all([fs.stat(sourcePath), fs.stat(lockfilePath)]);
     if (sourceStat.size > 25 * 1024 * 1024 || lockfileStat.size > 2 * 1024 * 1024) throw new Error("Code source or lockfile exceeds its safe size limit.");
     let manifest = "";
-    validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint, (name, body) => {
+    const sourceArchive = validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint, (name, body) => {
       if (name !== "package.json") return;
       if (body.length > 256 * 1024) throw new Error("package.json exceeds 256 KiB.");
       try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(body); } catch { throw new Error("package.json must be UTF-8 text."); }
     }, "manifest");
+    assertCutCodeCapsuleMediaFiles(sourceArchive.entries, soundtrackFiles);
     const lockfileBytes = await fs.readFile(lockfilePath);
     validateCutCodeLockfile(lockfileName, lockfileBytes);
     let lockfileText: string;
@@ -537,7 +538,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     )).limit(1);
     if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
     const capsule = composition.codeCapsule;
-    try { await assertCodeCapsuleAssets(access.project, capsule); }
+    try { await assertCodeCapsuleAssets(access.project, capsule, parsed.data.request.audioTracks?.map((track) => track.file) ?? []); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
     let normalizedRequest;
     try { normalizedRequest = { ...parsed.data.request, input: normalizeCutCodeRenderInput(parsed.data.request.input, capsule.inputContract) }; }
@@ -606,7 +607,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     )).limit(1);
     if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
     const capsule = composition.codeCapsule;
-    try { await assertCodeCapsuleAssets(access.project, capsule); }
+    try { await assertCodeCapsuleAssets(access.project, capsule, parsed.data.requests.flatMap((request) => request.audioTracks?.map((track) => track.file) ?? [])); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
     let normalizedRequests;
     try { normalizedRequests = parsed.data.requests.map((request) => ({ ...request, input: normalizeCutCodeRenderInput(request.input, capsule.inputContract) })); }

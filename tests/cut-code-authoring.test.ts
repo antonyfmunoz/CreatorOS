@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertCutSourceTextBudget, buildCutSourceZip, starterCutSource, validateCutSourceFiles } from "../shared/cut-code-authoring";
-import { readCutCodeSourceFiles, validateCutCodeSourceArchive } from "../server/cut-code-package";
+import { assertCutCodeCapsuleMediaFiles, readCutCodeSourceFiles, validateCutCodeSourceArchive } from "../server/cut-code-package";
 
 describe("data-only source authoring", () => {
   it("round trips all text through the authoritative archive reader and CRC checks", () => {
@@ -18,6 +18,11 @@ describe("data-only source authoring", () => {
     files[1].content = "throw new Error('never execute source while authoring')";
     files[0].content = JSON.stringify({ scripts: { postinstall: "exit 99" } });
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.tsx")), "src/index.tsx")).toHaveLength(3);
+  });
+  it("requires declared private soundtracks to exist in the sealed source package before queueing", () => {
+    const sealedArchiveIndex = ["package.json", "src/index.tsx", "audio/bed.mp3"];
+    expect(() => assertCutCodeCapsuleMediaFiles(sealedArchiveIndex, ["audio/bed.mp3"])).not.toThrow();
+    expect(() => assertCutCodeCapsuleMediaFiles(sealedArchiveIndex, ["audio/missing.mp3"])).toThrow(/missing from the source package/i);
   });
   it("offers an inert, pinned Three SVG starter that is ready for a matching lockfile", () => {
     const files = starterCutSource("three_svg");

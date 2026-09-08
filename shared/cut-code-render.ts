@@ -49,7 +49,8 @@ export const cutCodeAudioTrackSchema = z.object({
 }).strict().superRefine((track, context) => {
   if (track.startFrame !== undefined && track.endFrame !== undefined && track.endFrame <= track.startFrame) context.addIssue({ code: z.ZodIssueCode.custom, path: ["endFrame"], message: "Soundtrack end frame must follow its start frame" });
   const trackFrames = (track.endFrame ?? Number.MAX_SAFE_INTEGER) - (track.startFrame ?? 0);
-  for (const [index, point] of (track.volumeKeyframes ?? []).entries()) {
+  for (let index = 0; index < (track.volumeKeyframes?.length ?? 0); index += 1) {
+    const point = track.volumeKeyframes![index];
     if (point.frame > trackFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["volumeKeyframes", index, "frame"], message: "Volume automation must stay within the soundtrack range" });
     if (index > 0 && point.frame <= (track.volumeKeyframes?.[index - 1]?.frame ?? -1)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["volumeKeyframes", index, "frame"], message: "Volume automation frames must be ordered" });
   }
@@ -147,11 +148,12 @@ export const cutCodeRenderRequestSchema = z.object({
   if (request.audioTracks?.length) {
     if (!["video", "audio"].includes(request.mode)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioTracks"], message: "Private soundtrack tracks require video or audio output" });
     if (resolvedFormat === "gif") context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioTracks"], message: "GIF output cannot contain a soundtrack" });
-    for (const [index, track] of request.audioTracks.entries()) {
+    for (let index = 0; index < request.audioTracks.length; index += 1) {
+      const track = request.audioTracks[index];
       const startFrame = track.startFrame ?? 0;
       const endFrame = track.endFrame ?? request.durationInFrames;
       if (endFrame > request.durationInFrames) context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioTracks", index, "endFrame"], message: "Soundtrack timing must stay within the composition" });
-      for (const [pointIndex, point] of (track.volumeKeyframes ?? []).entries()) if (point.frame > endFrame - startFrame) context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioTracks", index, "volumeKeyframes", pointIndex, "frame"], message: "Volume automation must stay within the soundtrack range" });
+      for (let pointIndex = 0; pointIndex < (track.volumeKeyframes?.length ?? 0); pointIndex += 1) if (track.volumeKeyframes![pointIndex].frame > endFrame - startFrame) context.addIssue({ code: z.ZodIssueCode.custom, path: ["audioTracks", index, "volumeKeyframes", pointIndex, "frame"], message: "Volume automation must stay within the soundtrack range" });
     }
   }
   if (request.quality !== undefined && !["jpeg", "webp"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quality"], message: "Quality is supported only for JPEG/WebP output" });
