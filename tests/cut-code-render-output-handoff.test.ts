@@ -8,6 +8,7 @@ describe("CutStudio local code-render output handoff", () => {
   it("makes sealed stills, videos, and audio directly usable after their private media record exists", () => {
     expect(runtime).toContain("onUseCodeRenderOutput?: (media: ProjectMediaInput) => void");
     expect(runtime).toContain('job.mode === "video" || job.mode === "still"');
+    expect(runtime).toContain('const isImageOutput = job.mode === "still" || job.format === "gif"');
     expect(runtime).toContain('job.mode !== "video" && job.mode !== "still" && job.mode !== "audio"');
     expect(runtime).toContain('"Add to timeline"');
     expect(runtime).toContain('"Add as graphic"');

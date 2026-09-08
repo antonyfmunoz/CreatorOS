@@ -34,6 +34,11 @@ Status: locally qualified release candidate; not deployed
   Output MIME type and project-media kind are recomputed from a shared
   allowlist before a short-lived upload URL is issued; MOV and audio outputs
   cannot be mislabeled as a generic browser asset.
+- GIF exports now expose the renderer's bounded frame-sampling and repeat
+  controls. The application validates the same 1–30 frame step, 0–1000 repeat,
+  50 FPS and palette-memory limits as the isolated runtime. Animated GIFs are
+  intentionally registered as `image/gif` project media: they preview in an
+  image element and hand off as graphics, rather than being mislabeled as video.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -49,9 +54,9 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
-- Focused application contracts — 32 assertions covering guided input,
-  ProRes/audio request admission, media handoff and direct output-custody MIME
-  allowlisting pass after the output-surface additions.
+- Focused application contracts — 34 assertions cover guided input,
+  ProRes/audio/GIF request admission, GIF sampling/loop UI handoff, media
+  classification, and direct output-custody MIME allowlisting.
 - `npm --prefix runtimes/cut-code run qualify` — completed on 2026-09-08 UTC
   against isolated image
   `sha256:631240f38c97866e56d66b8f49927ea3423d609ddf61ab7849379c9b6d55d812`

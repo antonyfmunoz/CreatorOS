@@ -81,4 +81,10 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("VP9 CPU usage");
     expect(client).toContain("...(videoEncoding ? { videoEncoding } : {})");
   });
+  it("exposes the isolated runtime's bounded GIF sampling and loop controls", () => {
+    expect(client).toContain("GIF sampling preserves the selected range duration");
+    expect(client).toContain("GIF frame step");
+    expect(client).toContain("GIF looping");
+    expect(client).toContain("...(gifOptions ? { gifOptions } : {})");
+  });
 });

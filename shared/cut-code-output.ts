@@ -21,6 +21,9 @@ export function describeCutCodeOutput(runtime: Record<string, unknown>): CutCode
     ["wav", "audio/wav"], ["mp3", "audio/mpeg"], ["m4a", "audio/mp4"],
   ]).get(format);
   if (!mimeType) throw new Error("The queued job does not have a supported output format");
-  const assetKind = mode === "video" ? "video" : mode === "audio" ? "audio" : "image";
+  // An animated GIF has video-style timing, but its private media record must
+  // remain an image so browser preview and image-graphic handoff use its real
+  // MIME type instead of trying to load image/gif in a video element.
+  const assetKind = mode === "video" ? format === "gif" ? "image" : "video" : mode === "audio" ? "audio" : "image";
   return { format, mimeType, filename: `cutstudio-code-render.${format}`, assetKind };
 }
