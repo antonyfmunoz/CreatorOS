@@ -38,6 +38,15 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
+- `npm --prefix runtimes/cut-code run qualify` — completed on 2026-09-08 UTC
+  against isolated image
+  `sha256:631240f38c97866e56d66b8f49927ea3423d609ddf61ab7849379c9b6d55d812`
+  and wrote a fresh `qualification-output/receipt.json` with 86 records.
+  It exercised actual deterministic PNG-sequence replay, private source/CSS
+  imports, 3D vector composition, still/video/alpha/video-layer/audio output,
+  codec variants, network/metadata denial, deadline cancellation and container
+  cleanup. The only two receipt entries without artifacts are intentional
+  failure/cancellation assertions, not missing output.
 - Earlier in this workstream, the signed-in `antonyfm` account completed a real
   private local frame-sequence job on its paired Windows node. That exercise
   proved source packaging, private delivery, container execution and sealed
