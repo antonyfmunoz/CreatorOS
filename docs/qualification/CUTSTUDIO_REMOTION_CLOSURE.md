@@ -6,10 +6,10 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
-### September 7 candidate: protected source qualification (not deployed)
+### September 7 protected baseline: not deployed
 
-Candidate source `749d3579d62130f831d6bc0270649534b22d32b7` (branch
-`codex/cut-next-root`, PR 194) closes several previously hidden-but-qualified
+Last protected baseline source `d56710eaa3997c58ff176d1c16b8eb4974407fbe`
+(branch `codex/cut-next-root`, PR 194) closes several previously hidden-but-qualified
 local-runtime controls at the product boundary:
 direct private binary ZIP plus matching-lockfile import, bounded GIF sampling
 and looping, MOV ProRes profiles, codec controls, audio-only exports,
@@ -21,16 +21,17 @@ queue time, and the persisted memory declaration now matches the Docker
 sandbox's enforceable 128 MiB–2 GiB range rather than allowing a 4 GiB value
 that the runtime would later reject.
 
-The exact candidate passed protected Verify run `34180114047`: Core, database
+That exact baseline passed protected Verify run `34181112747`: Core, database
 and durable workflows, native media ingest, Android, iOS, Windows packaging,
-desktop Chromium (15m33s), mobile Chromium (11m49s), and its browser summary
-all passed. Separate protected media run `34180113749` passed isolated TSX
-pixel/execution boundaries (6m53s) and the candidate image pixel/vulnerability
-gate (7m17s); CodeQL run `34180113756` passed. Locally, the targeted
+desktop Chromium (15m59s), mobile Chromium (16m45s), and its browser summary
+all passed. Separate protected media run `34181112684` passed isolated TSX
+pixel/execution boundaries (7m08s) and the candidate image pixel/vulnerability
+gate (7m20s); CodeQL run `34181112597` passed. Locally, the targeted
 programmable-cinema lifecycle (desktop/mobile) and 18 source-authoring
 journeys (desktop/mobile) passed against disposable PostgreSQL and private
-asset fixtures. These facts validate the current source and its declared
-paired-local boundary; they are not deployed output evidence.
+asset fixtures. These facts validate that baseline and its declared paired-local
+boundary; they are not deployed output evidence. Any later branch commit must
+pass its own exact-head protected qualification before inheriting this status.
 
 On 2026-09-07, public production smoke passed on `creativesos.net`; its
 verified release identity was clean source `e58c7970cd506c6ec0e6c220bb6f737ed94bddf4`

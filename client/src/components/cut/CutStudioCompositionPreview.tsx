@@ -363,6 +363,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   const [muted, setMuted] = useState(initialMuted);
   const [masterVolume, setMasterVolume] = useState(1);
   const [speed, setSpeed] = useState(cutPlayerRate(playbackRate));
+  const [loopEnabled, setLoopEnabled] = useState(loop);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const enableAudio = () => {
@@ -392,6 +393,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   }));
   useEffect(() => { setSpeed(cutPlayerRate(playbackRate)); }, [playbackRate]);
   useEffect(() => { setMuted(initialMuted); }, [initialMuted]);
+  useEffect(() => { setLoopEnabled(loop); }, [loop]);
   useEffect(() => () => { void audioContextRef.current?.close().catch(() => undefined); audioContextRef.current = null; }, []);
   useEffect(() => {
     setFrame((current) => Math.min(manifest.durationInFrames - 1, Math.max(0, current)));
@@ -410,7 +412,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
         setFrame((current) => {
           const next = current + advance;
           if (next < manifest.durationInFrames) return next;
-          if (loop) return next % manifest.durationInFrames;
+          if (loopEnabled) return next % manifest.durationInFrames;
           setPlaying(false);
           return manifest.durationInFrames - 1;
         });
@@ -419,7 +421,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
     };
     requestId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(requestId);
-  }, [loop, manifest.durationInFrames, manifest.fps, speed, advancing]);
+  }, [loopEnabled, manifest.durationInFrames, manifest.fps, speed, advancing]);
   useEffect(() => { onFrameChange?.(frame); }, [frame, onFrameChange]);
   const evaluated = useMemo(() => evaluateCompositionFrame(manifest, frame), [manifest, frame]);
   return <AssetUrlContext.Provider value={assetUrl}><CutPreviewReadinessContext.Provider value={readiness}><div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1d9bf0]" role="region" tabIndex={controls ? 0 : undefined} aria-label="CutStudio composition player" aria-describedby={keyboardHelpId} data-player-state={readinessState.errors.length ? "error" : readinessState.pending ? "buffering" : advancing ? "playing" : "paused"} data-play-requested={playing} data-current-frame={frame} onKeyDown={(event) => {
@@ -440,6 +442,7 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
     </div>}
     {controls && <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-zinc-400">
       <button type="button" aria-label={muted ? "Unmute composition" : "Mute composition"} aria-pressed={!muted} className="rounded border border-zinc-700 px-2 py-1" onClick={() => { if (muted) enableAudio(); setMuted((current) => !current); }}>{muted ? "Unmute" : "Mute"}</button>
+      <button type="button" aria-label={loopEnabled ? "Disable composition loop" : "Enable composition loop"} aria-pressed={loopEnabled} className="rounded border border-zinc-700 px-2 py-1" onClick={() => setLoopEnabled((current) => !current)}>{loopEnabled ? "Loop on" : "Loop off"}</button>
       <label>Volume <input aria-label="Composition volume" type="range" min="0" max="1" step="0.05" value={masterVolume} onChange={(event) => setMasterVolume(Number(event.target.value))} className="w-20 align-middle accent-[#1d9bf0]"/></label>
       <label>Speed <select aria-label="Composition playback speed" value={speed} onChange={(event) => setSpeed(cutPlayerRate(Number(event.target.value)))} className="rounded border border-zinc-700 bg-zinc-950 px-1 py-1">{[.25, .5, .75, 1, 1.25, 1.5, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}</select></label>
     </div>}

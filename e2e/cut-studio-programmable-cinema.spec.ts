@@ -198,6 +198,10 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await expect(compositionPlayer).toHaveAttribute("data-player-state", "paused");
   await compositionPlayer.getByLabel("Preview frame").fill(String(playerStartFrame));
   await compositionPlayer.getByLabel("Composition playback speed").selectOption("2");
+  await expect(compositionPlayer.getByRole("button", { name: "Disable composition loop" })).toHaveAttribute("aria-pressed", "true");
+  await compositionPlayer.getByRole("button", { name: "Disable composition loop" }).click();
+  await expect(compositionPlayer.getByRole("button", { name: "Enable composition loop" })).toHaveAttribute("aria-pressed", "false");
+  await compositionPlayer.getByRole("button", { name: "Enable composition loop" }).click();
   await compositionPlayer.getByRole("button", { name: "Unmute composition" }).click();
   await expect(compositionPlayer.getByRole("button", { name: "Mute composition" })).toHaveAttribute("aria-pressed", "true");
   await compositionPlayer.getByRole("button", { name: "Play composition" }).click();
