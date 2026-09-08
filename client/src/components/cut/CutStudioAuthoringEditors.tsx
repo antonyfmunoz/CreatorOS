@@ -17,7 +17,7 @@ export function cutStudioPrivateFontFamily(assetId: string) {
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2.5 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 const compactField = "w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[10px] text-zinc-200 outline-none focus:border-[#1d9bf0]";
-const layerKinds = ["video", "audio", "image", "text", "shape", "svg", "path", "lottie", "rive", "three", "data"] as const;
+const layerKinds = ["video", "audio", "image", "text", "shape", "svg", "path", "lottie", "rive", "three", "data", "composition"] as const;
 const blendModes: CompositionLayer["blendMode"][] = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "difference", "exclusion"];
 const transitionKinds = ["none", "fade", "slide", "wipe", "zoom", "flip", "clock_wipe", "iris", "custom_mask"] as const;
 const effectKinds = ["blur", "drop_shadow", "glow", "grain", "noise", "vignette", "color_matrix", "chroma_key", "mask", "displacement", "motion_blur", "light_leak"] as const;
@@ -42,19 +42,26 @@ function replaceAt<T>(items: T[], index: number, value: T) {
   return items.map((item, itemIndex) => itemIndex === index ? value : item);
 }
 
-function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionManifest, assets: CompositionAsset[]): CompositionLayer {
+type CompositionReference = { id: string; name: string; manifest: CutCompositionManifest };
+
+function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionManifest, assets: CompositionAsset[], compositions: CompositionReference[]): CompositionLayer {
   const id = `${kind}_${crypto.randomUUID().slice(0, 8)}`;
   const style: CompositionLayer["style"] = kind === "shape" ? { fill: "#1d9bf0", borderRadius: 12 } : kind === "text" ? { color: "#ffffff", fontSize: 64, backgroundColor: "#000000", backgroundOpacity: .5 } : kind === "three" ? { primitive: "cube", color: "#1d9bf0", secondaryColor: "#0b5f99", edgeColor: "#ffffff", wireframe: false, depth: 1 } : {};
   const media = assets.find((asset) => asset.mediaKind === kind);
   const sourceAssetId = media?.assetId ?? manifest.layers.find((layer) => layer.kind === kind && layer.assetId)?.assetId;
   const base: CompositionLayer = {
     id, kind, name: `${kind[0].toUpperCase()}${kind.slice(1)} layer`, from: 0, durationInFrames: Math.min(manifest.durationInFrames, manifest.fps * 5), sourceStartFrame: 0,
-    x: kind === "video" ? 0 : .5, y: kind === "video" ? 0 : .5, width: kind === "video" ? 1 : kind === "text" ? .7 : .35, height: kind === "video" ? 1 : kind === "text" ? .2 : .35, opacity: 1, rotation: 0, volume: 1,
+    x: kind === "video" || kind === "composition" ? 0 : .5, y: kind === "video" || kind === "composition" ? 0 : .5, width: kind === "video" || kind === "composition" ? 1 : kind === "text" ? .7 : .35, height: kind === "video" || kind === "composition" ? 1 : kind === "text" ? .2 : .35, opacity: 1, rotation: 0, volume: 1,
     anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal" as const,
     style,
     dataBindings: {}, effects: [], animations: [],
   };
   if (["text", "svg", "path"].includes(kind)) return { ...base, text: kind === "text" ? "New title" : kind === "svg" ? "<svg viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg>" : "M 0 50 L 100 50" };
+  if (kind === "composition") {
+    const referenced = compositions.find((candidate) => candidate.manifest.durationInFrames <= manifest.durationInFrames);
+    if (!referenced) throw new Error("No compatible saved composition is available");
+    return { ...base, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, durationInFrames: referenced.manifest.durationInFrames };
+  }
   if (sourceAssetId) return { ...base, assetId: sourceAssetId };
   return base;
 }
@@ -64,9 +71,10 @@ function numberValue(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function CompositionAuthoringControls({ composition, assets, busy, onChange, onSave }: {
+export function CompositionAuthoringControls({ composition, assets, compositions, busy, onChange, onSave }: {
   composition: { id: string; manifest: CutCompositionManifest };
   assets: CompositionAsset[];
+  compositions: CompositionReference[];
   busy: boolean;
   onChange: (manifest: CutCompositionManifest) => void;
   onSave: () => void;
@@ -79,7 +87,8 @@ export function CompositionAuthoringControls({ composition, assets, busy, onChan
   const [keyframeValue, setKeyframeValue] = useState(1);
   const selectedIndex = Math.max(0, manifest.layers.findIndex((layer) => layer.id === selectedId));
   const selected = manifest.layers[selectedIndex];
-  const addableKinds = layerKinds.filter((kind) => !["video", "audio"].includes(kind) || assets.some((asset) => asset.mediaKind === kind));
+  const compatibleCompositions = compositions.filter((candidate) => candidate.id !== composition.id && candidate.manifest.width === manifest.width && candidate.manifest.height === manifest.height && candidate.manifest.fps === manifest.fps && candidate.manifest.durationInFrames <= manifest.durationInFrames);
+  const addableKinds = layerKinds.filter((kind) => kind === "composition" ? compatibleCompositions.length > 0 : !["video", "audio"].includes(kind) || assets.some((asset) => asset.mediaKind === kind));
 
   const updateLayer = (update: (layer: CompositionLayer) => CompositionLayer) => {
     if (!selected) return;
@@ -91,7 +100,7 @@ export function CompositionAuthoringControls({ composition, assets, busy, onChan
     onChange({ ...manifest, parameters, layers: replaceAt(manifest.layers, selectedIndex, nextLayer) });
   };
   const addLayer = () => {
-    const layer = defaultLayer(newKind, manifest, assets);
+    const layer = defaultLayer(newKind, manifest, assets, compatibleCompositions);
     onChange({ ...manifest, layers: [...manifest.layers, layer] });
     setSelectedId(layer.id);
   };
@@ -145,6 +154,7 @@ export function CompositionAuthoringControls({ composition, assets, busy, onChan
       {(selected.kind === "text" || selected.kind === "caption") && <CutStudioTextLayoutControls style={selected.style} font={manifest.fonts.find((font) => font.assetId && font.family === selected.style.fontFamily)} onChange={(style) => updateLayer((layer) => ({ ...layer, style }))}/>}
       <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-zinc-500">Layer name<input aria-label="Layer name" className={field} value={selected.name} onChange={(event) => updateLayer((layer) => ({ ...layer, name: event.target.value }))}/></label>{["text", "caption", "svg", "path"].includes(selected.kind) ? <label className="text-[10px] text-zinc-500">Content<textarea aria-label="Layer content" className={`${field} min-h-20 resize-y`} maxLength={selected.kind === "svg" ? 20_000 : selected.kind === "path" ? 4_000 : CUT_NATIVE_TEXT_MAX_CHARACTERS} value={selected.text ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, text: event.target.value }))}/></label> : <label className="text-[10px] text-zinc-500">Blend<select aria-label="Layer blend mode" className={field} value={selected.blendMode} onChange={(event) => updateLayer((layer) => ({ ...layer, blendMode: event.target.value as CompositionLayer["blendMode"] }))}>{blendModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>}</div>
       {["video", "audio", "image", "lottie", "rive"].includes(selected.kind) && <label className="block text-[10px] text-zinc-500">Project media<select aria-label="Layer media asset" className={field} value={selected.assetId ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, assetId: event.target.value }))}>{assets.filter((asset) => asset.mediaKind === selected.kind).map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.duration.toFixed(1)}s</option>)}</select></label>}
+      {selected.kind === "composition" && <div className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-2"><label className="block text-[10px] text-zinc-500">Nested project composition<select aria-label="Nested project composition" className={field} value={selected.compositionId ?? ""} onChange={(event) => { const referenced = compatibleCompositions.find((candidate) => candidate.id === event.target.value); if (!referenced) return; updateLayer((layer) => ({ ...layer, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, from: Math.min(layer.from, manifest.durationInFrames - referenced.manifest.durationInFrames), durationInFrames: referenced.manifest.durationInFrames, sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, rotationX: 0, rotationY: 0, perspective: 0, anchorX: .5, anchorY: .5, blendMode: "normal", effects: [], animations: [], enter: undefined, exit: undefined })); }}><option value="">Choose a compatible composition</option>{compatibleCompositions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} · {(candidate.manifest.durationInFrames / candidate.manifest.fps).toFixed(2)}s</option>)}</select></label><p className="mt-1 text-[9px] leading-4 text-zinc-500">Nested compositions preserve their own layers, timing, private assets, and typed defaults. Container transforms and effects stay neutral so preview and final output cannot silently diverge.</p></div>}
       {["video", "audio", "lottie", "rive"].includes(selected.kind) && <label className="block text-[10px] text-zinc-500">Source offset (composition frames)<input aria-label="Layer source start frame" className={field} type="number" min={0} max={Math.min(2_592_000, manifest.fps * 43_200)} step={1} disabled={busy} value={selected.sourceStartFrame} onChange={(event) => updateLayer((layer) => ({ ...layer, sourceStartFrame: Math.max(0, Math.min(2_592_000, manifest.fps * 43_200, Math.round(numberValue(event.target.value, 0)))) }))}/><span className="mt-1 block">{(selected.sourceStartFrame / manifest.fps).toFixed(3)} seconds at {manifest.fps} composition fps.</span></label>}
       {selected.kind === "image" && <label className="block text-[10px] text-zinc-500">Image framing<select aria-label="Image framing" className={field} value={String(selected.style.objectFit ?? "cover")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, objectFit: event.target.value } }))}><option value="cover">Fill frame (crop)</option><option value="contain">Fit entire image</option><option value="fill">Stretch to frame</option></select></label>}
       <div className="grid grid-cols-4 gap-2">{([['Start','from',0,manifest.durationInFrames - 1,1],['Frames','durationInFrames',1,manifest.durationInFrames - selected.from,1],['X','x',-4,4,.01],['Y','y',-4,4,.01],['Width','width',.01,8,.01],['Height','height',.01,8,.01],['Opacity','opacity',0,1,.01],['Rotation','rotation',-3600,3600,1],['Rotate X','rotationX',-3600,3600,1],['Rotate Y','rotationY',-3600,3600,1],['Perspective','perspective',0,10000,10]] as const).map(([label,key,min,max,step]) => <label key={key} className="text-[9px] text-zinc-600">{label}<input aria-label={`Layer ${label.toLowerCase()}`} className={compactField} type="number" min={min} max={max} step={step} value={selected[key]} onChange={(event) => updateLayer((layer) => ({ ...layer, [key]: Math.max(min, Math.min(max, numberValue(event.target.value, layer[key]))) }))}/></label>)}</div>
