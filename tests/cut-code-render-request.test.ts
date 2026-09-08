@@ -11,7 +11,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "audio", frameRange: [0, 119], format: "m4a" })).toMatchObject({ mode: "audio", format: "m4a" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", videoEncoding: { crf: 18, preset: "slow" } })).toMatchObject({ mode: "video", videoEncoding: { crf: 18, preset: "slow" } });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", compositionAudio: true })).toMatchObject({ mode: "video", format: "mp4", compositionAudio: true });
-    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", audioTracks: [{ file: "audio/bed.mp3", startFrame: 10, endFrame: 100, volume: 0.7, volumeKeyframes: [{ frame: 0, value: 0, interpolation: "hold" }, { frame: 12, value: 1 }] }] })).toMatchObject({ audioTracks: [{ file: "audio/bed.mp3", startFrame: 10, endFrame: 100 }] });
+    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", audioTracks: [{ file: "audio/bed.mp3", startFrame: 10, endFrame: 100, sourceStartSeconds: 4, reverse: true, volume: 0.7, volumeKeyframes: [{ frame: 0, value: 0, interpolation: "hold" }, { frame: 12, value: 1 }] }] })).toMatchObject({ audioTracks: [{ file: "audio/bed.mp3", startFrame: 10, endFrame: 100, sourceStartSeconds: 4, reverse: true }] });
     expect(cutCodeRenderRequestSchema.parse({ ...base, width: 320, height: 180, mode: "video", frameRange: [0, 119], format: "gif", gifOptions: { frameStep: 2, repeatCount: 3 } })).toMatchObject({ mode: "video", format: "gif", gifOptions: { frameStep: 2, repeatCount: 3 } });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "sequence", frameRange: [20, 45], format: "png" })).toMatchObject({ mode: "sequence", frameRange: [20, 45], format: "png" });
   });
@@ -32,6 +32,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "png", audioTracks: [{ file: "audio/bed.mp3" }] }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "gif", audioTracks: [{ file: "audio/bed.mp3" }] }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", audioTracks: [{ file: "https://example.com/bed.mp3" }] }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", audioTracks: [{ file: "audio/bed.mp3", reverse: false }] }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", audioTracks: [{ file: "audio/bed.mp3", startFrame: 9, endFrame: 8 }] }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "webp", quality: 90 }).success).toBe(true);
   });

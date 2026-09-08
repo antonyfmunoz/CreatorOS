@@ -43,6 +43,10 @@ export const cutCodeAudioTrackSchema = z.object({
   endFrame: z.number().int().positive().optional(),
   sourceStartSeconds: z.number().finite().min(0).max(119.999_999).optional(),
   speed: z.number().finite().min(0.5).max(2).optional(),
+  // Reverse playback remains intentionally narrow: it is rendered only from a
+  // declared private source interval by the isolated runtime. Keeping this in
+  // the shared contract prevents the broker/UI boundary from stripping it.
+  reverse: z.literal(true).optional(),
   volume: z.number().finite().min(0).max(2).optional(),
   volumeKeyframes: z.array(cutCodeVolumeKeyframeSchema).min(1).max(32).optional(),
   audioStream: z.number().int().min(0).max(7).optional(),
