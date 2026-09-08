@@ -7,7 +7,7 @@ async function setup(page: Page, info: TestInfo) {
   const file = `${directory}/source.mp4`;
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=30:d=1', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', file]);
   const upload = await page.request.post('/api/assets/upload-proxy', { multipart: { kind: 'video', visibility: 'private', video: { name: 'source.mp4', mimeType: 'video/mp4', buffer: readFileSync(file) } } });
-  expect(upload.ok()).toBeTruthy(); const asset = (await upload.json()).asset;
+  const uploadBody = await upload.text(); expect(upload.ok(), uploadBody).toBeTruthy(); const asset = JSON.parse(uploadBody).asset;
   const created = await page.request.post('/api/cut/projects', { data: { sourceAssetId: asset.id, name: 'Creative draft custody', duration: 1, mediaKind: 'video' } });
   expect(created.ok()).toBeTruthy(); const project = await created.json();
   const rows = [];
@@ -22,6 +22,58 @@ async function setup(page: Page, info: TestInfo) {
   await expect(first.getByLabel('Layer content', { exact: true })).toHaveValue('First composition');
   return { project, rows, studio, first, second };
 }
+
+test('nested composition source trims are authored visibly, bounded to the child, and survive reload', async ({ page }, info) => {
+  const { project, studio } = await setup(page, info);
+  const childResponse = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: {
+    name: 'Long nested child',
+    manifest: {
+      version: 1,
+      name: 'Long nested child',
+      width: 1280,
+      height: 720,
+      fps: 30,
+      durationInFrames: 60,
+      layers: [{ id: 'title', kind: 'text', name: 'Title', text: 'Long child', from: 0, durationInFrames: 60, x: .1, y: .1, width: .8, height: .6, style: { fontSize: 72, color: '#ffffff' }, exit: { kind: 'fade', durationInFrames: 5, easing: 'linear' } }],
+    },
+  } });
+  expect(childResponse.ok(), await childResponse.text()).toBeTruthy();
+  const child = await childResponse.json();
+  const rootResponse = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: {
+    name: 'Nested trim root',
+    manifest: {
+      version: 1,
+      name: 'Nested trim root',
+      width: 1280,
+      height: 720,
+      fps: 30,
+      durationInFrames: 30,
+      layers: [{ id: 'child', kind: 'composition', name: 'Long nested child', compositionId: child.id, from: 0, sourceStartFrame: 0, durationInFrames: 30 }],
+    },
+  } });
+  expect(rootResponse.ok(), await rootResponse.text()).toBeTruthy();
+  const root = await rootResponse.json();
+
+  await page.reload();
+  const rootPanel = studio.getByLabel('Composition Nested trim root', { exact: true });
+  await expect(rootPanel.getByLabel('Nested composition source start frame', { exact: true })).toHaveValue('0');
+  await rootPanel.getByLabel('Nested composition source start frame', { exact: true }).fill('35');
+  await expect(rootPanel.getByLabel('Layer frames', { exact: true })).toHaveValue('25');
+  await expect(rootPanel.getByLabel('Layer frames', { exact: true })).toHaveAttribute('max', '25');
+  await rootPanel.getByLabel('Layer frames', { exact: true }).fill('22');
+  await expect(rootPanel.getByRole('alert')).toContainText("Visible end splits Title's exit transition");
+  await expect(rootPanel.getByRole('button', { name: 'Save composition', exact: true })).toBeDisabled();
+  await rootPanel.getByLabel('Layer frames', { exact: true }).fill('25');
+  await expect(rootPanel.getByRole('alert')).toHaveCount(0);
+  const saved = page.waitForResponse((response) => response.request().method() === 'PUT' && response.url().endsWith(`/compositions/${root.id}`));
+  await rootPanel.getByRole('button', { name: 'Save composition', exact: true }).click();
+  expect((await saved).ok()).toBeTruthy();
+
+  await page.reload();
+  const restored = studio.getByLabel('Composition Nested trim root', { exact: true });
+  await expect(restored.getByLabel('Nested composition source start frame', { exact: true })).toHaveValue('35');
+  await expect(restored.getByLabel('Layer frames', { exact: true })).toHaveValue('25');
+});
 
 test('creative drafts survive another save, unrelated refresh and blocked navigation', async ({ page }, info) => {
   const { project, rows, studio, first, second } = await setup(page, info);
