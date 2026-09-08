@@ -34,7 +34,7 @@ const outputDescriptor = (runtime: Record<string, unknown>) => {
   const format = typeof runtime.format === "string" ? runtime.format : runtime.mode === "video" ? "mp4" : "png";
   const allowed = new Map([
     ["png", "image/png"], ["jpeg", "image/jpeg"], ["webp", "image/webp"],
-    ["mp4", "video/mp4"], ["webm", "video/webm"], ["gif", "image/gif"],
+    ["mp4", "video/mp4"], ["webm", "video/webm"], ["gif", "image/gif"], ["mov", "video/quicktime"],
   ]);
   const mimeType = allowed.get(format);
   if (!mimeType) throw new Error("The queued job does not have a supported output format");

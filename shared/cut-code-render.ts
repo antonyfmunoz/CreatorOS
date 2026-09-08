@@ -5,7 +5,7 @@ export type CutCodeRenderMode = typeof cutCodeRenderModes[number];
 
 export const cutCodeRenderFormats = {
   still: ["png", "jpeg", "webp"],
-  video: ["mp4", "webm", "gif"],
+  video: ["mp4", "webm", "gif", "mov"],
   sequence: ["png", "jpeg", "webp"],
 } as const;
 
@@ -70,7 +70,8 @@ export const cutCodeRenderRequestSchema = z.object({
   durationInFrames: z.number().int().min(1).max(600),
   frame: z.number().int().min(0).optional(),
   frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-  format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif"]).optional(),
+  format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif", "mov"]).optional(),
+  proresProfile: z.enum(["422hq", "4444", "4444xq"]).optional(),
   quality: z.number().int().min(1).max(100).optional(),
   input: z.record(z.unknown()).default({}),
 }).strict().superRefine((request, context) => {
@@ -86,6 +87,7 @@ export const cutCodeRenderRequestSchema = z.object({
   }
   const resolvedFormat = request.format ?? defaultCutCodeRenderFormat(request.mode);
   if (request.quality !== undefined && !["jpeg", "webp"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quality"], message: "Quality is supported only for JPEG/WebP output" });
+  if (request.proresProfile !== undefined && resolvedFormat !== "mov") context.addIssue({ code: z.ZodIssueCode.custom, path: ["proresProfile"], message: "A ProRes profile requires MOV output" });
   if (JSON.stringify(request.input).length > 64_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["input"], message: "Composition inputs exceed 64 KiB" });
 });
 

@@ -69,4 +69,9 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Advanced composition input JSON");
     expect(client).toContain("normalizeCutCodeRenderInput(input as Record<string, unknown>");
   });
+  it("makes the isolated runtime's ProRes MOV output available through the same bounded job path", () => {
+    expect(client).toContain("MOV · ProRes");
+    expect(client).toContain("ProRes profile");
+    expect(client).toContain("...(format === \"mov\" ? { proresProfile } : {})");
+  });
 });

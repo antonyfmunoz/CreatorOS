@@ -7,6 +7,7 @@ describe("CutStudio local code-render request contract", () => {
   it("accepts bounded still, video, and frame-sequence exports", () => {
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "still", frame: 42, format: "webp" })).toMatchObject({ mode: "still", frame: 42, format: "webp" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4" })).toMatchObject({ mode: "video", frameRange: [0, 119], format: "mp4" });
+    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mov", proresProfile: "4444" })).toMatchObject({ mode: "video", format: "mov", proresProfile: "4444" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "sequence", frameRange: [20, 45], format: "png" })).toMatchObject({ mode: "sequence", frameRange: [20, 45], format: "png" });
   });
 
@@ -15,6 +16,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "mp4" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [90, 120], format: "mp4" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "sequence", frameRange: [0, 30], format: "gif" }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", proresProfile: "422hq" }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", quality: 90 }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "webp", quality: 90 }).success).toBe(true);
   });
