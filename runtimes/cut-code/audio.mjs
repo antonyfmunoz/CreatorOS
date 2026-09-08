@@ -21,6 +21,7 @@ export function audioPlan(request) {
     const sourceDuration = track.reverse
       ? Math.min(requestedDuration, sourceStart)
       : Math.min(requestedDuration, track.sourceEndSeconds === undefined || track.sourceLoopSeconds !== undefined ? Infinity : track.sourceEndSeconds - sourceStart);
+    if (track.reverse && sourceDuration + 1e-9 < requestedDuration) throw new Error('Reverse soundtrack source ends before the requested interval.');
     if (sourceDuration <= 0) return [];
     return [{ ...track, localStartFrame: start - track.startFrame, sourceStart: track.reverse ? sourceStart - sourceDuration : sourceStart, ...(track.reverse ? { sourceEnd: sourceStart } : {}), sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });

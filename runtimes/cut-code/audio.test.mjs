@@ -26,6 +26,7 @@ test('reverse audio starts from the declared source clock and keeps range export
   const looping = validateRequest({ ...base, audioTracks: [{ file: 'loop.wav', sourceStartSeconds: 1, reverse: true } ] });
   looping.audioTracks[0].sourceLoopSeconds = 1;
   assert.throws(() => audioPlan(looping), /cannot repeat/);
+  assert.throws(() => audioPlan(validateRequest({ ...base, audioTracks: [{ file: 'short.wav', endFrame: 60, sourceStartSeconds: 1, reverse: true }] })), /ends before/);
 });
 test('bounded gain keyframes use the track clock and preserve normalized legacy requests', () => {
   const legacy = validateRequest({ ...base, audioTracks: [{ file: 'music.wav' }] });
