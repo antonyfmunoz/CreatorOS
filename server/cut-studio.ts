@@ -1998,7 +1998,10 @@ export function registerCutStudioRoutes(app: Express) {
     if (result.status === "not_failed") return res.status(409).json({ message: "Only a failed job can be retried" });
     if (result.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
     if (result.job.state === "queued") queueJob(result.job.id);
-    res.status(result.status === "created" ? 202 : 200).json(result.job);
+    // Surface retry idempotency to callers. Returning an existing terminal
+    // child as though it were newly queued is misleading and can cause an
+    // operator to wait for work that the scheduler will never receive.
+    res.status(result.status === "created" ? 202 : 200).json({ ...result.job, retryStatus: result.status });
   });
   cut.get("/api/cut/jobs/:id/media", attachUser, async (req, res) => {
     noStore(res); const job = await readableCutJob(req.dbUser!.id, req.params.id); if (!job?.artifactAssetId) return res.status(404).json({ message: "Render not found" });

@@ -25,7 +25,7 @@ type WorkflowRow = { id: string; workflow: CutGenerativeWorkflow; revision: numb
 type ProviderRow = { id: string; label: string; configured: boolean; capabilities: readonly string[] };
 type LocalNodeInvitation = { token: string; expiresAt: string };
 type LocalNodeRow = { id: string; name: string; status: "ready" | "busy" | "paused" | "revoked"; lastSeenAt: string | null; capabilities: { isolatedCode: boolean; docker: boolean; operatingSystem: string; cpuCores: number; memoryMb: number } };
-type CodeRenderRow = { id: string; compositionId: string; state: string; detail: string; progress: number; mode: string; format: string; artifactAssetId: string | null; cancellationRequestedAt: string | null; createdAt: string };
+type CodeRenderRow = { id: string; compositionId: string; state: string; detail: string; progress: number; mode: string; format: string; artifactAssetId: string | null; cancellationRequestedAt: string | null; createdAt: string; retryStatus?: "created" | "existing" };
 type RuntimePayload = {
   compositionRuntime: { declarative: string; packageAuthoring: string; isolatedCode: string; networkPolicy: string };
   generationRuntime: { dispatchEnabled: boolean; providers: ProviderRow[] };
@@ -420,8 +420,15 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     await refresh(); setMessage(job.state === "running" ? "Cancellation requested. The paired node will stop this isolated render on its next heartbeat." : "Queued local render cancelled before a paired node claimed it.");
   });
   const retryCodeRender = (job: CodeRenderRow) => act(`code-render:retry:${job.id}`, async () => {
-    await apiRequest("POST", `/api/cut/projects/${project.id}/code-renders/${job.id}/retry`, {});
-    await refresh(); setMessage("Failed local render requeued with its original pinned source, lockfile, and bounded settings.");
+    const retry = await (await apiRequest("POST", `/api/cut/projects/${project.id}/code-renders/${job.id}/retry`, {})).json() as CodeRenderRow;
+    await refresh();
+    if (retry.retryStatus === "created") {
+      setMessage("Failed local render requeued with its original pinned source, lockfile, and bounded settings.");
+    } else if (retry.state === "queued" || retry.state === "running") {
+      setMessage("A prior retry is already active with the original pinned source, lockfile, and bounded settings.");
+    } else {
+      setMessage("A prior retry is already terminal; no new execution was queued. The retained recovery history prevents an unbounded retry budget.");
+    }
   });
 
   const loadSource = () => {

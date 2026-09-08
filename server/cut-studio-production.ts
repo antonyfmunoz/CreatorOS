@@ -740,7 +740,11 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (result.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
     if (result.status === "not_found" || result.status === "not_failed") return res.status(409).json({ message: "The local code render is no longer retryable" });
     if (result.status === "created") await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.retried", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, failedJobId: failed.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.retried` });
-    res.status(result.status === "created" ? 202 : 200).json(result.job);
+    // A retry click is idempotent. Preserve the job's ordinary response shape
+    // while telling the client whether this request created new execution work
+    // or found a prior child. Without this, a terminal existing child can be
+    // misreported as a newly queued render even though no node has work to do.
+    res.status(result.status === "created" ? 202 : 200).json({ ...result.job, retryStatus: result.status });
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {

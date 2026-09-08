@@ -41,7 +41,9 @@ describe("CutStudio local code-render queue contract", () => {
     expect(server).toContain('cut.post("/api/cut/projects/:id/code-renders/:jobId/retry"');
     expect(server).toContain('eq(cutStudioJobs.kind, "code_render")');
     expect(server).toContain('eq(cutStudioJobs.state, "error")');
+    expect(server).toContain('retryStatus: result.status');
     expect(client).toContain("retryCodeRender(job)");
+    expect(client).toContain("A prior retry is already terminal; no new execution was queued");
   });
   it("admits bounded code batches without granting any node more than one lease", () => {
     expect(server).toContain('cut.post("/api/cut/projects/:id/compositions/:compositionId/code-render-batches"');

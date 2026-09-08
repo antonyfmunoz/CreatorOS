@@ -7,7 +7,7 @@ test("CutStudio retry requests preserve one child and never grant another owner 
   const source = `${directory}/source.mp4`;
   execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=32x32:r=10:d=0.3",
     "-c:v", "libx264", "-threads", "1", source], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
-  const upload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "video", visibility: "private",
+  const upload = await page.request.post("/api/assets/upload-proxy", { multipart: { kind: "video", visibility: "private", clientMutationId: "023e4567-e89b-42d3-a456-426614174000",
     video: { name: "retry-source.mp4", mimeType: "video/mp4", buffer: readFileSync(source) } } });
   expect(upload.status()).toBe(201); const asset = (await upload.json()).asset;
   const created = await page.request.post("/api/cut/projects", { data: { sourceAssetId: asset.id, name: "Retry qualification", duration: 0.3, mediaKind: "video" } });
@@ -29,11 +29,13 @@ test("CutStudio retry requests preserve one child and never grant another owner 
   expect(new Set(retries.map(job => job.id)).size).toBe(1);
   expect(retries[0].id).not.toBe(original.id);
   expect(retries.every(job => job.retryOfJobId === original.id)).toBe(true);
+  expect(retries.filter(job => job.retryStatus === "created")).toHaveLength(1);
+  expect(retries.filter(job => job.retryStatus === "existing")).toHaveLength(3);
   await expect.poll(async () => (await read(retries[0].id)).state, { timeout: 15_000 }).toBe("error");
   const child = await read(retries[0].id);
   expect(child).toMatchObject({ attempt: 1, errorCode: "transcript_required" });
   const replay = await page.request.post(`/api/cut/jobs/${original.id}/retry`, { data: {} });
-  expect(replay.status()).toBe(200); expect((await replay.json()).id).toBe(child.id);
+  expect(replay.status()).toBe(200); expect(await replay.json()).toMatchObject({ id: child.id, retryStatus: "existing" });
   expect((await read(original.id)).attempt).toBe(1);
   const jobsResponse = await page.request.get(`/api/cut/projects/${project.id}`); expect(jobsResponse.ok()).toBe(true);
   const { jobs } = await jobsResponse.json();
