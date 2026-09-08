@@ -157,6 +157,7 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     {["video", "audio"].includes(mode) && <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
       <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Private soundtrack tracks (advanced)</summary>
       <label className="mt-2 block text-[9px] text-zinc-500">A JSON array of up to eight tracks from the private source package. Each track uses a capsule-relative <code>file</code> such as <code>audio/bed.mp3</code>, optional frame timing/gain, and optional ordered volume keyframes. URLs and project-storage paths are rejected.<textarea aria-label={`${label} private soundtrack tracks`} className={`${field} min-h-20 resize-y font-mono`} value={audioTracksJson} disabled={busy} onChange={(event) => setAudioTracksJson(event.target.value)}/></label>
+      <p className="text-[9px] leading-4 text-zinc-500">For a bounded reverse interval, declare <code>{'{ "file": "audio/bed.mp3", "sourceStartSeconds": 12.5, "reverse": true }'}</code>. The source must cover the requested interval; reverse tracks cannot loop.</p>
     </details>}
     <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2" open={!composition.codeCapsule?.inputContract}>
       <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Advanced composition input JSON</summary>

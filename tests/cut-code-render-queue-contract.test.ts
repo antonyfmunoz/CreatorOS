@@ -101,6 +101,8 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Private soundtrack tracks (advanced)");
     expect(client).toContain("private soundtrack tracks");
     expect(client).toContain("capsule-relative");
+    expect(client).toContain("bounded reverse interval");
+    expect(client).toContain("reverse tracks cannot loop");
     expect(client).toContain("...(audioTracks.length ? { audioTracks } : {})");
   });
   it("imports a binary-capable private package without asking the text editor to reinterpret it", () => {
