@@ -6,6 +6,7 @@ import path from "node:path";
 import type { Express, Request } from "express";
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "@shared/cut-node";
+import { describeCutCodeOutput } from "@shared/cut-code-output";
 import { assets, cutStudioJobs, cutStudioLocalNodeInvitations, cutStudioLocalNodes, cutStudioProjectMedia, cutStudioProjects } from "@shared/schema";
 import { attachUser } from "./auth";
 import { createDirectUpload, createPrivateAssetReadUrl, inspectDirectUpload, materializePrivateAsset, removeStoredAsset, sealPrivateAssetCopy } from "./asset-storage";
@@ -29,18 +30,7 @@ const localLeaseMs = 5 * 60_000;
 // still present before it can receive a private source capsule or output URL.
 // The CLI service renews this well inside the bound while idle.
 const localNodeHeartbeatMaxAgeMs = 90_000;
-const outputDescriptor = (runtime: Record<string, unknown>) => {
-  if (runtime.mode === "sequence") return { format: "zip", mimeType: "application/zip", filename: "cutstudio-code-render.zip", assetKind: "file" };
-  const format = typeof runtime.format === "string" ? runtime.format : runtime.mode === "video" ? "mp4" : runtime.mode === "audio" ? "wav" : "png";
-  const allowed = new Map([
-    ["png", "image/png"], ["jpeg", "image/jpeg"], ["webp", "image/webp"],
-    ["mp4", "video/mp4"], ["webm", "video/webm"], ["gif", "image/gif"], ["mov", "video/quicktime"],
-    ["wav", "audio/wav"], ["mp3", "audio/mpeg"], ["m4a", "audio/mp4"],
-  ]);
-  const mimeType = allowed.get(format);
-  if (!mimeType) throw new Error("The queued job does not have a supported output format");
-  return { format, mimeType, filename: `cutstudio-code-render.${format}`, assetKind: runtime.mode === "video" ? "video" : runtime.mode === "audio" ? "audio" : "image" };
-};
+const outputDescriptor = describeCutCodeOutput;
 
 function codeRenderRequest(job: typeof cutStudioJobs.$inferSelect) {
   const candidate = job.request?.codeRender;

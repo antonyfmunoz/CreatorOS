@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { cutLocalNodeCapabilitiesSchema, cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "../shared/cut-node";
 
 const brokerSource = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
+const outputSource = readFileSync(new URL("../shared/cut-code-output.ts", import.meta.url), "utf8");
 const cliSource = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
 const recoverySource = readFileSync(new URL("../server/cut-job-recovery.ts", import.meta.url), "utf8");
 const creativeRuntimeSource = readFileSync(new URL("../client/src/components/cut/CutStudioCreativeRuntime.tsx", import.meta.url), "utf8");
@@ -54,9 +55,9 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).toContain("origin: config.appUrl");
     expect(brokerSource).toContain("cutStudioProjectMedia");
     expect(brokerSource).toContain('descriptor.assetKind === "video" || descriptor.assetKind === "image"');
-    expect(brokerSource).toContain('["mov", "video/quicktime"]');
-    expect(brokerSource).toContain('["m4a", "audio/mp4"]');
-    expect(brokerSource).toContain('runtime.mode === "audio" ? "audio" : "image"');
+    expect(outputSource).toContain('["mov", "video/quicktime"]');
+    expect(outputSource).toContain('["m4a", "audio/mp4"]');
+    expect(outputSource).toContain('mode === "audio" ? "audio" : "image"');
     expect(brokerSource).toContain("localNodeHeartbeatMaxAgeMs = 90_000");
     expect(brokerSource).toContain("This node heartbeat is stale");
   });
