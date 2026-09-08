@@ -35,6 +35,18 @@ export function cutMotionEasingProgress(value: number, easing: CutMotionEasing) 
   return progress;
 }
 
+/**
+ * Declarative compositions intentionally retain their original quadratic
+ * ease-in-out contract. Legacy editable timelines keep their historical
+ * smoothstep curve above. The two formats are tagged at compilation, so a
+ * conversion does not quietly change an authored animation.
+ */
+export function cutCompositionEasingProgress(value: number, easing: CutMotionEasing) {
+  const progress = Math.max(0, Math.min(1, value));
+  if (easing === "ease_in_out") return progress < .5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
+  return cutMotionEasingProgress(progress, easing);
+}
+
 export const cutClipSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
   start: z.number().finite().min(0),

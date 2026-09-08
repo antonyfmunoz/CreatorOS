@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cutMotionEasingProgress, normalizeCutClips, type CutEdl, type CutMotionEasing } from "./cut-studio";
+import { cutCompositionEasingProgress, normalizeCutClips, type CutEdl, type CutMotionEasing } from "./cut-studio";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
@@ -486,7 +486,7 @@ export function resolveCompositionParameters(manifestInput: unknown, parameterVa
 }
 
 function easingProgress(value: number, easing: z.infer<typeof cutCompositionKeyframeSchema>["easing"]) {
-  return cutMotionEasingProgress(value, easing);
+  return cutCompositionEasingProgress(value, easing);
 }
 
 function valueAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, property: string, frame: number, fallback: number) {

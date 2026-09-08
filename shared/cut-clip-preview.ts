@@ -1,4 +1,4 @@
-import { cutMotionEasingProgress, type CutClip } from "./cut-studio";
+import { cutCompositionEasingProgress, cutMotionEasingProgress, type CutClip } from "./cut-studio";
 
 export type CutClipPreviewState = {
   active: boolean;
@@ -11,14 +11,18 @@ export type CutClipPreviewState = {
 };
 
 function valueAt(clip: CutClip, property: "x" | "y" | "scale" | "opacity", fallback: number, seconds: number) {
-  const points = [{ at: 0, value: fallback, easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((point) => typeof point[property] === "number" ? [{ at: point.at, value: point[property]!, easing: point[`${property}Easing`] ?? point.easing ?? "linear" }] : [])]
+  const points = [{ at: 0, value: fallback, easing: "linear" as const, compositionAuthored: false }, ...(clip.motionKeyframes ?? []).flatMap((point) => {
+    if (typeof point[property] !== "number") return [];
+    const propertyEasing = point[`${property}Easing`];
+    return [{ at: point.at, value: point[property]!, easing: propertyEasing ?? point.easing ?? "linear", compositionAuthored: propertyEasing !== undefined }];
+  })]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > .0005);
   for (let index = 0; index < points.length - 1; index += 1) {
     const left = points[index], right = points[index + 1];
     if (seconds >= right.at) continue;
     const progress = Math.max(0, Math.min(1, (seconds - left.at) / (right.at - left.at)));
-    const eased = cutMotionEasingProgress(progress, right.easing);
+    const eased = right.compositionAuthored ? cutCompositionEasingProgress(progress, right.easing) : cutMotionEasingProgress(progress, right.easing);
     return left.value + (right.value - left.value) * eased;
   }
   return points.at(-1)!.value;
