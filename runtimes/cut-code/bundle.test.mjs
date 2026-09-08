@@ -10,6 +10,27 @@ test('bundles real TSX and the clean-room frame SDK without running source code'
   assert.ok(bundle.javascript.includes('__cutRenderFrame'));
   assert.equal(bundle.stylesheet, '');
 });
+test('rejects wall-clock/random source and CSS animation before isolated execution', async () => {
+  const unsafeSources = [
+    'export default () => <div>{Date.now()}</div>;',
+    'export default () => <div>{new Date()}</div>;',
+    'export default () => <div>{Math.random()}</div>;',
+    'export default () => <div>{performance.now()}</div>;',
+    'export default () => <div>{crypto.randomUUID()}</div>;',
+  ];
+  for (const source of unsafeSources) {
+    const files = readCapsule(archive(source), 'src/index.tsx');
+    await assert.rejects(bundleCapsule(files, 'src/index.tsx'), /composition frame|seeded SDK helpers/i);
+  }
+  const styled = readCapsule(archive(`import './motion.css'; export default () => <div/>;`, {
+    'src/motion.css': strToU8('.title { animation: pulse 1s infinite; }'),
+  }), 'src/index.tsx');
+  await assert.rejects(bundleCapsule(styled, 'src/index.tsx'), /wall-clock animation/i);
+  const safe = readCapsule(archive(`import {seededRandom,useFrame} from '@creativesos/cut'; export default () => <div>{seededRandom('launch', useFrame())}</div>;`), 'src/index.tsx');
+  assert.ok(await bundleCapsule(safe, 'src/index.tsx'));
+  const prepared = readCapsule(archive(`import {useEffect} from 'react'; import {holdFrame,releaseFrame} from '@creativesos/cut'; export default function Scene(){useEffect(()=>{const hold=holdFrame();const timer=setTimeout(()=>releaseFrame(hold),1);return()=>clearTimeout(timer)},[]);return <div/>;}`), 'src/index.tsx');
+  assert.ok(await bundleCapsule(prepared, 'src/index.tsx'), 'The documented holdFrame preparation contract may use a timer before it settles.');
+});
 test('records only actual imported private videos for source-sound binding', async () => {
   const source = `import clip from './clip.mp4';export default ()=> <div>{clip}</div>`;
   const files = readCapsule(archive(source, { 'src/clip.mp4': new Uint8Array([0, 1, 2]), 'src/unused.webm': new Uint8Array([3, 4]) }), 'src/index.tsx');

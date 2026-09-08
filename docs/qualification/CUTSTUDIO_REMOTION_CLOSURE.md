@@ -1,8 +1,29 @@
 # CutStudio versus Remotion: evidence-separated closure register
 
-Updated 2026-09-07. This register supersedes any older suggestion that only
+Updated 2026-09-08. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
+
+## September 8 production release: protected deployment, public identity, and remaining field gate
+
+PR 194 merged at `e37b9e84e9ab0a3f5d1dd7608788c94244517c4f`. Its manually
+confirmed fail-closed production workflow `34189034860` passed the exact-source
+security, infrastructure, migration, worker-recovery, media-ingest and complete
+mobile/desktop browser qualification, then deployed to `creativesos.net`. The
+post-deploy public identity returned that exact clean commit, `identityVerified:
+true`, and migration parity `124/124`; an independent public production smoke
+run passed desktop and mobile checks. This is release evidence for the bounded
+local-node CutStudio product surface, including the reverse-audio follow-on. It
+does **not** establish an authenticated output/recovery field run, arbitrary
+TSX preview/export equality, managed public code execution, broad runtime
+compatibility, or Remotion parity.
+
+The attempted browser field entry after deployment was redirected from
+`/cut-studio` to `/auth` because the available session was signed out. No user
+credentials were requested or used. A normal signed-in field run remains the
+next evidence gate; it must retain the project/action/output/recovery receipt
+and verify the paired local node if it is used. Do not replace it with a public
+smoke, a previous-release receipt, or an unauthenticated route check.
 
 ## Current boundary
 

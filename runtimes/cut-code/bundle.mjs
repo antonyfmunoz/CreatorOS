@@ -9,6 +9,29 @@ const runtimeRoot = path.dirname(fileURLToPath(import.meta.url));
 const allowedDependencies = new Set(['react', 'react/jsx-runtime', 'react/jsx-dev-runtime']);
 const threeModule = path.join(path.dirname(require.resolve('three')), 'three.module.js');
 const pinnedDependencies = { react: '18.3.1', 'react-dom': '18.3.1', three: '0.185.1' };
+const sourceExtensions = new Set(['ts', 'tsx', 'js', 'jsx']);
+const nondeterministicSourcePatterns = [
+  [/\b(?:new\s+)?Date\s*(?:\.\s*now\s*\(|\()/, 'Date or Date.now'],
+  [/\bMath\s*\.\s*random\s*\(/, 'Math.random'],
+  [/\bperformance\s*\.\s*now\s*\(/, 'performance.now'],
+  [/\bcrypto\s*\.\s*(?:getRandomValues|randomUUID)\s*\(/, 'crypto randomness'],
+];
+const nondeterministicCssPattern = /\b(?:animation(?:-[a-z-]+)?|transition(?:-[a-z-]+)?)\s*:/i;
+
+function assertDeterministicCapsule(files) {
+  for (const [name, value] of Object.entries(files)) {
+    const extension = path.posix.extname(name).slice(1).toLowerCase();
+    if (!sourceExtensions.has(extension) && extension !== 'css') continue;
+    const source = new TextDecoder().decode(value);
+    if (extension === 'css') {
+      if (nondeterministicCssPattern.test(source)) throw new Error(`Capsule stylesheet ${name} uses wall-clock animation or transition. Drive visual motion from composition frames.`);
+      continue;
+    }
+    for (const [pattern, label] of nondeterministicSourcePatterns) {
+      if (pattern.test(source)) throw new Error(`Capsule source ${name} uses ${label}. Drive variation and motion from the composition frame or seeded SDK helpers.`);
+    }
+  }
+}
 
 export function readCapsule(bytes, entrypoint) {
   if (bytes.length > 25 * 1024 * 1024) throw new Error('Source archive exceeds 25 MB.');
@@ -38,6 +61,10 @@ export function readCapsule(bytes, entrypoint) {
 }
 
 export async function bundleCapsule(files, entrypoint) {
+  // Capturing each requested frame in isolation only produces reproducible
+  // artifacts when user source is also frame-driven. Keep this at capsule
+  // admission, before an author module is parsed or evaluated in the browser.
+  assertDeterministicCapsule(files);
   const videoImports = new Set();
   const locate = (name) => [name, `${name}.tsx`, `${name}.ts`, `${name}.jsx`, `${name}.js`, `${name}/index.tsx`, `${name}/index.ts`].find((candidate) => files[candidate]);
   const result = await build({
