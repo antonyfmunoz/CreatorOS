@@ -223,7 +223,11 @@ async function executeOneLocalJob(config) {
     if (!upload.ok) throw new Error("The temporary artifact upload was rejected.");
     const completed = await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/complete`, { method: "POST", credential: config.credential, origin, body: { leaseToken, storageKey: payload.output.storageKey, sha256: artifactSha256, filename: payload.output.filename } });
     if (!completed.response.ok) throw new Error("CreativesOS did not accept the local render artifact.");
-    return { status: "completed", jobId, artifactId: completed.body?.artifact?.id, image };
+    // Surface the checksum that was verified against the isolated runtime
+    // receipt and accepted by the broker. This lets an owner compare two
+    // same-input local runs without treating an opaque artifact ID as proof of
+    // deterministic output.
+    return { status: "completed", jobId, artifactId: completed.body?.artifact?.id, sha256: artifactSha256, image };
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 400) : "Local isolated rendering failed";
     await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, origin, body: { leaseToken, code: "local_node_render_failed", detail } }).catch(() => undefined);
