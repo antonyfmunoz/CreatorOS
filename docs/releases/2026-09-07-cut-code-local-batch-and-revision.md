@@ -43,6 +43,10 @@ Status: locally qualified release candidate; not deployed
   audio. The option is available only for a selected range of 120 seconds or
   less, and enables the runtime to collect bounded private soundtrack
   descriptors and bind their plan to the sealed receipt.
+- The code-composition panel can now import a prebuilt private ZIP and optional
+  matching lockfile directly. This makes binary capsule assets—such as the
+  bounded private audio/video inputs used by the runtime—usable without asking
+  the browser's text editor to decode, edit, or discard them.
 - A running local render now has a cooperative cancellation path: the server
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
@@ -58,7 +62,7 @@ Status: locally qualified release candidate; not deployed
 - `npm --prefix runtimes/cut-code test` — the full clean-room runtime suite,
   including typed SDK authoring, passes.
 - `npm run build` — browser and server production bundle completes.
-- Focused application contracts — 35 assertions cover guided input,
+- Focused application contracts — 36 assertions cover guided input,
   ProRes/audio/GIF request admission, composition-audio duration/format
   admission, GIF sampling/loop UI handoff, media
   classification, and direct output-custody MIME allowlisting.

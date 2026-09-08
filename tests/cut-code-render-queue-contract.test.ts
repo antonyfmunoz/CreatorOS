@@ -92,4 +92,11 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("composition audio");
     expect(client).toContain("...(compositionAudio ? { compositionAudio: true as const } : {})");
   });
+  it("imports a binary-capable private package without asking the text editor to reinterpret it", () => {
+    expect(client).toContain('aria-label="Import private source package"');
+    expect(client).toContain('aria-label="Choose source ZIP"');
+    expect(client).toContain("Private binary-capable source package and matching lockfile imported and selected");
+    expect(client).toContain("The text editor intentionally does not open or alter binary files");
+    expect(client).toContain("onSaveCodeSource(sourcePackageFile, sourceLockfileFile ?? undefined)");
+  });
 });

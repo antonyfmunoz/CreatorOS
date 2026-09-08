@@ -222,6 +222,10 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
   const [codeInputContractJson, setCodeInputContractJson] = useState("");
   const [editingCodeCompositionId, setEditingCodeCompositionId] = useState<string | null>(null);
+  const [sourcePackageFile, setSourcePackageFile] = useState<File | null>(null);
+  const [sourceLockfileFile, setSourceLockfileFile] = useState<File | null>(null);
+  const sourcePackageInput = useRef<HTMLInputElement>(null);
+  const sourceLockfileInput = useRef<HTMLInputElement>(null);
   const [nodeInvitation, setNodeInvitation] = useState<LocalNodeInvitation | null>(null);
   const [localNodes, setLocalNodes] = useState<LocalNodeRow[]>([]);
   const [previewCodeRenderId, setPreviewCodeRenderId] = useState<string | null>(null);
@@ -439,6 +443,20 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     setCodeLockfileAssetId(result.lockfileAssetId ?? "");
     setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition, then run it only through a paired trusted local node." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Hosted arbitrary-code execution remains unavailable.");
   });
+  const importSourcePackage = () => {
+    if (!sourcePackageFile || actionPending.current) return;
+    if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Importing a package closes the unsaved text draft. The draft is not saved. Continue?")) return;
+    void act("code:import", async () => {
+      if (!/\.zip$/i.test(sourcePackageFile.name)) throw new Error("Choose a ZIP source capsule");
+      const result = await onSaveCodeSource(sourcePackageFile, sourceLockfileFile ?? undefined);
+      if (!alive.current) return;
+      changeSource(null, "reset");
+      setCodeSourceAssetId(result.assetId);
+      setCodeLockfileAssetId(result.lockfileAssetId ?? "");
+      setSourcePackageFile(null); setSourceLockfileFile(null);
+      setMessage(result.lockfileAssetId ? "Private binary-capable source package and matching lockfile imported and selected. Its code remains isolated until a paired local node claims a render." : "Private source package imported and selected. Attach its matching lockfile before registering the composition.");
+    });
+  };
 
   const saveBrief = () => act("brief", async () => {
     briefs.current.beginSave(briefRow);
@@ -528,6 +546,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
             changeSource({ files: starterCutSource("three_svg"), entrypoint: "src/index.tsx", saved: null }, "reset");
             setCodeInputContractJson(JSON.stringify({ version: 1, fields: { rotationSpeed: { type: "number", default: 1, minimum: 0.1, maximum: 4 }, accent: { type: "string", default: "#1d9bf0", pattern: "^#[0-9a-fA-F]{6}$" } } }, null, 2));
           }}>New 3D SVG package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
+          <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Import private source package"><p className="text-[10px] font-bold text-zinc-200">Import private source package</p><p className="mt-1 text-[9px] leading-4 text-zinc-500">Use this for a prebuilt ZIP with binary assets such as private audio or video. The text editor intentionally does not open or alter binary files; the paired local runtime receives the sealed original package only.</p><input ref={sourcePackageInput} aria-label="Choose source ZIP" className="sr-only" type="file" accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip" onChange={(event) => { setSourcePackageFile(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = ""; }}/><input ref={sourceLockfileInput} aria-label="Choose source lockfile" className="sr-only" type="file" accept=".json,.yaml,.yml,.lock,text/plain,application/json" onChange={(event) => { setSourceLockfileFile(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = ""; }}/><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => sourcePackageInput.current?.click()}>{sourcePackageFile ? "Change ZIP" : "Choose ZIP"}</Button><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => sourceLockfileInput.current?.click()}>{sourceLockfileFile ? "Change lockfile" : "Choose lockfile"}</Button><Button size="sm" disabled={Boolean(busy) || !sourcePackageFile} onClick={importSourcePackage}>Import package</Button></div><p className="mt-2 truncate text-[9px] text-zinc-500">{sourcePackageFile ? `ZIP: ${sourcePackageFile.name}` : "No ZIP selected"}{sourceLockfileFile ? ` · lockfile: ${sourceLockfileFile.name}` : " · lockfile optional until composition registration"}</p></div>
           {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
