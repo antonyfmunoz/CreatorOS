@@ -387,11 +387,74 @@ function assertNeutralCompositionContainer(layer: CutCompositionManifest["layers
   }
 }
 
+function numericAnimationFallback(layer: CutCompositionManifest["layers"][number], property: CutCompositionManifest["layers"][number]["animations"][number]["property"]) {
+  if (property === "x") return layer.x;
+  if (property === "y") return layer.y;
+  if (property === "opacity") return layer.opacity;
+  if (property === "rotation") return layer.rotation;
+  if (property === "rotationX") return layer.rotationX;
+  if (property === "rotationY") return layer.rotationY;
+  if (property === "perspective") return layer.perspective;
+  if (property === "volume") return layer.volume;
+  if (property === "brightness" || property === "saturation") return 1;
+  return property === "scale" ? 1 : 0;
+}
+
+/**
+ * Make a source-time slice of a child layer behave as though it began at frame
+ * zero. A composition container is not rendered as an intermediate bitmap:
+ * the child remains native media/graphics, so source offsets, animation
+ * sampling and private asset lineage all survive expansion.
+ *
+ * Transitions are only retained where their original temporal domain is fully
+ * visible. Reconstructing a partially-cut reveal as a fresh fade/wipe would be
+ * a visual approximation, so the caller rejects that case explicitly.
+ */
+function rebaseNestedLayerTime(layer: CutCompositionManifest["layers"][number], sourceWindowStart: number, sourceWindowEnd: number, containerFrom: number): CutCompositionManifest["layers"][number] | null {
+  const visibleStart = Math.max(layer.from, sourceWindowStart);
+  const visibleEnd = Math.min(layer.from + layer.durationInFrames, sourceWindowEnd);
+  if (visibleEnd <= visibleStart) return null;
+  const trimStart = visibleStart - layer.from;
+  const durationInFrames = visibleEnd - visibleStart;
+  const trimEnd = layer.durationInFrames - (trimStart + durationInFrames);
+  if (layer.enter && layer.enter.kind !== "none" && trimStart > 0) {
+    if (trimStart < layer.enter.durationInFrames) throw new Error("Nested composition trims cannot start inside a child transition");
+  }
+  if (layer.exit && layer.exit.kind !== "none" && trimEnd > 0) {
+    if (trimEnd < layer.exit.durationInFrames) throw new Error("Nested composition trims cannot end inside a child transition");
+  }
+  const animations = layer.animations.map((animation) => {
+    if (!animation.keyframes.every((keyframe) => typeof keyframe.value === "number")) {
+      throw new Error("Nested composition trims require numeric animation keyframes");
+    }
+    const initial = valueAtFrame(layer, animation.property, trimStart, numericAnimationFallback(layer, animation.property));
+    const keyframes = [
+      { frame: 0, value: initial, easing: "linear" as const },
+      ...animation.keyframes
+        .filter((keyframe) => keyframe.frame > trimStart && keyframe.frame < trimStart + durationInFrames)
+        .map((keyframe) => ({ ...keyframe, frame: keyframe.frame - trimStart })),
+    ];
+    return { ...animation, keyframes };
+  });
+  const { enter, exit, ...baseLayer } = layer;
+  return cutCompositionLayerSchema.parse({
+    ...baseLayer,
+    from: containerFrom + (visibleStart - sourceWindowStart),
+    durationInFrames,
+    sourceStartFrame: layer.sourceStartFrame + trimStart,
+    ...(trimStart === 0 && enter ? { enter } : {}),
+    ...(trimEnd === 0 && exit ? { exit } : {}),
+    animations,
+  });
+}
+
 /**
  * Resolve a bounded tree of saved declarative compositions into one manifest
  * before browser preview or final EDL compilation. The contract deliberately
  * rejects different canvas formats and non-neutral parent transforms: silently
- * approximating either would make preview and export disagree.
+ * approximating either would make preview and export disagree. Child
+ * compositions may be placed as an exact source-time trim when that trim does
+ * not split an authored child transition.
  */
 export function expandNestedCompositionManifest(manifestInput: unknown, options: CutCompositionExpansionOptions = {}): CutCompositionManifest {
   const root = cutCompositionManifestSchema.parse(manifestInput);
@@ -419,7 +482,8 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
     if (stack.includes(layer.compositionId!)) throw new Error("Nested compositions cannot contain a cycle");
     const referenced = resolveCompositionParameters(referencedRaw, layer.compositionParameters ?? {});
     if (referenced.width !== manifest.width || referenced.height !== manifest.height || referenced.fps !== manifest.fps) throw new Error("Nested compositions must use the same width, height, and frame rate as their parent");
-    if (referenced.durationInFrames !== layer.durationInFrames || layer.sourceStartFrame !== 0) throw new Error("Nested composition containers must use the referenced composition's full duration and a zero source offset");
+    const sourceWindowEnd = layer.sourceStartFrame + layer.durationInFrames;
+    if (sourceWindowEnd > referenced.durationInFrames) throw new Error("Nested composition source trim must remain inside the referenced composition");
     for (const font of referenced.fonts) {
       const existing = fonts.get(font.family);
       if (existing && JSON.stringify(existing) !== JSON.stringify(font)) throw new Error(`Nested composition font family conflict: ${font.family}`);
@@ -429,7 +493,11 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
       const id = path.length ? nestedLayerId([...path, layer.id], signal.id) : signal.id;
       signals.set(id, { ...signal, id });
     }
-    return expand(referenced, [...path, layer.id], [...stack, layer.compositionId!], depth + 1).map((child) => ({ ...child, from: layer.from + child.from }));
+    return expand(referenced, [...path, layer.id], [...stack, layer.compositionId!], depth + 1)
+      .flatMap((child) => {
+        const rebased = rebaseNestedLayerTime(child, layer.sourceStartFrame, sourceWindowEnd, layer.from);
+        return rebased ? [rebased] : [];
+      });
   });
 
   const layers = expand(root, [], options.rootCompositionId ? [options.rootCompositionId] : [], 0);
