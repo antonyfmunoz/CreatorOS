@@ -87,4 +87,9 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("GIF looping");
     expect(client).toContain("...(gifOptions ? { gifOptions } : {})");
   });
+  it("offers only receipt-bound composition audio for compatible bounded video exports", () => {
+    expect(client).toContain("Include composition audio");
+    expect(client).toContain("composition audio");
+    expect(client).toContain("...(compositionAudio ? { compositionAudio: true as const } : {})");
+  });
 });

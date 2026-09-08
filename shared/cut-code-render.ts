@@ -90,6 +90,7 @@ export const cutCodeRenderRequestSchema = z.object({
   frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
   format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif", "mov", "wav", "mp3", "m4a"]).optional(),
   gifOptions: cutCodeGifOptionsSchema.optional(),
+  compositionAudio: z.literal(true).optional(),
   proresProfile: z.enum(["422hq", "4444", "4444xq"]).optional(),
   videoEncoding: cutCodeVideoEncodingSchema.optional(),
   quality: z.number().int().min(1).max(100).optional(),
@@ -110,6 +111,9 @@ export const cutCodeRenderRequestSchema = z.object({
     if (request.mode !== "video" || resolvedFormat !== "gif") context.addIssue({ code: z.ZodIssueCode.custom, path: ["gifOptions"], message: "GIF sampling controls require GIF video output" });
     const range = request.frameRange ?? [0, request.durationInFrames - 1];
     if (request.fps > 50 || request.width * request.height * (range[1] - range[0] + 1) > 100_000_000) context.addIssue({ code: z.ZodIssueCode.custom, path: ["gifOptions"], message: "GIF exceeds its frame-rate or palette memory budget" });
+  }
+  if (request.compositionAudio !== undefined && (request.mode !== "video" || !["mp4", "webm", "mov"].includes(resolvedFormat) || ((request.frameRange?.[1] ?? request.durationInFrames - 1) - (request.frameRange?.[0] ?? 0) + 1) / request.fps > 120)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionAudio"], message: "Composition audio requires MP4, WebM, or MOV video output of at most 120 seconds" });
   }
   if (request.quality !== undefined && !["jpeg", "webp"].includes(resolvedFormat)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quality"], message: "Quality is supported only for JPEG/WebP output" });
   if (request.proresProfile !== undefined && resolvedFormat !== "mov") context.addIssue({ code: z.ZodIssueCode.custom, path: ["proresProfile"], message: "A ProRes profile requires MOV output" });

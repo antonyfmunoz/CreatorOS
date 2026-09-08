@@ -10,6 +10,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mov", proresProfile: "4444" })).toMatchObject({ mode: "video", format: "mov", proresProfile: "4444" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "audio", frameRange: [0, 119], format: "m4a" })).toMatchObject({ mode: "audio", format: "m4a" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", videoEncoding: { crf: 18, preset: "slow" } })).toMatchObject({ mode: "video", videoEncoding: { crf: 18, preset: "slow" } });
+    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4", compositionAudio: true })).toMatchObject({ mode: "video", format: "mp4", compositionAudio: true });
     expect(cutCodeRenderRequestSchema.parse({ ...base, width: 320, height: 180, mode: "video", frameRange: [0, 119], format: "gif", gifOptions: { frameStep: 2, repeatCount: 3 } })).toMatchObject({ mode: "video", format: "gif", gifOptions: { frameStep: 2, repeatCount: 3 } });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "sequence", frameRange: [20, 45], format: "png" })).toMatchObject({ mode: "sequence", frameRange: [20, 45], format: "png" });
   });
@@ -25,6 +26,8 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", quality: 90 }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "mp4", gifOptions: { frameStep: 2 } }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", fps: 51, frameRange: [0, 30], format: "gif", gifOptions: { frameStep: 2 } }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", frameRange: [0, 30], format: "gif", compositionAudio: true }).success).toBe(false);
+    expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "video", fps: 1, durationInFrames: 121, frameRange: [0, 120], format: "mp4", compositionAudio: true }).success).toBe(false);
     expect(cutCodeRenderRequestSchema.safeParse({ ...base, mode: "still", frame: 1, format: "webp", quality: 90 }).success).toBe(true);
   });
 
