@@ -61,6 +61,10 @@ Status: locally qualified release candidate; not deployed
   preserves the device lease until the next short heartbeat, the CLI aborts the
   isolated container, temporary private output is removed, and the durable job
   becomes cancelled. A late completion cannot overwrite that terminal state.
+- Code-capsule resource declarations now match the enforceable local sandbox:
+  128 MiB–2 GiB memory, 100 ms–120 s execution and a maximum 64 MiB artifact.
+  The API no longer accepts a 4 GiB capsule memory declaration that the paired
+  runtime would have to reject after it claimed the job.
 
 ## Verification completed locally
 

@@ -165,7 +165,9 @@ export const cutCodeCapsuleSchema = z.object({
   networkPolicy: z.literal("deny"),
   inputContract: cutCodeInputContractSchema.nullable().default(null),
   maximumCpuMs: z.number().int().min(100).max(120_000).default(10_000),
-  maximumMemoryMb: z.number().int().min(128).max(4_096).default(512),
+  // The paired local runtime is isolated at 128 MiB–2 GiB. Never persist a
+  // capsule entitlement it cannot actually enforce at execution time.
+  maximumMemoryMb: z.number().int().min(128).max(2_048).default(512),
   // The paired local runtime rejects outputs above its fixed artifact ceiling.
   maximumOutputBytes: z.number().int().min(1_024).max(67_108_864).default(67_108_864),
 });

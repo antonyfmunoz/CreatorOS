@@ -49,6 +49,10 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Optional input batch JSON (2–20 inputs)");
     expect(client).toContain("queueCodeRenderBatch");
   });
+  it("revalidates stored code-capsule limits before issuing a local-node lease", () => {
+    expect(server).toContain("cutCodeCapsuleSchema.parse(composition.codeCapsule)");
+    expect(server).toContain("cutCodeCapsuleSchema.parse(capsule)");
+  });
   it("updates a pinned source as a revision instead of replacing prior render receipts", () => {
     expect(client).toContain("beginCodeCompositionRevision");
     expect(client).toContain('"Save source revision"');

@@ -179,6 +179,10 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
 }
 
 async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>, soundtrackFiles: readonly string[] = []) {
+  // Database JSON can outlive a schema change. Validate it again at each
+  // capability boundary so a historic over-limit capsule cannot become a
+  // runnable local-node lease after the sandbox limits have tightened.
+  cutCodeCapsuleSchema.parse(capsule);
   const capsuleIds = [capsule.sourceAssetId, capsule.lockfileAssetId];
   const rows = await db.select({
     assetId: assets.id,
@@ -537,8 +541,8 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       eq(cutStudioCompositions.mode, "sandboxed_tsx"),
     )).limit(1);
     if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
-    const capsule = composition.codeCapsule;
-    try { await assertCodeCapsuleAssets(access.project, capsule, parsed.data.request.audioTracks?.map((track) => track.file) ?? []); }
+    let capsule: z.infer<typeof cutCodeCapsuleSchema>;
+    try { capsule = cutCodeCapsuleSchema.parse(composition.codeCapsule); await assertCodeCapsuleAssets(access.project, capsule, parsed.data.request.audioTracks?.map((track) => track.file) ?? []); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
     let normalizedRequest;
     try { normalizedRequest = { ...parsed.data.request, input: normalizeCutCodeRenderInput(parsed.data.request.input, capsule.inputContract) }; }
@@ -606,8 +610,8 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       eq(cutStudioCompositions.mode, "sandboxed_tsx"),
     )).limit(1);
     if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
-    const capsule = composition.codeCapsule;
-    try { await assertCodeCapsuleAssets(access.project, capsule, parsed.data.requests.flatMap((request) => request.audioTracks?.map((track) => track.file) ?? [])); }
+    let capsule: z.infer<typeof cutCodeCapsuleSchema>;
+    try { capsule = cutCodeCapsuleSchema.parse(composition.codeCapsule); await assertCodeCapsuleAssets(access.project, capsule, parsed.data.requests.flatMap((request) => request.audioTracks?.map((track) => track.file) ?? [])); }
     catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
     let normalizedRequests;
     try { normalizedRequests = parsed.data.requests.map((request) => ({ ...request, input: normalizeCutCodeRenderInput(request.input, capsule.inputContract) })); }
