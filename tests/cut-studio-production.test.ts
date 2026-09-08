@@ -151,6 +151,29 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0]).toMatchObject({ text: "Resolved parent headline", timelineStart: 20 / 30 });
   });
 
+  it("expands an exact nested source-time trim without restarting child media or motion", () => {
+    const childId = "00000000-0000-4000-8000-000000000054";
+    const rootId = "00000000-0000-4000-8000-000000000055";
+    const child = { ...manifest, name: "Trimmed child" };
+    const root = {
+      ...manifest,
+      name: "Trimmed master",
+      durationInFrames: 90,
+      layers: [{ id: "child", kind: "composition" as const, name: "Trimmed child", compositionId: childId, from: 10, sourceStartFrame: 25, durationInFrames: 65 }],
+    };
+    const options = { rootCompositionId: rootId, resolveComposition: (id: string) => id === childId ? child : undefined };
+    const expanded = expandNestedCompositionManifest(root, options);
+    expect(expanded.layers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "video", from: 10, durationInFrames: 65, sourceStartFrame: 25 }),
+      expect.objectContaining({ kind: "text", from: 10, durationInFrames: 45 }),
+    ]));
+    const title = evaluateCompositionFrame(expanded, 10).find((layer) => layer.kind === "text")!;
+    expect(title.scale).toBeCloseTo(1 + (.4 * (15 / 45)));
+    const edl = compileCompositionToEdl(root, { version: 3, clips: [] }, options);
+    expect(edl.clips[0]).toMatchObject({ start: 25 / 30, end: 90 / 30, timelineStart: 10 / 30 });
+    expect(edl.graphics?.[0]).toMatchObject({ timelineStart: 10 / 30, duration: 45 / 30 });
+  });
+
   it("rejects unsafe nested composition resolution instead of silently approximating it", () => {
     const childId = "00000000-0000-4000-8000-000000000052";
     const rootId = "00000000-0000-4000-8000-000000000053";
@@ -158,6 +181,8 @@ describe("CutStudio programmable production runtime", () => {
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId })).toThrow(/resolution is unavailable/i);
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: () => ({ ...manifest, fps: 24 }) })).toThrow(/same width, height, and frame rate/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], opacity: .9 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/neutral transform/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 110, durationInFrames: 20 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/source trim must remain/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 15, durationInFrames: 80 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/start inside a child transition/i);
     const cyclic = { ...manifest, layers: [{ ...root.layers[0], compositionId: rootId }] };
     expect(() => expandNestedCompositionManifest(cyclic, { rootCompositionId: rootId, resolveComposition: (id) => id === rootId ? cyclic : undefined })).toThrow(/cannot contain a cycle/i);
   });
