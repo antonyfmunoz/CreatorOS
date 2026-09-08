@@ -408,6 +408,12 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
   cut.get("/api/cut/projects/:id/compositions/:compositionId/history", attachUser, async (req, res) => {
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access || !uuid.safeParse(req.params.compositionId).success) return res.status(404).json({ message: "Composition history not found" });
+    const [composition] = await db.select({ id: cutStudioCompositions.id }).from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+    )).limit(1);
+    if (!composition) return res.status(404).json({ message: "Composition history not found" });
     const revisions = await db.select({
       revision: cutStudioCompositionRevisions.revision,
       name: cutStudioCompositionRevisions.name,
@@ -420,6 +426,61 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     )).orderBy(desc(cutStudioCompositionRevisions.revision));
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ revisions });
+  });
+
+  // Restoring never mutates a historical receipt. It copies a validated prior
+  // snapshot into the live composition as the next revision, preserving the
+  // complete lineage that rendered outputs may already reference.
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/history/:revision/restore", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access || !uuid.safeParse(req.params.compositionId).success) return res.status(404).json({ message: "Composition history not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const expected = requireExpectedRevision(req.header("If-Match"));
+    const historicalRevision = Number(req.params.revision);
+    if (!expected) return res.status(428).json({ message: "Composition revision is required" });
+    if (!Number.isInteger(historicalRevision) || historicalRevision < 1) return res.status(400).json({ message: "The requested history revision is invalid" });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+    )).limit(1);
+    const [snapshot] = await db.select().from(cutStudioCompositionRevisions).where(and(
+      eq(cutStudioCompositionRevisions.compositionId, req.params.compositionId),
+      eq(cutStudioCompositionRevisions.projectId, access.project.id),
+      eq(cutStudioCompositionRevisions.revision, historicalRevision),
+    )).limit(1);
+    if (!composition || !snapshot) return res.status(404).json({ message: "Composition history not found" });
+    if (composition.revision !== expected) return res.status(409).json({ message: "The composition changed elsewhere" });
+    if (snapshot.revision === composition.revision) return res.status(409).json({ message: "That composition revision is already current" });
+    const parsed = compositionInput.safeParse({ name: snapshot.name, mode: snapshot.mode, manifest: snapshot.manifest, codeCapsule: snapshot.codeCapsule });
+    if (!parsed.success) return res.status(409).json({ message: "That historical composition revision is no longer valid" });
+    try {
+      if (parsed.data.mode === "declarative") await expandProjectComposition(access.project, parsed.data.manifest, { rootCompositionId: composition.id, overrideRootManifest: parsed.data.manifest });
+      else await assertCompositionAssets(access.project, parsed.data.manifest);
+      if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
+    } catch (error) { return res.status(409).json({ message: error instanceof Error ? error.message : "That historical composition revision is no longer available" }); }
+    const restored = await db.transaction(async (tx) => {
+      const [next] = await tx.update(cutStudioCompositions).set({
+        name: parsed.data.name,
+        mode: parsed.data.mode,
+        manifest: parsed.data.manifest,
+        codeCapsule: parsed.data.codeCapsule,
+        revision: sql`${cutStudioCompositions.revision} + 1`,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(cutStudioCompositions.id, composition.id),
+        eq(cutStudioCompositions.projectId, access.project.id),
+        eq(cutStudioCompositions.revision, expected),
+        eq(cutStudioCompositions.status, "active"),
+      )).returning();
+      if (!next) return null;
+      await tx.insert(cutStudioCompositionRevisions).values({ compositionId: next.id, projectId: next.projectId, businessId: next.businessId, ownerUserId: next.ownerUserId, revision: next.revision, name: next.name, mode: next.mode, manifest: next.manifest, codeCapsule: next.codeCapsule }).onConflictDoNothing();
+      return next;
+    });
+    if (!restored) return res.status(409).json({ message: "The composition changed elsewhere" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.history_restored", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: restored.id, restoredFromRevision: historicalRevision, revision: restored.revision }, idempotencyKey: `cutstudio:${restored.id}:history-restored:${restored.revision}` });
+    res.setHeader("ETag", String(restored.revision));
+    res.json(restored);
   });
 
   cut.get("/api/cut/projects/:id/compositions/:compositionId/assets/:assetId/stream", attachUser, compositionMediaLimiter, async (req, res) => {
