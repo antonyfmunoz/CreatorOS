@@ -45,17 +45,17 @@ export function Repeat({ duration, count, alternate = false, children }) {
   return <FrameContext.Provider value={{ ...current, frame, audioPaused: current.audioPaused || (alternate && iteration % 2 === 1) }}>{children}</FrameContext.Provider>;
 }
 
-export function FrameAudio({ file, startFrom = 0, speed = 1, volume = 1, muted = false, audioStream = 0 }) {
+export function FrameAudio({ file, startFrom = 0, speed = 1, reverse = false, volume = 1, muted = false, audioStream = 0 }) {
   const id = useId();
   const current = useContext(FrameContext);
   const { fps } = useComposition();
-  if (!Number.isInteger(startFrom) || startFrom < 0 || typeof muted !== 'boolean') throw new Error('Invalid frame soundtrack timing.');
-  const sample = validateFrameAudio({ id, file, sourceSeconds: (startFrom + current.frame * speed) / fps, speed, volume, audioStream });
-  // Frozen or backward visual clocks do not replay a tiny audio slice.
-  // Reverse-audio synthesis is not implemented by this forward-only contract.
+  if (!Number.isInteger(startFrom) || startFrom < 0 || typeof muted !== 'boolean' || typeof reverse !== 'boolean') throw new Error('Invalid frame soundtrack timing.');
+  const sample = validateFrameAudio({ id, file, sourceSeconds: (startFrom + (reverse ? -1 : 1) * current.frame * speed) / fps, reverse, speed, volume, audioStream });
+  // Frozen clocks do not replay a tiny audio slice. Reverse sound is a bounded
+  // non-looping interval that is synthesized only by the isolated renderer.
   if (current.audioPaused) return null;
   return <span hidden data-cut-audio-id={id} data-cut-audio-file={sample.file} data-cut-audio-time={sample.sourceSeconds}
-    data-cut-audio-speed={speed} data-cut-audio-volume={muted ? 0 : volume} data-cut-audio-stream={audioStream}/>;
+    data-cut-audio-speed={speed} data-cut-audio-reverse={reverse ? 'yes' : 'no'} data-cut-audio-volume={muted ? 0 : volume} data-cut-audio-stream={audioStream}/>;
 }
 
 export function FrameVideo({ src, startFrom = 0, speed = 1, repeat = false, muted = false, volume = 1, audioStream = 0, style, ...props }) {

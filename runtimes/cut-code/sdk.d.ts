@@ -64,8 +64,8 @@ declare module '@creativesos/cut' {
   export type PrivateVideoSource = `data:video/${'mp4' | 'webm'};base64,${string}`;
   /** Frame-synchronized canvas. compositionAudio enables imported source sound; mute when supplying a replacement track. Audible speed is 0.5..2. */
   export function FrameVideo(props: CanvasHTMLAttributes<HTMLCanvasElement> & { src: PrivateVideoSource; startFrom?: number; speed?: number; repeat?: boolean; muted?: boolean; volume?: number; audioStream?: number }): ReactNode;
-  /** Capsule-root file, local frame clock, 0.5..2 pitch-preserving speed, 0..2 per-frame gain. Video requests opt in with compositionAudio: true. */
-  export function FrameAudio(props: { file: string; startFrom?: number; speed?: number; volume?: number; muted?: boolean; audioStream?: number }): ReactNode;
+  /** Capsule-root file, local frame clock, 0.5..2 pitch-preserving speed, optional non-looping reverse playback, 0..2 per-frame gain. Video requests opt in with compositionAudio: true. */
+  export function FrameAudio(props: { file: string; startFrom?: number; speed?: number; reverse?: boolean; volume?: number; muted?: boolean; audioStream?: number }): ReactNode;
   /** Pinned Three core rendered through the approved deterministic SVG bridge; not WebGL/WebGPU or arbitrary addon support. */
   export function SvgScene(props: HTMLAttributes<HTMLDivElement> & { scene: Scene; camera: Camera; width?: number; height?: number }): ReactNode;
 

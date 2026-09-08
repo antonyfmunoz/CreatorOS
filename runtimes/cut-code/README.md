@@ -124,11 +124,13 @@ production topology approval or enable public code execution.
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
-  0.5..2, `audioStream` selects 0..7 and `volume` accepts a frame-derived number
+  0.5..2, `reverse` is an explicit non-looping reverse interval, `audioStream` selects 0..7 and `volume` accepts a frame-derived number
   in 0..2. `muted` produces zero gain without restarting the source. Nested
   `Sequence` clocks, ordinary `Repeat`, conditional unmounts and range exports
   follow the actual local frame. Frozen and reverse phases of alternating
-  repeats are silent; reverse-audio synthesis is not implemented.
+  repeats are silent. Reverse audio needs a source clock high enough to cover
+  its bounded interval and cannot be combined with implicit source looping;
+  authors split repeating reverse intervals explicitly.
   Descriptors are collected only after the frame's asynchronous preparation
   settles, then independently validated inside the isolated container. No
   browser audio playback, microphone, external URL or host callback is used.
@@ -222,7 +224,10 @@ production topology approval or enable public code execution.
   field qualification. Encoder vendor identity is not spoofed as Apple's encoder.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
   WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
-  exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
+  exclusive end frame, source trim in seconds, constant gain, 0.5..2 speed and
+  an optional non-looping `reverse: true` direction. In reverse mode,
+  `sourceStartSeconds` is the first (later) source moment; the isolated runtime
+  trims the bounded preceding interval then reverses it before retiming.
   Range exports retain original audio timing rather than restarting soundtracks.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects

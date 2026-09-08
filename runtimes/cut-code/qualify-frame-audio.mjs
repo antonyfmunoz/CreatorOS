@@ -58,6 +58,15 @@ export default function Scene(){return <FullFrame style={{background:'#123456'}}
   assert.equal(result.receipt.audioTrackCount, 5);
   assert.equal(result.receipt.compositionAudio.trackCount, 4);
   const records = [{ test: 'frame-audio-lifecycle-pcm', ...result.receipt, quarterRms: quarter, fullRms: full }];
+  const reverseSource = capsule(`${imports}export default function Scene(){return <FullFrame style={{background:'#123456'}}><FrameAudio file="sound.wav" startFrom={24} reverse/></FullFrame>}`);
+  const reversed = await renderIsolated({ request: { ...base, durationInFrames: 12, audioTracks: [] }, source: reverseSource, image });
+  const reverseFile = `${directory}frame-audio-reverse.mov`;
+  await writeFile(reverseFile, reversed.artifact);
+  const reversePcm = decode(reverseFile);
+  assert.ok(energy(reversePcm, .03, .12, 1320) > energy(reversePcm, .03, .12, 880) * 100, 'Reverse audio begins at the declared later source interval.');
+  assert.ok(energy(reversePcm, .28, .37, 880) > energy(reversePcm, .28, .37, 1320) * 100, 'Reverse audio reaches earlier source intervals in descending source time.');
+  assert.equal(reversed.receipt.compositionAudio.trackCount, 1);
+  records.push({ test: 'frame-audio-reverse-pcm', ...reversed.receipt });
   for (const format of ['mov', 'mp4', 'webm']) {
     const request = { ...base, format, frameRange: [9, 20], audioTracks: [] };
     const ranged = await renderIsolated({ request, source, image });
@@ -113,6 +122,7 @@ return <FrameAudio file="sound.wav" volume={gain}/>}`);
     '<FrameAudio file="../private.wav"/>',
     '<FrameAudio file="sound.wav" startFrom={59}/>',
     '<Repeat duration={1}><FrameAudio file="sound.wav"/></Repeat>',
+    '<FrameAudio file="sound.wav" startFrom={1} reverse/>',
     '<>{Array.from({length:9},(_,i)=><FrameAudio key={i} file="sound.wav"/>)}</>',
   ]) {
     await assert.rejects(renderIsolated({ request: { ...base, frameRange: [0, 8], audioTracks: [] }, source: capsule(`${imports}export default()=>${body};`), image }), (error) => {

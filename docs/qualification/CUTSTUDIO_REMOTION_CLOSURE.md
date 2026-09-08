@@ -45,6 +45,20 @@ execution approval, preview/export equivalence for arbitrary code capsules,
 broader approved dependency/media/3D coverage, scale/cost evidence, or the
 same-input Remotion/operator benchmark and connected-superiority measurement.
 
+### September 7 reverse-audio follow-on: local candidate only
+
+The branch after the protected baseline adds bounded non-looping reverse audio
+for explicit private tracks and React `FrameAudio`. Its request, SDK,
+descriptor collector, isolated FFmpeg graph, typed API and focused contract
+tests were updated together. A rebuilt exact-source local image produced a
+private decoded MOV whose frequency windows prove traversal from a later 1320
+Hz source segment into an earlier 880 Hz segment. This is local actual-output
+evidence only. The later broad local suite did not seal a receipt, so the
+follow-on source has no full-suite protected status until the exact-head runtime
+workflow reproduces it. It does not reopen network access, source loops,
+managed execution, browser-code preview or any public code path. See the
+[reverse-audio candidate record](../releases/2026-09-07-cut-code-reverse-audio.md).
+
 ## September 7 local-node and projection-surface checkpoint
 
 The code-composition local execution plane is no longer merely a source-level
