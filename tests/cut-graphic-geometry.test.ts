@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cutGraphicSchema } from "../shared/cut-studio";
 import { compileCompositionToEdl } from "../shared/cut-studio-production";
-import { cutGraphicPivotOffset, planCutGraphicRaster, planCutGraphicRasters } from "../server/cut-graphic-geometry";
+import { cutGraphicPivotOffset, planCutGraphicRaster, planCutGraphicRasters, projectCutGraphicCorners } from "../server/cut-graphic-geometry";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "../server/cut-render-snapshot";
 
 const graphic = () => cutGraphicSchema.parse({ id: "shape", kind: "shape", text: "", timelineStart: 0, duration: 1, width: .25, height: .25 });
@@ -36,8 +36,17 @@ describe("bounded authored graphic geometry", () => {
     expect(() => planCutGraphicRasters(Array.from({ length: 50 }, () => ({ ...graphic(), width: 1, height: 1 })), 1920, 1080)).toThrow(/Combined graphics/);
     expect(() => planCutGraphicRaster({ ...graphic(), rotationX: 1, motionKeyframes: [{ scale: .01, rotation: 0, rotationX: 1, rotationY: 0 }] }, 1920, 1080)).toThrow(/size budget/);
   });
-  it("rejects unimplemented non-centered 3D pivots before raster work", () => {
-    expect(() => planCutGraphicRaster({ ...graphic(), anchorX: 0, rotationX: 30 }, 1280, 720)).toThrow(/3D pivot support is not implemented/);
+  it("keeps authored non-centered 3D pivots available to native raster planning", () => {
+    expect(() => planCutGraphicRaster({ ...graphic(), anchorX: 0, anchorY: 1, rotationX: 30 }, 1280, 720)).not.toThrow();
     expect(() => planCutGraphicRaster({ ...graphic(), anchorX: 0, rotation: 30 }, 1280, 720)).not.toThrow();
+  });
+  it("projects 3D corners around the same transform origin used by browser previews", () => {
+    expect(projectCutGraphicCorners(100, 50, 0, 0, 800, 0, 1)).toEqual([[0, 0], [100, 0], [0, 50], [100, 50]]);
+    const [topLeft, topRight, bottomLeft] = projectCutGraphicCorners(100, 50, 30, 0, 800, 0, 1);
+    // The bottom-left authored pivot remains fixed while the other corners
+    // rotate around it, which is CSS transform-origin behavior.
+    expect(bottomLeft).toEqual([0, 50]);
+    expect(topLeft[1]).not.toBe(0);
+    expect(topRight[1]).not.toBe(0);
   });
 });

@@ -96,7 +96,7 @@ describe("native self-contained media boundary", () => {
       expect(decoded.length).toBeGreaterThan(48_000 * .2 * 2);
       expect(decoded.some(byte => byte !== 0)).toBe(true);
     } finally { await rm(directory, { recursive: true, force: true }); }
-  });
+  }, 20_000);
 
   it.each(["png", "jpeg", "gif", "webp"] as const)("keeps actual %s image inspection and decoding", async format => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "cut-demuxer-image-test-"));

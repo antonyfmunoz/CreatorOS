@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCutRivePreviewController } from "../client/src/lib/cut-rive-preview";
 
-function fixture() {
+function fixture(pixelRatio = 1) {
   const callbacks = new Map<number, () => void>();
   const deferred: Array<() => void> = [];
   let sequence = 0;
@@ -17,7 +17,9 @@ function fixture() {
     defer: (callback) => deferred.push(callback),
     schedule: (callback) => { callbacks.set(++sequence, callback); return sequence; },
     cancel: (id) => { callbacks.delete(id); },
+    pixelRatio: () => pixelRatio,
   });
+
   const tick = () => {
     const current = [...callbacks.values()]; callbacks.clear();
     for (const callback of current) callback();
@@ -29,6 +31,16 @@ function fixture() {
 }
 
 describe("private Rive preview lifecycle", () => {
+  it("uses a bounded device scale for a crisp but finite canvas", () => {
+    const highDensity = fixture(3.5);
+    highDensity.controller.load(); highDensity.flush(); highDensity.tick();
+    expect(highDensity.instance.resizeDrawingSurfaceToCanvas).toHaveBeenCalledWith(2);
+
+    const invalidScale = fixture(Number.NaN);
+    invalidScale.controller.load(); invalidScale.flush(); invalidScale.tick();
+    expect(invalidScale.instance.resizeDrawingSurfaceToCanvas).toHaveBeenCalledWith(1);
+  });
+
   it("waits for runtime initialization and paints the latest sought frame before readiness", () => {
     const f = fixture();
     f.controller.load(); f.seekTo(1.25);

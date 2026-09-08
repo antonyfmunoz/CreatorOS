@@ -13,7 +13,7 @@ import { audioPlan } from './audio.mjs';
 const execute = promisify(execFile);
 const root = path.dirname(fileURLToPath(import.meta.url));
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
-export function assertArtifactReceipt(artifact, receipt, request, source) {
+export function assertArtifactReceipt(artifact, receipt, request, source, maximumOutputBytes = MAX_ARTIFACT_BYTES) {
   const output = outputContract(request);
   if (JSON.stringify(receipt?.gifOptions) !== JSON.stringify(request.gifOptions)) throw new Error('Artifact GIF sampling did not match its request.');
   if (receipt?.proresProfile !== request.proresProfile) throw new Error('Artifact ProRes profile did not match its request.');
@@ -28,16 +28,16 @@ export function assertArtifactReceipt(artifact, receipt, request, source) {
   } else if (receipt?.compositionAudio !== undefined) throw new Error('Unexpected composition soundtrack receipt.');
   const audioTrackCount = (hasSoundtrack ? audioPlan(request).length : 0) + compositionTrackCount;
   if (receipt?.audioTrackCount !== audioTrackCount || receipt?.silent !== (hasSoundtrack && audioTrackCount === 0)) throw new Error('Artifact audio did not match its request.');
-  if (!Buffer.isBuffer(artifact) || !artifact.length || artifact.length >= MAX_ARTIFACT_BYTES || !receipt || receipt.version !== 1 || receipt.runtime !== 'cut-code-prototype-v1' || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.requestSha256 !== hash(JSON.stringify(request)) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.fps !== request.fps || receipt.format !== request.format || receipt.quality !== request.quality || receipt.start !== output.start || receipt.end !== output.end || receipt.mediaType !== output.mediaType || receipt.frames !== output.frames || (request.mode === 'still' && receipt.frame !== request.frame)) throw new Error('Artifact did not match its request and receipt.');
+  if (!Buffer.isBuffer(artifact) || !artifact.length || artifact.length > maximumOutputBytes || !receipt || receipt.version !== 1 || receipt.runtime !== 'cut-code-prototype-v1' || receipt.bytes !== artifact.length || receipt.artifactSha256 !== hash(artifact) || receipt.sourceSha256 !== hash(source) || receipt.requestSha256 !== hash(JSON.stringify(request)) || receipt.width !== request.width || receipt.height !== request.height || receipt.mode !== request.mode || receipt.fps !== request.fps || receipt.format !== request.format || receipt.quality !== request.quality || receipt.start !== output.start || receipt.end !== output.end || receipt.mediaType !== output.mediaType || receipt.frames !== output.frames || (request.mode === 'still' && receipt.frame !== request.frame)) throw new Error('Artifact did not match its request and receipt.');
 }
 async function docker(args, options = {}) {
   return execute('docker', args, { timeout: 15_000, maxBuffer: 128 * 1024, windowsHide: true, ...options });
 }
 
-export function assertIsolation(container, image, inputPath, name, user) {
+export function assertIsolation(container, image, inputPath, name, user, memoryMb = 2048) {
   const host = container.HostConfig;
   const mounts = container.Mounts;
-  if (container.Name !== `/${name}` || container.Image !== image || container.Config.User !== user || container.Config.Labels?.['creativesos.cut-code'] !== name || host.NetworkMode !== 'none' || !host.ReadonlyRootfs || host.Privileged || host.PidMode === 'host' || host.IpcMode === 'host' || host.Memory !== 2 * 1024 ** 3 || host.MemorySwap !== host.Memory || host.NanoCpus !== 1_000_000_000 || host.PidsLimit !== 256 || host.CapAdd?.length || !host.CapDrop?.includes('ALL') || !host.SecurityOpt?.some((value) => value.startsWith('no-new-privileges')) || !host.SecurityOpt?.some((value) => value.startsWith('seccomp={')) || host.LogConfig?.Type !== 'none' || Object.keys(host.PortBindings ?? {}).length || !host.Tmpfs?.['/tmp']?.includes('size=268435456')) throw new Error('Container isolation configuration was not preserved.');
+  if (container.Name !== `/${name}` || container.Image !== image || container.Config.User !== user || container.Config.Labels?.['creativesos.cut-code'] !== name || host.NetworkMode !== 'none' || !host.ReadonlyRootfs || host.Privileged || host.PidMode === 'host' || host.IpcMode === 'host' || host.Memory !== memoryMb * 1024 ** 2 || host.MemorySwap !== host.Memory || host.NanoCpus !== 1_000_000_000 || host.PidsLimit !== 256 || host.CapAdd?.length || !host.CapDrop?.includes('ALL') || !host.SecurityOpt?.some((value) => value.startsWith('no-new-privileges')) || host.LogConfig?.Type !== 'none' || Object.keys(host.PortBindings ?? {}).length || !host.Tmpfs?.['/tmp']?.includes('size=268435456')) throw new Error('Container isolation configuration was not preserved.');
   if (mounts.length !== 1 || mounts[0].Type !== 'bind' || mounts[0].Destination !== '/input' || mounts[0].RW) throw new Error('Unexpected container filesystem exposure.');
   // Docker Desktop translates Windows paths. The exact input is also bound in
   // HostConfig, allowing comparison without trusting the translated mount path.
@@ -45,11 +45,13 @@ export function assertIsolation(container, image, inputPath, name, user) {
   if (!binding || binding.Source !== inputPath || binding.Target !== '/input' || !binding.ReadOnly) throw new Error('Unexpected source mount.');
 }
 
-export async function renderIsolated({ request: rawRequest, source, image, signal, timeoutMs = 120_000 }) {
+export async function renderIsolated({ request: rawRequest, source, image, signal, timeoutMs = 120_000, memoryMb = 2048, maximumOutputBytes = MAX_ARTIFACT_BYTES }) {
   const request = validateRequest(rawRequest);
   if (!Buffer.isBuffer(source) || !source.length || source.length > 25 * 1024 ** 2) throw new Error('Invalid source archive.');
   if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('An immutable local image identity is required.');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120_000) throw new Error('Invalid execution deadline.');
+  if (!Number.isInteger(memoryMb) || memoryMb < 128 || memoryMb > 2048) throw new Error('Invalid execution memory limit.');
+  if (!Number.isSafeInteger(maximumOutputBytes) || maximumOutputBytes < 1024 || maximumOutputBytes > MAX_ARTIFACT_BYTES) throw new Error('Invalid execution output limit.');
   signal?.throwIfAborted();
   const uid = process.platform === 'linux' ? process.getuid() : 1000;
   const gid = process.platform === 'linux' ? process.getgid() : 1000;
@@ -63,10 +65,10 @@ export async function renderIsolated({ request: rawRequest, source, image, signa
     await writeFile(path.join(input, 'request.json'), JSON.stringify(request), { flag: 'wx' });
     await writeFile(path.join(input, 'source.zip'), source, { flag: 'wx' });
     const mount = `type=bind,source=${input},target=/input,readonly`;
-    await docker(['create', '--pull=never', '--name', name, '--label', `creativesos.cut-code=${name}`, '--network', 'none', '--read-only', '--user', user, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--security-opt', `seccomp=${path.join(root, 'seccomp.json')}`, '--cpus', '1', '--memory', '2g', '--memory-swap', '2g', '--pids-limit', '256', '--shm-size', '256m', '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456,mode=1777', '--log-driver', 'none', '--init', '--mount', mount, image]);
+    await docker(['create', '--pull=never', '--name', name, '--label', `creativesos.cut-code=${name}`, '--network', 'none', '--read-only', '--user', user, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--security-opt', `seccomp=${path.join(root, 'seccomp.json')}`, '--cpus', '1', '--memory', `${memoryMb}m`, '--memory-swap', `${memoryMb}m`, '--pids-limit', '256', '--shm-size', '256m', '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456,mode=1777', '--log-driver', 'none', '--init', '--mount', mount, image]);
     created = true;
     const descriptor = JSON.parse((await docker(['inspect', name])).stdout)[0];
-    assertIsolation(descriptor, image, input, name, user);
+    assertIsolation(descriptor, image, input, name, user, memoryMb);
     const actualSeccomp = descriptor.HostConfig.SecurityOpt.find((option) => option.startsWith('seccomp={')).slice('seccomp='.length);
     if (JSON.stringify(JSON.parse(actualSeccomp)) !== JSON.stringify(JSON.parse(await readFile(path.join(root, 'seccomp.json'), 'utf8')))) throw new Error('Unexpected seccomp policy.');
     signal?.throwIfAborted();
@@ -89,7 +91,7 @@ export async function renderIsolated({ request: rawRequest, source, image, signa
     const payload = JSON.parse(result.stdout);
     const artifact = Buffer.from(payload.artifact, 'base64');
     const receipt = payload.receipt;
-    assertArtifactReceipt(artifact, receipt, request, source);
+    assertArtifactReceipt(artifact, receipt, request, source, maximumOutputBytes);
     return { artifact, receipt, isolation: { network: 'none', rootFilesystem: 'readonly', user, cpu: 1, memoryBytes: descriptor.HostConfig.Memory, inputReadOnly: true, image } };
   } finally {
     // A killed Docker client does not imply a stopped container. Remove the

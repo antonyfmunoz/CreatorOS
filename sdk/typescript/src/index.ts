@@ -1,6 +1,24 @@
-export type CreativesOSScope = "profile:read" | "assets:read" | "products:read" | "analytics:read";
+export type CreativesOSScope = "profile:read" | "assets:read" | "products:read" | "analytics:read" | "cut:read";
 export type CreativesOSPage<T> = { data: T[]; nextCursor: string | null };
 export type CreativesOSErrorBody = { error?: { code?: string; message?: string }; message?: string };
+export type CreativesOSCutProject = {
+  id: string;
+  name: string;
+  mediaKind: "video" | "audio";
+  duration: number;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type CreativesOSCutLocalNode = {
+  id: string;
+  name: string;
+  status: string;
+  capabilities: Record<string, unknown>;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
 
 export class CreativesOSError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string, public readonly requestId: string | null) { super(message); this.name = "CreativesOSError"; }
@@ -19,6 +37,8 @@ export class CreativesOSClient {
   assets<T = Record<string, unknown>>(options: { limit?: number; cursor?: string } = {}) { return this.request<CreativesOSPage<T>>(`/assets?${new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]))}`); }
   products<T = Record<string, unknown>>(options: { limit?: number; cursor?: string } = {}) { return this.request<CreativesOSPage<T>>(`/products?${new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]))}`); }
   analytics<T = Record<string, unknown>>() { return this.request<{ data: T[] }>("/analytics/summary"); }
+  cutProjects(options: { limit?: number; cursor?: string } = {}) { return this.request<CreativesOSPage<CreativesOSCutProject>>(`/cut/projects?${new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]))}`); }
+  cutLocalNodes() { return this.request<{ data: CreativesOSCutLocalNode[] }>("/cut/local-nodes"); }
 }
 
 export function verifyCreativesOSWebhook(input: { body: string; timestamp: string; signature: string; secret: string; toleranceSeconds?: number }) {

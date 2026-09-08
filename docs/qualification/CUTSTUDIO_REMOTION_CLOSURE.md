@@ -1,10 +1,102 @@
 # CutStudio versus Remotion: evidence-separated closure register
 
-Updated 2026-09-03. This register supersedes any older suggestion that only
+Updated 2026-09-07. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
 ## Current boundary
+
+### September 7 protected baseline: not deployed
+
+Last protected baseline source `d56710eaa3997c58ff176d1c16b8eb4974407fbe`
+(branch `codex/cut-next-root`, PR 194) closes several previously hidden-but-qualified
+local-runtime controls at the product boundary:
+direct private binary ZIP plus matching-lockfile import, bounded GIF sampling
+and looping, MOV ProRes profiles, codec controls, audio-only exports,
+composition-authored audio, and up to eight explicit capsule-contained
+soundtracks with timing, stream selection, gain and ordered volume automation.
+The server verifies every declared soundtrack exists in the sealed private ZIP
+before it creates durable work. It also revalidates historic capsule JSON at
+queue time, and the persisted memory declaration now matches the Docker
+sandbox's enforceable 128 MiB–2 GiB range rather than allowing a 4 GiB value
+that the runtime would later reject.
+
+That exact baseline passed protected Verify run `34181112747`: Core, database
+and durable workflows, native media ingest, Android, iOS, Windows packaging,
+desktop Chromium (15m59s), mobile Chromium (16m45s), and its browser summary
+all passed. Separate protected media run `34181112684` passed isolated TSX
+pixel/execution boundaries (7m08s) and the candidate image pixel/vulnerability
+gate (7m20s); CodeQL run `34181112597` passed. Locally, the targeted
+programmable-cinema lifecycle (desktop/mobile) and 18 source-authoring
+journeys (desktop/mobile) passed against disposable PostgreSQL and private
+asset fixtures. These facts validate that baseline and its declared paired-local
+boundary; they are not deployed output evidence. Any later branch commit must
+pass its own exact-head protected qualification before inheriting this status.
+
+On 2026-09-07, public production smoke passed on `creativesos.net`; its
+verified release identity was clean source `e58c7970cd506c6ec0e6c220bb6f737ed94bddf4`
+with migration parity 124/124. That source is an ancestor of this candidate,
+but does not contain it. Authenticated output/recovery field proof for the
+candidate therefore remains pending protected deployment and must not be
+inferred from the active signed-in browser session.
+
+This improves P0 request/custody correctness but does not close: public
+execution approval, preview/export equivalence for arbitrary code capsules,
+broader approved dependency/media/3D coverage, scale/cost evidence, or the
+same-input Remotion/operator benchmark and connected-superiority measurement.
+
+### September 7 reverse-audio follow-on: local candidate only
+
+The branch after the protected baseline adds bounded non-looping reverse audio
+for explicit private tracks and React `FrameAudio`. Its shared product/broker
+request contract, isolated request, SDK,
+descriptor collector, isolated FFmpeg graph, typed API and focused contract
+tests were updated together. A rebuilt exact-source local image produced a
+private decoded MOV whose frequency windows prove traversal from a later 1320
+Hz source segment into an earlier 880 Hz segment. This is local actual-output
+evidence only. The later broad local suite did not seal a receipt, so the
+follow-on source has no full-suite protected status until the exact-head runtime
+workflow reproduces it. It does not reopen network access, source loops,
+managed execution, browser-code preview or any public code path. See the
+[reverse-audio candidate record](../releases/2026-09-07-cut-code-reverse-audio.md).
+
+## September 7 local-node and projection-surface checkpoint
+
+The code-composition local execution plane is no longer merely a source-level
+prototype. Production source `88848d2fe276b0c4e67402f1f15ee8393a803698`
+is verified clean at `/api/release`; `/api/health` is `ok`, migration parity is
+124/124, and the public OpenAPI document exposes scoped read-only CutStudio
+project and local-node endpoints. This release additionally fences stale paired
+machines at 90 seconds and makes one-shot CLI work explicitly arm then pause;
+the foreground `creativesos node serve` mode keeps an owner-authorized local
+queue alive only while its fresh heartbeat is running.
+
+An approved owner field test paired a Windows local node, used the immutable
+local runtime image, and explicitly claimed a bounded code-render job through
+the broker. It returned both a private PNG still and a private MP4 video. The
+authenticated CutStudio UI showed each completed artifact, loaded the in-app
+video preview, and inserted the MP4 back into the editable project timeline as
+a saved second clip. This proves the local broker, isolation harness, private
+artifact sealing, preview and editor handoff for that exact short self-contained
+composition. It does **not** prove arbitrary package compatibility, long-media
+scale, a managed executor, or competitor parity.
+
+The same capability now has verified source-level peers: a packaged Windows
+desktop artifact carries the isolated runtime outside `app.asar`; a standalone
+`@creativesos/cli` release artifact contains only the CLI, MCP server and
+runtime (not the application or deployment templates); the versioned API and
+TypeScript SDK expose scoped read-only project/node inspection; and the MCP
+server discovers those read-only tools. MCP cannot pair, execute, revoke, edit,
+or silently approve work. A future agent-triggered render requires a durable
+approval contract and a separate write scope; it must not be added to `cut:read`.
+
+Remaining field/distribution gates for this plane are a deliberately failing
+local-node/revocation test, a signed desktop installer with release provenance,
+an approved registry publication of the standalone CLI package, a real
+developer credential/MCP read receipt, and any future managed-compute
+commercial/admission decision. These are not substitutes for the broader
+Remotion/Higgsfield comparison gates below. The UI text and paused node status
+were also checked in a signed-in browser after this exact release.
 
 Checkpoint 2026-09-03 14:20 UTC: public source
 `cbb1183372f9ef38d59d8b13657a7ffceab54d3f` is verified clean with 122/122
@@ -326,9 +418,9 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | Native declarative compositions | Owned manifests, parameter batches, private rendering, typography/fitting production artifacts | Larger representative content, editing ergonomics and quality/time comparisons |
 | React/TSX source | Pinned React, relative modules, typed clean-room SDK, structured private CSS, fonts/images; bounded frame holds/cancellation with actual prototype pixels/replay; released data-only source/lockfile editor and expanded workspace with approved-owner field proof | Public executable player/render path; broader approved dependencies; safe diagnostics and buffering |
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
-| 3D | Pinned Three core with SVGRenderer, decoded camera/geometry/depth/motion tests | WebGL/WebGPU, textures/shaders/lighting and actual production GPU qualification |
+| 3D | Pinned Three core with SVGRenderer; `SvgScene` is a bounded TSX capture bridge, with actual isolated PNG geometry pixels and frame-to-frame motion evidence | WebGL/WebGPU, textures/shaders/lighting, arbitrary addons and actual production GPU qualification |
 | Media | Private MP4/WebM retime/repeat, images/fonts and alpha; protected timestamp-indexed VFR/B-frame/VP9-alpha decoding and synchronized source sound | Keep exact-image gates green after changes; broader decoder matrix, long media and public source-code execution |
-| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio and fractional imported-video sound with actual PCM/range/replay proof | Browser code-preview sound, reverse audio, broader interval/workload limits and public code execution |
+| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, bounded non-looping reverse playback, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio and fractional imported-video sound with actual PCM/range/replay proof | Browser code-preview sound, broader interval/workload limits and public code execution |
 | Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF and ProRes HQ/4444/XQ with PCM audio; decoded CRF/target-bitrate/speed-control tests; candidate lossless RGB MP4 with full-HD text/transition paint-history regressions and eight independently compared study frames | Exact-candidate protected qualification; additional codecs/containers, two-pass/hardware encoding, HDR, external-editor interoperability and long-range/chunk workflows; production exposure of executable exports |
 | Workload limits | Single-job CPU/memory/bytes/frame bounds, timeout, cancellation, cleanup | App/runtime quota reconciliation, durable tenant admission, metering, scheduling, dispatch, recovery and scaled rendering |
 | Security | Actual non-root, no-network, read-only, sandboxed browser tests; lean Noble image passed independent CI pixels and zero HIGH/CRITICAL scan in run 33614621889 | Continued exact-image vulnerability qualification, approved execution topology, privilege/credential separation, adversarial review and service deployment |

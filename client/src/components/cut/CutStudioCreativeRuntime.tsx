@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
+import { Boxes, Camera, Check, ChevronDown, ChevronUp, Clapperboard, Download, KeyRound, Loader2, Play, Plus, Sparkles, Workflow } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { CompositionAuthoringControls, CompositionVariantBatchControls, WorkflowAuthoringEditor } from "@/components/cut/CutStudioAuthoringEditors";
@@ -9,12 +9,13 @@ import { buildCutSourceZip, starterCutSource, type CutSourceFile } from "@shared
 import { generateCutSourceLockfile } from "@shared/cut-code-lockfile";
 import { CutCreativeDrafts } from "@/lib/cut-creative-drafts";
 import { CutSourceHistory } from "@/lib/cut-source-history";
-import { motionTemplate } from "@/lib/cut-motion-templates";
+import { codeCompositionManifest, motionTemplate } from "@/lib/cut-motion-templates";
 import type { CutEdl } from "@shared/cut-studio";
+import { cutCodeInputContractSchema, cutCodeRenderFormats, cutCodeRenderRequestSchema, defaultCutCodeRenderFormat, normalizeCutCodeRenderInput, type CutCodeInputContract, type CutCodeRenderMode, type CutCodeRenderRequest } from "@shared/cut-code-render";
 import { type CutCodeCapsule, type CutCompositionManifest, type CutGenerativeWorkflow, type CutProductionBrief, type CutShotSpec } from "@shared/cut-studio-production";
 
 type ProjectInput = { id: string; sourceAssetId: string; name: string; duration: number; mediaKind: "video" | "audio"; revision: number };
-type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile" };
+type ProjectMediaInput = { id: string; assetId: string; name: string; duration: number; mediaKind: "video" | "audio" | "image" | "font" | "lottie" | "rive" | "code_source" | "code_lockfile"; createdAt: string };
 type CompositionRow = { id: string; name: string; mode: "declarative" | "sandboxed_tsx"; manifest: CutCompositionManifest; codeCapsule: CutCodeCapsule | null; revision: number };
 type PlanRow = { id: string; brief: CutProductionBrief; revision: number };
 type ShotRow = { id: string; sequence: number; spec: CutShotSpec; revision: number; status: string; selectedVariantId?: string | null };
@@ -22,6 +23,9 @@ type JobRow = { id: string; shotId: string; provider: string; model: string; sta
 type VariantRow = { id: string; shotId: string; generationJobId?: string | null; assetId?: string | null; provider: string; model: string; seed?: number | null; status: "candidate" | "selected" | "rejected" | "superseded"; provenance: Record<string, unknown> };
 type WorkflowRow = { id: string; workflow: CutGenerativeWorkflow; revision: number };
 type ProviderRow = { id: string; label: string; configured: boolean; capabilities: readonly string[] };
+type LocalNodeInvitation = { token: string; expiresAt: string };
+type LocalNodeRow = { id: string; name: string; status: "ready" | "busy" | "paused" | "revoked"; lastSeenAt: string | null; capabilities: { isolatedCode: boolean; docker: boolean; operatingSystem: string; cpuCores: number; memoryMb: number } };
+type CodeRenderRow = { id: string; compositionId: string; state: string; detail: string; progress: number; mode: string; format: string; artifactAssetId: string | null; cancellationRequestedAt: string | null; createdAt: string };
 type RuntimePayload = {
   compositionRuntime: { declarative: string; packageAuthoring: string; isolatedCode: string; networkPolicy: string };
   generationRuntime: { dispatchEnabled: boolean; providers: ProviderRow[] };
@@ -32,9 +36,139 @@ type RuntimePayload = {
   jobs: JobRow[];
   workflows: WorkflowRow[];
   variants: VariantRow[];
+  codeRenders: CodeRenderRow[];
 };
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
+
+function CodeCompositionInputs({ contract, inputJson, disabled, onChange }: { contract: CutCodeInputContract | null | undefined; inputJson: string; disabled: boolean; onChange: (next: string) => void }) {
+  const values = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(inputJson);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch { return {}; }
+  }, [inputJson]);
+  if (!contract || Object.keys(contract.fields).length === 0) return null;
+  const setValue = (key: string, value: string | number | boolean | undefined) => {
+    const next = { ...values };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onChange(JSON.stringify(next, null, 2));
+  };
+  return <div aria-label="Typed composition inputs" className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3">
+    <p className="text-[10px] font-bold text-zinc-200">Composition parameters</p>
+    <p className="mt-1 text-[9px] leading-4 text-zinc-500">These controls use the saved input contract. The local broker validates the same values again before it creates work.</p>
+    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      {Object.entries(contract.fields).map(([key, definition]) => {
+        const label = definition.label ?? key;
+        const current = values[key] ?? definition.default;
+        if (definition.type === "boolean") return <label key={key} className="flex min-h-10 items-center gap-2 rounded-md border border-zinc-800 bg-black px-2 text-[10px] text-zinc-300"><input aria-label={`Composition input ${label}`} type="checkbox" checked={current === true} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.checked)}/><span>{label}{definition.required ? " *" : ""}</span></label>;
+        if (definition.type === "number") return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<input aria-label={`Composition input ${label}`} className={field} type="number" min={definition.minimum} max={definition.maximum} step="any" value={typeof current === "number" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value === "" ? undefined : event.currentTarget.valueAsNumber)}/></label>;
+        if (definition.options) return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<select aria-label={`Composition input ${label}`} className={field} value={typeof current === "string" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value || undefined)}><option value="">{definition.required ? "Choose…" : "Use default"}</option>{definition.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+        return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<input aria-label={`Composition input ${label}`} className={field} type="text" minLength={definition.minLength} maxLength={definition.maxLength} value={typeof current === "string" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value || undefined)}/></label>;
+      })}
+    </div>
+  </div>;
+}
+
+function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void; onQueueBatch: (requests: CutCodeRenderRequest[]) => void }) {
+  const [mode, setMode] = useState<CutCodeRenderMode>("still");
+  const [width, setWidth] = useState(1080);
+  const [height, setHeight] = useState(1080);
+  const [fps, setFps] = useState(30);
+  const [durationInFrames, setDurationInFrames] = useState(30);
+  const [frame, setFrame] = useState(0);
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd, setRangeEnd] = useState(29);
+  const [format, setFormat] = useState("png");
+  const [proresProfile, setProresProfile] = useState<"422hq" | "4444" | "4444xq">("422hq");
+  const [encodingMode, setEncodingMode] = useState<"default" | "crf" | "bitrate" | "lossless">("default");
+  const [crf, setCrf] = useState(23);
+  const [bitrateKbps, setBitrateKbps] = useState(2_000);
+  const [preset, setPreset] = useState("fast");
+  const [cpuUsed, setCpuUsed] = useState(4);
+  const [gifFrameStep, setGifFrameStep] = useState(1);
+  const [gifRepeatMode, setGifRepeatMode] = useState<"infinite" | "count">("infinite");
+  const [gifRepeatCount, setGifRepeatCount] = useState(0);
+  const [compositionAudio, setCompositionAudio] = useState(false);
+  const [audioTracksJson, setAudioTracksJson] = useState("[]");
+  const [quality, setQuality] = useState(90);
+  const [inputJson, setInputJson] = useState("{}");
+  const [batchInputJson, setBatchInputJson] = useState("[]");
+  const [error, setError] = useState("");
+  const compositionAudioEligible = mode === "video" && ["mp4", "webm", "mov"].includes(format)
+    && Number.isInteger(fps) && fps > 0 && Number.isInteger(rangeStart) && Number.isInteger(rangeEnd)
+    && rangeStart >= 0 && rangeEnd >= rangeStart && rangeEnd < durationInFrames
+    && (rangeEnd - rangeStart + 1) / fps <= 120;
+
+  useEffect(() => {
+    if (!compositionAudioEligible && compositionAudio) setCompositionAudio(false);
+  }, [compositionAudio, compositionAudioEligible]);
+
+  const setExportMode = (next: CutCodeRenderMode) => {
+    setMode(next); setFormat(defaultCutCodeRenderFormat(next)); setEncodingMode("default"); setCompositionAudio(false);
+  };
+  const readNumber = (event: React.ChangeEvent<HTMLInputElement>, setValue: (value: number) => void) => setValue(event.currentTarget.valueAsNumber);
+  const requestForInput = (input: unknown): CutCodeRenderRequest => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Composition input must be a JSON object");
+    let audioTracks: unknown;
+    try { audioTracks = JSON.parse(audioTracksJson); }
+    catch { throw new Error("Private soundtrack tracks must be valid JSON"); }
+    if (!Array.isArray(audioTracks)) throw new Error("Private soundtrack tracks must be a JSON array");
+    const videoEncoding = mode !== "video" || !["mp4", "webm"].includes(format) || encodingMode === "default" ? undefined
+      : encodingMode === "lossless" ? { losslessRgb: true, preset }
+        : encodingMode === "bitrate" ? { bitrateKbps, ...(format === "mp4" ? { preset } : { cpuUsed }) }
+          : { crf, ...(format === "mp4" ? { preset } : { cpuUsed }) };
+    const gifOptions = mode === "video" && format === "gif" ? { frameStep: gifFrameStep, repeatCount: gifRepeatMode === "infinite" ? null : gifRepeatCount } : undefined;
+    const candidate = {
+      mode, width, height, fps, durationInFrames, format, input: normalizeCutCodeRenderInput(input as Record<string, unknown>, composition.codeCapsule?.inputContract),
+      ...(["jpeg", "webp"].includes(format) ? { quality } : {}),
+      ...(format === "mov" ? { proresProfile } : {}),
+      ...(gifOptions ? { gifOptions } : {}),
+      ...(audioTracks.length ? { audioTracks } : {}),
+      ...(compositionAudio ? { compositionAudio: true as const } : {}),
+      ...(videoEncoding ? { videoEncoding } : {}),
+      ...(mode === "still" ? { frame } : { frameRange: [rangeStart, rangeEnd] as [number, number] }),
+    };
+    const parsed = cutCodeRenderRequestSchema.safeParse(candidate);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "The local render settings are invalid");
+    return parsed.data;
+  };
+  const request = () => {
+    try { return requestForInput(JSON.parse(inputJson)); }
+    catch (cause) { throw cause instanceof Error && cause.message !== "Unexpected end of JSON input" ? cause : new Error("Composition input must be valid JSON"); }
+  };
+  const batchRequests = () => {
+    let inputs: unknown;
+    try { inputs = JSON.parse(batchInputJson); }
+    catch { throw new Error("Batch input must be valid JSON"); }
+    if (!Array.isArray(inputs) || inputs.length < 2 || inputs.length > 20) throw new Error("Batch input must be an array of 2–20 composition input objects");
+    return inputs.map(requestForInput);
+  };
+  const label = `${composition.name} local render`;
+  return <div className="mt-3 space-y-2 border-t border-[#1d9bf0]/20 pt-3" aria-label={label}>
+    <div className="grid grid-cols-3 gap-2"><label className="text-[9px] text-zinc-500">Output<select aria-label={`${label} output`} className={field} value={mode} disabled={busy} onChange={(event) => setExportMode(event.target.value as CutCodeRenderMode)}>{(["still", "video", "sequence", "audio"] as const).map((value) => <option key={value} value={value}>{value === "still" ? "Still" : value === "video" ? "Video" : value === "audio" ? "Audio" : "Frame sequence"}</option>)}</select></label><label className="text-[9px] text-zinc-500">Format<select aria-label={`${label} format`} className={field} value={format} disabled={busy} onChange={(event) => { const next = event.target.value; setFormat(next); if (next !== "mp4" && next !== "webm") setEncodingMode("default"); if (next === "webm" && encodingMode === "lossless") setEncodingMode("default"); if (!["mp4", "webm", "mov"].includes(next)) setCompositionAudio(false); }}>{cutCodeRenderFormats[mode].map((value) => <option key={value} value={value}>{value === "mov" ? "MOV · ProRes" : value.toUpperCase()}</option>)}</select></label>{format === "mov" ? <label className="text-[9px] text-zinc-500">ProRes profile<select aria-label={`${label} ProRes profile`} className={field} value={proresProfile} disabled={busy} onChange={(event) => setProresProfile(event.target.value as typeof proresProfile)}><option value="422hq">422 HQ</option><option value="4444">4444</option><option value="4444xq">4444 XQ</option></select></label> : <label className="text-[9px] text-zinc-500">Quality<input aria-label={`${label} quality`} className={field} type="number" min="1" max="100" value={quality} disabled={busy || !["jpeg", "webp"].includes(format)} onChange={(event) => readNumber(event, setQuality)}/></label>}</div>
+    {mode === "video" && ["mp4", "webm"].includes(format) && <div className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2"><label className="text-[9px] text-zinc-500">Encoding<select aria-label={`${label} encoding`} className={field} value={encodingMode} disabled={busy} onChange={(event) => setEncodingMode(event.target.value as typeof encodingMode)}><option value="default">Codec default</option><option value="crf">Constant quality (CRF)</option><option value="bitrate">Target bitrate</option>{format === "mp4" && <option value="lossless">Lossless RGB master</option>}</select></label>{encodingMode !== "default" && encodingMode !== "lossless" && <label className="text-[9px] text-zinc-500">{encodingMode === "crf" ? "CRF" : "Kbps"}<input aria-label={`${label} ${encodingMode === "crf" ? "CRF" : "bitrate"}`} className={field} type="number" min={encodingMode === "crf" ? (format === "mp4" ? 1 : 0) : 64} max={encodingMode === "crf" ? (format === "mp4" ? 51 : 63) : 100000} value={encodingMode === "crf" ? crf : bitrateKbps} disabled={busy} onChange={(event) => readNumber(event, encodingMode === "crf" ? setCrf : setBitrateKbps)}/></label>}{encodingMode !== "default" && format === "mp4" && <label className="text-[9px] text-zinc-500">H.264 speed<select aria-label={`${label} H.264 preset`} className={field} value={preset} disabled={busy} onChange={(event) => setPreset(event.target.value)}>{["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}{encodingMode !== "default" && format === "webm" && <label className="text-[9px] text-zinc-500">VP9 CPU usage<input aria-label={`${label} VP9 CPU usage`} className={field} type="number" min="0" max="8" value={cpuUsed} disabled={busy} onChange={(event) => readNumber(event, setCpuUsed)}/></label>}<p className="col-span-2 text-[9px] leading-4 text-zinc-500">Encoding settings are recorded in the isolated render receipt. Lossless RGB is an MP4 editing master, not a web-delivery format.</p></div>}
+    {mode === "video" && format === "gif" && <div className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2"><label className="text-[9px] text-zinc-500">Frame step<input aria-label={`${label} GIF frame step`} className={field} type="number" min="1" max="30" value={gifFrameStep} disabled={busy} onChange={(event) => readNumber(event, setGifFrameStep)}/></label><label className="text-[9px] text-zinc-500">Looping<select aria-label={`${label} GIF looping`} className={field} value={gifRepeatMode} disabled={busy} onChange={(event) => setGifRepeatMode(event.target.value as typeof gifRepeatMode)}><option value="infinite">Repeat indefinitely</option><option value="count">Specific repeats</option></select></label>{gifRepeatMode === "count" && <label className="text-[9px] text-zinc-500">Repeat count<input aria-label={`${label} GIF repeat count`} className={field} type="number" min="0" max="1000" value={gifRepeatCount} disabled={busy} onChange={(event) => readNumber(event, setGifRepeatCount)}/></label>}<p className="col-span-2 text-[9px] leading-4 text-zinc-500">GIF sampling preserves the selected range duration while reducing rendered frames. GIF supports up to 50 FPS and its own palette-memory budget.</p></div>}
+    {mode === "video" && ["mp4", "webm", "mov"].includes(format) && <label className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-[9px] leading-4 text-zinc-400"><input aria-label={`${label} composition audio`} className="mt-0.5 accent-[#1d9bf0]" type="checkbox" checked={compositionAudio} disabled={busy || !compositionAudioEligible} onChange={(event) => setCompositionAudio(event.currentTarget.checked)}/><span><span className="font-medium text-zinc-200">Include composition audio</span><br/>Capture only bounded sound descriptors declared by this private code composition. The local runtime records the resulting soundtrack plan in the sealed receipt; exports are limited to 120 seconds.{compositionAudioEligible ? "" : " Adjust the selected range to 120 seconds or less to enable it."}</span></label>}
+    <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Width<input aria-label={`${label} width`} className={field} type="number" min="16" max="3840" value={width} disabled={busy} onChange={(event) => readNumber(event, setWidth)}/></label><label className="text-[9px] text-zinc-500">Height<input aria-label={`${label} height`} className={field} type="number" min="16" max="3840" value={height} disabled={busy} onChange={(event) => readNumber(event, setHeight)}/></label><label className="text-[9px] text-zinc-500">FPS<input aria-label={`${label} fps`} className={field} type="number" min="1" max="60" value={fps} disabled={busy} onChange={(event) => readNumber(event, setFps)}/></label><label className="text-[9px] text-zinc-500">Frames<input aria-label={`${label} duration`} className={field} type="number" min="1" max="600" value={durationInFrames} disabled={busy} onChange={(event) => readNumber(event, setDurationInFrames)}/></label></div>
+    {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
+    <CodeCompositionInputs contract={composition.codeCapsule?.inputContract} inputJson={inputJson} disabled={busy} onChange={setInputJson}/>
+    {["video", "audio"].includes(mode) && <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+      <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Private soundtrack tracks (advanced)</summary>
+      <label className="mt-2 block text-[9px] text-zinc-500">A JSON array of up to eight tracks from the private source package. Each track uses a capsule-relative <code>file</code> such as <code>audio/bed.mp3</code>, optional frame timing/gain, and optional ordered volume keyframes. URLs and project-storage paths are rejected.<textarea aria-label={`${label} private soundtrack tracks`} className={`${field} min-h-20 resize-y font-mono`} value={audioTracksJson} disabled={busy} onChange={(event) => setAudioTracksJson(event.target.value)}/></label>
+      <p className="text-[9px] leading-4 text-zinc-500">For a bounded reverse interval, declare <code>{'{ "file": "audio/bed.mp3", "sourceStartSeconds": 12.5, "reverse": true }'}</code>. The source must cover the requested interval; reverse tracks cannot loop.</p>
+    </details>}
+    <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2" open={!composition.codeCapsule?.inputContract}>
+      <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Advanced composition input JSON</summary>
+      <label className="mt-2 block text-[9px] text-zinc-500">Use this for advanced structured values. The declared contract, when present, still rejects undeclared or invalid values.<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
+    </details>
+    <label className="block text-[9px] text-zinc-500">Optional input batch JSON (2–20 inputs)<textarea aria-label={`${label} input batch JSON`} className={`${field} min-h-16 resize-y font-mono`} value={batchInputJson} disabled={busy} onChange={(event) => setBatchInputJson(event.target.value)}/></label>
+    <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. {composition.codeCapsule?.inputContract ? "This composition also enforces its declared input contract and defaults." : "No input contract is declared yet."} Private media is never injected into code directly.</p>
+    {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}
+    <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueueBatch(batchRequests()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render batch is invalid"); } }}>Queue local batch</Button></div>
+  </div>;
+}
 
 
 function starterBrief(project: ProjectInput): CutProductionBrief {
@@ -45,7 +179,7 @@ function starterShot(name: string, prompt: string): CutShotSpec {
   return { version: 1, name, prompt, negativePrompt: "text artifacts, unstable identity, unwanted logos", durationSeconds: 5, aspect: "16:9", resolution: "1080p", fps: 24, operation: "text_to_video", model: "auto", seed: null, elementIds: [], firstFrameAssetId: null, lastFrameAssetId: null, visualReferenceAssetIds: [], motionReferenceAssetId: null, audioReferenceAssetId: null, camera: { cameraBody: "virtual cinema camera", lens: "spherical prime", focalLengthMm: 35, aperture: 2.8, shutterAngle: 180, iso: 800, filmStock: "digital neutral", movements: [{ kind: "dolly", direction: "in", intensity: .35, start: 0, end: 1 }] }, lighting: "soft motivated key with natural contrast", emotion: "confident", colorGrade: { preset: "cinematic neutral", temperature: 0, contrast: 1, saturation: 1 }, audioMode: "native", safety: { rightsConfirmed: false, likenessConsentConfirmed: false, syntheticMediaDisclosure: true } };
 }
 
-export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File, lockfile?: File) => Promise<{ assetId: string; lockfileAssetId?: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
+export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onTimelineApplied: applyTimeline, onRenderBatchQueued: renderBatchQueued, onProjectMediaChanged, onUseCodeRenderOutput, onTimelineBusyChange, onUnsavedChange }: { project: ProjectInput; media: ProjectMediaInput[]; onSaveCodeSource: (file: File, lockfile?: File) => Promise<{ assetId: string; lockfileAssetId?: string }>; onTimelineApplied: (result: { edl: CutEdl; duration: number; revision: number }) => void; onRenderBatchQueued: () => void; onProjectMediaChanged?: () => void; onUseCodeRenderOutput?: (media: ProjectMediaInput) => void; onTimelineBusyChange?: (busy: boolean) => void; onUnsavedChange?: (dirty: boolean) => void }) {
   const [serverRuntime, setRuntime] = useState<RuntimePayload | null>(null);
   const compositions = useRef(new CutCreativeDrafts<CompositionRow, "manifest">("manifest"));
   const workflows = useRef(new CutCreativeDrafts<WorkflowRow, "workflow">("workflow"));
@@ -53,6 +187,9 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [, rerenderDrafts] = useState(0);
   const alive = useRef(true);
   const refreshGeneration = useRef(0);
+  const completedCodeRenders = useRef(new Set<string>());
+  const projectMediaChangedRef = useRef(onProjectMediaChanged);
+  const useCodeRenderOutputRef = useRef(onUseCodeRenderOutput);
   const actionPending = useRef(false);
   const [sourceDraft, setSourceDraft] = useState<CutSourceDraft | null>(null);
   const sourceDraftRef = useRef<CutSourceDraft | null>(null);
@@ -97,6 +234,15 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const [codeEntrypoint, setCodeEntrypoint] = useState("src/index.tsx");
   const [codeSourceAssetId, setCodeSourceAssetId] = useState("");
   const [codeLockfileAssetId, setCodeLockfileAssetId] = useState("");
+  const [codeInputContractJson, setCodeInputContractJson] = useState("");
+  const [editingCodeCompositionId, setEditingCodeCompositionId] = useState<string | null>(null);
+  const [sourcePackageFile, setSourcePackageFile] = useState<File | null>(null);
+  const [sourceLockfileFile, setSourceLockfileFile] = useState<File | null>(null);
+  const sourcePackageInput = useRef<HTMLInputElement>(null);
+  const sourceLockfileInput = useRef<HTMLInputElement>(null);
+  const [nodeInvitation, setNodeInvitation] = useState<LocalNodeInvitation | null>(null);
+  const [localNodes, setLocalNodes] = useState<LocalNodeRow[]>([]);
+  const [previewCodeRenderId, setPreviewCodeRenderId] = useState<string | null>(null);
 
   const refresh = async () => {
     const generation = ++refreshGeneration.current;
@@ -104,14 +250,36 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     if (!alive.current || generation !== refreshGeneration.current) return;
     setRuntime(next);
   };
+  useEffect(() => { projectMediaChangedRef.current = onProjectMediaChanged; }, [onProjectMediaChanged]);
+  useEffect(() => { useCodeRenderOutputRef.current = onUseCodeRenderOutput; }, [onUseCodeRenderOutput]);
+  const refreshNodes = async () => {
+    const result = await (await apiRequest("GET", "/api/cut/nodes")).json() as { nodes: LocalNodeRow[] };
+    if (alive.current) setLocalNodes(result.nodes);
+  };
 
   useEffect(() => {
     alive.current = true;
-    setRuntime(null); setMessage("");
+    completedCodeRenders.current.clear();
+    setRuntime(null); setMessage(""); setNodeInvitation(null); setPreviewCodeRenderId(null);
     onUnsavedChange?.(false);
-    void refresh().catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
+    void Promise.all([refresh(), refreshNodes()]).catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Creative runtime could not load"); });
     return () => { alive.current = false; ++refreshGeneration.current; };
   }, [project.id]);
+  // A local runner completes out of band. Poll only while a durable request is
+  // active, then refresh the outer project once a reusable still/video arrives
+  // in its project media library. A frame sequence stays a downloadable sealed
+  // ZIP artifact and is not falsely presented as timeline media.
+  useEffect(() => {
+    const codeRenders = runtime?.codeRenders ?? [];
+    for (const job of codeRenders) {
+      if (job.state !== "done" || !job.artifactAssetId || (job.mode !== "video" && job.mode !== "still" && job.mode !== "audio") || completedCodeRenders.current.has(job.id)) continue;
+      completedCodeRenders.current.add(job.id);
+      projectMediaChangedRef.current?.();
+    }
+    if (!codeRenders.some((job) => job.state === "queued" || job.state === "running")) return;
+    const timer = window.setTimeout(() => { void refresh().catch((error) => { if (alive.current) setMessage(error instanceof Error ? error.message : "Local render status could not refresh"); }); }, 5_000);
+    return () => window.clearTimeout(timer);
+  }, [project.id, runtime?.codeRenders]);
   useEffect(() => {
     setCodeSourceAssetId((current) => current || media.find((item) => item.mediaKind === "code_source")?.assetId || "");
   }, [media]);
@@ -120,6 +288,16 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   // media descriptor route returns JSON, not a font, and failures were hidden).
   const waitingJobs = useMemo(() => runtime?.jobs.filter((job) => job.state === "provider_pending").length ?? 0, [runtime]);
   const hasRenderedAnimationLayers = useMemo(() => runtime?.compositions.some((composition) => composition.manifest.layers.some((layer) => layer.kind === "lottie" || layer.kind === "rive")) ?? false, [runtime]);
+  const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured";
+  const useCodeRenderOutput = (job: CodeRenderRow) => {
+    const output = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
+    if (!output) {
+      projectMediaChangedRef.current?.();
+      setMessage("The render is syncing into this project's private media library");
+      return;
+    }
+    useCodeRenderOutputRef.current?.(output);
+  };
 
   const act = async (key: string, action: () => Promise<void>) => {
     if (actionPending.current || !alive.current) return;
@@ -190,11 +368,59 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   const createCodeComposition = () => act("composition:code", async () => {
     if (sourceDraftDirty(sourceDraftRef.current)) throw new Error("Save or discard your source draft before registering its saved package.");
     if (!codeSourceAssetId || !codeLockfileAssetId) throw new Error("Attach a ZIP source capsule and a pinned package lockfile first");
-    const manifest = { ...motionTemplate(project, "kinetic"), name: codeName.trim() };
-    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 268_435_456 };
-    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
+    const editing = editingCodeCompositionId ? runtime?.compositions.find((composition) => composition.id === editingCodeCompositionId && composition.mode === "sandboxed_tsx") : null;
+    if (editingCodeCompositionId && !editing) throw new Error("The composition changed elsewhere. Reload it before saving a new revision.");
+    const manifest = editing?.manifest ?? codeCompositionManifest(codeName.trim(), project.duration);
+    let inputContract: CutCodeInputContract | null = null;
+    if (codeInputContractJson.trim()) {
+      try { inputContract = cutCodeInputContractSchema.parse(JSON.parse(codeInputContractJson)); }
+      catch (error) { throw new Error(error instanceof Error ? `Input contract: ${error.message}` : "Input contract must be valid JSON"); }
+    }
+    const codeCapsule: CutCodeCapsule = { version: 1, entrypoint: codeEntrypoint.trim(), sourceAssetId: codeSourceAssetId, lockfileAssetId: codeLockfileAssetId, runtime: "isolated_node", networkPolicy: "deny", inputContract, maximumCpuMs: 10_000, maximumMemoryMb: 512, maximumOutputBytes: 67_108_864 };
+    if (editing) {
+      await apiRequest("PUT", `/api/cut/projects/${project.id}/compositions/${editing.id}`, { name: codeName.trim(), mode: "sandboxed_tsx", manifest, codeCapsule }, { "If-Match": String(editing.revision) });
+    } else {
+      await apiRequest("POST", `/api/cut/projects/${project.id}/compositions`, { name: manifest.name, mode: "sandboxed_tsx", manifest, codeCapsule });
+    }
     await refresh();
-    setMessage("Pinned code composition saved. The isolated executor still needs implementation and qualification; adding a provider URL alone does not enable execution.");
+    setEditingCodeCompositionId(null);
+    setMessage(editing ? "New pinned source revision saved. Existing render receipts remain immutable; future local jobs use this revision." : "Pinned code composition saved. Pair a trusted local node before queueing a bounded isolated render.");
+  });
+
+  const createNodeInvitation = () => act("node:pair", async () => {
+    const invitation = await (await apiRequest("POST", "/api/cut/nodes/invitations", {})).json() as LocalNodeInvitation;
+    setNodeInvitation(invitation);
+    setMessage("One-time local-node pairing code created. It expires in 15 minutes and is shown only here.");
+  });
+
+  const revokeNode = (node: LocalNodeRow) => act(`node:revoke:${node.id}`, async () => {
+    await apiRequest("DELETE", `/api/cut/nodes/${node.id}`);
+    await refreshNodes(); setMessage(`${node.name} was revoked. Its local credential can no longer claim work.`);
+  });
+
+  const queueCodeRender = (composition: CompositionRow, request: CutCodeRenderRequest) => act(`code-render:${composition.id}`, async () => {
+    const idempotencyKey = `code.${composition.id}.${crypto.randomUUID()}`;
+    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/code-renders`, {
+      idempotencyKey,
+      request,
+    });
+    await refresh(); setMessage(`Bounded local ${request.mode === "sequence" ? "frame-sequence" : request.mode} render queued. Run \`creativesos node work\` on a paired, ready machine to execute it.`);
+  });
+  const queueCodeRenderBatch = (composition: CompositionRow, requests: CutCodeRenderRequest[]) => act(`code-render-batch:${composition.id}`, async () => {
+    const idempotencyKey = `code-batch.${composition.id}.${crypto.randomUUID()}`;
+    await apiRequest("POST", `/api/cut/projects/${project.id}/compositions/${composition.id}/code-render-batches`, {
+      idempotencyKey,
+      requests,
+    });
+    await refresh(); setMessage(`${requests.length} bounded local ${requests[0].mode === "sequence" ? "frame-sequence" : requests[0].mode} renders queued. Each paired node claims only one private job at a time.`);
+  });
+  const cancelCodeRender = (job: CodeRenderRow) => act(`code-render:cancel:${job.id}`, async () => {
+    await apiRequest("DELETE", `/api/cut/projects/${project.id}/code-renders/${job.id}`);
+    await refresh(); setMessage(job.state === "running" ? "Cancellation requested. The paired node will stop this isolated render on its next heartbeat." : "Queued local render cancelled before a paired node claimed it.");
+  });
+  const retryCodeRender = (job: CodeRenderRow) => act(`code-render:retry:${job.id}`, async () => {
+    await apiRequest("POST", `/api/cut/projects/${project.id}/code-renders/${job.id}/retry`, {});
+    await refresh(); setMessage("Failed local render requeued with its original pinned source, lockfile, and bounded settings.");
   });
 
   const loadSource = () => {
@@ -205,6 +431,17 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
       changeSource({ ...result, saved: sourceDraftIdentity(result) }, "reset");
       setMessage("Private source opened as text. Nothing was executed.");
     });
+  };
+  const beginCodeCompositionRevision = (composition: CompositionRow) => {
+    if (!composition.codeCapsule || sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and revise this pinned composition?")) return;
+    setEditingCodeCompositionId(composition.id);
+    setCodeName(composition.name);
+    setCodeEntrypoint(composition.codeCapsule.entrypoint);
+    setCodeSourceAssetId(composition.codeCapsule.sourceAssetId);
+    setCodeLockfileAssetId(composition.codeCapsule.lockfileAssetId);
+    setCodeInputContractJson(composition.codeCapsule.inputContract ? JSON.stringify(composition.codeCapsule.inputContract, null, 2) : "");
+    changeSource(null, "reset");
+    setMessage("Composition selected for a new revision. Open its private source ZIP, edit and save a matching source/lockfile pair, then save the revision.");
   };
   const saveSource = (withLockfile = false) => act("code:save", async () => {
     const draft = sourceDraftRef.current;
@@ -218,8 +455,22 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     setCodeSourceAssetId(result.assetId); setCodeEntrypoint(draft.entrypoint);
     // A previous source's lockfile must never remain selected for a new source.
     setCodeLockfileAssetId(result.lockfileAssetId ?? "");
-    setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Public execution remains unavailable.");
+    setMessage(result.lockfileAssetId ? "New private source and matching lockfile saved and selected. You can register this code composition, then run it only through a paired trusted local node." : "New private source ZIP saved and selected. Attach its matching lockfile before saving a code composition. Hosted arbitrary-code execution remains unavailable.");
   });
+  const importSourcePackage = () => {
+    if (!sourcePackageFile || actionPending.current) return;
+    if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Importing a package closes the unsaved text draft. The draft is not saved. Continue?")) return;
+    void act("code:import", async () => {
+      if (!/\.zip$/i.test(sourcePackageFile.name)) throw new Error("Choose a ZIP source capsule");
+      const result = await onSaveCodeSource(sourcePackageFile, sourceLockfileFile ?? undefined);
+      if (!alive.current) return;
+      changeSource(null, "reset");
+      setCodeSourceAssetId(result.assetId);
+      setCodeLockfileAssetId(result.lockfileAssetId ?? "");
+      setSourcePackageFile(null); setSourceLockfileFile(null);
+      setMessage(result.lockfileAssetId ? "Private binary-capable source package and matching lockfile imported and selected. Its code remains isolated until a paired local node claims a render." : "Private source package imported and selected. Attach its matching lockfile before registering the composition.");
+    });
+  };
 
   const saveBrief = () => act("brief", async () => {
     briefs.current.beginSave(briefRow);
@@ -298,18 +549,37 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
         <p className="text-xs leading-5 text-zinc-400">Start from an editable composition. Layers, keyframes, transitions, blend modes, effects, data bindings, 3D/Lottie/Rive descriptors, fonts, and audio-reactive signals remain first-class project data.</p>
         <div className="grid grid-cols-3 gap-2">{([['kinetic','Kinetic'],['lower_third','Lower third'],['product','Product']] as const).map(([id,label]) => <Button key={id} size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createComposition(id)}>{busy === `composition:${id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : label}</Button>)}</div>
         <div className="rounded-xl border border-zinc-800 bg-black p-3" aria-label="Code composition package">
-          <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. CreativesOS stores and validates it now. Public code rendering is not available yet; the isolated runtime still needs production integration and qualification.</p></div>
+          <div><p className="text-[10px] font-bold">Pinned code composition</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">Package TypeScript/TSX as a ZIP with an exact lockfile. A paired local node runs it only in the isolated no-network runtime; CreativesOS never sends it to the normal render worker.</p></div>
+          <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-bold text-zinc-200">Trusted local node</p><p className="mt-1 text-[9px] leading-4 text-zinc-500">Pair your own workstation, then run one queued job with <span className="font-mono text-zinc-300">creativesos node work</span> or explicitly keep its local queue available with <span className="font-mono text-zinc-300">creativesos node serve</span>. Fresh heartbeats are required; source code is single-use and never stored in the browser.</p></div><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void createNodeInvitation()}>{busy === "node:pair" ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><KeyRound className="mr-1 h-3.5 w-3.5"/>Pair node</>}</Button></div>{nodeInvitation && <div className="mt-3 rounded-md border border-zinc-700 bg-black p-2"><p className="select-all break-all font-mono text-[10px] text-[#1d9bf0]">{nodeInvitation.token}</p><p className="mt-1 text-[9px] text-zinc-500">On the trusted machine: <span className="font-mono text-zinc-300">creativesos node connect &lt;this-code&gt;</span> · expires {new Date(nodeInvitation.expiresAt).toLocaleTimeString()}</p></div>}<div className="mt-3 space-y-2">{localNodes.length === 0 ? <p className="text-[9px] text-zinc-600">No paired local node yet.</p> : localNodes.map((node) => <div key={node.id} className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-black px-2 py-2"><div className="min-w-0"><p className="truncate text-[10px] font-bold">{node.name}</p><p className="text-[9px] text-zinc-500">{node.status} · {node.capabilities.operatingSystem} · {node.capabilities.cpuCores} cores · {node.capabilities.isolatedCode ? "isolated runtime" : "Docker unavailable"}{node.lastSeenAt ? ` · seen ${new Date(node.lastSeenAt).toLocaleTimeString()}` : ""}</p></div>{node.status !== "revoked" && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { if (window.confirm(`Revoke ${node.name}? It will no longer be able to claim local renders.`)) void revokeNode(node); }}>Revoke</Button>}</div>)}</div></div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
             if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start a new package?")) return;
             changeSource({ files: starterCutSource(), entrypoint: "src/index.tsx", saved: null }, "reset");
-          }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
+            setCodeInputContractJson(JSON.stringify({ version: 1, fields: { headline: { type: "string", required: true, maxLength: 80 }, accent: { type: "string", default: "#1d9bf0", pattern: "^#[0-9a-fA-F]{6}$" } } }, null, 2));
+          }}>New source package</Button><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => {
+            if (sourceDraftDirty(sourceDraftRef.current) && !window.confirm("Discard the unsaved source draft and start the 3D SVG template?")) return;
+            changeSource({ files: starterCutSource("three_svg"), entrypoint: "src/index.tsx", saved: null }, "reset");
+            setCodeInputContractJson(JSON.stringify({ version: 1, fields: { rotationSpeed: { type: "number", default: 1, minimum: 0.1, maximum: 4 }, accent: { type: "string", default: "#1d9bf0", pattern: "^#[0-9a-fA-F]{6}$" } } }, null, 2));
+          }}>New 3D SVG package</Button><Button size="sm" variant="outline" disabled={Boolean(busy) || !codeSourceAssetId || !codeEntrypoint} onClick={loadSource}>Edit selected source ZIP</Button></div>
+          <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2" aria-label="Import private source package"><p className="text-[10px] font-bold text-zinc-200">Import private source package</p><p className="mt-1 text-[9px] leading-4 text-zinc-500">Use this for a prebuilt ZIP with binary assets such as private audio or video. The text editor intentionally does not open or alter binary files; the paired local runtime receives the sealed original package only.</p><input ref={sourcePackageInput} aria-label="Choose source ZIP" className="sr-only" type="file" accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip" onChange={(event) => { setSourcePackageFile(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = ""; }}/><input ref={sourceLockfileInput} aria-label="Choose source lockfile" className="sr-only" type="file" accept=".json,.yaml,.yml,.lock,text/plain,application/json" onChange={(event) => { setSourceLockfileFile(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = ""; }}/><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => sourcePackageInput.current?.click()}>{sourcePackageFile ? "Change ZIP" : "Choose ZIP"}</Button><Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => sourceLockfileInput.current?.click()}>{sourceLockfileFile ? "Change lockfile" : "Choose lockfile"}</Button><Button size="sm" disabled={Boolean(busy) || !sourcePackageFile} onClick={importSourcePackage}>Import package</Button></div><p className="mt-2 truncate text-[9px] text-zinc-500">{sourcePackageFile ? `ZIP: ${sourcePackageFile.name}` : "No ZIP selected"}{sourceLockfileFile ? ` · lockfile: ${sourceLockfileFile.name}` : " · lockfile optional until composition registration"}</p></div>
           {sourceDraft && <CutStudioSourceEditor draft={sourceDraft} busy={Boolean(busy)} selectedPath={sourceViewPath} onSelectPath={setSourceViewPath} canUndo={sourceHistory.current.canUndo} canRedo={sourceHistory.current.canRedo} onUndo={() => restoreSource("undo")} onRedo={() => restoreSource("redo")} onChange={changeSource} onSave={(withLockfile) => void saveSource(withLockfile)}/>}
           <input aria-label="Code composition name" className={field} value={codeName} onChange={(event) => setCodeName(event.target.value)}/>
           <input aria-label="Code composition entrypoint" className={field} value={codeEntrypoint} onChange={(event) => setCodeEntrypoint(event.target.value)} placeholder="src/index.tsx"/>
+          <label className="mt-2 block text-[9px] text-zinc-500">Optional typed input contract JSON<textarea aria-label="Code composition input contract" className={`${field} min-h-20 resize-y font-mono`} value={codeInputContractJson} onChange={(event) => setCodeInputContractJson(event.target.value)} placeholder={'{"version":1,"fields":{"headline":{"type":"string","required":true,"maxLength":80}}}'}/></label>
           <div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Code source capsule" className={field} disabled={Boolean(busy)} value={codeSourceAssetId} onChange={(event) => { setCodeSourceAssetId(event.target.value); setCodeLockfileAssetId(""); }}><option value="">ZIP source capsule</option>{media.filter((item) => item.mediaKind === "code_source").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select><select aria-label="Code dependency lockfile" className={field} disabled={Boolean(busy)} value={codeLockfileAssetId} onChange={(event) => setCodeLockfileAssetId(event.target.value)}><option value="">Dependency lockfile</option>{media.filter((item) => item.mediaKind === "code_lockfile").map((item) => <option key={item.id} value={item.assetId}>{item.name}</option>)}</select></div>
-          <Button className="mt-2 w-full" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}Save isolated composition</Button>
+          <div className="mt-2 flex gap-2"><Button className="flex-1" size="sm" variant="outline" disabled={Boolean(busy) || sourceDraftDirty(sourceDraft) || !codeName.trim() || !codeSourceAssetId || !codeLockfileAssetId} onClick={() => void createCodeComposition()}>{busy === "composition:code" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin"/> : <Boxes className="mr-1 h-3.5 w-3.5"/>}{editingCodeCompositionId ? "Save source revision" : "Save isolated composition"}</Button>{editingCodeCompositionId && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { setEditingCodeCompositionId(null); setMessage("Composition revision cancelled. No source or render changed."); }}>Cancel revision</Button>}</div>
         </div>
-        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" && <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button>}</div>{composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p>Package saved; isolated code execution still requires implementation and qualification.</p></div>}</div>)}
+        {runtime.compositions.map((composition) => <div key={composition.id} aria-label={`Composition ${composition.name}`} className="rounded-xl border border-zinc-800 bg-black p-3">
+          <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold">{composition.name}</p><p className="mt-1 text-[10px] text-zinc-600">{composition.mode === "sandboxed_tsx" ? "isolated TSX" : `${composition.manifest.layers.length} layers`} · {composition.manifest.fps} fps · revision {composition.revision}</p></div>{composition.mode === "declarative" ? <Button size="sm" disabled={Boolean(busy) || compositions.current.has(composition.id)} onClick={() => void applyComposition(composition)}>{busy === `apply:${composition.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <><Play className="mr-1 h-3.5 w-3.5"/>Apply</>}</Button> : <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => beginCodeCompositionRevision(composition)}>Revise source</Button>}</div>
+          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest}/><CompositionAuthoringControls composition={composition} assets={media} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)} onQueueBatch={(requests) => void queueCodeRenderBatch(composition, requests)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
+            const reusableOutput = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
+            const isCompositedOutput = job.mode === "video" || job.mode === "still" || job.mode === "audio";
+            const isImageOutput = job.mode === "still" || job.format === "gif";
+            const previewUrl = reusableOutput ? `/api/cut/projects/${encodeURIComponent(project.id)}/media-library/${encodeURIComponent(reusableOutput.id)}/media-file` : null;
+            const previewing = previewCodeRenderId === job.id;
+            const cancellationPending = job.state === "running" && Boolean(job.cancellationRequestedAt);
+            return <div key={job.id} className="mt-2 rounded-md border border-zinc-700 bg-black px-2 py-1.5"><div className="flex items-center gap-2"><span className="min-w-0 flex-1"><span className="block truncate font-medium">{job.mode} · {job.format} · {cancellationPending ? "cancelling" : job.state}</span><span className="block truncate text-[9px] text-zinc-500">{job.detail}{job.state === "running" ? ` · ${Math.round(job.progress * 100)}%` : ""}</span></span>{job.state === "queued" && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void cancelCodeRender(job)}>Cancel</Button>}{job.state === "running" && !cancellationPending && <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => void cancelCodeRender(job)}>Cancel</Button>}{cancellationPending && <span className="text-[9px] text-amber-300">Stopping node…</span>}{job.state === "error" && <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void retryCodeRender(job)}>Retry</Button>}{job.state === "done" && isCompositedOutput && <Button size="sm" variant="outline" disabled={Boolean(busy) || !reusableOutput} onClick={() => setPreviewCodeRenderId((current) => current === job.id ? null : job.id)}>{previewing ? "Hide preview" : reusableOutput ? "Preview" : "Syncing media…"}</Button>}{job.state === "done" && isCompositedOutput && <Button size="sm" variant="outline" disabled={Boolean(busy) || !reusableOutput} onClick={() => useCodeRenderOutput(job)}>{reusableOutput ? isImageOutput ? "Add as graphic" : "Add to timeline" : "Syncing media…"}</Button>}{job.state === "done" && job.artifactAssetId && <Button size="sm" variant="outline" asChild><a href={`/api/cut/jobs/${encodeURIComponent(job.id)}/media-file`} target="_blank" rel="noreferrer"><Download className="mr-1 h-3.5 w-3.5"/>Open output</a></Button>}</div>{previewing && reusableOutput && previewUrl && <div className="mt-2 overflow-hidden rounded border border-zinc-800 bg-zinc-950">{isImageOutput ? <img aria-label={`Preview ${reusableOutput.name}`} className="max-h-72 w-full object-contain" src={previewUrl} alt={`Rendered image: ${reusableOutput.name}`}/> : job.mode === "audio" ? <audio aria-label={`Preview ${reusableOutput.name}`} className="w-full" src={previewUrl} controls preload="metadata"/> : <video aria-label={`Preview ${reusableOutput.name}`} className="max-h-72 w-full bg-black object-contain" src={previewUrl} controls muted preload="metadata"/>}</div>}</div>;
+          })}</div>}
+        </div>)}
         {hasRenderedAnimationLayers && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[10px] leading-4 text-emerald-300">Lottie and Rive layers are included in final exports through the isolated animation renderer. External network access stays blocked during rendering.</p>}
         <div className="rounded-lg bg-black px-3 py-2 text-[10px] text-zinc-500">Declarative runtime: {runtime.compositionRuntime.declarative} · code packaging: {runtime.compositionRuntime.packageAuthoring} · execution: {runtime.compositionRuntime.isolatedCode} · network: {runtime.compositionRuntime.networkPolicy}</div>
       </div> : section === "cinema" ? <div className="mt-4 space-y-3">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertCutSourceTextBudget, buildCutSourceZip, starterCutSource, validateCutSourceFiles } from "../shared/cut-code-authoring";
-import { readCutCodeSourceFiles, validateCutCodeSourceArchive } from "../server/cut-code-package";
+import { assertCutCodeCapsuleMediaFiles, readCutCodeSourceFiles, validateCutCodeSourceArchive } from "../server/cut-code-package";
 
 describe("data-only source authoring", () => {
   it("round trips all text through the authoritative archive reader and CRC checks", () => {
@@ -18,6 +18,22 @@ describe("data-only source authoring", () => {
     files[1].content = "throw new Error('never execute source while authoring')";
     files[0].content = JSON.stringify({ scripts: { postinstall: "exit 99" } });
     expect(readCutCodeSourceFiles(Buffer.from(buildCutSourceZip(files, "src/index.tsx")), "src/index.tsx")).toHaveLength(3);
+  });
+  it("requires declared private soundtracks to exist in the sealed source package before queueing", () => {
+    const sealedArchiveIndex = ["package.json", "src/index.tsx", "audio/bed.mp3"];
+    expect(() => assertCutCodeCapsuleMediaFiles(sealedArchiveIndex, ["audio/bed.mp3"])).not.toThrow();
+    expect(() => assertCutCodeCapsuleMediaFiles(sealedArchiveIndex, ["audio/missing.mp3"])).toThrow(/missing from the source package/i);
+  });
+  it("offers an inert, pinned Three SVG starter that is ready for a matching lockfile", () => {
+    const files = starterCutSource("three_svg");
+    const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.content);
+    expect(manifest.dependencies).toEqual({ react: "18.3.1", three: "0.185.1" });
+    expect(files.find((file) => file.path === "src/index.tsx")?.content).toContain("SvgScene");
+    expect(() => buildCutSourceZip(files, "src/index.tsx")).not.toThrow();
+  });
+  it("ships typed inputs in the motion and Three starters", () => {
+    expect(starterCutSource().find((file) => file.path === "src/index.tsx")?.content).toContain("useInputs<Inputs>()");
+    expect(starterCutSource("three_svg").find((file) => file.path === "src/index.tsx")?.content).toContain("rotationSpeed");
   });
   it("accepts non-JSX TypeScript entrypoints and enforces typing budgets independently of syntax", () => {
     const files = starterCutSource().map((file) => file.path === "src/index.tsx" ? { path: "src/index.ts", content: "export default () => null;" } : file);

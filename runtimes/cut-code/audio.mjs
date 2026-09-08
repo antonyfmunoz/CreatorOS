@@ -13,11 +13,17 @@ export function audioPlan(request) {
     const end = Math.min(track.endFrame, output.end + 1);
     if (end <= start) return [];
     if (track.sourceLoopSeconds !== undefined) loopAudioSamples(track.sourceLoopSeconds);
-    const sourceClock = track.sourceStartSeconds + (start - track.startFrame) * track.speed / request.fps;
+    if (track.reverse && track.sourceLoopSeconds !== undefined) throw new Error('Reverse soundtracks cannot repeat; split the interval explicitly.');
+    const elapsed = (start - track.startFrame) * track.speed / request.fps;
+    const sourceClock = track.sourceStartSeconds + (track.reverse ? -elapsed : elapsed);
     const sourceStart = track.sourceLoopSeconds === undefined ? sourceClock : videoSourceTime(sourceClock, track.sourceLoopSeconds, true);
-    const sourceDuration = Math.min((end - start) * track.speed / request.fps, track.sourceEndSeconds === undefined || track.sourceLoopSeconds !== undefined ? Infinity : track.sourceEndSeconds - sourceStart);
+    const requestedDuration = (end - start) * track.speed / request.fps;
+    const sourceDuration = track.reverse
+      ? Math.min(requestedDuration, sourceStart)
+      : Math.min(requestedDuration, track.sourceEndSeconds === undefined || track.sourceLoopSeconds !== undefined ? Infinity : track.sourceEndSeconds - sourceStart);
+    if (track.reverse && sourceDuration + 1e-9 < requestedDuration) throw new Error('Reverse soundtrack source ends before the requested interval.');
     if (sourceDuration <= 0) return [];
-    return [{ ...track, localStartFrame: start - track.startFrame, sourceStart, sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
+    return [{ ...track, localStartFrame: start - track.startFrame, sourceStart: track.reverse ? sourceStart - sourceDuration : sourceStart, ...(track.reverse ? { sourceEnd: sourceStart } : {}), sourceDuration, duration: (end - start) / request.fps, delaySamples: Math.round((start - output.start) * 48000 / request.fps) }];
   });
   assertLoopAudioBudget(plan);
   return plan;
@@ -70,7 +76,10 @@ export function audioTrackFilters(track, fps) {
   // Normal-speed source must retain its original samples and loop boundaries;
   // use pitch-preserving time stretch only when time actually changes.
   const retime = track.speed === 1 ? '' : `atempo=${track.speed},`;
-  return `${sourceClock}${loop}atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,${retime}${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
+  const trim = track.reverse
+    ? `atrim=start=${track.sourceStart}:end=${track.sourceEnd},asetpts=PTS-STARTPTS,areverse,`
+    : `atrim=start=${track.sourceStart}:duration=${track.sourceDuration},asetpts=PTS-STARTPTS,`;
+  return `${sourceClock}${loop}${trim}${retime}${gain},apad,atrim=duration=${track.duration},adelay=${track.delaySamples}S:all=1`;
 }
 
 export function soundtrackInputOptions(file) {
@@ -94,7 +103,10 @@ export function validateSoundtrackProbe(probe, track) {
     loopAudioSamples(track.sourceLoopSeconds);
     if (track.sourceTimebase !== 'container' || !Number.isFinite(track.sourceStart) || track.sourceStart < 0 || track.sourceStart >= track.sourceLoopSeconds || !Number.isFinite(track.sourceEndSeconds) || track.sourceEndSeconds <= 0 || track.sourceEndSeconds > track.sourceLoopSeconds) throw new Error('Invalid private loop source bounds.');
   }
-  if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || (track.sourceLoopSeconds === undefined && track.sourceStart + track.sourceDuration > seconds + .01)) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
+  const sourceBoundsValid = track.reverse
+    ? Number.isFinite(track.sourceEnd) && track.sourceEnd > track.sourceStart && track.sourceEnd <= seconds + .01
+    : track.sourceStart + track.sourceDuration <= seconds + .01;
+  if (!selected || streams.length > 8 || !Number.isFinite(Number(selected.sample_rate)) || Number(selected.sample_rate) < 1 || Number(selected.sample_rate) > 192000 || !Number.isInteger(Number(selected.channels)) || Number(selected.channels) < 1 || Number(selected.channels) > 8 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 120 || (track.sourceLoopSeconds === undefined && !sourceBoundsValid)) throw new Error('The selected private audio stream exceeds its decode or source timing limits.');
   if (track.sourceEndSeconds !== undefined && track.sourceEndSeconds > seconds + .01) throw new Error('Private source sound tail exceeds the selected stream.');
   return selected;
 }

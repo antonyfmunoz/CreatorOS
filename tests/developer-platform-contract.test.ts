@@ -20,7 +20,7 @@ describe("developer platform contract", () => {
     expect(
       createDeveloperApiKeySchema.safeParse({
         name: "Analytics production",
-        scopes: ["profile:read", "analytics:read"],
+        scopes: ["profile:read", "analytics:read", "cut:read"],
       }).success,
     ).toBe(true);
     expect(
@@ -34,6 +34,12 @@ describe("developer platform contract", () => {
   it("requires OAuth apps to declare redirects and bounded scopes", () => {
     expect(createDeveloperOAuthAppSchema.safeParse({ name: "Reporting app", redirectUris: ["https://app.example.com/callback"], scopes: ["profile:read"] }).success).toBe(true);
     expect(createDeveloperOAuthAppSchema.safeParse({ name: "Reporting app", redirectUris: [], scopes: ["admin:*"] }).success).toBe(false);
+  });
+  it("keeps local-node inspection explicitly read-only", () => {
+    expect(runtimeSource).toContain('"/api/v1/cut/projects"');
+    expect(runtimeSource).toContain('"/api/v1/cut/local-nodes"');
+    expect(runtimeSource).toContain('requireDeveloperScope("cut:read")');
+    expect(runtimeSource).not.toContain("deviceSecretHash: cutStudioLocalNodes");
   });
   it("requires reviewable public app policy links", () => {
     expect(developerAppListingSchema.safeParse({ description: "A sufficiently detailed application description.", homepageUrl: "https://app.example.com", privacyUrl: "https://app.example.com/privacy", termsUrl: "https://app.example.com/terms" }).success).toBe(true);

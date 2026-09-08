@@ -8,6 +8,14 @@ describe("CreativesOS TypeScript SDK", () => {
     expect((await client.assets({ limit: 5, cursor: "opaque cursor" })).nextCursor).toBe("opaque");
     expect(requested).toContain("cursor=opaque+cursor");
   });
+  it("exposes the read-only CutStudio API surface", async () => {
+    let requested = "";
+    const client = new CreativesOSClient({ accessToken: "cos_test", baseUrl: "https://example.com/api/v1", fetch: async (input) => { requested = String(input); return new Response(JSON.stringify({ data: [], nextCursor: null }), { status: 200, headers: { "content-type": "application/json" } }); } });
+    await client.cutProjects({ limit: 10 });
+    expect(requested).toBe("https://example.com/api/v1/cut/projects?limit=10");
+    await client.cutLocalNodes();
+    expect(requested).toBe("https://example.com/api/v1/cut/local-nodes");
+  });
   it("throws typed errors and verifies timestamp-bound webhook bodies", async () => {
     const client = new CreativesOSClient({ accessToken: "bad", fetch: async () => new Response(JSON.stringify({ error: { code: "invalid_api_key", message: "No" } }), { status: 401, headers: { "x-request-id": "request-1" } }) });
     await expect(client.profile()).rejects.toMatchObject({ status: 401, code: "invalid_api_key", requestId: "request-1" });

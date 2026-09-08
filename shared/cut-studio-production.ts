@@ -6,6 +6,7 @@ import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text
 import { cutLayerMaskAsset } from "./cut-mask";
 import { cutImageFit } from "./cut-image-fit";
 import { CUT_GRAPHIC_CURVE_PROPERTIES, cutGraphicCurvesSchema, type CutGraphicCurves } from "./cut-graphic-curves";
+import { cutCodeInputContractSchema } from "./cut-code-render";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -162,9 +163,13 @@ export const cutCodeCapsuleSchema = z.object({
   lockfileAssetId: z.string().uuid(),
   runtime: z.literal("isolated_node"),
   networkPolicy: z.literal("deny"),
+  inputContract: cutCodeInputContractSchema.nullable().default(null),
   maximumCpuMs: z.number().int().min(100).max(120_000).default(10_000),
-  maximumMemoryMb: z.number().int().min(128).max(4_096).default(512),
-  maximumOutputBytes: z.number().int().min(1_024).max(1_073_741_824).default(268_435_456),
+  // The paired local runtime is isolated at 128 MiB–2 GiB. Never persist a
+  // capsule entitlement it cannot actually enforce at execution time.
+  maximumMemoryMb: z.number().int().min(128).max(2_048).default(512),
+  // The paired local runtime rejects outputs above its fixed artifact ceiling.
+  maximumOutputBytes: z.number().int().min(1_024).max(67_108_864).default(67_108_864),
 });
 
 export const cutProductionBriefSchema = z.object({
@@ -557,6 +562,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
       end: sourceStart + duration,
       label: layer.name,
       assetId: layer.assetId,
+      ...(layer.kind === "video" && cutLayerMaskAsset(layer) ? { maskAssetId: cutLayerMaskAsset(layer)! } : {}),
       track: `${trackPrefix}${trackIndex}`,
       timelineStart: layer.from / fps,
       volume: layer.volume,

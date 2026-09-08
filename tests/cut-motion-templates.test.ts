@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { motionTemplate } from '../client/src/lib/cut-motion-templates';
+import { codeCompositionManifest, motionTemplate } from '../client/src/lib/cut-motion-templates';
 import { cutCompositionManifestSchema } from '../shared/cut-studio-production';
 
 describe('motion starter layer-relative timing', () => {
@@ -20,4 +20,15 @@ describe('motion starter layer-relative timing', () => {
       }
     });
   }
+});
+
+describe('sandboxed code composition starter', () => {
+  it('is valid and deliberately has no implicit project-media dependency', () => {
+    const manifest = codeCompositionManifest('Private code render', 5);
+    expect(cutCompositionManifestSchema.safeParse(manifest).success).toBe(true);
+    expect(manifest.layers).toEqual([]);
+    expect(manifest.fonts).toEqual([]);
+    expect(manifest.audioReactiveSignals).toEqual([]);
+    expect(manifest.metadata).toMatchObject({ runtime: 'isolated_node', sourceModel: 'self_contained' });
+  });
 });

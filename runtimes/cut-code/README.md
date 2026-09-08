@@ -1,9 +1,11 @@
-# CutStudio code-rendering prototype
+# CutStudio local code-rendering runtime
 
 This is a separate native, clean-room React/TSX motion-graphics runtime. It is
-**not wired to public application jobs, approved for multi-tenant production,
-or a claim of Remotion parity**. Application readiness must continue to report
-executable code as not implemented until its end-to-end dispatcher is qualified.
+wired only through an explicitly paired owner-controlled local node: a bounded
+job is durable, the local CLI or desktop action claims it, and the isolated
+container returns a sealed private artifact. It is **not** a managed
+multi-tenant execution service or a claim of Remotion parity. The normal web
+process and trusted cloud render worker never execute a source capsule.
 
 The [lean Noble candidate](../../docs/releases/2026-09-02-cut-code-noble-candidate.md)
 passed the full local artifact/isolation suite and a zero HIGH/CRITICAL image
@@ -33,6 +35,18 @@ production topology approval or enable public code execution.
   WebGL/WebGPU compatibility is not qualified by the SVG tests. SVGRenderer does
   not support textures, shadows or advanced shading; it is not a replacement
   for those capabilities. See the [official renderer limitations](https://threejs.org/docs/pages/SVGRenderer.html).
+  `SvgScene` is the explicit frame-capture bridge: it accepts a Three `Scene`
+  and `Camera`, renders their current frame to a bounded SVG surface, and is
+  captured by the same isolated browser path as the rest of a composition.
+  Capture is keyed to the composition frame even when authors retain their
+  Three scene and camera with `useMemo`. The qualified fixture proves that
+  frame-driven geometry changes reach PNG pixels in one live frame sequence,
+  not merely in separate still renders.
+- CutStudio exposes a **New 3D SVG package** starter for this approved surface.
+  It declares only the exact React 18.3.1 and Three 0.185.1 pins, so saving it
+  with the matching lockfile remains a closed dependency graph. It is a
+  starting point for editable vector scenes, not a claim of GPU, texture,
+  shader, lighting or arbitrary-addon support.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and
@@ -110,11 +124,13 @@ production topology approval or enable public code execution.
 - `FrameAudio` declares a capsule-root `file` (WAV/MP3/FLAC/Ogg/MP4/WebM)
   inside React. Video exports explicitly enable `compositionAudio: true`.
   `startFrom` uses composition-frame units, `speed` is pitch-preserving in
-  0.5..2, `audioStream` selects 0..7 and `volume` accepts a frame-derived number
+  0.5..2, `reverse` is an explicit non-looping reverse interval, `audioStream` selects 0..7 and `volume` accepts a frame-derived number
   in 0..2. `muted` produces zero gain without restarting the source. Nested
   `Sequence` clocks, ordinary `Repeat`, conditional unmounts and range exports
   follow the actual local frame. Frozen and reverse phases of alternating
-  repeats are silent; reverse-audio synthesis is not implemented.
+  repeats are silent. Reverse audio needs a source clock high enough to cover
+  its bounded interval and cannot be combined with implicit source looping;
+  authors split repeating reverse intervals explicitly.
   Descriptors are collected only after the frame's asynchronous preparation
   settles, then independently validated inside the isolated container. No
   browser audio playback, microphone, external URL or host callback is used.
@@ -208,7 +224,10 @@ production topology approval or enable public code execution.
   field qualification. Encoder vendor identity is not spoofed as Apple's encoder.
 - Optional `audioTracks` on video requests mix up to eight capsule-local
   WAV/MP3/FLAC/Ogg/MP4/WebM files into stereo AAC (MP4) or Opus (WebM). Tracks have a composition start frame,
-  exclusive end frame, source trim in seconds, constant gain and 0.5..2 speed.
+  exclusive end frame, source trim in seconds, constant gain, 0.5..2 speed and
+  an optional non-looping `reverse: true` direction. In reverse mode,
+  `sourceStartSeconds` is the first (later) source moment; the isolated runtime
+  trims the bounded preceding interval then reverses it before retiming.
   Range exports retain original audio timing rather than restarting soundtracks.
   Sources are bounded to 120 seconds, eight channels and 192 kHz; decoder names
   and local input paths are fixed by the runtime. A 0.95 peak limiter protects
@@ -267,7 +286,7 @@ asynchronous state and arbitrary timers are not a reproducibility contract.
 Explicit frame holds coordinate preparation, but cannot make nondeterministic
   source data deterministic or grant external network access. Video codec/VFR
   compatibility beyond the explicitly tested fixtures, protected qualification
-  of the latest automatic `FrameVideo` sound/decoder candidate, reverse sound,
+  of the latest automatic `FrameVideo` sound/decoder candidate,
   exact-candidate fractional-period repeating sound, unbounded audio intervals, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
@@ -282,9 +301,13 @@ inputs, and ordinary external video URLs before a render request is submitted.
 it; `useInputs<YourInputs>()` supplies an author-selected input shape.
 
 Types do **not** validate untrusted JSON, numeric bounds, source files or URLs at
-runtime. Admission, bundling, input/media validation and isolation remain
-mandatory. There is no public npm SDK or general app-side code execution in this
-change, and the declarations are not a Remotion compatibility layer.
+runtime. A pinned CutStudio code composition may additionally carry a small,
+value-only input contract (`string`, finite `number`, or `boolean`, with required
+fields, defaults and bounds). The browser and broker normalize that contract
+before a job is durable; it is not an executable schema language and does not
+replace admission, bundling, input/media validation or isolation. The standalone CLI package deliberately ships only this local runtime
+context and its read-only MCP peer; it is not a public framework SDK, general
+app-side code execution surface, or Remotion compatibility layer.
 
 `npm test` typechecks a valid TSX composition and negative examples using the
 pinned TypeScript compiler. It also compares declaration exports to the actual
@@ -319,7 +342,7 @@ syscall for Chromium's child user-namespace sandbox while keeping **all containe
 capabilities dropped**. It does not grant a host or container capability.
 
 Microsoft describes the base image as testing/development-only. This harness is
-therefore a local qualification boundary, not a public-execution deployment:
+therefore a local-first execution boundary, not a public managed-execution deployment:
 https://playwright.dev/docs/docker. Production needs a reviewed execution image,
 isolated compute/network/IAM, durable dispatch/cancellation, private asset exchange,
 per-tenant cost admission, vulnerability scanning, receipts, recovery and red-team

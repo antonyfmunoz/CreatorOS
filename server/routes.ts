@@ -119,6 +119,7 @@ import { kickAutomationProcessing } from "./automation-engine";
 import { registerRelationshipHubRoutes } from "./relationship-hub-routes";
 import { registerAccountPrivacyRoutes } from "./account-privacy-routes";
 import { registerCutStudioRoutes } from "./cut-studio";
+import { registerCutLocalNodeRoutes } from "./cut-local-nodes";
 import { registerBroadcastStudioRoutes } from "./broadcast-studio";
 import { registerVisionRoutes } from "./vision";
 import { registerUgcRoutes } from "./ugc";
@@ -754,6 +755,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "cut_studio_projects",
       "cut_studio_audio_templates",
       "cut_studio_jobs",
+      "cut_studio_local_nodes",
+      "cut_studio_local_node_invitations",
       "cut_studio_versions",
       "cut_studio_review_links",
       "cut_studio_review_comments",
@@ -863,6 +866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerRelationshipHubRoutes(app);
   registerAccountPrivacyRoutes(app);
   registerCutStudioRoutes(app);
+  registerCutLocalNodeRoutes(app);
   registerBroadcastStudioRoutes(app);
   registerVisionRoutes(app);
   registerUgcRoutes(app);

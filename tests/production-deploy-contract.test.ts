@@ -36,7 +36,7 @@ describe("production deployment contract", () => {
   it("embeds a non-secret exact-source identity into every production image", () => {
     const cleanIndex = deploySource.indexOf("node scripts/assert-clean-source.mjs");
     const archiveIndex = deploySource.indexOf("git archive --format=tar");
-    const fingerprintIndex = deploySource.indexOf("Get-FileHash -LiteralPath $archivePath");
+    const fingerprintIndex = deploySource.indexOf("& node -e \"const { createHash } = require('node:crypto')");
     const deployIndex = deploySource.indexOf("flyctl deploy .");
     expect(deploySource).toContain("Production releases require a clean source worktree");
     expect(cleanIndex).toBeGreaterThan(-1);
@@ -92,6 +92,10 @@ describe("production deployment contract", () => {
     expect(deploySource).toContain("/api/internal/operations/backup");
     expect(deploySource).toContain('backupReceipt.status -ne "completed"');
     expect(deploySource.indexOf("/api/internal/operations/backup")).toBeLessThan(deploySource.indexOf("node scripts/migrate-production.mjs"));
+    const dockerPreflightIndex = deploySource.indexOf("docker version --format '{{.Server.Version}}'");
+    expect(dockerPreflightIndex).toBeGreaterThan(deploySource.indexOf("Production releases require a clean source worktree"));
+    expect(dockerPreflightIndex).toBeLessThan(deploySource.indexOf("/api/internal/operations/backup"));
+    expect(deploySource).toContain("Docker must be running before a local-only production deployment");
   });
 
   it("fails protected verification on moderate or higher findings anywhere in the dependency graph", () => {

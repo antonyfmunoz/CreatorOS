@@ -186,7 +186,7 @@ try {
         if (nodes.length > 8) throw new Error('Frame soundtrack limit exceeded.');
         const sounds = [...nodes].map((node) => ({ id: node.dataset.cutAudioId, file: node.dataset.cutAudioFile,
           sourceSeconds: Number(node.dataset.cutAudioTime), speed: Number(node.dataset.cutAudioSpeed),
-          volume: Number(node.dataset.cutAudioVolume), audioStream: Number(node.dataset.cutAudioStream) }));
+          reverse: node.dataset.cutAudioReverse === 'yes', volume: Number(node.dataset.cutAudioVolume), audioStream: Number(node.dataset.cutAudioStream) }));
         if (sounds.length + videoSounds.length > 8 || JSON.stringify({ sounds, videoSounds }).length > 8192) throw new Error('Frame soundtrack data limit exceeded.');
         return { sounds, videoSounds };
       }

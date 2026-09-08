@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import postgres from "postgres";
 import { readMigrationFiles } from "drizzle-orm/migrator";
+import { assertMigrationManifest } from "./migration-manifest.mjs";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required to run migrations");
@@ -36,6 +37,7 @@ const originalSchemaTables = [
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(scriptDirectory, "../migrations");
+assertMigrationManifest(migrationsFolder);
 const migrationFiles = readMigrationFiles({ migrationsFolder });
 const client = postgres(process.env.DATABASE_URL, { max: 1 });
 

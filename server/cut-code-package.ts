@@ -146,6 +146,15 @@ export function validateCutCodeSourceArchive(input: Buffer, entrypoint: string, 
   return { entries, entryCount, compressedBytes: input.length, expandedBytes };
 }
 
+// Render requests may refer to binary soundtrack files that the browser editor
+// intentionally cannot inspect. Admission still has the authoritative private
+// archive index, so fail before durable queueing rather than leaving a paired
+// local node to discover a missing file after it claims work.
+export function assertCutCodeCapsuleMediaFiles(entries: readonly string[], files: readonly string[]) {
+  const available = new Set(entries);
+  if (files.some((file) => !available.has(file))) throw new Error("A declared private soundtrack file is missing from the source package");
+}
+
 export function readCutCodeSourceFiles(input: Buffer, entrypoint: string): CutSourceFile[] {
   const files: CutSourceFile[] = []; let total = 0;
   validateCutCodeSourceArchive(input, entrypoint, (name, body) => {

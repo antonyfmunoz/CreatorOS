@@ -274,6 +274,8 @@ describe("CutStudio programmable production runtime", () => {
     const capsule = cutCodeCapsuleSchema.parse({ version: 1, entrypoint: "src/index.tsx", sourceAssetId, lockfileAssetId: "00000000-0000-4000-8000-000000000002", runtime: "isolated_node", networkPolicy: "deny" });
     expect(capsule).toMatchObject({ networkPolicy: "deny", maximumCpuMs: 10_000, maximumMemoryMb: 512 });
     expect(() => cutCodeCapsuleSchema.parse({ ...capsule, networkPolicy: "allow" })).toThrow();
+    expect(cutCodeCapsuleSchema.parse({ ...capsule, maximumMemoryMb: 2_048 }).maximumMemoryMb).toBe(2_048);
+    expect(() => cutCodeCapsuleSchema.parse({ ...capsule, maximumMemoryMb: 2_049 })).toThrow();
   });
 
   it("rejects cyclic workflow self-references and models portable multi-stage pipelines", () => {

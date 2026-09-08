@@ -111,13 +111,15 @@ failRender('private source');`);
 
 test('frame audio authoring uses typed file, source clock, gain and stream props', () => {
   check(`import {FrameAudio,useFrame} from '@creativesos/cut';
-const a=<FrameAudio file="assets/sound.wav" startFrom={12} speed={1.5} volume={useFrame()/30} muted={false} audioStream={1}/>;
+const a=<FrameAudio file="assets/sound.wav" startFrom={12} speed={1.5} reverse volume={useFrame()/30} muted={false} audioStream={1}/>;
 // @ts-expect-error file is required
 const b=<FrameAudio/>;
 // @ts-expect-error no callback is exported into the host; useFrame supplies a number
 const c=<FrameAudio file="a.wav" volume={(frame:number)=>frame/30}/>;
 // @ts-expect-error gain is numeric
-const d=<FrameAudio file="a.wav" volume="1"/>;`);
+const d=<FrameAudio file="a.wav" volume="1"/>;
+// @ts-expect-error reverse is boolean
+const e=<FrameAudio file="a.wav" reverse="yes"/>;`);
 });
 
 test('the configuration hook fails explicitly outside its provider and renders inside it', async () => {

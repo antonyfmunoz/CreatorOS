@@ -1,15 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cutPrimaryPreviewAt } from "@shared/cut-primary-preview";
+import { cutPrimaryAudioPreviewAt } from "@shared/cut-primary-audio-preview";
 import { cutPrimaryTimeline } from "@shared/cut-primary-timeline";
 import { cutGraphicPreviewAt } from "@shared/cut-graphic-preview";
 import { cutClipPreviewAt } from "@shared/cut-clip-preview";
+import { cutClipCssColorPreview, cutClipRequiresRenderedColorPreview } from "@shared/cut-clip-color-preview";
+import { cutCaptionPreviewAt } from "@shared/cut-caption-preview";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
-import type { CutEdl, CutGraphic, CutRenderRequest } from "@shared/cut-studio";
+import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
+import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
+import { cutLottieFrameAtTime, type CutLottieTiming } from "@shared/cut-animation-time";
+import { validateCutStudioRiveBytes } from "@shared/cut-studio-rive";
+import type { AnimationItem } from "lottie-web";
+import type { Rive as RiveInstance } from "@rive-app/canvas-lite";
+import { createCutRivePreviewController } from "@/lib/cut-rive-preview";
+import type { CutEdl, CutGraphic, CutRenderRequest, CutTranscript } from "@shared/cut-studio";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type Media = { id: string; assetId: string; name: string };
-type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; fps?: CutRenderRequest["fps"]; onOpen?: () => void };
+type Props = { projectId: string; sourceAssetId: string; edl: CutEdl; media: Media[]; transcript?: CutTranscript | null; captions?: boolean; captionStyle?: 1 | 2 | 3 | 4; fps?: CutRenderRequest["fps"]; onOpen?: () => void };
+
+function PrimaryCaptions({ transcript, sourceSeconds, enabled, style }: { transcript?: CutTranscript | null; sourceSeconds: number | null; enabled: boolean; style: 1 | 2 | 3 | 4 }) {
+  const caption = cutCaptionPreviewAt(transcript, sourceSeconds ?? Number.NaN);
+  if (!enabled || !caption) return null;
+  const text = style === 4 && caption.activeWord ? caption.activeWord : `${caption.speaker ? `${caption.speaker}: ` : ""}${caption.text}`;
+  const styleClass = style === 2 ? "text-yellow-300 [text-shadow:0_2px_3px_rgba(0,0,0,.95)]" : style === 3 ? "rounded-md bg-black/70 px-3 py-1.5 text-white" : style === 4 ? "scale-110 rounded-md bg-black/60 px-3 py-1.5 text-white [text-shadow:0_2px_3px_rgba(0,0,0,.95)]" : "text-white [text-shadow:0_2px_3px_rgba(0,0,0,.95)]";
+  return <div aria-live="off" aria-label="Preview captions" data-primary-preview-caption-style={style} className={`pointer-events-none absolute inset-x-8 bottom-5 z-20 text-center text-base font-black leading-tight sm:text-xl ${styleClass}`}>{text}</div>;
+}
 
 function primaryGraphicClip(graphic: CutGraphic, progress: number) {
   if (graphic.revealKind === "wipe") {
@@ -39,8 +57,91 @@ function PrimaryGraphic({ graphic, frame, fps }: { graphic: CutGraphic; frame: n
   if (graphic.kind === "shape") return <div data-primary-preview-graphic={graphic.id} className="absolute" style={{ ...style, backgroundColor: graphic.backgroundColor, borderRadius: `${graphic.borderRadius}%` }}/>;
   if (graphic.kind === "path") return <svg data-primary-preview-graphic={graphic.id} className="absolute overflow-visible" viewBox="0 0 100 100" style={style}><path d={graphic.text} fill={graphic.fillColor ?? "none"} stroke={graphic.textColor} strokeWidth={graphic.strokeWidth}/></svg>;
   if (graphic.kind === "svg") return <div data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={style} dangerouslySetInnerHTML={{ __html: sanitizeCutStudioSvg(graphic.text) }}/>;
+  if (graphic.kind === "three") {
+    try {
+      const svg = renderCutThreePrimitiveSvg(parseCutThreePrimitiveStyle({
+        primitive: graphic.primitive ?? undefined,
+        color: graphic.backgroundColor,
+        secondaryColor: graphic.secondaryColor,
+        edgeColor: graphic.edgeColor,
+        wireframe: graphic.wireframe,
+        depth: graphic.depth,
+      }));
+      return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full object-contain" style={style} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt={`${graphic.text || "3D"} graphic`}/>;
+    } catch {
+      return <div data-primary-preview-graphic={graphic.id} className="absolute grid place-items-center border border-dashed border-amber-500/60 text-[8px] text-amber-200" style={style}>Invalid 3D graphic</div>;
+    }
+  }
   if (graphic.kind === "image" && graphic.assetId) return <img data-primary-preview-graphic={graphic.id} className="absolute h-full w-full" style={{ ...style, objectFit: graphic.imageFit ?? "contain" }} src={`/api/assets/${encodeURIComponent(graphic.assetId)}/stream`} alt=""/>;
+  if (graphic.kind === "lottie" && graphic.assetId) return <PrimaryLottie graphic={graphic} frame={frame} fps={fps} style={style}/>;
+  if (graphic.kind === "rive" && graphic.assetId) return <PrimaryRive graphic={graphic} frame={frame} fps={fps} style={style}/>;
   return null;
+}
+
+function PrimaryLottie({ graphic, frame, fps, style }: { graphic: CutGraphic; frame: number; fps: number; style: CSSProperties }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const animation = useRef<AnimationItem | null>(null);
+  const bounds = useRef<CutLottieTiming | null>(null);
+  const latestSeconds = useRef(0);
+  latestSeconds.current = Math.max(0, frame / fps - graphic.timelineStart + (graphic.animationSourceStartSeconds ?? 0));
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController(); let active = true;
+    animation.current?.destroy(); animation.current = null; bounds.current = null; setError("");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/assets/${encodeURIComponent(graphic.assetId!)}/stream`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Private Lottie media is unavailable");
+        const validated = validateCutStudioLottie(await response.json() as unknown);
+        const lottie = (await import("lottie-web/build/player/lottie_light")).default;
+        if (!active || !host.current) return;
+        bounds.current = { frameRate: validated.frameRate, inPoint: validated.inPoint, outPoint: validated.outPoint };
+        const instance = lottie.loadAnimation({ container: host.current, renderer: "svg", loop: false, autoplay: false, animationData: validated.animationData });
+        animation.current = instance;
+        instance.addEventListener("DOMLoaded", () => { if (active) instance.goToAndStop(cutLottieFrameAtTime(latestSeconds.current, validated), true); });
+        instance.addEventListener("data_failed", () => { if (active) setError("Lottie preview failed"); });
+      } catch (caught) { if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Lottie preview failed"); }
+    })();
+    return () => { active = false; controller.abort(); animation.current?.destroy(); animation.current = null; };
+  }, [graphic.assetId]);
+  useEffect(() => { if (animation.current && bounds.current) animation.current.goToAndStop(cutLottieFrameAtTime(latestSeconds.current, bounds.current), true); }, [frame, fps, graphic.timelineStart, graphic.animationSourceStartSeconds]);
+  return <div data-primary-preview-graphic={graphic.id} className="absolute overflow-hidden" style={style}>{error ? <span className="grid h-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</span> : <div ref={host} aria-label={`${graphic.text || "Timeline"} Lottie preview`} className="h-full w-full"/>}</div>;
+}
+
+function PrimaryRive({ graphic, frame, fps, style }: { graphic: CutGraphic; frame: number; fps: number; style: CSSProperties }) {
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const instance = useRef<RiveInstance | null>(null);
+  const controller = useRef<ReturnType<typeof createCutRivePreviewController> | null>(null);
+  const latestSeconds = useRef(0);
+  latestSeconds.current = Math.max(0, frame / fps - graphic.timelineStart + (graphic.animationSourceStartSeconds ?? 0));
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const abort = new AbortController(); let active = true;
+    instance.current?.cleanup(); instance.current = null; setError(""); setLoaded(false);
+    const playback = createCutRivePreviewController({
+      instance: () => instance.current, seconds: () => latestSeconds.current,
+      loaded: () => { if (active) setLoaded(true); },
+      failed: () => { if (active) setError("Rive preview failed"); },
+      schedule: (callback) => requestAnimationFrame(callback), cancel: (id) => cancelAnimationFrame(id), defer: (callback) => queueMicrotask(callback),
+      pixelRatio: () => Math.max(1, Math.min(2, window.devicePixelRatio || 1)),
+    });
+    controller.current = playback;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/assets/${encodeURIComponent(graphic.assetId!)}/stream`, { credentials: "include", signal: abort.signal });
+        if (!response.ok) throw new Error("Private Rive media is unavailable");
+        const buffer = await response.arrayBuffer(); validateCutStudioRiveBytes(buffer);
+        const { Rive, RuntimeLoader } = await import("@rive-app/canvas-lite");
+        if (!active || !canvas.current) return;
+        RuntimeLoader.setWasmUrl("/api/runtime-assets/rive-2.41.0.wasm"); RuntimeLoader.setWasmFallbackUrl(null);
+        instance.current = new Rive({ buffer, canvas: canvas.current, autoplay: false, autoBind: false, enableRiveAssetCDN: false, shouldDisableRiveListeners: true, automaticallyHandleEvents: false, onLoad: playback.load, onLoadError: playback.fail });
+      } catch (caught) { if (active && !(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Rive preview failed"); }
+    })();
+    return () => { active = false; abort.abort(); playback.dispose(); controller.current = null; instance.current?.cleanup(); instance.current = null; };
+  }, [graphic.assetId]);
+  useEffect(() => { controller.current?.seek(); }, [frame, fps, graphic.timelineStart, graphic.animationSourceStartSeconds]);
+  return <div data-primary-preview-graphic={graphic.id} data-rive-loaded={loaded ? "true" : "false"} className="absolute overflow-hidden" style={style}>{error ? <span className="grid h-full place-items-center border border-dashed border-rose-800 px-2 text-center text-[8px] text-rose-300">{error}</span> : <canvas ref={canvas} width={640} height={360} aria-label={`${graphic.text || "Timeline"} Rive preview`} className="h-full w-full"/>}</div>;
 }
 
 function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onError }: { clip: NonNullable<CutEdl["clips"]>[number]; media: Media; projectId: string; frame: number; fps: number; playing: boolean; onError: (message: string) => void }) {
@@ -51,14 +152,44 @@ function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onEr
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${transform.width * 100}%`, height: `${transform.height * 100}%`, opacity: state.opacity,
     transform: `scale(${state.scale})`, transformOrigin: "top left",
   };
-  return <div data-primary-preview-overlay={clip.id ?? media.id} className="absolute overflow-hidden" style={style}>
-    <PrimaryMedia label={`Overlay ${clip.label ?? media.name}`} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} time={state.sourceTime} speed={clip.speed ?? 1} gain={0} opacity={1} playing={playing} audio={null} onReady={() => undefined} onError={onError}/>
+  const maskUrl = clip.maskAssetId ? `/api/assets/${encodeURIComponent(clip.maskAssetId)}/stream` : undefined;
+  return <div data-primary-preview-overlay={clip.id ?? media.id} data-primary-preview-mask={maskUrl ? "enabled" : "none"} className="absolute overflow-hidden" style={{ ...style, ...(maskUrl ? { maskImage: `url("${maskUrl}")`, WebkitMaskImage: `url("${maskUrl}")`, maskMode: "luminance", maskSize: "100% 100%", WebkitMaskSize: "100% 100%", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat" } : {}) }}>
+    <PrimaryMedia label={`Overlay ${clip.label ?? media.name}`} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} time={state.sourceTime} speed={clip.speed ?? 1} gain={0} opacity={1} filter={cutClipCssColorPreview(clip)} playing={playing} audio={null} onReady={() => undefined} onError={onError}/>
   </div>;
 }
 
-function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady, onError, label = "Primary sequence video" }: {
+function PrimaryAudioOverlay({ item, media, projectId, playing, audio, muted, onError }: { item: ReturnType<typeof cutPrimaryAudioPreviewAt>["items"][number]; media: Media; projectId: string; playing: boolean; audio: AudioContext | null; muted: boolean; onError: (message: string) => void }) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  const graph = useRef<{ source: MediaElementAudioSourceNode; gain: GainNode } | null>(null);
+  useEffect(() => {
+    if (!audio || !ref.current) return;
+    if (!graph.current) graph.current = { source: audio.createMediaElementSource(ref.current), gain: audio.createGain() };
+    graph.current.source.connect(graph.current.gain); graph.current.gain.connect(audio.destination);
+    return () => { graph.current?.source.disconnect(); graph.current?.gain.disconnect(); };
+  }, [audio]);
+  useEffect(() => { if (graph.current) graph.current.gain.gain.value = muted ? 0 : item.gain; }, [audio, item.gain, muted]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const sync = () => {
+      if (!Number.isFinite(element.duration)) return;
+      element.playbackRate = item.speed;
+      if (Math.abs(element.currentTime - item.sourceTime) > (playing ? .12 : .008)) element.currentTime = item.sourceTime;
+      if (playing && element.paused) void element.play().catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        onError("Layered audio playback could not start. Pause, then play again to grant browser playback permission.");
+      });
+      else if (!playing) element.pause();
+    };
+    sync(); element.addEventListener("loadedmetadata", sync);
+    return () => element.removeEventListener("loadedmetadata", sync);
+  }, [item.sourceTime, item.speed, onError, playing]);
+  return <audio ref={ref} aria-label={`Audio track ${item.track}: ${item.clip.label ?? media.name}`} crossOrigin="anonymous" preload="auto" muted={!audio} src={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(media.id)}/media-file`} onError={() => onError("A private layered audio source is unavailable. Check your project access or media format.")}/>;
+}
+
+function PrimaryMedia({ url, time, speed, gain, opacity, filter = "none", playing, audio, onReady, onError, label = "Primary sequence video" }: {
   url: string; time: number; speed: number; gain: number; opacity: number; playing: boolean; audio: AudioContext | null;
-  onReady: (ready: boolean) => void; onError: (message: string) => void; label?: string;
+  filter?: string; onReady: (ready: boolean) => void; onError: (message: string) => void; label?: string;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const graph = useRef<{ source: MediaElementAudioSourceNode; gain: GainNode } | null>(null);
@@ -86,11 +217,11 @@ function PrimaryMedia({ url, time, speed, gain, opacity, playing, audio, onReady
     return () => element.removeEventListener("loadedmetadata", sync);
   }, [playing, speed, time, onError]);
   return <video ref={ref} aria-label={label} crossOrigin="anonymous" playsInline preload="auto" muted={!audio} src={url}
-    className="h-full w-full object-contain" style={{ opacity }} onCanPlay={() => onReady(true)} onWaiting={() => onReady(false)}
+    className="h-full w-full object-contain" style={{ opacity, filter }} onCanPlay={() => onReady(true)} onWaiting={() => onReady(false)}
     onError={() => onError("This private source is unavailable. Check your project access or media format.")}/>;
 }
 
-function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props) {
+function PrimaryPlayer({ projectId, sourceAssetId, edl, media, transcript, captions = true, captionStyle = 1, fps = 30 }: Props) {
   const plan = useMemo(() => {
     try { return { ...cutPrimaryTimeline(edl), error: "" }; }
     catch (error) { return { duration: 0, segments: [], error: error instanceof Error ? error.message : "Timeline is unavailable" }; }
@@ -104,10 +235,14 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   const active = state?.clip ? media.find((item) => item.assetId === (state.clip!.assetId ?? sourceAssetId)) : undefined;
   const outgoing = state?.outgoing;
   const graphicTime = frame / fps;
-  const unsupportedGraphics = (edl.graphics ?? []).filter((graphic) => ["lottie", "rive", "three"].includes(graphic.kind) && cutGraphicPreviewAt(graphic, graphicTime, fps).active);
+  const audioPreview = cutPrimaryAudioPreviewAt(edl, graphicTime);
+  const activeAudio = audioPreview.items.flatMap((item) => {
+    const audioMedia = media.find((entry) => entry.assetId === item.clip.assetId);
+    return audioMedia ? [{ item, media: audioMedia }] : [];
+  });
   const activeOverlays = edl.clips.filter((clip) => (clip.track ?? "v1") !== "v1" && (clip.track ?? "").startsWith("v") && !edl.tracks?.find((track) => track.track === clip.track)?.hidden)
     .flatMap((clip) => { const overlay = media.find((item) => item.assetId === clip.assetId); return overlay ? [{ clip, media: overlay }] : []; });
-  const unsupportedOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && (clip.chromaKey?.enabled || clip.colorPreset && clip.colorPreset !== "original" || clip.lutAssetId));
+  const renderedOnlyOverlays = activeOverlays.filter(({ clip }) => cutClipPreviewAt(clip, graphicTime).active && cutClipRequiresRenderedColorPreview(clip));
   const outgoingMedia = outgoing ? media.find(item => item.assetId === (outgoing.clip.assetId ?? sourceAssetId)) : undefined;
   const outgoingKey = outgoing ? `${outgoing.clip.id ?? "clip"}:${outgoingMedia?.id}:${outgoing.sourceTime}` : "none";
   const clipKey = state?.clip ? `${state.clip.id ?? "clip"}:${active?.id}:${state.clip.timelineStart}:${state.clip.start}` : "gap";
@@ -146,10 +281,12 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
   if (edl.clips.some(clip => clip.transition === "cross_dissolve") && plan.segments.some(segment => segment.duration * fps < 2)) return <p role="status">Render a preview for dissolves beside spans shorter than two output frames.</p>;
   return <div role="region" aria-label="Primary sequence player" data-preview-frame={frame} data-preview-fps={fps} data-preview-state={playing ? "playing" : "paused"}>
     <div className="relative aspect-video overflow-hidden rounded-xl bg-black" aria-label="Primary sequence canvas">
-      {outgoing && outgoingMedia && <div className="absolute inset-0 bg-black"><PrimaryMedia key={outgoingKey} label="Outgoing sequence video" url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(outgoingMedia.id)}/media-file`} time={outgoing.sourceTime} speed={outgoing.clip.speed ?? 1} gain={0} opacity={outgoing.opacity} playing={false} audio={null} onReady={setOutgoingReady} onError={reportError}/></div>}
-      {state?.clip && active ? <div className="absolute inset-0 bg-black" style={{ opacity: state.mix }}><PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} playing={playing && (!outgoing || outgoingReady)} audio={audio} onReady={setReady} onError={reportError}/></div> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
+      {outgoing && outgoingMedia && <div className="absolute inset-0 bg-black"><PrimaryMedia key={outgoingKey} label="Outgoing sequence video" url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(outgoingMedia.id)}/media-file`} time={outgoing.sourceTime} speed={outgoing.clip.speed ?? 1} gain={0} opacity={outgoing.opacity} filter={cutClipCssColorPreview(outgoing.clip)} playing={false} audio={null} onReady={setOutgoingReady} onError={reportError}/></div>}
+      {state?.clip && active ? <div className="absolute inset-0 bg-black" style={{ opacity: state.mix }}><PrimaryMedia key={clipKey} url={`/api/cut/projects/${encodeURIComponent(projectId)}/media-library/${encodeURIComponent(active.id)}/media-file`} time={state.sourceTime} speed={state.speed} gain={muted ? 0 : state.gain} opacity={state.opacity} filter={cutClipCssColorPreview(state.clip)} playing={playing && (!outgoing || outgoingReady)} audio={audio} onReady={setReady} onError={reportError}/></div> : <span className="sr-only">{state?.clip ? "Source unavailable" : "Black gap"}</span>}
       {activeOverlays.map(({ clip, media: overlay }) => <PrimaryVideoOverlay key={clip.id ?? overlay.id} clip={clip} media={overlay} projectId={projectId} frame={frame} fps={fps} playing={playing} onError={reportError}/>)}
+      {activeAudio.map(({ item, media: audioMedia }) => <PrimaryAudioOverlay key={`${item.clip.id ?? audioMedia.id}:${item.track}`} item={item} media={audioMedia} projectId={projectId} playing={playing} audio={audio} muted={muted} onError={reportError}/>)}
       {(edl.graphics ?? []).map((graphic) => <PrimaryGraphic key={graphic.id} graphic={graphic} frame={frame} fps={fps}/>)}
+      <PrimaryCaptions transcript={transcript} sourceSeconds={state?.sourceTime ?? null} enabled={captions} style={captionStyle}/>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <Button size="sm" onClick={() => void play()}>{playing ? "Pause sequence" : "Play sequence"}</Button>
@@ -160,7 +297,7 @@ function PrimaryPlayer({ projectId, sourceAssetId, edl, media, fps = 30 }: Props
       <Button size="sm" variant="outline" aria-label="Next sequence frame" onClick={() => seek(frame + 1)}>→</Button>
       <Button size="sm" variant="outline" onClick={() => setMuted((value) => !value)}>{muted ? "Unmute sequence" : "Mute sequence"}</Button>
     </div>
-    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : unsupportedGraphics.length ? "The active Lottie, Rive, or 3D graphic requires a rendered preview." : unsupportedOverlays.length ? "The active overlay color, LUT, or chroma-key treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, supported visual overlays, and supported timeline graphics. Layered audio, active Lottie/Rive/3D, color/effects and captions require a rendered preview.")}</p>
+    <p role="status" className="mt-2 text-xs text-zinc-400">{error || ((state?.clip && !active) || (outgoing && !outgoingMedia) ? "Source unavailable in this project's private library." : playing && ((state?.clip && !ready) || (outgoing && !outgoingReady)) ? "Buffering private source…" : renderedOnlyOverlays.length ? "The active private LUT or chroma-key treatment requires a rendered preview. Color presets, adjustment controls, and captions are shown as edit-time browser previews." : audioPreview.requiresRenderedDucking ? "The active side-chain ducking treatment requires a rendered preview." : "Primary cuts, fades, cross-dissolves, gaps, speed, source audio, ordinary layered audio, supported visual overlays, timeline graphics, browser-approximated color presets and adjustments, and timed edit-preview captions. Private LUT, chroma key, calibrated color, and final caption typography require a rendered preview.")}</p>
   </div>;
 }
 

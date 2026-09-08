@@ -25,6 +25,15 @@ if ($LASTEXITCODE -ne 0) {
   throw "Production releases require a clean source worktree"
 }
 
+# Local-only Fly releases need the Docker daemon for the image build. Fail
+# before creating a backup receipt or applying migrations when the workstation
+# cannot build an image, rather than discovering that after the expensive
+# production preflight has already run.
+$dockerVersion = (& docker version --format '{{.Server.Version}}' | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerVersion)) {
+  throw "Docker must be running before a local-only production deployment"
+}
+
 $releaseTempRoot = Join-Path ([IO.Path]::GetTempPath()) "creativesos-release-$([guid]::NewGuid().ToString('N'))"
 $snapshotPath = Join-Path $releaseTempRoot "source"
 $archivePath = Join-Path $releaseTempRoot "source.tar"
@@ -64,7 +73,17 @@ try {
     throw "Unable to extract the immutable release source snapshot"
   }
 
-  $sourceFingerprint = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  # Keep the release fingerprint independent of the operator's PowerShell
+  # installation. Some hardened Windows environments omit Get-FileHash, while
+  # Node is already required by this release path and provides the same SHA-256
+  # primitive without placing source contents in the shell pipeline.
+  $sourceFingerprint = (
+    & node -e "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'));" $archivePath |
+      Out-String
+  ).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to calculate the release source fingerprint"
+  }
   if ($sourceFingerprint -notmatch '^[0-9a-f]{64}$') {
     throw "Unable to calculate the release source fingerprint"
   }
@@ -78,8 +97,9 @@ try {
   }
 
   $sourceDirty = "false"
-  $buildTime = (Get-Date).ToUniversalTime().ToString("o")
-  $buildId = "$(Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ')-$($sourceFingerprint.Substring(0, 12))"
+  $releaseClock = [DateTime]::UtcNow
+  $buildTime = $releaseClock.ToString("o")
+  $buildId = "$($releaseClock.ToString('yyyyMMddTHHmmssZ'))-$($sourceFingerprint.Substring(0, 12))"
 
   # A production migration is never attempted without a durable, private backup
   # receipt. The endpoint is idempotent for an already-completed UTC-day backup.

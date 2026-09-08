@@ -28,8 +28,17 @@ test('collector preserves ranged source time, each frame gain, discontinuities a
   assert.equal(tracks[2].startFrame, 14);
 });
 
+test('collector preserves an explicit non-looping reverse source clock', () => {
+  const collector = new FrameAudioCollector(validateRequest({ ...base, frameRange: [0, 2] }));
+  collector.capture(0, [sample(0, { sourceSeconds: 2, reverse: true })]);
+  collector.capture(1, [sample(0, { sourceSeconds: 2 - 1 / 30, reverse: true })]);
+  collector.capture(2, [sample(0, { sourceSeconds: 2 - 2 / 30, reverse: true })]);
+  assert.deepEqual(collector.finish(), [{ file: 'sound.wav', startFrame: 0, endFrame: 3, sourceStartSeconds: 2, reverse: true, speed: 1, volume: 1, audioStream: 0, volumeSamples: [.5, .5, .5] }]);
+  assert.throws(() => validateFrameAudio(sample(0, { sourceSeconds: .5, reverse: true, sourceLoopSeconds: 1, sourceTimebase: 'container', sourceEndSeconds: 1 })));
+});
+
 test('all descriptor values and ordered collection are bounded and fail closed', () => {
-  for (const change of [{ id: '' }, { id: 'x'.repeat(101) }, { file: '../a.wav' }, { file: '/a.wav' }, { file: 'https://host/a.wav' }, { file: 'a.m3u8' }, { file: 'a.wav;cmd' }, { sourceSeconds: NaN }, { sourceSeconds: -1 }, { sourceSeconds: 120 }, { speed: .49 }, { speed: 2.1 }, { volume: Infinity }, { volume: 2.1 }, { audioStream: 8 }, { audioStream: .5 }]) assert.throws(() => validateFrameAudio(sample(0, change)));
+  for (const change of [{ id: '' }, { id: 'x'.repeat(101) }, { file: '../a.wav' }, { file: '/a.wav' }, { file: 'https://host/a.wav' }, { file: 'a.m3u8' }, { file: 'a.wav;cmd' }, { sourceSeconds: NaN }, { sourceSeconds: -1 }, { sourceSeconds: 120 }, { reverse: 'yes' }, { speed: .49 }, { speed: 2.1 }, { volume: Infinity }, { volume: 2.1 }, { audioStream: 8 }, { audioStream: .5 }]) assert.throws(() => validateFrameAudio(sample(0, change)));
   const make = (change = {}) => new FrameAudioCollector(validateRequest({ ...base, ...change }));
   assert.throws(() => make().capture(1, []));
   assert.throws(() => make().capture(0, Array.from({ length: 9 }, (_, id) => sample(0, { id: String(id) }))));

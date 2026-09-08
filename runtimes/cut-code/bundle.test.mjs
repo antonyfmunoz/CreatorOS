@@ -27,6 +27,12 @@ test('pins Three core and its approved vector renderer without admitting arbitra
   assert.ok(await bundleCapsule(readCapsule(archive(source, manifest), 'src/index.tsx'), 'src/index.tsx'));
   for (const version of ['^0.185.1', 'latest', '0.184.0']) assert.throws(() => readCapsule(archive(source, { 'package.json': strToU8(JSON.stringify({ dependencies: { three: version } })) }), 'src/index.tsx'));
 });
+test('bundles a frame-captured Three SVG scene through the native SDK bridge', async () => {
+  const source = `import {FullFrame,SvgScene} from '@creativesos/cut';import {Scene,PerspectiveCamera,BoxGeometry,Mesh,MeshBasicMaterial} from 'three';export default function SceneView(){const scene=new Scene();const camera=new PerspectiveCamera(45,16/9,.1,10);camera.position.z=3;scene.add(new Mesh(new BoxGeometry(),new MeshBasicMaterial({color:'#00ff00'})));return <FullFrame><SvgScene scene={scene} camera={camera} width={320} height={180}/></FullFrame>}`;
+  const manifest = { 'package.json': strToU8(JSON.stringify({ dependencies: { react: '18.3.1', three: '0.185.1' } })) };
+  const bundle = await bundleCapsule(readCapsule(archive(source, manifest), 'src/index.tsx'), 'src/index.tsx');
+  assert.ok(bundle.javascript.includes('SVGRenderer'));
+});
 test('allows private relative TSX imports and rejects escaping archive paths', async () => {
   const files = readCapsule(archive(`export {default} from './title';`, { 'src/title.tsx': strToU8('export default () => <h1>Private title</h1>') }), 'src/index.tsx');
   assert.ok(await bundleCapsule(files, 'src/index.tsx'));

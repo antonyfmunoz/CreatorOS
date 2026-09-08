@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
 import {
@@ -33,12 +33,14 @@ import {
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
+import { cutCodeRenderBatchSubmissionSchema, cutCodeRenderSubmissionSchema, normalizeCutCodeRenderInput } from "@shared/cut-code-render";
 import { attachUser } from "./auth";
 import { db } from "./db";
 import { emitProjectionEvent } from "./umh";
 import { materializePrivateAsset } from "./asset-storage";
-import { readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
+import { assertCutCodeCapsuleMediaFiles, readCutCodeSourceFiles, validateCutCodeLockfile, validateCutCodeSourceArchive } from "./cut-code-package";
 import { validateCutSourceLockfilePair } from "./cut-code-lockfile";
+import { retryCutJob } from "./cut-job-recovery";
 
 const uuid = z.string().uuid();
 const compositionInput = z.object({
@@ -71,6 +73,20 @@ const compositionRenderBatchInput = z.object({
 }).superRefine((value, context) => {
   if (new Set(value.compositionIds).size !== value.compositionIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionIds"], message: "Composition identifiers must be unique" });
 });
+// Public code renders stay narrower than the local renderer's internal
+// contract: bounded still/video/sequence output only. The shared validator is
+// also used by the browser controls, while this route remains authoritative.
+
+function codeExecutionConfigured(environment: NodeJS.ProcessEnv = process.env) {
+  // The flag is deliberately separate from the trusted Cloud Run render plane.
+  // It may be enabled only after the broker, private object plane, and
+  // dedicated runner are deployed. A secret alone cannot safely deliver a
+  // source capsule or accept a local node's sealed result.
+  return environment.CUT_CODE_EXECUTOR_ENABLED === "true"
+    && (environment.CUT_CODE_EXECUTOR_SECRET?.length ?? 0) >= 32
+    && environment.ASSET_STORAGE_PROVIDER === "r2"
+    && Boolean(environment.R2_ACCOUNT_ID && environment.R2_ACCESS_KEY_ID && environment.R2_SECRET_ACCESS_KEY && environment.R2_BUCKET_NAME && environment.R2_PRIVATE_BUCKET_NAME && environment.R2_PUBLIC_BASE_URL);
+}
 
 async function projectAccess(userId: number, projectId: string) {
   if (!uuid.safeParse(projectId).success) return null;
@@ -162,7 +178,11 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   if (riveIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-rive" || !asset.mimeType || !/^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(asset.mimeType); })) throw new Error("Every Rive layer must reference ready private validated Rive media");
 }
 
-async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>) {
+async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>, soundtrackFiles: readonly string[] = []) {
+  // Database JSON can outlive a schema change. Validate it again at each
+  // capability boundary so a historic over-limit capsule cannot become a
+  // runnable local-node lease after the sandbox limits have tightened.
+  cutCodeCapsuleSchema.parse(capsule);
   const capsuleIds = [capsule.sourceAssetId, capsule.lockfileAssetId];
   const rows = await db.select({
     assetId: assets.id,
@@ -193,11 +213,12 @@ async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferS
     const [sourceStat, lockfileStat] = await Promise.all([fs.stat(sourcePath), fs.stat(lockfilePath)]);
     if (sourceStat.size > 25 * 1024 * 1024 || lockfileStat.size > 2 * 1024 * 1024) throw new Error("Code source or lockfile exceeds its safe size limit.");
     let manifest = "";
-    validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint, (name, body) => {
+    const sourceArchive = validateCutCodeSourceArchive(await fs.readFile(sourcePath), capsule.entrypoint, (name, body) => {
       if (name !== "package.json") return;
       if (body.length > 256 * 1024) throw new Error("package.json exceeds 256 KiB.");
       try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(body); } catch { throw new Error("package.json must be UTF-8 text."); }
     }, "manifest");
+    assertCutCodeCapsuleMediaFiles(sourceArchive.entries, soundtrackFiles);
     const lockfileBytes = await fs.readFile(lockfilePath);
     validateCutCodeLockfile(lockfileName, lockfileBytes);
     let lockfileText: string;
@@ -221,13 +242,16 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
     db.select().from(cutStudioGenerationJobs).where(inArray(cutStudioGenerationJobs.shotId, shotIds)).orderBy(desc(cutStudioGenerationJobs.createdAt)),
     db.select().from(cutStudioShotVariants).where(inArray(cutStudioShotVariants.shotId, shotIds)).orderBy(desc(cutStudioShotVariants.createdAt)),
   ]) : [[], []];
+  const codeRenders = await db.select({ id: cutStudioJobs.id, state: cutStudioJobs.state, detail: cutStudioJobs.detail, progress: cutStudioJobs.progress, request: cutStudioJobs.request, artifactAssetId: cutStudioJobs.artifactAssetId, cancellationRequestedAt: cutStudioJobs.cancellationRequestedAt, createdAt: cutStudioJobs.createdAt }).from(cutStudioJobs).where(and(eq(cutStudioJobs.projectId, project.id), eq(cutStudioJobs.kind, "code_render"))).orderBy(desc(cutStudioJobs.createdAt)).limit(20);
   return {
     compositionRuntime: {
       mode: "clean_room",
       declarative: "configured",
       packageAuthoring: "configured",
-      // A URL is configuration, not proof of an implemented executable path.
-      isolatedCode: "not_implemented",
+      // This remains unavailable until both the broker secret and the explicit
+      // production feature switch are present. The ordinary render worker is
+      // never a substitute for this capability.
+      isolatedCode: codeExecutionConfigured() ? "configured" : "not_implemented",
       networkPolicy: "deny",
     },
     generationRuntime: {
@@ -240,6 +264,15 @@ async function creativeRuntime(project: typeof cutStudioProjects.$inferSelect) {
     elements,
     shots,
     jobs,
+    codeRenders: codeRenders.flatMap((job) => {
+      const candidate = job.request?.codeRender;
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const codeRender = candidate as Record<string, unknown>;
+      const runtime = codeRender.runtime;
+      if (typeof codeRender.compositionId !== "string" || !runtime || typeof runtime !== "object" || Array.isArray(runtime)) return [];
+      const settings = runtime as Record<string, unknown>;
+      return [{ id: job.id, compositionId: codeRender.compositionId, state: job.state, detail: job.detail, progress: job.progress, mode: typeof settings.mode === "string" ? settings.mode : "unknown", format: typeof settings.format === "string" ? settings.format : "unknown", artifactAssetId: job.artifactAssetId, cancellationRequestedAt: job.cancellationRequestedAt, createdAt: job.createdAt }];
+    }),
     variants,
   };
 }
@@ -270,7 +303,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       await materializePrivateAsset(source.storageKey, filename);
       if ((await fs.stat(filename)).size > 25 * 1024 * 1024) return res.status(400).json({ message: "Source ZIP exceeds 25 MiB" });
       const files = readCutCodeSourceFiles(await fs.readFile(filename), entry.data);
-      return res.json({ files, entrypoint: entry.data, sourceAssetId: req.params.assetId, execution: "not_implemented" });
+      // Source inspection is never execution. Surface the actual capability
+      // state so a signed-in editor can distinguish the paired-local path from
+      // an intentionally absent hosted arbitrary-code service.
+      return res.json({ files, entrypoint: entry.data, sourceAssetId: req.params.assetId, execution: codeExecutionConfigured() ? "paired_local_node" : "not_activated" });
     } catch {
       // Never return source content, filesystem paths or provider errors as diagnostics.
       return res.status(400).json({ message: "This ZIP cannot be opened in the text editor. It must be a valid package with the specified entrypoint, at most 64 UTF-8 text files, 256 KiB per file and 2 MiB total. Use ZIP import for other packages; no files were changed." });
@@ -486,6 +522,193 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     for (const job of jobs) dependencies.queueRenderJob(job.id);
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.render_batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, renderBatchId: parsed.data.idempotencyKey, compositionIds: ordered.map((composition) => composition.id), jobIds: jobs.map((job) => job.id), count: jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:render-batch:${parsed.data.idempotencyKey}` });
     res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: jobs.length, jobs });
+  });
+
+  // This endpoint only creates a durable, bounded request. A dedicated runner
+  // claims `code_render` jobs through the broker; the trusted Cloud Run worker
+  // intentionally does not advertise or process that kind.
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/code-renders", attachUser, compositionRenderLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    if (!codeExecutionConfigured()) return res.status(503).json({ message: "Isolated code rendering is not activated yet" });
+    const parsed = cutCodeRenderSubmissionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The code render request is invalid", issues: parsed.error.issues });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+      eq(cutStudioCompositions.mode, "sandboxed_tsx"),
+    )).limit(1);
+    if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
+    let capsule: z.infer<typeof cutCodeCapsuleSchema>;
+    try { capsule = cutCodeCapsuleSchema.parse(composition.codeCapsule); await assertCodeCapsuleAssets(access.project, capsule, parsed.data.request.audioTracks?.map((track) => track.file) ?? []); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    let normalizedRequest;
+    try { normalizedRequest = { ...parsed.data.request, input: normalizeCutCodeRenderInput(parsed.data.request.input, capsule.inputContract) }; }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition input does not match this code contract" }); }
+    const result = await db.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.${access.project.ownerUserId}`}))`);
+      const [existing] = await transaction.select().from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.projectId, access.project.id),
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        eq(cutStudioJobs.kind, "code_render"),
+        sql`${cutStudioJobs.request}->'codeRender'->>'idempotencyKey' = ${parsed.data.idempotencyKey}`,
+      )).limit(1);
+      if (existing) return { job: existing, existing: true } as const;
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        sql`${cutStudioJobs.state} in ('queued', 'running')`,
+      ));
+      if ((active?.count ?? 0) >= 2) return { busy: true } as const;
+      const request = {
+        codeRender: {
+          idempotencyKey: parsed.data.idempotencyKey,
+          compositionId: composition.id,
+          compositionRevision: composition.revision,
+          sourceAssetId: capsule.sourceAssetId,
+          lockfileAssetId: capsule.lockfileAssetId,
+          entrypoint: capsule.entrypoint,
+          limits: {
+            maximumCpuMs: capsule.maximumCpuMs,
+            maximumMemoryMb: capsule.maximumMemoryMb,
+            maximumOutputBytes: capsule.maximumOutputBytes,
+          },
+          runtime: { version: 1, ...normalizedRequest, entrypoint: capsule.entrypoint },
+        },
+      };
+      const [job] = await transaction.insert(cutStudioJobs).values({
+        projectId: access.project.id,
+        ownerUserId: access.project.ownerUserId,
+        kind: "code_render",
+        maxAttempts: 1,
+        maxDispatchAttempts: 1,
+        detail: "Waiting for the isolated code runner",
+        request,
+      }).returning();
+      return { job, existing: false } as const;
+    });
+    if (result.busy) return res.status(429).json({ message: "Wait for an active CutStudio job to finish before starting another" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.queued` });
+    res.status(result.existing ? 200 : 202).json(result.job);
+  });
+
+  // Batches remain a set of durable, independently cancellable jobs. They do
+  // not grant a node more than its single active lease, and admission includes
+  // every queued/running CutStudio job for the owner.
+  cut.post("/api/cut/projects/:id/compositions/:compositionId/code-render-batches", attachUser, compositionRenderLimiter, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    if (!codeExecutionConfigured()) return res.status(503).json({ message: "Isolated code rendering is not activated yet" });
+    const parsed = cutCodeRenderBatchSubmissionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "The code render batch is invalid", issues: parsed.error.issues });
+    const [composition] = await db.select().from(cutStudioCompositions).where(and(
+      eq(cutStudioCompositions.id, req.params.compositionId),
+      eq(cutStudioCompositions.projectId, access.project.id),
+      eq(cutStudioCompositions.status, "active"),
+      eq(cutStudioCompositions.mode, "sandboxed_tsx"),
+    )).limit(1);
+    if (!composition?.codeCapsule) return res.status(404).json({ message: "Code composition not found" });
+    let capsule: z.infer<typeof cutCodeCapsuleSchema>;
+    try { capsule = cutCodeCapsuleSchema.parse(composition.codeCapsule); await assertCodeCapsuleAssets(access.project, capsule, parsed.data.requests.flatMap((request) => request.audioTracks?.map((track) => track.file) ?? [])); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Code capsule is unavailable" }); }
+    let normalizedRequests;
+    try { normalizedRequests = parsed.data.requests.map((request) => ({ ...request, input: normalizeCutCodeRenderInput(request.input, capsule.inputContract) })); }
+    catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "A batch input does not match this code contract" }); }
+    const result = await db.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`cutstudio.code-render.owner.${access.project.ownerUserId}`}))`);
+      const existing = await transaction.select().from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.projectId, access.project.id),
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        eq(cutStudioJobs.kind, "code_render"),
+        sql`${cutStudioJobs.request}->'codeRender'->>'renderBatchId' = ${parsed.data.idempotencyKey}`,
+      )).orderBy(asc(cutStudioJobs.createdAt));
+      if (existing.length) {
+        const matches = existing.length === normalizedRequests.length && existing.every((job, batchIndex) => {
+          const saved = typeof job.request === "object" && job.request && "codeRender" in job.request ? (job.request as { codeRender?: { runtime?: unknown } }).codeRender : undefined;
+          return JSON.stringify(saved?.runtime) === JSON.stringify({ version: 1, ...normalizedRequests[batchIndex], entrypoint: capsule.entrypoint });
+        });
+        if (!matches) return { status: 409, message: "This idempotency key already belongs to a different local render batch" } as const;
+        return { jobs: existing } as const;
+      }
+      const [active] = await transaction.select({ count: sql<number>`count(*)::int` }).from(cutStudioJobs).where(and(
+        eq(cutStudioJobs.ownerUserId, access.project.ownerUserId),
+        sql`${cutStudioJobs.state} in ('queued', 'running')`,
+      ));
+      if ((active?.count ?? 0) + normalizedRequests.length > 20) return { status: 429, message: "At most 20 CutStudio jobs can be active; wait for renders to finish before adding this batch" } as const;
+      const jobs = await transaction.insert(cutStudioJobs).values(normalizedRequests.map((request, batchIndex) => ({
+        projectId: access.project.id,
+        ownerUserId: access.project.ownerUserId,
+        kind: "code_render" as const,
+        maxAttempts: 1,
+        maxDispatchAttempts: 1,
+        detail: `Local render batch ${batchIndex + 1} of ${normalizedRequests.length} waiting for the isolated code runner`,
+        request: {
+          codeRender: {
+            idempotencyKey: `${parsed.data.idempotencyKey}.${batchIndex + 1}`,
+            renderBatchId: parsed.data.idempotencyKey,
+            batchIndex,
+            compositionId: composition.id,
+            compositionRevision: composition.revision,
+            sourceAssetId: capsule.sourceAssetId,
+            lockfileAssetId: capsule.lockfileAssetId,
+            entrypoint: capsule.entrypoint,
+            limits: {
+              maximumCpuMs: capsule.maximumCpuMs,
+              maximumMemoryMb: capsule.maximumMemoryMb,
+              maximumOutputBytes: capsule.maximumOutputBytes,
+            },
+            runtime: { version: 1, ...request, entrypoint: capsule.entrypoint },
+          },
+        },
+      }))).returning();
+      return { jobs } as const;
+    });
+    if (!result.jobs) return res.status(result.status).json({ message: result.message });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.batch_queued", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, renderBatchId: parsed.data.idempotencyKey, jobIds: result.jobs.map((job) => job.id), count: result.jobs.length }, idempotencyKey: `cutstudio:${access.project.id}:code-render-batch:${parsed.data.idempotencyKey}` });
+    res.status(202).json({ idempotencyKey: parsed.data.idempotencyKey, count: result.jobs.length, jobs: result.jobs });
+  });
+
+  cut.delete("/api/cut/projects/:id/code-renders/:jobId", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const now = new Date();
+    const [cancelled] = await db.update(cutStudioJobs).set({ state: "cancelled", detail: "Cancelled before the paired local node claimed it", cancellationRequestedAt: now, finishedAt: now }).where(and(eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "queued"))).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state });
+    if (cancelled) {
+      await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancelled", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelled.id, phase: "queued" }, idempotencyKey: `cutstudio:${cancelled.id}:code-render.cancelled` });
+      return res.json(cancelled);
+    }
+    // A live local process keeps its lease and node reservation until it sees
+    // this request on its short heartbeat and tears down the isolated
+    // container. Releasing it here would allow a second process on the same
+    // workstation before the first one has actually stopped.
+    const [cancelling] = await db.update(cutStudioJobs).set({ cancellationRequestedAt: now, detail: "Cancellation requested; stopping paired local node" }).where(and(
+      eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "running"), isNull(cutStudioJobs.cancellationRequestedAt),
+    )).returning({ id: cutStudioJobs.id, state: cutStudioJobs.state, cancellationRequestedAt: cutStudioJobs.cancellationRequestedAt });
+    if (!cancelling) return res.status(409).json({ message: "This local code render can no longer be cancelled" });
+    await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.cancellation_requested", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, jobId: cancelling.id }, idempotencyKey: `cutstudio:${cancelling.id}:code-render.cancellation-requested` });
+    res.status(202).json(cancelling);
+  });
+
+  // Retrying is explicit. The immutable capsule, lockfile and bounded runtime
+  // request are copied from the failed job, so the user does not accidentally
+  // re-run newer unsaved source or expand the original execution limits.
+  cut.post("/api/cut/projects/:id/code-renders/:jobId/retry", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access) return res.status(404).json({ message: "Project not found" });
+    if (!mayEdit(access.role)) return res.status(403).json({ message: "Editor access is required" });
+    const [failed] = await db.select({ id: cutStudioJobs.id }).from(cutStudioJobs).where(and(
+      eq(cutStudioJobs.id, req.params.jobId), eq(cutStudioJobs.projectId, access.project.id),
+      eq(cutStudioJobs.ownerUserId, access.project.ownerUserId), eq(cutStudioJobs.kind, "code_render"), eq(cutStudioJobs.state, "error"),
+    )).limit(1);
+    if (!failed) return res.status(409).json({ message: "Only a failed local code render can be retried" });
+    const result = await retryCutJob(failed.id, access.project.ownerUserId);
+    if (result.status === "busy") return res.status(429).json({ message: "Wait for an active CutStudio job to finish before retrying" });
+    if (result.status === "not_found" || result.status === "not_failed") return res.status(409).json({ message: "The local code render is no longer retryable" });
+    if (result.status === "created") await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.code_render.retried", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, failedJobId: failed.id, jobId: result.job.id }, idempotencyKey: `cutstudio:${result.job.id}:code-render.retried` });
+    res.status(result.status === "created" ? 202 : 200).json(result.job);
   });
 
   cut.post("/api/cut/projects/:id/compositions/:compositionId/apply", attachUser, async (req, res) => {

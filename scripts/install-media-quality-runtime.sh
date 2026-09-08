@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly archive_name="ffmpeg-N-126242-geb0bfa852e-linux64-gpl.tar.xz"
-readonly archive_sha256="352202878590cd9642efe1533cb9d5d60e534fd9b694b0a8a832045bbc04cf55"
-readonly archive_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-22-12-58/${archive_name}"
+# GitHub retains this dated immutable release; do not use the moving `latest` tag.
+readonly archive_name="ffmpeg-N-126455-gecc7eb519e-linux64-gpl.tar.xz"
+readonly archive_sha256="596d48ce0b64c02a8bdbe424e8967c5f76d051649f61d55bcb9e0799bbfb9904"
+readonly archive_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-07-15-39/${archive_name}"
 readonly install_root="${RUNNER_TEMP:-/tmp}/creativesos-ffmpeg"
 readonly archive_path="${install_root}/${archive_name}"
 

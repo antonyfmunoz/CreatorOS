@@ -855,6 +855,20 @@
       "when": 1788440400000,
       "tag": "0121_cut_studio_dispatch_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1788642000000,
+      "tag": "0122_cut_studio_local_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1788814041072,
+      "tag": "0123_cut_studio_code_render_jobs",
+      "breakpoints": true
     }
   ]
 }

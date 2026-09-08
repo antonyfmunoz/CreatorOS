@@ -71,10 +71,18 @@ export function buildCutSourceZip(files: CutSourceFile[], entrypoint: string) {
   return result;
 }
 
-export function starterCutSource(): CutSourceFile[] {
+export type CutSourceStarter = "motion" | "three_svg";
+
+// Keep starters as inert text. The editor may safely offer them without
+// evaluating the package; execution is still confined to the local runtime.
+export function starterCutSource(starter: CutSourceStarter = "motion"): CutSourceFile[] {
+  if (starter === "three_svg") return [
+    { path: "package.json", content: JSON.stringify({ name: "cut-three-svg-composition", private: true, type: "module", dependencies: { react: "18.3.1", three: "0.185.1" } }, null, 2) + "\n" },
+    { path: "src/index.tsx", content: "import React, { useMemo } from 'react';\nimport * as THREE from 'three';\nimport { FullFrame, SvgScene, useFrame, useInputs } from '@creativesos/cut';\n\ntype Inputs = { rotationSpeed: number; accent: string };\n\nexport default function Composition() {\n  const frame = useFrame();\n  const inputs = useInputs<Inputs>();\n  const scene = useMemo(() => {\n    const next = new THREE.Scene();\n    const cube = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.45, 1.45), new THREE.MeshBasicMaterial({ color: inputs.accent }));\n    cube.name = 'hero-cube';\n    next.add(cube);\n    return next;\n  }, [inputs.accent]);\n  const camera = useMemo(() => {\n    const next = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);\n    next.position.z = 5;\n    return next;\n  }, []);\n  const cube = scene.getObjectByName('hero-cube');\n  if (cube) cube.rotation.set(frame / (42 / inputs.rotationSpeed), frame / (55 / inputs.rotationSpeed), frame / (70 / inputs.rotationSpeed));\n  return <FullFrame style={{ background: '#09090b' }}><SvgScene scene={scene} camera={camera} width={1080} height={1080} style={{ width: '100%', height: '100%' }} /></FullFrame>;\n}\n" },
+  ];
   return [
     { path: "package.json", content: JSON.stringify({ name: "cut-composition", private: true, type: "module", dependencies: { react: "18.3.1" } }, null, 2) + "\n" },
-    { path: "src/index.tsx", content: "import React from 'react';\nimport { FullFrame, useFrame } from '@creativesos/cut';\nimport './style.css';\n\nexport default function Composition() {\n  const frame = useFrame();\n  return <FullFrame className=\"title\">\n    <h1 style={{ transform: `translateY(${Math.max(0, 30 - frame)}px)` }}>Your story</h1>\n  </FullFrame>;\n}\n" },
+    { path: "src/index.tsx", content: "import React from 'react';\nimport { FullFrame, useFrame, useInputs } from '@creativesos/cut';\nimport './style.css';\n\ntype Inputs = { headline: string; accent: string };\n\nexport default function Composition() {\n  const frame = useFrame();\n  const inputs = useInputs<Inputs>();\n  return <FullFrame className=\"title\" style={{ color: inputs.accent }}>\n    <h1 style={{ transform: `translateY(${Math.max(0, 30 - frame)}px)` }}>{inputs.headline}</h1>\n  </FullFrame>;\n}\n" },
     { path: "src/style.css", content: ".title { display: flex; background: #09090b; color: #1d9bf0; align-items: center; justify-content: center; font-family: sans-serif; }\n" },
   ];
 }

@@ -1,13 +1,26 @@
 {
   "name": "rest-express",
   "version": "1.0.0",
+  "private": true,
+  "description": "CreativesOS desktop workspace and local-first CutStudio node.",
+  "author": "CreativesOS",
   "type": "module",
+  "main": "desktop/main.mjs",
   "license": "MIT",
+  "bin": {
+    "creativesos": "cli/creativesos.mjs"
+  },
   "engines": {
     "node": "22.x"
   },
   "scripts": {
     "dev": "tsx server/index.ts",
+    "cli": "node cli/creativesos.mjs",
+    "cli:pack": "node scripts/pack-creativesos-cli.mjs",
+    "mcp": "node mcp/creativesos-mcp.mjs",
+    "desktop": "electron desktop/main.mjs",
+    "desktop:package": "npm run build && electron-builder --win nsis --publish never",
+    "desktop:package:dir": "npm run build && electron-builder --win dir --publish never",
     "dev:demo": "cross-env CREATOROS_DEMO_MODE=true VITE_CREATOROS_DEMO_MODE=true tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
@@ -160,6 +173,8 @@
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.2.0",
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.2",
@@ -178,6 +193,45 @@
     "qs": "6.16.0",
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.12"
+    }
+  },
+  "build": {
+    "appId": "net.creativesos.desktop",
+    "productName": "CreativesOS",
+    "executableName": "CreativesOS",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "release/desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "cli/**/*",
+      "package.json",
+      "!node_modules/**/*",
+      "!node_modules/bufferutil/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "runtimes/cut-code",
+        "to": "cut-code-runtime",
+        "filter": [
+          "**/*",
+          "!node_modules/**/*",
+          "!*.test.mjs",
+          "!qualify*.mjs"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-Desktop-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

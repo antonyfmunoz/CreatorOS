@@ -37,7 +37,7 @@ test("source authoring saves immutable private ZIPs, reopens all files and enfor
   expect(opened.ok(), await opened.text()).toBeTruthy(); expect(opened.headers()["cache-control"]).toBe("no-store");
   const saved = await opened.json(); expect(saved.files).toHaveLength(4);
   expect(saved.files.find((file: any) => file.path === "src/index.tsx").content).toBe(source);
-  expect(saved.execution).toBe("not_implemented");
+  expect(saved.execution).toBe("not_activated");
   const peer = info.project.name.startsWith("mobile") ? 2 : 1;
   expect((await page.request.get(url, { headers: { "x-creativesos-demo-user": String(peer) } })).status()).toBe(404);
   expect(await page.evaluate(() => (globalThis as any).__sourceMustNotExecute)).toBeUndefined();
@@ -94,7 +94,7 @@ test("source lockfile pair registers exact private assets and clears stale pair 
   const lockChoice = page.getByRole("combobox", { name: "Code dependency lockfile", exact: true });
   await expect(lockChoice).toHaveValue("");
   await page.getByRole("button", { name: "Save source + matching lockfile", exact: true }).click();
-  await expect(page.getByText("New private source and matching lockfile saved and selected. You can register this code composition. Public execution remains unavailable.", { exact: true })).toBeVisible();
+  await expect(page.getByText("New private source and matching lockfile saved and selected. You can register this code composition, then run it only through a paired trusted local node.", { exact: true })).toBeVisible();
   const sourceId = await page.getByRole("combobox", { name: "Code source capsule", exact: true }).inputValue();
   const lockId = await lockChoice.inputValue(); expect(lockId).toBeTruthy(); expect(lockId).not.toBe(sourceId);
   const opened = await (await page.request.get(`/api/cut/projects/${project.id}/code-sources/${sourceId}?entrypoint=src%2Findex.tsx`)).json();
