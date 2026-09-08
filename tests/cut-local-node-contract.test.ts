@@ -83,6 +83,7 @@ describe("CutStudio local-node contract", () => {
   it("lets a successful local-node command drain its fetch handles before process exit", () => {
     expect(cliSource).toContain('if (command === "node") await runNodeCommand();');
     expect(cliSource).not.toContain('await runNodeCommand();\n  process.exit(0);');
+    expect(cliSource).toContain('sha256: artifactSha256');
   });
 
   it("keeps legacy or missing output budgets inside the hardened runtime ceiling", () => {

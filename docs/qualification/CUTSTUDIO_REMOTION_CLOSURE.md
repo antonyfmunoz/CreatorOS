@@ -4,6 +4,34 @@ Updated 2026-09-08. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
+## September 8 recovery-truthfulness release and fresh local-node field proof
+
+PR 202 merged as `b36c3a06f6c99568c8dbf53d6ddb8f5b1ecde6db` after the
+protected Core, database/durable-workflow, native-media, desktop/mobile browser,
+Android, iOS, Windows-package and CodeQL checks passed. The production release
+identifies that exact clean source at `/api/release`, with
+`identityVerified: true` and migration parity 125/125; `/api/ready` reported
+ready database and configured private object storage.
+
+This release corrects a custody and recovery-reporting defect in the local
+isolated code-render retry path. When a job's retained retry already exists,
+the API now returns an explicit idempotent outcome instead of allowing the UI
+to imply that a new execution was queued. The signed-in field project retained
+an earlier terminal sequence failure, and selecting Retry on the released UI
+reported that the prior retry was terminal and no new execution was queued.
+That closes the specific truthful-recovery defect while preserving the bounded
+retry history.
+
+The same signed-in project then queued a new bounded still render. Its paired
+Windows node explicitly claimed it through the local CLI and returned a private
+PNG artifact; the production CutStudio UI displayed it as ready and added it
+back to the editable project as a private image graphic. This is new
+production field evidence for the approved paired-local-node path, private
+artifact custody and editor reuse. It does not prove arbitrary-package
+compatibility, public managed code execution, long-media/scale behavior,
+preview/export equality for arbitrary compositions, or any competitor-parity
+verdict.
+
 ## September 8 production release: protected deployment, public identity, and remaining field gate
 
 PR 194 merged at `e37b9e84e9ab0a3f5d1dd7608788c94244517c4f`. Its manually
