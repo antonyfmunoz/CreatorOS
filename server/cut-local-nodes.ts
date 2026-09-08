@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Express, Request } from "express";
+import { rateLimit } from "express-rate-limit";
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { cutLocalNodeClaimSchema, cutLocalNodeHeartbeatSchema, cutLocalNodeJobCompletionSchema, cutLocalNodeJobFailureSchema, cutLocalNodeJobHeartbeatSchema } from "@shared/cut-node";
 import { describeCutCodeOutput } from "@shared/cut-code-output";
@@ -26,6 +27,31 @@ async function authenticated(req: Request) {
 }
 
 const localLeaseMs = 5 * 60_000;
+const localNodeOwnerReadLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  keyGenerator: req => String(req.dbUser!.id),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+const localNodeOwnerWriteLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  keyGenerator: req => String(req.dbUser!.id),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+// A claim exchanges a one-time secret for a durable device credential. Keep
+// this deliberately tight so an intercepted or guessed invitation cannot be
+// brute-forced from a shared network.
+const localNodePairingLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false });
+// A foreground local node polls every two seconds at most. These limits leave
+// room for normal service plus one retry, while bounding credential abuse and
+// expensive source/output operations independently.
+const localNodeHeartbeatLimiter = rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: "draft-8", legacyHeaders: false });
+const localNodeWorkClaimLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: "draft-8", legacyHeaders: false });
+const localNodeLeaseUpdateLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
+const localNodeTerminalUpdateLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
 // A paired local machine is not a durable cloud worker. It must prove it is
 // still present before it can receive a private source capsule or output URL.
 // The CLI service renews this well inside the bound while idle.
@@ -88,12 +114,12 @@ async function finalizeRequestedCancellation(node: typeof cutStudioLocalNodes.$i
 }
 
 export function registerCutLocalNodeRoutes(app: Express) {
-  app.get("/api/cut/nodes", attachUser, async (req, res) => {
+  app.get("/api/cut/nodes", attachUser, localNodeOwnerReadLimiter, async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     const nodes = await db.select().from(cutStudioLocalNodes).where(eq(cutStudioLocalNodes.ownerUserId, req.dbUser!.id)).orderBy(desc(cutStudioLocalNodes.updatedAt));
     res.json({ nodes: nodes.map(safe) });
   });
-  app.post("/api/cut/nodes/invitations", attachUser, async (req, res) => {
+  app.post("/api/cut/nodes/invitations", attachUser, localNodeOwnerWriteLimiter, async (req, res) => {
     const business = await ensureDefaultBusiness(req.dbUser!);
     const token = crypto.randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 15 * 60_000);
@@ -104,7 +130,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     res.setHeader("Cache-Control", "private, no-store");
     res.status(201).json({ token, expiresAt });
   });
-  app.post("/api/cut/nodes/claim", async (req, res) => {
+  app.post("/api/cut/nodes/claim", localNodePairingLimiter, async (req, res) => {
     const parsed = cutLocalNodeClaimSchema.safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid local node claim" });
     const now = new Date(); const secret = crypto.randomBytes(32).toString("base64url");
@@ -119,7 +145,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     if (!node) return res.status(410).json({ message: "This pairing code is invalid, expired, or already used" });
     res.setHeader("Cache-Control", "no-store"); res.status(201).json({ node: safe(node), credential: secret });
   });
-  app.post("/api/cut/nodes/:id/heartbeat", async (req, res) => {
+  app.post("/api/cut/nodes/:id/heartbeat", localNodeHeartbeatLimiter, async (req, res) => {
     const node = await authenticated(req); if (!node || node.id !== req.params.id) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeHeartbeatSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     // A running lease owns the node. An out-of-band heartbeat cannot make it
@@ -133,7 +159,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     const [updated] = await db.update(cutStudioLocalNodes).set({ status: parsed.data.status, lastSequence: parsed.data.sequence, lastSeenAt: new Date(), updatedAt: new Date() }).where(and(eq(cutStudioLocalNodes.id, node.id), lt(cutStudioLocalNodes.lastSequence, parsed.data.sequence), isNull(cutStudioLocalNodes.revokedAt), readyGuard)).returning();
     if (!updated) return res.status(409).json({ message: parsed.data.status === "ready" ? "This node still owns an active local render lease" : "A newer node heartbeat was already accepted" }); res.json({ node: safe(updated) });
   });
-  app.post("/api/cut/nodes/jobs/claim", async (req, res) => {
+  app.post("/api/cut/nodes/jobs/claim", localNodeWorkClaimLimiter, async (req, res) => {
     const node = await authenticated(req);
     if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     if (node.status !== "ready" || !node.capabilities.isolatedCode || !node.capabilities.docker) return res.status(409).json({ message: "This node is not ready for isolated code execution" });
@@ -194,7 +220,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
       res.status(503).json({ message: "Private source delivery is not configured" });
     }
   });
-  app.post("/api/cut/nodes/jobs/:id/heartbeat", async (req, res) => {
+  app.post("/api/cut/nodes/jobs/:id/heartbeat", localNodeLeaseUpdateLimiter, async (req, res) => {
     const node = await authenticated(req); if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeJobHeartbeatSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
@@ -208,7 +234,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     if (!live?.length) return res.status(409).json({ message: "The local code-render lease is no longer active" });
     res.json({ status: "running", leaseExpiresAt: live[0].leaseExpiresAt });
   });
-  app.post("/api/cut/nodes/jobs/:id/fail", async (req, res) => {
+  app.post("/api/cut/nodes/jobs/:id/fail", localNodeTerminalUpdateLimiter, async (req, res) => {
     const node = await authenticated(req); if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeJobFailureSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
@@ -224,7 +250,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.code_render.failed", actorUserId: node.ownerUserId, payload: { jobId: job.id, nodeId: node.id, code: parsed.data.code }, idempotencyKey: `cutstudio:${job.id}:code-render.failed` });
     res.status(204).end();
   });
-  app.post("/api/cut/nodes/jobs/:id/complete", async (req, res) => {
+  app.post("/api/cut/nodes/jobs/:id/complete", localNodeTerminalUpdateLimiter, async (req, res) => {
     const node = await authenticated(req); if (!node) return res.status(401).json({ message: "Local-node authentication failed" });
     const parsed = cutLocalNodeJobCompletionSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
     const job = await locallyOwnedLease(node, req.params.id, parsed.data.leaseToken); if (!job) return res.status(404).json({ message: "Local code-render lease not found" });
@@ -299,7 +325,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
       await removeStoredAsset(temporaryStorageKey, "private").catch(() => undefined);
     }
   });
-  app.delete("/api/cut/nodes/:id", attachUser, async (req, res) => {
+  app.delete("/api/cut/nodes/:id", attachUser, localNodeOwnerWriteLimiter, async (req, res) => {
     const node = await db.transaction(async transaction => {
       const now = new Date();
       const [revoked] = await transaction.update(cutStudioLocalNodes).set({ status: "revoked", revokedAt: now, updatedAt: now }).where(and(eq(cutStudioLocalNodes.id, req.params.id), eq(cutStudioLocalNodes.ownerUserId, req.dbUser!.id), isNull(cutStudioLocalNodes.revokedAt))).returning();
