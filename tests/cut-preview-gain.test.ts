@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutClipVolumeAt, cutClipVolumePoints, cutTrackEffectiveGain } from "../shared/cut-studio";
+import { cutClipVolumeAt, cutClipVolumePoints, cutMotionEasingProgress, cutTrackEffectiveGain } from "../shared/cut-studio";
 
 describe("shared native preview and export gain curves", () => {
   it("applies clip gain, track gain and muted buses without changing the curve", () => {
@@ -20,5 +20,14 @@ describe("shared native preview and export gain curves", () => {
     expect(cutClipVolumeAt(clip, 3)).toBe(.5);
     expect(cutClipVolumeAt(clip, 10)).toBe(1);
     expect(cutClipVolumeAt(clip, NaN)).toBe(1);
+  });
+
+  it("keeps the bounded named composition curves deterministic", () => {
+    expect(cutMotionEasingProgress(.5, "ease_in")).toBe(.25);
+    expect(cutMotionEasingProgress(.5, "ease_out")).toBe(.75);
+    expect(cutMotionEasingProgress(.5, "ease_in_out")).toBe(.5);
+    expect(cutMotionEasingProgress(.5, "step")).toBe(0);
+    expect(cutMotionEasingProgress(1, "step")).toBe(1);
+    expect(cutMotionEasingProgress(.5, "spring")).toBeGreaterThan(0);
   });
 });

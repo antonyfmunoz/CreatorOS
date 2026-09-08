@@ -17,6 +17,24 @@ const cutGraphicEffectSchema = z.object({
   }
 });
 
+/**
+ * These are deliberately named, bounded curves rather than arbitrary filter
+ * expressions. Keeping the enum shared means browser preview, persisted EDLs,
+ * and the native renderer can agree without admitting renderer injection.
+ */
+export const cutMotionEasingSchema = z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "spring", "step"]);
+export type CutMotionEasing = z.infer<typeof cutMotionEasingSchema>;
+
+export function cutMotionEasingProgress(value: number, easing: CutMotionEasing) {
+  const progress = Math.max(0, Math.min(1, value));
+  if (easing === "step") return progress < 1 ? 0 : 1;
+  if (easing === "ease_in") return progress * progress;
+  if (easing === "ease_out") return 1 - (1 - progress) ** 2;
+  if (easing === "ease_in_out") return progress * progress * (3 - 2 * progress);
+  if (easing === "spring") return Math.max(0, Math.min(1, 1 - Math.exp(-7 * progress) * Math.cos(10 * progress)));
+  return progress;
+}
+
 export const cutClipSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
   start: z.number().finite().min(0),
@@ -62,12 +80,19 @@ export const cutClipSchema = z.object({
     y: z.number().finite().min(0).max(1),
     scale: z.number().finite().min(0.25).max(4).optional(),
     opacity: z.number().finite().min(0).max(1).optional(),
-    easing: z.enum(["linear", "ease_in_out"]).optional(),
+    // Each property may retain its authored curve when a composition is
+    // compiled to an editable native timeline. `easing` remains as the
+    // backwards-compatible shared fallback for older EDL snapshots.
+    easing: cutMotionEasingSchema.optional(),
+    xEasing: cutMotionEasingSchema.optional(),
+    yEasing: cutMotionEasingSchema.optional(),
+    scaleEasing: cutMotionEasingSchema.optional(),
+    opacityEasing: cutMotionEasingSchema.optional(),
   })).max(50).optional(),
   volumeKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(43_200),
     volume: z.number().finite().min(0).max(2),
-    easing: z.enum(["linear", "ease_in_out"]).optional(),
+    easing: cutMotionEasingSchema.optional(),
   })).max(50).optional(),
 });
 
@@ -416,7 +441,7 @@ export function cutClipVolumeAt(clip: CutClip, localSeconds: number, multiplier 
     const left = points[index], right = points[index + 1];
     if (time >= right.at) continue;
     const progress = Math.max(0, Math.min(1, (time - left.at) / (right.at - left.at)));
-    const eased = right.easing === "ease_in_out" ? progress * progress * (3 - 2 * progress) : progress;
+    const eased = cutMotionEasingProgress(progress, right.easing);
     return gain(left.value) + Number((gain(right.value) - gain(left.value)).toFixed(5)) * eased;
   }
   return gain(points.at(-1)!.value);

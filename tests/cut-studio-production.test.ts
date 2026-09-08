@@ -108,6 +108,23 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
   });
 
+  it("preserves independent named easing for every exported media property", () => {
+    const easedManifest = {
+      ...manifest,
+      layers: [{
+        ...sourceLayer,
+        animations: [
+          { property: "x" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .8, easing: "ease_in" as const }] },
+          { property: "y" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .4, easing: "ease_out" as const }] },
+          { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: 1.3, easing: "spring" as const }] },
+          { property: "opacity" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: .3, easing: "step" as const }] },
+        ],
+      }],
+    };
+    const clip = compileCompositionToEdl(easedManifest, { version: 3, clips: [] }).clips[0];
+    expect(clip.motionKeyframes?.at(-1)).toMatchObject({ at: 2, easing: "linear", xEasing: "ease_in", yEasing: "ease_out", scaleEasing: "spring", opacityEasing: "step" });
+  });
+
   it("expands same-format nested compositions with deterministic timing and private asset lineage", () => {
     const childId = "00000000-0000-4000-8000-000000000050";
     const rootId = "00000000-0000-4000-8000-000000000051";

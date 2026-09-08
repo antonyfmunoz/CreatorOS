@@ -44,6 +44,7 @@ import {
   parseEbur128Summary,
   validateCutEdl,
   type CutEdl,
+  type CutMotionEasing,
   type CutTranscript,
 } from "@shared/cut-studio";
 import { attachUser } from "./auth";
@@ -138,10 +139,22 @@ const audioRoutingTemplateInputSchema = z.object({
   payload: cutAudioRoutingTemplatePayloadSchema,
 });
 
+/** Emit only expressions for the shared allowlisted curve enum. Commas are
+ * escaped for FFmpeg's filter grammar; values are never user-provided code. */
+function ffmpegMotionEasing(progress: string, easing: CutMotionEasing) {
+  const point = `(${progress})`;
+  if (easing === "ease_in") return `${point}*${point}`;
+  if (easing === "ease_out") return `1-(1-${point})*(1-${point})`;
+  if (easing === "ease_in_out") return `${point}*${point}*(3-2*${point})`;
+  if (easing === "spring") return `max(0\\,min(1\\,1-exp(-7*${point})*cos(10*${point})))`;
+  if (easing === "step") return `if(lt(${point}\\,1)\\,0\\,1)`;
+  return point;
+}
+
 function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity", multiplier: number, timeVariable = "t") {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const points = [{ at: 0, value: transform[property], easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe[property] === "number" ? [{ at: keyframe.at, value: keyframe[property]!, easing: keyframe.easing ?? "linear" as const }] : [])]
+  const points = [{ at: 0, value: transform[property], easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe[property] === "number" ? [{ at: keyframe.at, value: keyframe[property]!, easing: keyframe[`${property}Easing`] ?? keyframe.easing ?? "linear" }] : [])]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
   const output = (value: number) => Number((value * multiplier).toFixed(5));
@@ -156,7 +169,7 @@ function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" |
     const delta = Number((output(right.value) - from).toFixed(5));
     const duration = Number((right.at - left.at).toFixed(3));
     const progress = `(${timeVariable}-${start})/${duration}`;
-    const easedProgress = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    const easedProgress = ffmpegMotionEasing(progress, right.easing);
     const interpolated = `${from}+${delta}*${easedProgress}`;
     expression = `if(lt(${timeVariable}\\,${end})\\,${interpolated}\\,${expression})`;
   }
@@ -164,7 +177,7 @@ function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" |
 }
 
 function motionScaleExpression(clip: CutEdl["clips"][number], divisor = 1, fps = 30) {
-  const points = [{ at: 0, value: 1, easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [{ at: keyframe.at, value: keyframe.scale, easing: keyframe.easing ?? "linear" as const }] : [])]
+  const points = [{ at: 0, value: 1, easing: "linear" as const }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [{ at: keyframe.at, value: keyframe.scale, easing: keyframe.scaleEasing ?? keyframe.easing ?? "linear" }] : [])]
     .sort((left, right) => left.at - right.at)
     .filter((point, index, all) => index === all.length - 1 || Math.abs(point.at - all[index + 1].at) > 0.0005);
   const output = (value: number) => Number((value / divisor).toFixed(5));
@@ -175,7 +188,7 @@ function motionScaleExpression(clip: CutEdl["clips"][number], divisor = 1, fps =
     const start = Number(left.at.toFixed(3)); const end = Number(right.at.toFixed(3));
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5)); const duration = Number((right.at - left.at).toFixed(3));
     const progress = `(on/${fps}-${start})/${duration}`;
-    const eased = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    const eased = ffmpegMotionEasing(progress, right.easing);
     expression = `if(lt(on/${fps}\\,${end})\\,${from}+${delta}*${eased}\\,${expression})`;
   }
   return expression;
@@ -221,7 +234,7 @@ function graphicScaleExpression(graphic: NonNullable<CutEdl["graphics"]>[number]
     const left = points[index]; const right = points[index + 1];
     const end = Number(right.at.toFixed(3)); const duration = Number((right.at - left.at).toFixed(3));
     const from = output(left.value); const delta = Number((output(right.value) - from).toFixed(5)); const progress = `(on/${fps}-${Number(left.at.toFixed(3))})/${duration}`;
-    const eased = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    const eased = ffmpegMotionEasing(progress, right.easing);
     expression = `if(lt(on/${fps}\\,${end})\\,${from}+${delta}*${eased}\\,${expression})`;
   }
   return expression;
@@ -291,7 +304,7 @@ function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
     const delta = Number((gain(right.value) - from).toFixed(5));
     const duration = Number((right.at - left.at).toFixed(3));
     const progress = `t/${duration}`.replace("t", `(t-${Number(left.at.toFixed(3))})`);
-    const easedProgress = right.easing === "ease_in_out" ? `(${progress})*(${progress})*(3-2*(${progress}))` : progress;
+    const easedProgress = ffmpegMotionEasing(progress, right.easing);
     expression = `if(lt(t\\,${end})\\,${from}+${delta}*${easedProgress}\\,${expression})`;
   }
   return expression;

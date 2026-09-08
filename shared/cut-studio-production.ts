@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeCutClips, type CutEdl } from "./cut-studio";
+import { cutMotionEasingProgress, normalizeCutClips, type CutEdl, type CutMotionEasing } from "./cut-studio";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
@@ -486,13 +486,7 @@ export function resolveCompositionParameters(manifestInput: unknown, parameterVa
 }
 
 function easingProgress(value: number, easing: z.infer<typeof cutCompositionKeyframeSchema>["easing"]) {
-  const progress = Math.max(0, Math.min(1, value));
-  if (easing === "step") return progress < 1 ? 0 : 1;
-  if (easing === "ease_in") return progress * progress;
-  if (easing === "ease_out") return 1 - (1 - progress) ** 2;
-  if (easing === "ease_in_out") return progress < .5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
-  if (easing === "spring") return Math.max(0, Math.min(1, 1 - Math.exp(-7 * progress) * Math.cos(10 * progress)));
-  return progress;
+  return cutMotionEasingProgress(value, easing);
 }
 
 function valueAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, property: string, frame: number, fallback: number) {
@@ -632,6 +626,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
     const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
     const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
+    const easingAt = (property: "x" | "y" | "scale" | "opacity", frame: number): CutMotionEasing =>
+      layer.animations.find((animation) => animation.property === property)?.keyframes.find((keyframe) => keyframe.frame === frame)?.easing ?? "linear";
     return [{
       id: layer.id,
       start: sourceStart,
@@ -649,7 +645,14 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         y: valueAtFrame(layer, "y", frame, layer.y),
         scale: valueAtFrame(layer, "scale", frame, 1),
         opacity: valueAtFrame(layer, "opacity", frame, layer.opacity),
-        easing: "ease_in_out" as const,
+        // Preserve each authored property curve. The generic legacy field is
+        // neutral, so readers that have not adopted per-property easing do not
+        // get a fabricated shared curve.
+        easing: "linear" as const,
+        xEasing: easingAt("x", frame),
+        yEasing: easingAt("y", frame),
+        scaleEasing: easingAt("scale", frame),
+        opacityEasing: easingAt("opacity", frame),
       })),
     }];
   });
