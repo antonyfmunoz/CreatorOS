@@ -169,7 +169,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await codePackage.getByRole("button", { name: "Save isolated composition" }).click();
   await expect(studio.getByText(/Pinned code composition saved/)).toBeVisible();
   await expect(studio.getByText("src/index.tsx", { exact: true })).toBeVisible();
-  await expect(studio.getByText("Package saved; isolated code execution still requires implementation and qualification.")).toBeVisible();
+  await expect(studio.getByText("Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated.")).toBeVisible();
   await studio.getByRole("button", { name: "Kinetic" }).click();
   await expect(studio.getByText(/Motion composition saved/)).toBeVisible();
   await expect(studio.getByLabel("Deterministic composition preview")).toBeVisible();
