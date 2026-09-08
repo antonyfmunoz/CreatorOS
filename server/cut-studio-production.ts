@@ -30,6 +30,7 @@ import {
   cutProductionBriefSchema,
   cutProductionElementSpecSchema,
   cutShotSpecSchema,
+  expandNestedCompositionManifest,
   resolveCompositionParameters,
 } from "@shared/cut-studio-production";
 import { cutRenderRequestSchema, cutRenderSettingsSchema, validateCutEdl } from "@shared/cut-studio";
@@ -176,6 +177,25 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   if ([...imageIds, ...maskIds].some((assetId) => !byId.get(assetId)?.mimeType?.startsWith("image/"))) throw new Error("Every composition image or mask must be ready private image media");
   if (lottieIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-lottie" || !asset.mimeType || !/^(application\/(json|lottie\+json)|text\/json)$/i.test(asset.mimeType); })) throw new Error("Every Lottie layer must reference ready private validated Lottie JSON");
   if (riveIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-rive" || !asset.mimeType || !/^application\/(octet-stream|x-rive|vnd\.rive)$/i.test(asset.mimeType); })) throw new Error("Every Rive layer must reference ready private validated Rive media");
+}
+
+/** Resolve composition references only from this project's active declarative
+ * records, then check the fully expanded private-asset graph. Persisted render
+ * jobs receive that immutable expansion so later edits cannot alter a queued
+ * export. */
+async function expandProjectComposition(project: typeof cutStudioProjects.$inferSelect, manifest: z.infer<typeof cutCompositionManifestSchema>, options: { rootCompositionId?: string; overrideRootManifest?: z.infer<typeof cutCompositionManifestSchema> } = {}) {
+  const rows = await db.select().from(cutStudioCompositions).where(and(
+    eq(cutStudioCompositions.projectId, project.id),
+    eq(cutStudioCompositions.status, "active"),
+  ));
+  const available = new Map(rows.filter((row) => row.mode === "declarative").map((row) => [row.id, row.manifest]));
+  if (options.rootCompositionId && options.overrideRootManifest) available.set(options.rootCompositionId, options.overrideRootManifest);
+  const expanded = expandNestedCompositionManifest(manifest, {
+    rootCompositionId: options.rootCompositionId,
+    resolveComposition: (compositionId) => available.get(compositionId),
+  });
+  await assertCompositionAssets(project, expanded);
+  return expanded;
 }
 
 async function assertCodeCapsuleAssets(project: typeof cutStudioProjects.$inferSelect, capsule: z.infer<typeof cutCodeCapsuleSchema>, soundtrackFiles: readonly string[] = []) {
@@ -326,7 +346,8 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const parsed = compositionInput.safeParse(req.body ?? { name: `${access.project.name} composition`, manifest: defaultComposition(access.project) });
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
     try {
-      await assertCompositionAssets(access.project, parsed.data.manifest);
+      if (parsed.data.mode === "declarative") await expandProjectComposition(access.project, parsed.data.manifest);
+      else await assertCompositionAssets(access.project, parsed.data.manifest);
       if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
     } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [composition] = await db.insert(cutStudioCompositions).values({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule }).returning();
@@ -351,7 +372,9 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     )).limit(1);
     if (!composition) return res.status(404).json({ message: "Composition not found" });
     if (composition.mode !== "declarative") return res.status(409).json({ message: "Code compositions require the isolated player runtime" });
-    const manifest = cutCompositionManifestSchema.parse(composition.manifest);
+    let manifest: z.infer<typeof cutCompositionManifestSchema>;
+    try { manifest = await expandProjectComposition(access.project, composition.manifest, { rootCompositionId: composition.id }); }
+    catch (error) { return res.status(409).json({ message: error instanceof Error ? error.message : "Composition references are unavailable" }); }
     const referencedAssetIds = [
       ...manifest.fonts.map((font) => font.assetId),
       ...manifest.audioReactiveSignals.map((signal) => signal.assetId),
@@ -382,7 +405,11 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const access = await projectAccess(req.dbUser!.id, req.params.id);
     if (!access || !uuid.safeParse(req.params.compositionId).success || !uuid.safeParse(req.params.assetId).success) return res.status(404).json({ message: "Composition media not found" });
     const [composition] = await db.select().from(cutStudioCompositions).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.status, "active"), eq(cutStudioCompositions.mode, "declarative"))).limit(1);
-    if (!composition || !manifestAssetIds(composition.manifest).includes(req.params.assetId)) return res.status(404).json({ message: "Composition media not found" });
+    if (!composition) return res.status(404).json({ message: "Composition media not found" });
+    let expandedManifest: z.infer<typeof cutCompositionManifestSchema>;
+    try { expandedManifest = await expandProjectComposition(access.project, composition.manifest, { rootCompositionId: composition.id }); }
+    catch { return res.status(404).json({ message: "Composition media not found" }); }
+    if (!manifestAssetIds(expandedManifest).includes(req.params.assetId)) return res.status(404).json({ message: "Composition media not found" });
     if (req.params.assetId !== access.project.sourceAssetId) {
       const [projectMedia] = await db.select({ id: cutStudioProjectMedia.id }).from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, req.params.assetId), inArray(cutStudioProjectMedia.mediaKind, ["video", "audio", "image", "font", "lottie", "rive"]))).limit(1);
       if (!projectMedia) return res.status(404).json({ message: "Composition media not found" });
@@ -415,7 +442,8 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     const parsed = compositionInput.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "The composition is invalid", issues: parsed.error.issues });
     try {
-      await assertCompositionAssets(access.project, parsed.data.manifest);
+      if (parsed.data.mode === "declarative") await expandProjectComposition(access.project, parsed.data.manifest, { rootCompositionId: req.params.compositionId, overrideRootManifest: parsed.data.manifest });
+      else await assertCompositionAssets(access.project, parsed.data.manifest);
       if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
     } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
     const [updated] = await db.update(cutStudioCompositions).set({ name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule, revision: sql`${cutStudioCompositions.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.revision, expected), eq(cutStudioCompositions.status, "active"))).returning();
@@ -470,8 +498,9 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (compositions.length !== parsed.data.compositionIds.length) return res.status(404).json({ message: "One or more compositions are unavailable" });
     if (compositions.some((composition) => composition.mode !== "declarative")) return res.status(409).json({ message: "Code compositions must render through the isolated runtime" });
     if (compositions.some((composition) => composition.manifest.durationInFrames / composition.manifest.fps > 7_200)) return res.status(413).json({ message: "A single composition render can be up to two hours" });
+    const expandedById = new Map<string, z.infer<typeof cutCompositionManifestSchema>>();
     try {
-      for (const composition of compositions) await assertCompositionAssets(access.project, composition.manifest);
+      for (const composition of compositions) expandedById.set(composition.id, await expandProjectComposition(access.project, composition.manifest, { rootCompositionId: composition.id }));
     } catch (error) {
       return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" });
     }
@@ -511,7 +540,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
             name: composition.name,
             renderBatchId: parsed.data.idempotencyKey,
             variantIndex,
-            manifest: composition.manifest,
+            // Freeze the fully expanded graph into the render request. This
+            // makes queued jobs deterministic even if a referenced child is
+            // edited or archived before a worker claims the job.
+            manifest: expandedById.get(composition.id)!,
           },
         },
       }))).returning();
@@ -721,7 +753,10 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     if (!composition) return res.status(404).json({ message: "Composition not found" });
     if (composition.mode !== "declarative") return res.status(409).json({ message: "Code compositions must render through the isolated runtime" });
     let edl;
-    try { edl = validateCutEdl(compileCompositionToEdl(composition.manifest, access.project.edl), Math.max(access.project.duration, composition.manifest.durationInFrames / composition.manifest.fps)); } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition could not be compiled" }); }
+    try {
+      const expanded = await expandProjectComposition(access.project, composition.manifest, { rootCompositionId: composition.id });
+      edl = validateCutEdl(compileCompositionToEdl(expanded, access.project.edl), Math.max(access.project.duration, expanded.durationInFrames / expanded.fps));
+    } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition could not be compiled" }); }
     const [updated] = await db.update(cutStudioProjects).set({ edl, duration: Math.max(access.project.duration, composition.manifest.durationInFrames / composition.manifest.fps), revision: sql`${cutStudioProjects.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioProjects.id, access.project.id), eq(cutStudioProjects.revision, expected))).returning();
     if (!updated) return res.status(409).json({ message: "The project changed elsewhere" });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: updated.id, eventType: "cutstudio.composition.applied", actorUserId: req.dbUser!.id, payload: { businessId: updated.businessId, compositionId: composition.id, revision: updated.revision }, idempotencyKey: `cutstudio:${composition.id}:applied:${updated.revision}` });

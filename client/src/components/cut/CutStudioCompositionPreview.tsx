@@ -1,5 +1,5 @@
 import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { evaluateCompositionFrame, type CutCompositionManifest } from "@shared/cut-studio-production";
+import { evaluateCompositionFrame, expandNestedCompositionManifest, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
@@ -449,7 +449,12 @@ export const CutStudioCompositionPlayer = forwardRef<CutStudioCompositionPlayerH
   </div></CutPreviewReadinessContext.Provider></AssetUrlContext.Provider>;
 });
 
-export function CutStudioCompositionPreview({ manifest }: { manifest: CutCompositionManifest }) {
-  const initialFrame = Math.min(manifest.durationInFrames - 1, Math.max(0, manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6);
-  return <div className="mt-3" aria-label="Deterministic composition preview"><CutStudioCompositionPlayer manifest={manifest} initialFrame={initialFrame}/></div>;
+export function CutStudioCompositionPreview({ manifest, compositionManifests }: { manifest: CutCompositionManifest; compositionManifests?: ReadonlyMap<string, CutCompositionManifest> }) {
+  const expanded = useMemo(() => {
+    try { return { manifest: expandNestedCompositionManifest(manifest, { resolveComposition: (compositionId) => compositionManifests?.get(compositionId) }) }; }
+    catch (error) { return { error: error instanceof Error ? error.message : "This nested composition cannot be previewed" }; }
+  }, [manifest, compositionManifests]);
+  if (!expanded.manifest) return <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-[10px] text-amber-200" role="status">Nested composition preview is paused: {expanded.error}</div>;
+  const initialFrame = Math.min(expanded.manifest.durationInFrames - 1, Math.max(0, expanded.manifest.layers.find((layer) => layer.kind === "text")?.from ?? 0) + 6);
+  return <div className="mt-3" aria-label="Deterministic composition preview"><CutStudioCompositionPlayer manifest={expanded.manifest} initialFrame={initialFrame}/></div>;
 }

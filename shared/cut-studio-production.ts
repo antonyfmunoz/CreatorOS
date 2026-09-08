@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeCutClips, type CutEdl } from "./cut-studio";
+import { cutCompositionEasingProgress, normalizeCutClips, type CutEdl, type CutMotionEasing } from "./cut-studio";
 import { sanitizeCutStudioSvg } from "./cut-studio-svg";
 import { parseCutThreePrimitiveStyle } from "./cut-studio-three";
 import { resolveCutTextLayout, CUT_NATIVE_TEXT_MAX_CHARACTERS } from "./cut-text-layout";
@@ -71,11 +71,15 @@ export const cutLayerTransitionSchema = z.object({
 
 export const cutCompositionLayerSchema = z.object({
   id,
-  kind: z.enum(["video", "audio", "image", "text", "shape", "svg", "path", "caption", "lottie", "rive", "three", "data"]),
+  kind: z.enum(["video", "audio", "image", "text", "shape", "svg", "path", "caption", "lottie", "rive", "three", "data", "composition"]),
   name: z.string().trim().min(1).max(120),
   from: z.number().int().min(0).max(2_592_000),
   durationInFrames: z.number().int().positive().max(2_592_000),
   assetId: z.string().uuid().optional(),
+  // A composition is a project-scoped declarative manifest reference. It is
+  // intentionally not an arbitrary URL or executable module.
+  compositionId: z.string().uuid().optional(),
+  compositionParameters: scalarRecord.optional(),
   sourceStartFrame: z.number().int().min(0).max(2_592_000).default(0),
   text: z.string().max(20_000).optional(),
   x: z.number().finite().min(-4).max(4).default(0),
@@ -99,6 +103,7 @@ export const cutCompositionLayerSchema = z.object({
   animations: z.array(cutCompositionAnimationSchema).max(50).default([]),
 }).superRefine((value, context) => {
   if (["video", "audio", "image", "lottie", "rive"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
+  if (value.kind === "composition" && !value.compositionId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionId"], message: "Composition layers require a project composition reference" });
   if (["text", "caption", "svg", "path"].includes(value.kind) && !value.text?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `${value.kind} layers require source text or path data` });
   if (value.kind === "path" && value.text && (value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
   if (value.kind === "svg" && value.text) {
@@ -359,6 +364,77 @@ export const cutGenerationRequestSchema = z.object({
 });
 
 export type CutCompositionManifest = z.infer<typeof cutCompositionManifestSchema>;
+
+export type CutCompositionResolver = (compositionId: string) => unknown | undefined;
+
+export type CutCompositionExpansionOptions = {
+  resolveComposition?: CutCompositionResolver;
+  rootCompositionId?: string;
+  maxDepth?: number;
+};
+
+function nestedLayerId(path: string[], layerId: string) {
+  // Keep generated ids inside the public schema's 80-character envelope while
+  // retaining deterministic uniqueness across sibling composition paths.
+  let hash = 2_166_136_261;
+  for (const character of `${path.join("/")}::${layerId}`) hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619);
+  return `nested_${(hash >>> 0).toString(36)}_${layerId.slice(0, 48)}`;
+}
+
+function assertNeutralCompositionContainer(layer: CutCompositionManifest["layers"][number]) {
+  if (layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.height !== 1 || layer.opacity !== 1 || layer.rotation !== 0 || layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.anchorX !== .5 || layer.anchorY !== .5 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.length || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
+    throw new Error("Nested composition containers must keep neutral transform, effects, animation, blend, and transitions until composition-group rendering is available");
+  }
+}
+
+/**
+ * Resolve a bounded tree of saved declarative compositions into one manifest
+ * before browser preview or final EDL compilation. The contract deliberately
+ * rejects different canvas formats and non-neutral parent transforms: silently
+ * approximating either would make preview and export disagree.
+ */
+export function expandNestedCompositionManifest(manifestInput: unknown, options: CutCompositionExpansionOptions = {}): CutCompositionManifest {
+  const root = cutCompositionManifestSchema.parse(manifestInput);
+  // The common non-nested path remains a single schema validation. Besides
+  // preserving render admission latency, this keeps the sampled-motion path
+  // from repeatedly validating an already admitted manifest.
+  if (!root.layers.some((layer) => layer.kind === "composition")) return root;
+  const maxDepth = Math.max(1, Math.min(8, Math.floor(options.maxDepth ?? 4)));
+  const usedLayerIds = new Set<string>();
+  const fonts = new Map(root.fonts.map((font) => [font.family, font]));
+  const signals = new Map(root.audioReactiveSignals.map((signal) => [signal.id, signal]));
+
+  const expand = (manifest: CutCompositionManifest, path: string[], stack: string[], depth: number): CutCompositionManifest["layers"] => manifest.layers.flatMap((layer) => {
+    if (layer.kind !== "composition") {
+      const id = path.length ? nestedLayerId(path, layer.id) : layer.id;
+      if (usedLayerIds.has(id)) throw new Error("Nested composition expansion created a duplicate layer id");
+      usedLayerIds.add(id);
+      return [{ ...layer, id }];
+    }
+    assertNeutralCompositionContainer(layer);
+    if (depth >= maxDepth) throw new Error(`Nested compositions may be at most ${maxDepth} levels deep`);
+    if (!options.resolveComposition) throw new Error("Nested composition resolution is unavailable");
+    const referencedRaw = options.resolveComposition(layer.compositionId!);
+    if (!referencedRaw) throw new Error("Nested composition is unavailable in this project");
+    if (stack.includes(layer.compositionId!)) throw new Error("Nested compositions cannot contain a cycle");
+    const referenced = resolveCompositionParameters(referencedRaw, layer.compositionParameters ?? {});
+    if (referenced.width !== manifest.width || referenced.height !== manifest.height || referenced.fps !== manifest.fps) throw new Error("Nested compositions must use the same width, height, and frame rate as their parent");
+    if (referenced.durationInFrames !== layer.durationInFrames || layer.sourceStartFrame !== 0) throw new Error("Nested composition containers must use the referenced composition's full duration and a zero source offset");
+    for (const font of referenced.fonts) {
+      const existing = fonts.get(font.family);
+      if (existing && JSON.stringify(existing) !== JSON.stringify(font)) throw new Error(`Nested composition font family conflict: ${font.family}`);
+      fonts.set(font.family, font);
+    }
+    for (const signal of referenced.audioReactiveSignals) {
+      const id = path.length ? nestedLayerId([...path, layer.id], signal.id) : signal.id;
+      signals.set(id, { ...signal, id });
+    }
+    return expand(referenced, [...path, layer.id], [...stack, layer.compositionId!], depth + 1).map((child) => ({ ...child, from: layer.from + child.from }));
+  });
+
+  const layers = expand(root, [], options.rootCompositionId ? [options.rootCompositionId] : [], 0);
+  return cutCompositionManifestSchema.parse({ ...root, layers, fonts: Array.from(fonts.values()), audioReactiveSignals: Array.from(signals.values()) });
+}
 export type CutCompositionVariantBatch = z.infer<typeof cutCompositionVariantBatchSchema>;
 export type CutCodeCapsule = z.infer<typeof cutCodeCapsuleSchema>;
 export type CutProductionBrief = z.infer<typeof cutProductionBriefSchema>;
@@ -410,13 +486,7 @@ export function resolveCompositionParameters(manifestInput: unknown, parameterVa
 }
 
 function easingProgress(value: number, easing: z.infer<typeof cutCompositionKeyframeSchema>["easing"]) {
-  const progress = Math.max(0, Math.min(1, value));
-  if (easing === "step") return progress < 1 ? 0 : 1;
-  if (easing === "ease_in") return progress * progress;
-  if (easing === "ease_out") return 1 - (1 - progress) ** 2;
-  if (easing === "ease_in_out") return progress < .5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
-  if (easing === "spring") return Math.max(0, Math.min(1, 1 - Math.exp(-7 * progress) * Math.cos(10 * progress)));
-  return progress;
+  return cutCompositionEasingProgress(value, easing);
 }
 
 function valueAtFrame(layer: z.infer<typeof cutCompositionLayerSchema>, property: string, frame: number, fallback: number) {
@@ -540,8 +610,8 @@ function graphicCurves(manifest: CutCompositionManifest, layer: CutCompositionMa
     })), transitions });
 }
 
-export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl): CutEdl {
-  const manifest = cutCompositionManifestSchema.parse(manifestInput);
+export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl, options: CutCompositionExpansionOptions = {}): CutEdl {
+  const manifest = expandNestedCompositionManifest(manifestInput, options);
   const fps = manifest.fps;
   // Reject unsupported or conflicting masks before admitting a native render,
   // rather than silently dropping them from media layers or failing much later.
@@ -556,6 +626,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
     const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
     const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
+    const easingAt = (property: "x" | "y" | "scale" | "opacity", frame: number): CutMotionEasing =>
+      layer.animations.find((animation) => animation.property === property)?.keyframes.find((keyframe) => keyframe.frame === frame)?.easing ?? "linear";
     return [{
       id: layer.id,
       start: sourceStart,
@@ -573,7 +645,14 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl)
         y: valueAtFrame(layer, "y", frame, layer.y),
         scale: valueAtFrame(layer, "scale", frame, 1),
         opacity: valueAtFrame(layer, "opacity", frame, layer.opacity),
-        easing: "ease_in_out" as const,
+        // Preserve each authored property curve. The generic legacy field is
+        // neutral, so readers that have not adopted per-property easing do not
+        // get a fabricated shared curve.
+        easing: "linear" as const,
+        xEasing: easingAt("x", frame),
+        yEasing: easingAt("y", frame),
+        scaleEasing: easingAt("scale", frame),
+        opacityEasing: easingAt("opacity", frame),
       })),
     }];
   });

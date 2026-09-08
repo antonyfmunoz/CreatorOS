@@ -8,6 +8,7 @@ import {
   cutGenerativeWorkflowSchema,
   cutShotSpecSchema,
   evaluateCompositionFrame,
+  expandNestedCompositionManifest,
   resolveCompositionParameters,
 } from "../shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "../shared/cut-studio-svg";
@@ -105,6 +106,60 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)).toMatchObject({ at: 2 - (1 / 30), opacity: 1 });
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)?.x).toBeCloseTo(.1);
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
+  });
+
+  it("preserves independent named easing for every exported media property", () => {
+    const easedManifest = {
+      ...manifest,
+      layers: [{
+        ...sourceLayer,
+        animations: [
+          { property: "x" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .8, easing: "ease_in" as const }] },
+          { property: "y" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .4, easing: "ease_out" as const }] },
+          { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: 1.3, easing: "spring" as const }] },
+          { property: "opacity" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: .3, easing: "step" as const }] },
+        ],
+      }],
+    };
+    const clip = compileCompositionToEdl(easedManifest, { version: 3, clips: [] }).clips[0];
+    expect(clip.motionKeyframes?.at(-1)).toMatchObject({ at: 2, easing: "linear", xEasing: "ease_in", yEasing: "ease_out", scaleEasing: "spring", opacityEasing: "step" });
+  });
+
+  it("expands same-format nested compositions with deterministic timing and private asset lineage", () => {
+    const childId = "00000000-0000-4000-8000-000000000050";
+    const rootId = "00000000-0000-4000-8000-000000000051";
+    const child = {
+      ...manifest,
+      name: "Child motion",
+      parameters: [{ key: "headline", label: "Headline", type: "text" as const, defaultValue: "Default child headline" }],
+      layers: [{ ...sourceLayer, id: "child-source" }, { ...manifest.layers[1], id: "child-title", dataBindings: { text: "headline" } }],
+    };
+    const root = {
+      ...manifest,
+      name: "Master composition",
+      durationInFrames: 130,
+      layers: [{ id: "child", kind: "composition" as const, name: "Child motion", compositionId: childId, compositionParameters: { headline: "Resolved parent headline" }, from: 10, durationInFrames: 120 }],
+    };
+    const expanded = expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
+    expect(expanded.layers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "video", assetId: sourceAssetId, from: 10 }),
+      expect.objectContaining({ kind: "text", text: "Resolved parent headline", from: 20 }),
+    ]));
+    expect(expanded.layers.every((layer) => layer.kind !== "composition")).toBe(true);
+    const edl = compileCompositionToEdl(root, { version: 3, clips: [] }, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
+    expect(edl.clips[0]).toMatchObject({ assetId: sourceAssetId, timelineStart: 10 / 30 });
+    expect(edl.graphics?.[0]).toMatchObject({ text: "Resolved parent headline", timelineStart: 20 / 30 });
+  });
+
+  it("rejects unsafe nested composition resolution instead of silently approximating it", () => {
+    const childId = "00000000-0000-4000-8000-000000000052";
+    const rootId = "00000000-0000-4000-8000-000000000053";
+    const root = { ...manifest, layers: [{ id: "child", kind: "composition" as const, name: "Child", compositionId: childId, from: 0, durationInFrames: 120 }] };
+    expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId })).toThrow(/resolution is unavailable/i);
+    expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: () => ({ ...manifest, fps: 24 }) })).toThrow(/same width, height, and frame rate/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], opacity: .9 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/neutral transform/i);
+    const cyclic = { ...manifest, layers: [{ ...root.layers[0], compositionId: rootId }] };
+    expect(() => expandNestedCompositionManifest(cyclic, { rootCompositionId: rootId, resolveComposition: (id) => id === rootId ? cyclic : undefined })).toThrow(/cannot contain a cycle/i);
   });
 
   it("compiles validated private animation layers for isolated final rendering", () => {
