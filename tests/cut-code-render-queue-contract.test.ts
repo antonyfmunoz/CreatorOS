@@ -90,6 +90,7 @@ describe("CutStudio local code-render queue contract", () => {
   it("offers only receipt-bound composition audio for compatible bounded video exports", () => {
     expect(client).toContain("Include composition audio");
     expect(client).toContain("composition audio");
+    expect(client).toContain("rangeEnd >= rangeStart");
     expect(client).toContain("...(compositionAudio ? { compositionAudio: true as const } : {})");
   });
   it("imports a binary-capable private package without asking the text editor to reinterpret it", () => {

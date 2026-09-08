@@ -95,7 +95,10 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
   const [inputJson, setInputJson] = useState("{}");
   const [batchInputJson, setBatchInputJson] = useState("[]");
   const [error, setError] = useState("");
-  const compositionAudioEligible = mode === "video" && ["mp4", "webm", "mov"].includes(format) && (rangeEnd - rangeStart + 1) / fps <= 120;
+  const compositionAudioEligible = mode === "video" && ["mp4", "webm", "mov"].includes(format)
+    && Number.isInteger(fps) && fps > 0 && Number.isInteger(rangeStart) && Number.isInteger(rangeEnd)
+    && rangeStart >= 0 && rangeEnd >= rangeStart && rangeEnd < durationInFrames
+    && (rangeEnd - rangeStart + 1) / fps <= 120;
 
   useEffect(() => {
     if (!compositionAudioEligible && compositionAudio) setCompositionAudio(false);
