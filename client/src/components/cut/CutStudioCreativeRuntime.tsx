@@ -41,6 +41,36 @@ type RuntimePayload = {
 
 const field = "mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white outline-none focus:border-[#1d9bf0]";
 
+function CodeCompositionInputs({ contract, inputJson, disabled, onChange }: { contract: CutCodeInputContract | null | undefined; inputJson: string; disabled: boolean; onChange: (next: string) => void }) {
+  const values = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(inputJson);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch { return {}; }
+  }, [inputJson]);
+  if (!contract || Object.keys(contract.fields).length === 0) return null;
+  const setValue = (key: string, value: string | number | boolean | undefined) => {
+    const next = { ...values };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onChange(JSON.stringify(next, null, 2));
+  };
+  return <div aria-label="Typed composition inputs" className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3">
+    <p className="text-[10px] font-bold text-zinc-200">Composition parameters</p>
+    <p className="mt-1 text-[9px] leading-4 text-zinc-500">These controls use the saved input contract. The local broker validates the same values again before it creates work.</p>
+    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      {Object.entries(contract.fields).map(([key, definition]) => {
+        const label = definition.label ?? key;
+        const current = values[key] ?? definition.default;
+        if (definition.type === "boolean") return <label key={key} className="flex min-h-10 items-center gap-2 rounded-md border border-zinc-800 bg-black px-2 text-[10px] text-zinc-300"><input aria-label={`Composition input ${label}`} type="checkbox" checked={current === true} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.checked)}/><span>{label}{definition.required ? " *" : ""}</span></label>;
+        if (definition.type === "number") return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<input aria-label={`Composition input ${label}`} className={field} type="number" min={definition.minimum} max={definition.maximum} step="any" value={typeof current === "number" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value === "" ? undefined : event.currentTarget.valueAsNumber)}/></label>;
+        if (definition.options) return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<select aria-label={`Composition input ${label}`} className={field} value={typeof current === "string" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value || undefined)}><option value="">{definition.required ? "Choose…" : "Use default"}</option>{definition.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+        return <label key={key} className="text-[9px] text-zinc-500">{label}{definition.required ? " *" : ""}<input aria-label={`Composition input ${label}`} className={field} type="text" minLength={definition.minLength} maxLength={definition.maxLength} value={typeof current === "string" ? current : ""} disabled={disabled} onChange={(event) => setValue(key, event.currentTarget.value || undefined)}/></label>;
+      })}
+    </div>
+  </div>;
+}
+
 function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void; onQueueBatch: (requests: CutCodeRenderRequest[]) => void }) {
   const [mode, setMode] = useState<CutCodeRenderMode>("still");
   const [width, setWidth] = useState(1080);
@@ -87,7 +117,11 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     <div className="grid grid-cols-3 gap-2"><label className="text-[9px] text-zinc-500">Output<select aria-label={`${label} output`} className={field} value={mode} disabled={busy} onChange={(event) => setExportMode(event.target.value as CutCodeRenderMode)}>{(["still", "video", "sequence"] as const).map((value) => <option key={value} value={value}>{value === "still" ? "Still" : value === "video" ? "Video" : "Frame sequence"}</option>)}</select></label><label className="text-[9px] text-zinc-500">Format<select aria-label={`${label} format`} className={field} value={format} disabled={busy} onChange={(event) => setFormat(event.target.value)}>{cutCodeRenderFormats[mode].map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label><label className="text-[9px] text-zinc-500">Quality<input aria-label={`${label} quality`} className={field} type="number" min="1" max="100" value={quality} disabled={busy || !["jpeg", "webp"].includes(format)} onChange={(event) => readNumber(event, setQuality)}/></label></div>
     <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Width<input aria-label={`${label} width`} className={field} type="number" min="16" max="3840" value={width} disabled={busy} onChange={(event) => readNumber(event, setWidth)}/></label><label className="text-[9px] text-zinc-500">Height<input aria-label={`${label} height`} className={field} type="number" min="16" max="3840" value={height} disabled={busy} onChange={(event) => readNumber(event, setHeight)}/></label><label className="text-[9px] text-zinc-500">FPS<input aria-label={`${label} fps`} className={field} type="number" min="1" max="60" value={fps} disabled={busy} onChange={(event) => readNumber(event, setFps)}/></label><label className="text-[9px] text-zinc-500">Frames<input aria-label={`${label} duration`} className={field} type="number" min="1" max="600" value={durationInFrames} disabled={busy} onChange={(event) => readNumber(event, setDurationInFrames)}/></label></div>
     {mode === "still" ? <label className="block text-[9px] text-zinc-500">Frame<input aria-label={`${label} frame`} className={field} type="number" min="0" value={frame} disabled={busy} onChange={(event) => readNumber(event, setFrame)}/></label> : <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-zinc-500">Start frame<input aria-label={`${label} start frame`} className={field} type="number" min="0" value={rangeStart} disabled={busy} onChange={(event) => readNumber(event, setRangeStart)}/></label><label className="text-[9px] text-zinc-500">End frame<input aria-label={`${label} end frame`} className={field} type="number" min="0" value={rangeEnd} disabled={busy} onChange={(event) => readNumber(event, setRangeEnd)}/></label></div>}
-    <label className="block text-[9px] text-zinc-500">Composition input JSON<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
+    <CodeCompositionInputs contract={composition.codeCapsule?.inputContract} inputJson={inputJson} disabled={busy} onChange={setInputJson}/>
+    <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2" open={!composition.codeCapsule?.inputContract}>
+      <summary className="cursor-pointer text-[10px] font-medium text-zinc-300">Advanced composition input JSON</summary>
+      <label className="mt-2 block text-[9px] text-zinc-500">Use this for advanced structured values. The declared contract, when present, still rejects undeclared or invalid values.<textarea aria-label={`${label} input JSON`} className={`${field} min-h-16 resize-y font-mono`} value={inputJson} disabled={busy} onChange={(event) => setInputJson(event.target.value)}/></label>
+    </details>
     <label className="block text-[9px] text-zinc-500">Optional input batch JSON (2–20 inputs)<textarea aria-label={`${label} input batch JSON`} className={`${field} min-h-16 resize-y font-mono`} value={batchInputJson} disabled={busy} onChange={(event) => setBatchInputJson(event.target.value)}/></label>
     <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. {composition.codeCapsule?.inputContract ? "This composition also enforces its declared input contract and defaults." : "No input contract is declared yet."} Private media is never injected into code directly.</p>
     {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}

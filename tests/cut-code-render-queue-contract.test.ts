@@ -62,4 +62,11 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Optional typed input contract JSON");
     expect(client).toContain("Code composition input contract");
   });
+  it("turns a saved input contract into guided render controls without bypassing the raw advanced path", () => {
+    expect(client).toContain("function CodeCompositionInputs");
+    expect(client).toContain('aria-label="Typed composition inputs"');
+    expect(client).toContain("Composition parameters");
+    expect(client).toContain("Advanced composition input JSON");
+    expect(client).toContain("normalizeCutCodeRenderInput(input as Record<string, unknown>");
+  });
 });
