@@ -48,7 +48,8 @@ same-input Remotion/operator benchmark and connected-superiority measurement.
 ### September 7 reverse-audio follow-on: local candidate only
 
 The branch after the protected baseline adds bounded non-looping reverse audio
-for explicit private tracks and React `FrameAudio`. Its request, SDK,
+for explicit private tracks and React `FrameAudio`. Its shared product/broker
+request contract, isolated request, SDK,
 descriptor collector, isolated FFmpeg graph, typed API and focused contract
 tests were updated together. A rebuilt exact-source local image produced a
 private decoded MOV whose frequency windows prove traversal from a later 1320
@@ -419,7 +420,7 @@ feature. The application correctly reports `isolatedCode: not_implemented`.
 | Motion | Local/global frames, nested sequence/repeat/freeze, interpolation, Bezier, springs, fitted timing, color, reproducible variation | Representative complex compositions and exact preview/export agreement |
 | 3D | Pinned Three core with SVGRenderer; `SvgScene` is a bounded TSX capture bridge, with actual isolated PNG geometry pixels and frame-to-frame motion evidence | WebGL/WebGPU, textures/shaders/lighting, arbitrary addons and actual production GPU qualification |
 | Media | Private MP4/WebM retime/repeat, images/fonts and alpha; protected timestamp-indexed VFR/B-frame/VP9-alpha decoding and synchronized source sound | Keep exact-image gates green after changes; broader decoder matrix, long media and public source-code execution |
-| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio and fractional imported-video sound with actual PCM/range/replay proof | Browser code-preview sound, reverse audio, broader interval/workload limits and public code execution |
+| Audio | Explicit private tracks, stream selection, trim/speed/gain envelopes, bounded non-looping reverse playback, AAC/Opus mixing; WAV/MP3/M4A-only prototype exports; frame-authored audio and fractional imported-video sound with actual PCM/range/replay proof | Browser code-preview sound, broader interval/workload limits and public code execution |
 | Encoding | H.264 MP4, alpha VP9 WebM, PNG/JPEG/WebP stills, image sequences, frame ranges and receipts; qualified prototype GIF and ProRes HQ/4444/XQ with PCM audio; decoded CRF/target-bitrate/speed-control tests; candidate lossless RGB MP4 with full-HD text/transition paint-history regressions and eight independently compared study frames | Exact-candidate protected qualification; additional codecs/containers, two-pass/hardware encoding, HDR, external-editor interoperability and long-range/chunk workflows; production exposure of executable exports |
 | Workload limits | Single-job CPU/memory/bytes/frame bounds, timeout, cancellation, cleanup | App/runtime quota reconciliation, durable tenant admission, metering, scheduling, dispatch, recovery and scaled rendering |
 | Security | Actual non-root, no-network, read-only, sandboxed browser tests; lean Noble image passed independent CI pixels and zero HIGH/CRITICAL scan in run 33614621889 | Continued exact-image vulnerability qualification, approved execution topology, privilege/credential separation, adversarial review and service deployment |

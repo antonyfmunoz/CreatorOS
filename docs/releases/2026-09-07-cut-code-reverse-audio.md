@@ -10,6 +10,8 @@ soundtracks and React `FrameAudio`. A reverse interval starts at the declared
 later source moment, trims only the preceding bounded source interval, reverses
 that interval inside the isolated FFmpeg graph, then applies the existing
 pitch-preserving 0.5x–2x retime, gain envelope, limiter and output bounds.
+The shared UI/API/broker contract admits that one-way flag too, so it cannot be
+accepted in the editor and then stripped before a paired local node receives it.
 
 The capability remains deliberately narrower than general audio editing:
 

@@ -286,7 +286,7 @@ asynchronous state and arbitrary timers are not a reproducibility contract.
 Explicit frame holds coordinate preparation, but cannot make nondeterministic
   source data deterministic or grant external network access. Video codec/VFR
   compatibility beyond the explicitly tested fixtures, protected qualification
-  of the latest automatic `FrameVideo` sound/decoder candidate, reverse sound,
+  of the latest automatic `FrameVideo` sound/decoder candidate,
   exact-candidate fractional-period repeating sound, unbounded audio intervals, arbitrary dependencies, PDF output,
 distributed rendering, preview integration and broad visual benchmarks remain.
 
