@@ -18,6 +18,14 @@ production topology approval or enable public code execution.
   No package installation, package scripts, arbitrary npm resolution, shell
   execution or network import occurs for a capsule. The runtime image contains
   the exact React 18.3.1 toolchain. Image and npm dependencies are pinned.
+- Frame reproducibility is enforced at capsule admission: authored source may
+  not call `Date`/`Date.now`, `Math.random`, `performance.now`, browser crypto
+  randomness. Capsule CSS may not declare animations or transitions. Use
+  `useFrame`, the motion helpers, and `seededRandom` instead. Timers remain
+  available only for the documented `holdFrame` asynchronous-preparation path;
+  they must settle before capture and are not a visual clock. This rejects
+  common nondeterministic inputs before they enter the isolated renderer; it is
+  not a proof that arbitrary JavaScript has no other nondeterministic behavior.
 - Capsule-relative CSS imports and CSS modules support reusable motion-design
   styles. Nested `@import`, module `composes`, and private image/font `url(...)`
   references stay inside the archive and are bundled before rendering. Local
