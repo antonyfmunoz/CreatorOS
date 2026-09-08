@@ -6,10 +6,11 @@ qualification, released application behavior and competitive parity are distinct
 
 ## Current boundary
 
-### September 7 candidate: private code-media and enforceable admission (not deployed)
+### September 7 candidate: protected source qualification (not deployed)
 
-Candidate source `1eaab7c` (branch `codex/cut-next-root`) closes several
-previously hidden-but-qualified local-runtime controls at the product boundary:
+Candidate source `749d3579d62130f831d6bc0270649534b22d32b7` (branch
+`codex/cut-next-root`, PR 194) closes several previously hidden-but-qualified
+local-runtime controls at the product boundary:
 direct private binary ZIP plus matching-lockfile import, bounded GIF sampling
 and looping, MOV ProRes profiles, codec controls, audio-only exports,
 composition-authored audio, and up to eight explicit capsule-contained
@@ -20,13 +21,16 @@ queue time, and the persisted memory declaration now matches the Docker
 sandbox's enforceable 128 MiB–2 GiB range rather than allowing a 4 GiB value
 that the runtime would later reject.
 
-Focused application contracts pass 60 tests; TypeScript and the browser/server
-production bundle pass. The unchanged clean-room runtime suite passes its
-actual private-audio admission, automation, receipt-binding, composition-audio,
-GIF, codec and output tests. Source secret scanning is clean (1,359 files),
-the bundle remains inside all recorded budgets, lockfile qualification passes,
-and the distribution-worker dry-run type/deployment contract passes. These are
-local candidate facts, not deployed output evidence.
+The exact candidate passed protected Verify run `34180114047`: Core, database
+and durable workflows, native media ingest, Android, iOS, Windows packaging,
+desktop Chromium (15m33s), mobile Chromium (11m49s), and its browser summary
+all passed. Separate protected media run `34180113749` passed isolated TSX
+pixel/execution boundaries (6m53s) and the candidate image pixel/vulnerability
+gate (7m17s); CodeQL run `34180113756` passed. Locally, the targeted
+programmable-cinema lifecycle (desktop/mobile) and 18 source-authoring
+journeys (desktop/mobile) passed against disposable PostgreSQL and private
+asset fixtures. These facts validate the current source and its declared
+paired-local boundary; they are not deployed output evidence.
 
 On 2026-09-07, public production smoke passed on `creativesos.net`; its
 verified release identity was clean source `e58c7970cd506c6ec0e6c220bb6f737ed94bddf4`
