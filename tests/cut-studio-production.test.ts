@@ -111,22 +111,27 @@ describe("CutStudio programmable production runtime", () => {
   it("expands same-format nested compositions with deterministic timing and private asset lineage", () => {
     const childId = "00000000-0000-4000-8000-000000000050";
     const rootId = "00000000-0000-4000-8000-000000000051";
-    const child = { ...manifest, name: "Child motion", layers: [{ ...sourceLayer, id: "child-source" }, { ...manifest.layers[1], id: "child-title" }] };
+    const child = {
+      ...manifest,
+      name: "Child motion",
+      parameters: [{ key: "headline", label: "Headline", type: "text" as const, defaultValue: "Default child headline" }],
+      layers: [{ ...sourceLayer, id: "child-source" }, { ...manifest.layers[1], id: "child-title", dataBindings: { text: "headline" } }],
+    };
     const root = {
       ...manifest,
       name: "Master composition",
       durationInFrames: 130,
-      layers: [{ id: "child", kind: "composition" as const, name: "Child motion", compositionId: childId, from: 10, durationInFrames: 120 }],
+      layers: [{ id: "child", kind: "composition" as const, name: "Child motion", compositionId: childId, compositionParameters: { headline: "Resolved parent headline" }, from: 10, durationInFrames: 120 }],
     };
     const expanded = expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
     expect(expanded.layers).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "video", assetId: sourceAssetId, from: 10 }),
-      expect.objectContaining({ kind: "text", text: "Ship the story", from: 20 }),
+      expect.objectContaining({ kind: "text", text: "Resolved parent headline", from: 20 }),
     ]));
     expect(expanded.layers.every((layer) => layer.kind !== "composition")).toBe(true);
     const edl = compileCompositionToEdl(root, { version: 3, clips: [] }, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
     expect(edl.clips[0]).toMatchObject({ assetId: sourceAssetId, timelineStart: 10 / 30 });
-    expect(edl.graphics?.[0]).toMatchObject({ text: "Ship the story", timelineStart: 20 / 30 });
+    expect(edl.graphics?.[0]).toMatchObject({ text: "Resolved parent headline", timelineStart: 20 / 30 });
   });
 
   it("rejects unsafe nested composition resolution instead of silently approximating it", () => {
