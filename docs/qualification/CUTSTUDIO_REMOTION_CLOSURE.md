@@ -32,6 +32,16 @@ compatibility, public managed code execution, long-media/scale behavior,
 preview/export equality for arbitrary compositions, or any competitor-parity
 verdict.
 
+After PR 203 merged as `22ff12ed22f033c0e13ce51369717a1e7019b087`, its
+release passed the full protected matrix and exposed that exact clean identity
+with 125/125 migration parity. An approved paired node then rendered the same
+pinned still twice on production. The CLI surfaced the receipt-verified
+SHA-256 for each accepted private artifact, and both hashes were identical.
+This is field proof of deterministic output for that one bounded composition,
+input and local-runtime image. It is not evidence that arbitrary packages,
+different runtime images, video encoding metadata, browser previews or current
+competitors reproduce identically.
+
 ## September 8 production release: protected deployment, public identity, and remaining field gate
 
 PR 194 merged at `e37b9e84e9ab0a3f5d1dd7608788c94244517c4f`. Its manually

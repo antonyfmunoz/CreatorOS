@@ -9,6 +9,7 @@ import {
   assets,
   cutStudioCollaborators,
   cutStudioCompositions,
+  cutStudioCompositionRevisions,
   cutStudioGenerationJobs,
   cutStudioGenerativeWorkflows,
   cutStudioJobs,
@@ -350,7 +351,11 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       else await assertCompositionAssets(access.project, parsed.data.manifest);
       if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
     } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
-    const [composition] = await db.insert(cutStudioCompositions).values({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule }).returning();
+    const composition = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(cutStudioCompositions).values({ projectId: access.project.id, businessId: access.project.businessId, ownerUserId: req.dbUser!.id, name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule }).returning();
+      await tx.insert(cutStudioCompositionRevisions).values({ compositionId: created.id, projectId: created.projectId, businessId: created.businessId, ownerUserId: created.ownerUserId, revision: created.revision, name: created.name, mode: created.mode, manifest: created.manifest, codeCapsule: created.codeCapsule }).onConflictDoNothing();
+      return created;
+    });
     await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: access.project.id, eventType: "cutstudio.composition.created", actorUserId: req.dbUser!.id, payload: { businessId: access.project.businessId, compositionId: composition.id, mode: composition.mode }, idempotencyKey: `cutstudio:${composition.id}:composition.created` });
     res.status(201).json(composition);
   });
@@ -400,6 +405,23 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
     });
   });
 
+  cut.get("/api/cut/projects/:id/compositions/:compositionId/history", attachUser, async (req, res) => {
+    const access = await projectAccess(req.dbUser!.id, req.params.id);
+    if (!access || !uuid.safeParse(req.params.compositionId).success) return res.status(404).json({ message: "Composition history not found" });
+    const revisions = await db.select({
+      revision: cutStudioCompositionRevisions.revision,
+      name: cutStudioCompositionRevisions.name,
+      mode: cutStudioCompositionRevisions.mode,
+      codeCapsule: cutStudioCompositionRevisions.codeCapsule,
+      createdAt: cutStudioCompositionRevisions.createdAt,
+    }).from(cutStudioCompositionRevisions).where(and(
+      eq(cutStudioCompositionRevisions.compositionId, req.params.compositionId),
+      eq(cutStudioCompositionRevisions.projectId, access.project.id),
+    )).orderBy(desc(cutStudioCompositionRevisions.revision));
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ revisions });
+  });
+
   cut.get("/api/cut/projects/:id/compositions/:compositionId/assets/:assetId/stream", attachUser, compositionMediaLimiter, async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     const access = await projectAccess(req.dbUser!.id, req.params.id);
@@ -446,7 +468,12 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       else await assertCompositionAssets(access.project, parsed.data.manifest);
       if (parsed.data.codeCapsule) await assertCodeCapsuleAssets(access.project, parsed.data.codeCapsule);
     } catch (error) { return res.status(400).json({ message: error instanceof Error ? error.message : "Composition assets are invalid" }); }
-    const [updated] = await db.update(cutStudioCompositions).set({ name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule, revision: sql`${cutStudioCompositions.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.revision, expected), eq(cutStudioCompositions.status, "active"))).returning();
+    const updated = await db.transaction(async (tx) => {
+      const [next] = await tx.update(cutStudioCompositions).set({ name: parsed.data.name, mode: parsed.data.mode, manifest: parsed.data.manifest, codeCapsule: parsed.data.codeCapsule, revision: sql`${cutStudioCompositions.revision} + 1`, updatedAt: new Date() }).where(and(eq(cutStudioCompositions.id, req.params.compositionId), eq(cutStudioCompositions.projectId, access.project.id), eq(cutStudioCompositions.revision, expected), eq(cutStudioCompositions.status, "active"))).returning();
+      if (!next) return null;
+      await tx.insert(cutStudioCompositionRevisions).values({ compositionId: next.id, projectId: next.projectId, businessId: next.businessId, ownerUserId: next.ownerUserId, revision: next.revision, name: next.name, mode: next.mode, manifest: next.manifest, codeCapsule: next.codeCapsule }).onConflictDoNothing();
+      return next;
+    });
     if (!updated) return res.status(409).json({ message: "The composition changed elsewhere" });
     res.setHeader("ETag", String(updated.revision));
     res.json(updated);
