@@ -5,6 +5,7 @@ const server = readFileSync(new URL("../server/cut-studio-production.ts", import
 const client = readFileSync(new URL("../client/src/components/cut/CutStudioCreativeRuntime.tsx", import.meta.url), "utf8");
 const localNodeServer = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
 const cli = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
+const outputCeilingMigration = readFileSync(new URL("../migrations/0124_cut_studio_code_capsule_output_ceiling.sql", import.meta.url), "utf8");
 
 describe("CutStudio local code-render queue contract", () => {
   it("surfaces only project-scoped code jobs and permits cancellation before claim", () => {
@@ -52,6 +53,12 @@ describe("CutStudio local code-render queue contract", () => {
   it("revalidates stored code-capsule limits before issuing a local-node lease", () => {
     expect(server).toContain("cutCodeCapsuleSchema.parse(composition.codeCapsule)");
     expect(server).toContain("cutCodeCapsuleSchema.parse(capsule)");
+  });
+  it("normalizes only legacy oversized local-output budgets to the enforced runtime ceiling", () => {
+    expect(outputCeilingMigration).toContain('UPDATE "cut_studio_compositions"');
+    expect(outputCeilingMigration).toContain("to_jsonb(67108864)");
+    expect(outputCeilingMigration).toContain("::numeric > 67108864");
+    expect(outputCeilingMigration).toContain("maximumOutputBytes");
   });
   it("updates a pinned source as a revision instead of replacing prior render receipts", () => {
     expect(client).toContain("beginCodeCompositionRevision");
