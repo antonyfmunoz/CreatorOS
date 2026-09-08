@@ -59,9 +59,9 @@ function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionM
   };
   if (["text", "svg", "path"].includes(kind)) return { ...base, text: kind === "text" ? "New title" : kind === "svg" ? "<svg viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg>" : "M 0 50 L 100 50" };
   if (kind === "composition") {
-    const referenced = compositions.find((candidate) => candidate.manifest.durationInFrames <= manifest.durationInFrames);
+    const referenced = compositions[0];
     if (!referenced) throw new Error("No compatible saved composition is available");
-    return { ...base, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, durationInFrames: referenced.manifest.durationInFrames };
+    return { ...base, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, durationInFrames: Math.min(referenced.manifest.durationInFrames, manifest.durationInFrames) };
   }
   if (sourceAssetId) return { ...base, assetId: sourceAssetId };
   return base;
@@ -70,6 +70,26 @@ function defaultLayer(kind: typeof layerKinds[number], manifest: CutCompositionM
 function numberValue(value: string, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function nestedCompositionTrimIssue(child: CutCompositionManifest | undefined, sourceStartFrame: number, durationInFrames: number) {
+  if (!child) return null;
+  const sourceEndFrame = sourceStartFrame + durationInFrames;
+  if (!Number.isInteger(sourceStartFrame) || !Number.isInteger(durationInFrames) || sourceStartFrame < 0 || durationInFrames < 1 || sourceEndFrame > child.durationInFrames) {
+    return `Visible child frames must remain between 0 and ${child.durationInFrames}.`;
+  }
+  for (const layer of child.layers) {
+    const enterEnd = layer.from + (layer.enter?.kind && layer.enter.kind !== "none" ? layer.enter.durationInFrames : 0);
+    if (sourceStartFrame > layer.from && sourceStartFrame < enterEnd) {
+      return `Source start splits ${layer.name}'s entry transition. Start at frame ${layer.from} or ${enterEnd}.`;
+    }
+    const layerEnd = layer.from + layer.durationInFrames;
+    const exitStart = layerEnd - (layer.exit?.kind && layer.exit.kind !== "none" ? layer.exit.durationInFrames : 0);
+    if (sourceEndFrame > exitStart && sourceEndFrame < layerEnd) {
+      return `Visible end splits ${layer.name}'s exit transition. End at frame ${exitStart} or ${layerEnd}.`;
+    }
+  }
+  return null;
 }
 
 export function CompositionAuthoringControls({ composition, assets, compositions, busy, onChange, onSave }: {
@@ -89,9 +109,16 @@ export function CompositionAuthoringControls({ composition, assets, compositions
   const [keyframeEasing, setKeyframeEasing] = useState<typeof animationEasings[number]>("ease_in_out");
   const selectedIndex = Math.max(0, manifest.layers.findIndex((layer) => layer.id === selectedId));
   const selected = manifest.layers[selectedIndex];
-  const compatibleCompositions = compositions.filter((candidate) => candidate.id !== composition.id && candidate.manifest.width === manifest.width && candidate.manifest.height === manifest.height && candidate.manifest.fps === manifest.fps && candidate.manifest.durationInFrames <= manifest.durationInFrames);
+  const compatibleCompositions = compositions.filter((candidate) => candidate.id !== composition.id && candidate.manifest.width === manifest.width && candidate.manifest.height === manifest.height && candidate.manifest.fps === manifest.fps);
   const addableKinds = layerKinds.filter((kind) => kind === "composition" ? compatibleCompositions.length > 0 : !["video", "audio"].includes(kind) || assets.some((asset) => asset.mediaKind === kind));
   const selectedNestedComposition = selected?.kind === "composition" ? compatibleCompositions.find((candidate) => candidate.id === selected.compositionId) : undefined;
+  const selectedNestedDuration = selectedNestedComposition?.manifest.durationInFrames ?? 0;
+  const selectedDurationLimit = selected?.kind === "composition" && selectedNestedDuration
+    ? Math.max(1, Math.min(manifest.durationInFrames - selected.from, selectedNestedDuration - selected.sourceStartFrame))
+    : Math.max(1, manifest.durationInFrames - (selected?.from ?? 0));
+  const selectedNestedTrimIssue = selected?.kind === "composition"
+    ? nestedCompositionTrimIssue(selectedNestedComposition?.manifest, selected.sourceStartFrame, selected.durationInFrames)
+    : null;
 
   const updateLayer = (update: (layer: CompositionLayer) => CompositionLayer) => {
     if (!selected) return;
@@ -157,10 +184,40 @@ export function CompositionAuthoringControls({ composition, assets, compositions
       {(selected.kind === "text" || selected.kind === "caption") && <CutStudioTextLayoutControls style={selected.style} font={manifest.fonts.find((font) => font.assetId && font.family === selected.style.fontFamily)} onChange={(style) => updateLayer((layer) => ({ ...layer, style }))}/>}
       <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-zinc-500">Layer name<input aria-label="Layer name" className={field} value={selected.name} onChange={(event) => updateLayer((layer) => ({ ...layer, name: event.target.value }))}/></label>{["text", "caption", "svg", "path"].includes(selected.kind) ? <label className="text-[10px] text-zinc-500">Content<textarea aria-label="Layer content" className={`${field} min-h-20 resize-y`} maxLength={selected.kind === "svg" ? 20_000 : selected.kind === "path" ? 4_000 : CUT_NATIVE_TEXT_MAX_CHARACTERS} value={selected.text ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, text: event.target.value }))}/></label> : <label className="text-[10px] text-zinc-500">Blend<select aria-label="Layer blend mode" className={field} value={selected.blendMode} onChange={(event) => updateLayer((layer) => ({ ...layer, blendMode: event.target.value as CompositionLayer["blendMode"] }))}>{blendModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>}</div>
       {["video", "audio", "image", "lottie", "rive"].includes(selected.kind) && <label className="block text-[10px] text-zinc-500">Project media<select aria-label="Layer media asset" className={field} value={selected.assetId ?? ""} onChange={(event) => updateLayer((layer) => ({ ...layer, assetId: event.target.value }))}>{assets.filter((asset) => asset.mediaKind === selected.kind).map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.duration.toFixed(1)}s</option>)}</select></label>}
-      {selected.kind === "composition" && <div className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-2"><label className="block text-[10px] text-zinc-500">Nested project composition<select aria-label="Nested project composition" className={field} value={selected.compositionId ?? ""} onChange={(event) => { const referenced = compatibleCompositions.find((candidate) => candidate.id === event.target.value); if (!referenced) return; updateLayer((layer) => ({ ...layer, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, from: Math.min(layer.from, manifest.durationInFrames - referenced.manifest.durationInFrames), durationInFrames: referenced.manifest.durationInFrames, sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, rotationX: 0, rotationY: 0, perspective: 0, anchorX: .5, anchorY: .5, blendMode: "normal", effects: [], animations: [], enter: undefined, exit: undefined })); }}><option value="">Choose a compatible composition</option>{compatibleCompositions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} · {(candidate.manifest.durationInFrames / candidate.manifest.fps).toFixed(2)}s</option>)}</select></label>{selectedNestedComposition?.manifest.parameters.length ? <div className="mt-2 grid grid-cols-2 gap-2">{selectedNestedComposition.manifest.parameters.map((parameter) => { const value = selected.compositionParameters?.[parameter.key] ?? parameter.defaultValue; const setValue = (next: ParameterValue) => updateLayer((layer) => ({ ...layer, compositionParameters: { ...(layer.compositionParameters ?? {}), [parameter.key]: next } })); return <label key={parameter.key} className="text-[9px] text-zinc-500">{parameter.label}{parameter.type === "boolean" ? <select aria-label={`Nested ${parameter.label}`} className={compactField} value={String(value)} onChange={(event) => setValue(event.target.value === "true")}><option value="true">True</option><option value="false">False</option></select> : parameter.type === "select" ? <select aria-label={`Nested ${parameter.label}`} className={compactField} value={String(value ?? "")} onChange={(event) => setValue(event.target.value)}>{parameter.options?.map((option) => <option key={option}>{option}</option>)}</select> : <input aria-label={`Nested ${parameter.label}`} className={compactField} type={parameter.type === "number" ? "number" : parameter.type === "color" ? "color" : "text"} min={parameter.minimum} max={parameter.maximum} value={parameter.type === "number" ? Number(value ?? 0) : String(value ?? "")} onChange={(event) => setValue(parameter.type === "number" ? numberValue(event.target.value, 0) : event.target.value)}/>}</label>; })}</div> : null}<p className="mt-1 text-[9px] leading-4 text-zinc-500">Nested compositions preserve their own layers, timing, private assets, and typed inputs. Container transforms and effects stay neutral so preview and final output cannot silently diverge.</p></div>}
+      {selected.kind === "composition" && <div className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-2">
+        <label className="block text-[10px] text-zinc-500">Nested project composition
+          <select aria-label="Nested project composition" className={field} value={selected.compositionId ?? ""} onChange={(event) => {
+            const referenced = compatibleCompositions.find((candidate) => candidate.id === event.target.value);
+            if (!referenced) return;
+            updateLayer((layer) => {
+              const from = Math.max(0, Math.min(layer.from, manifest.durationInFrames - 1));
+              return { ...layer, name: referenced.name, compositionId: referenced.id, compositionParameters: {}, from, durationInFrames: Math.min(referenced.manifest.durationInFrames, manifest.durationInFrames - from), sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, rotationX: 0, rotationY: 0, perspective: 0, anchorX: .5, anchorY: .5, blendMode: "normal", effects: [], animations: [], enter: undefined, exit: undefined };
+            });
+          }}>
+            <option value="">Choose a compatible composition</option>
+            {compatibleCompositions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} · {(candidate.manifest.durationInFrames / candidate.manifest.fps).toFixed(2)}s</option>)}
+          </select>
+        </label>
+        {selectedNestedComposition?.manifest.parameters.length ? <div className="mt-2 grid grid-cols-2 gap-2">{selectedNestedComposition.manifest.parameters.map((parameter) => {
+          const value = selected.compositionParameters?.[parameter.key] ?? parameter.defaultValue;
+          const setValue = (next: ParameterValue) => updateLayer((layer) => ({ ...layer, compositionParameters: { ...(layer.compositionParameters ?? {}), [parameter.key]: next } }));
+          return <label key={parameter.key} className="text-[9px] text-zinc-500">{parameter.label}{parameter.type === "boolean" ? <select aria-label={`Nested ${parameter.label}`} className={compactField} value={String(value)} onChange={(event) => setValue(event.target.value === "true")}><option value="true">True</option><option value="false">False</option></select> : parameter.type === "select" ? <select aria-label={`Nested ${parameter.label}`} className={compactField} value={String(value ?? "")} onChange={(event) => setValue(event.target.value)}>{parameter.options?.map((option) => <option key={option}>{option}</option>)}</select> : <input aria-label={`Nested ${parameter.label}`} className={compactField} type={parameter.type === "number" ? "number" : parameter.type === "color" ? "color" : "text"} min={parameter.minimum} max={parameter.maximum} value={parameter.type === "number" ? Number(value ?? 0) : String(value ?? "")} onChange={(event) => setValue(parameter.type === "number" ? numberValue(event.target.value, 0) : event.target.value)}/>}</label>;
+        })}</div> : null}
+        <p className="mt-1 text-[9px] leading-4 text-zinc-500">Nested compositions preserve their own layers, timing, private assets, and typed inputs. You can place any same-format saved composition as an exact source-time window. Container transforms and effects stay neutral so preview and final output cannot silently diverge.</p>
+      </div>}
+      {selected.kind === "composition" && selectedNestedComposition && <div className="rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-2">
+        <label className="block text-[10px] text-zinc-500">Source start (child frames)
+          <input aria-label="Nested composition source start frame" className={field} type="number" min={0} max={Math.max(0, selectedNestedDuration - 1)} step={1} disabled={busy} value={selected.sourceStartFrame} onChange={(event) => {
+            const sourceStartFrame = Math.max(0, Math.min(selectedNestedDuration - 1, Math.round(numberValue(event.target.value, 0))));
+            updateLayer((layer) => ({ ...layer, sourceStartFrame, durationInFrames: Math.max(1, Math.min(layer.durationInFrames, selectedNestedDuration - sourceStartFrame, manifest.durationInFrames - layer.from)) }));
+          }}/>
+        </label>
+        <p className="mt-1 text-[9px] leading-4 text-zinc-500">Use a child source-time window without restarting its media, keyframes, or private asset lineage. Visible frames are constrained to the remaining child duration.</p>
+        {selectedNestedTrimIssue && <p role="alert" className="mt-1 text-[9px] leading-4 text-amber-300">{selectedNestedTrimIssue}</p>}
+      </div>}
       {["video", "audio", "lottie", "rive"].includes(selected.kind) && <label className="block text-[10px] text-zinc-500">Source offset (composition frames)<input aria-label="Layer source start frame" className={field} type="number" min={0} max={Math.min(2_592_000, manifest.fps * 43_200)} step={1} disabled={busy} value={selected.sourceStartFrame} onChange={(event) => updateLayer((layer) => ({ ...layer, sourceStartFrame: Math.max(0, Math.min(2_592_000, manifest.fps * 43_200, Math.round(numberValue(event.target.value, 0)))) }))}/><span className="mt-1 block">{(selected.sourceStartFrame / manifest.fps).toFixed(3)} seconds at {manifest.fps} composition fps.</span></label>}
       {selected.kind === "image" && <label className="block text-[10px] text-zinc-500">Image framing<select aria-label="Image framing" className={field} value={String(selected.style.objectFit ?? "cover")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, objectFit: event.target.value } }))}><option value="cover">Fill frame (crop)</option><option value="contain">Fit entire image</option><option value="fill">Stretch to frame</option></select></label>}
-      <div className="grid grid-cols-4 gap-2">{([['Start','from',0,manifest.durationInFrames - 1,1],['Frames','durationInFrames',1,manifest.durationInFrames - selected.from,1],['X','x',-4,4,.01],['Y','y',-4,4,.01],['Width','width',.01,8,.01],['Height','height',.01,8,.01],['Opacity','opacity',0,1,.01],['Rotation','rotation',-3600,3600,1],['Rotate X','rotationX',-3600,3600,1],['Rotate Y','rotationY',-3600,3600,1],['Perspective','perspective',0,10000,10]] as const).map(([label,key,min,max,step]) => <label key={key} className="text-[9px] text-zinc-600">{label}<input aria-label={`Layer ${label.toLowerCase()}`} className={compactField} type="number" min={min} max={max} step={step} value={selected[key]} onChange={(event) => updateLayer((layer) => ({ ...layer, [key]: Math.max(min, Math.min(max, numberValue(event.target.value, layer[key]))) }))}/></label>)}</div>
+      <div className="grid grid-cols-4 gap-2">{([['Start','from',0,manifest.durationInFrames - 1,1],['Frames','durationInFrames',1,selectedDurationLimit,1],['X','x',-4,4,.01],['Y','y',-4,4,.01],['Width','width',.01,8,.01],['Height','height',.01,8,.01],['Opacity','opacity',0,1,.01],['Rotation','rotation',-3600,3600,1],['Rotate X','rotationX',-3600,3600,1],['Rotate Y','rotationY',-3600,3600,1],['Perspective','perspective',0,10000,10]] as const).map(([label,key,min,max,step]) => <label key={key} className="text-[9px] text-zinc-600">{label}<input aria-label={`Layer ${label.toLowerCase()}`} className={compactField} type="number" min={min} max={max} step={step} value={selected[key]} onChange={(event) => updateLayer((layer) => ({ ...layer, [key]: Math.max(min, Math.min(max, numberValue(event.target.value, layer[key]))) }))}/></label>)}</div>
       {(selected.kind === "text" || selected.kind === "caption") && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-zinc-500">Text color<input aria-label="Layer text color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.color ?? "#ffffff")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, color: event.target.value } }))}/></label><label className="text-[10px] text-zinc-500">Font size<input aria-label="Layer font size" className={field} type="number" min={8} max={400} value={Number(selected.style.fontSize ?? 48)} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, fontSize: numberValue(event.target.value, 48) } }))}/></label><label className="col-span-2 text-[10px] text-zinc-500">Private font<select aria-label="Layer private font" className={field} value={manifest.fonts.find((font) => font.family === selected.style.fontFamily)?.assetId ?? ""} onChange={(event) => selectLayerFont(event.target.value)}><option value="">Default · Noto Sans</option>{assets.filter((asset) => asset.mediaKind === "font").map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name}</option>)}</select></label></div>}
       {selected.kind === "shape" && <label className="block text-[10px] text-zinc-500">Fill color<input aria-label="Layer fill color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.fill ?? "#1d9bf0")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, fill: event.target.value } }))}/></label>}
       {selected.kind === "three" && <div className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800 p-2"><label className="text-[10px] text-zinc-500">Primitive<select aria-label="3D primitive" className={field} value={String(selected.style.primitive ?? "cube")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, primitive: event.target.value } }))}><option value="cube">Cube</option><option value="pyramid">Pyramid</option><option value="plane">Plane</option></select></label><label className="text-[10px] text-zinc-500">Depth<input aria-label="3D depth" className={field} type="number" min={.1} max={4} step={.1} value={Number(selected.style.depth ?? 1)} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, depth: Math.max(.1, Math.min(4, numberValue(event.target.value, 1))) } }))}/></label><label className="text-[10px] text-zinc-500">Primary<input aria-label="3D primary color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.color ?? "#1d9bf0")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, color: event.target.value } }))}/></label><label className="text-[10px] text-zinc-500">Secondary<input aria-label="3D secondary color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.secondaryColor ?? "#0b5f99")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, secondaryColor: event.target.value } }))}/></label><label className="text-[10px] text-zinc-500">Edges<input aria-label="3D edge color" type="color" className={`${field} h-9 p-1`} value={String(selected.style.edgeColor ?? "#ffffff")} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, edgeColor: event.target.value } }))}/></label><label className="flex items-center gap-2 self-end rounded border border-zinc-800 px-2 py-2 text-[10px] text-zinc-400"><input aria-label="3D wireframe" type="checkbox" checked={Boolean(selected.style.wireframe)} onChange={(event) => updateLayer((layer) => ({ ...layer, style: { ...layer.style, wireframe: event.target.checked } }))}/>Wireframe</label></div>}
@@ -183,7 +240,7 @@ export function CompositionAuthoringControls({ composition, assets, compositions
         {selected.effects.length > 0 && <p className="mt-1 text-[8px] text-zinc-700">Click the effect name to enable or disable it.</p>}
       </div>
     </div>}
-    <Button className="mt-3 w-full" size="sm" variant="outline" disabled={busy} onClick={onSave}><Check className="mr-1 h-3.5 w-3.5"/>Save composition</Button>
+    <Button className="mt-3 w-full" size="sm" variant="outline" disabled={busy || Boolean(selectedNestedTrimIssue)} onClick={onSave}><Check className="mr-1 h-3.5 w-3.5"/>Save composition</Button>
   </div>;
 }
 
