@@ -4309,6 +4309,31 @@ export const cutStudioCompositions = pgTable(
   }),
 );
 
+// Every saved composition revision is immutable lineage, not a browser-only
+// undo buffer. It retains the exact private source/lockfile references used
+// by historical local renders without copying source bytes into the database.
+export const cutStudioCompositionRevisions = pgTable(
+  "cut_studio_composition_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    compositionId: uuid("composition_id").references(() => cutStudioCompositions.id, { onDelete: "cascade" }).notNull(),
+    projectId: uuid("project_id").references(() => cutStudioProjects.id, { onDelete: "cascade" }).notNull(),
+    businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }).notNull(),
+    ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    revision: integer("revision").notNull(),
+    name: text("name").notNull(),
+    mode: text("mode").notNull(),
+    manifest: json("manifest").$type<import("./cut-studio-production").CutCompositionManifest>().notNull(),
+    codeCapsule: json("code_capsule").$type<import("./cut-studio-production").CutCodeCapsule | null>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    compositionRevisionUnique: unique("cut_studio_composition_revisions_composition_revision_unique").on(table.compositionId, table.revision),
+    projectCreatedIdx: index("cut_studio_composition_revisions_project_created_idx").on(table.projectId, table.createdAt),
+    businessCreatedIdx: index("cut_studio_composition_revisions_business_created_idx").on(table.businessId, table.createdAt),
+  }),
+);
+
 export const cutStudioProductionPlans = pgTable(
   "cut_studio_production_plans",
   {

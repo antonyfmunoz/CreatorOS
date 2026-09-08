@@ -6,6 +6,7 @@ const client = readFileSync(new URL("../client/src/components/cut/CutStudioCreat
 const localNodeServer = readFileSync(new URL("../server/cut-local-nodes.ts", import.meta.url), "utf8");
 const cli = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
 const outputCeilingMigration = readFileSync(new URL("../migrations/0124_cut_studio_code_capsule_output_ceiling.sql", import.meta.url), "utf8");
+const sourceHistoryMigration = readFileSync(new URL("../migrations/0125_cut_studio_composition_revisions.sql", import.meta.url), "utf8");
 
 describe("CutStudio local code-render queue contract", () => {
   it("surfaces only project-scoped code jobs and permits cancellation before claim", () => {
@@ -67,6 +68,14 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain('"Save source revision"');
     expect(client).toContain('"If-Match": String(editing.revision)');
     expect(client).toContain("New pinned source revision saved. Existing render receipts remain immutable");
+  });
+  it("retains inspectable private source lineage for every saved composition revision", () => {
+    expect(sourceHistoryMigration).toContain('CREATE TABLE "cut_studio_composition_revisions"');
+    expect(sourceHistoryMigration).toContain('ON CONFLICT ("composition_id", "revision") DO NOTHING');
+    expect(server).toContain('cutStudioCompositionRevisions');
+    expect(server).toContain('compositions/:compositionId/history');
+    expect(client).toContain("Pinned source history");
+    expect(client).toContain("loadCompositionHistory");
   });
   it("enforces a declared value-only input contract before durable work is created", () => {
     expect(server).toContain("normalizeCutCodeRenderInput");
