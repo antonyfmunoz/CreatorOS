@@ -8,6 +8,7 @@ describe("CutStudio local code-render request contract", () => {
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "still", frame: 42, format: "webp" })).toMatchObject({ mode: "still", frame: 42, format: "webp" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mp4" })).toMatchObject({ mode: "video", frameRange: [0, 119], format: "mp4" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "video", frameRange: [0, 119], format: "mov", proresProfile: "4444" })).toMatchObject({ mode: "video", format: "mov", proresProfile: "4444" });
+    expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "audio", frameRange: [0, 119], format: "m4a" })).toMatchObject({ mode: "audio", format: "m4a" });
     expect(cutCodeRenderRequestSchema.parse({ ...base, mode: "sequence", frameRange: [20, 45], format: "png" })).toMatchObject({ mode: "sequence", frameRange: [20, 45], format: "png" });
   });
 

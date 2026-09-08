@@ -55,6 +55,8 @@ describe("CutStudio local-node contract", () => {
     expect(brokerSource).toContain("cutStudioProjectMedia");
     expect(brokerSource).toContain('descriptor.assetKind === "video" || descriptor.assetKind === "image"');
     expect(brokerSource).toContain('["mov", "video/quicktime"]');
+    expect(brokerSource).toContain('["m4a", "audio/mp4"]');
+    expect(brokerSource).toContain('runtime.mode === "audio" ? "audio" : "image"');
     expect(brokerSource).toContain("localNodeHeartbeatMaxAgeMs = 90_000");
     expect(brokerSource).toContain("This node heartbeat is stale");
   });

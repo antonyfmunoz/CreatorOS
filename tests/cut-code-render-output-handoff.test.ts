@@ -5,20 +5,22 @@ const runtime = readFileSync(new URL("../client/src/components/cut/CutStudioCrea
 const page = readFileSync(new URL("../client/src/pages/cut-studio.tsx", import.meta.url), "utf8");
 
 describe("CutStudio local code-render output handoff", () => {
-  it("makes sealed stills and videos directly usable after their private media record exists", () => {
+  it("makes sealed stills, videos, and audio directly usable after their private media record exists", () => {
     expect(runtime).toContain("onUseCodeRenderOutput?: (media: ProjectMediaInput) => void");
     expect(runtime).toContain('job.mode === "video" || job.mode === "still"');
+    expect(runtime).toContain('job.mode !== "video" && job.mode !== "still" && job.mode !== "audio"');
     expect(runtime).toContain('"Add to timeline"');
     expect(runtime).toContain('"Add as graphic"');
     expect(runtime).toContain("The render is syncing into this project's private media library");
     expect(runtime).toContain("previewCodeRenderId");
     expect(runtime).toContain('aria-label={`Preview ${reusableOutput.name}`}');
+    expect(runtime).toContain('job.mode === "audio" ? <audio');
     expect(runtime).toContain("/media-library/${encodeURIComponent(reusableOutput.id)}/media-file");
   });
 
-  it("routes videos to a timeline layer and stills to the private image-graphic renderer", () => {
+  it("routes videos and audio to timeline layers and stills to the private image-graphic renderer", () => {
     expect(page).toContain("onUseCodeRenderOutput={(media) =>");
-    expect(page).toContain('media.mediaKind === "video") addMediaClip(media)');
+    expect(page).toContain('media.mediaKind === "video" || media.mediaKind === "audio") addMediaClip(media)');
     expect(page).toContain('media.mediaKind === "image") addImageGraphic(media)');
   });
 });

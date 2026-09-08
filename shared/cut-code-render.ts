@@ -1,12 +1,13 @@
 import { z } from "zod";
 
-export const cutCodeRenderModes = ["still", "video", "sequence"] as const;
+export const cutCodeRenderModes = ["still", "video", "sequence", "audio"] as const;
 export type CutCodeRenderMode = typeof cutCodeRenderModes[number];
 
 export const cutCodeRenderFormats = {
   still: ["png", "jpeg", "webp"],
   video: ["mp4", "webm", "gif", "mov"],
   sequence: ["png", "jpeg", "webp"],
+  audio: ["wav", "mp3", "m4a"],
 } as const;
 
 const cutCodeInputKey = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/);
@@ -70,7 +71,7 @@ export const cutCodeRenderRequestSchema = z.object({
   durationInFrames: z.number().int().min(1).max(600),
   frame: z.number().int().min(0).optional(),
   frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-  format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif", "mov"]).optional(),
+  format: z.enum(["png", "jpeg", "webp", "mp4", "webm", "gif", "mov", "wav", "mp3", "m4a"]).optional(),
   proresProfile: z.enum(["422hq", "4444", "4444xq"]).optional(),
   quality: z.number().int().min(1).max(100).optional(),
   input: z.record(z.unknown()).default({}),

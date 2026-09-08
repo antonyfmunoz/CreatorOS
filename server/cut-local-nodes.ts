@@ -31,14 +31,15 @@ const localLeaseMs = 5 * 60_000;
 const localNodeHeartbeatMaxAgeMs = 90_000;
 const outputDescriptor = (runtime: Record<string, unknown>) => {
   if (runtime.mode === "sequence") return { format: "zip", mimeType: "application/zip", filename: "cutstudio-code-render.zip", assetKind: "file" };
-  const format = typeof runtime.format === "string" ? runtime.format : runtime.mode === "video" ? "mp4" : "png";
+  const format = typeof runtime.format === "string" ? runtime.format : runtime.mode === "video" ? "mp4" : runtime.mode === "audio" ? "wav" : "png";
   const allowed = new Map([
     ["png", "image/png"], ["jpeg", "image/jpeg"], ["webp", "image/webp"],
     ["mp4", "video/mp4"], ["webm", "video/webm"], ["gif", "image/gif"], ["mov", "video/quicktime"],
+    ["wav", "audio/wav"], ["mp3", "audio/mpeg"], ["m4a", "audio/mp4"],
   ]);
   const mimeType = allowed.get(format);
   if (!mimeType) throw new Error("The queued job does not have a supported output format");
-  return { format, mimeType, filename: `cutstudio-code-render.${format}`, assetKind: runtime.mode === "video" ? "video" : "image" };
+  return { format, mimeType, filename: `cutstudio-code-render.${format}`, assetKind: runtime.mode === "video" ? "video" : runtime.mode === "audio" ? "audio" : "image" };
 };
 
 function codeRenderRequest(job: typeof cutStudioJobs.$inferSelect) {
@@ -271,10 +272,10 @@ export function registerCutLocalNodeRoutes(app: Express) {
         }).returning();
         const [completed] = await transaction.update(cutStudioJobs).set({ state: "done", detail: "Local isolated render ready", progress: 1, artifactAssetId: artifact.id, output: { artifactId: artifact.id, filename: parsed.data.filename, mimeType: descriptor.mimeType, sizeBytes: sealed!.sizeBytes, execution: "paired_local_node", nodeId: node.id }, leaseExpiresAt: null, heartbeatAt: new Date(), finishedAt: new Date() }).where(and(eq(cutStudioJobs.id, job.id), eq(cutStudioJobs.workerId, `cut-local-node:${node.id}`), isNull(cutStudioJobs.cancellationRequestedAt))).returning({ id: cutStudioJobs.id });
         if (!completed) return null;
-        // A video or still is immediately reusable by the project. A frame
+        // A video, still, or audio export is immediately reusable by the project. A frame
         // sequence remains a sealed ZIP artifact instead of being mislabeled as
         // timeline media the browser cannot preview.
-        if (descriptor.assetKind === "video" || descriptor.assetKind === "image") {
+        if (descriptor.assetKind === "video" || descriptor.assetKind === "image" || descriptor.assetKind === "audio") {
           const runtime = request.runtime;
           const fps = Number(runtime.fps);
           const range = Array.isArray(runtime.frameRange) ? runtime.frameRange : null;
@@ -295,7 +296,7 @@ export function registerCutLocalNodeRoutes(app: Express) {
       // turn a committed render into an orphan by triggering cleanup below.
       sealed = null;
       await Promise.all([
-        ...(descriptor.assetKind === "video" ? [queueMediaIngestJobs(accepted)] : []),
+        ...(["video", "audio"].includes(descriptor.assetKind) ? [queueMediaIngestJobs(accepted)] : []),
         registerAssetLineage({ parentAssetId: request.sourceAssetId, childAssetId: accepted.id, relationship: "derived_from", createdByUserId: node.ownerUserId, metadata: { instrument: "cutstudio", jobId: job.id, nodeId: node.id } }),
       ]).catch(() => undefined);
       await emitProjectionEvent({ aggregateType: "cutstudio_project", aggregateId: job.projectId, eventType: "cutstudio.code_render.ready", actorUserId: node.ownerUserId, payload: { jobId: job.id, nodeId: node.id, artifactAssetId: accepted.id }, idempotencyKey: `cutstudio:${job.id}:code-render.ready` }).catch(() => undefined);
