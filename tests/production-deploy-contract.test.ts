@@ -46,6 +46,8 @@ describe("production deployment contract", () => {
     expect(deploySource.lastIndexOf("node scripts/assert-clean-source.mjs")).toBeLessThan(deployIndex);
     expect(deploySource).toContain("Push-Location $snapshotPath");
     expect(deploySource).toContain("Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force");
+    expect(deploySource).toContain("for ($cleanupAttempt = 1; $cleanupAttempt -le 3 -and -not $cleanupSucceeded; $cleanupAttempt++)");
+    expect(deploySource).toContain("Release completed, but the safe temporary snapshot could not be removed.");
     expect(deploySource).toContain('$sourceDirty = "false"');
     expect(cleanSourceContract).toContain('"status", "--porcelain=v1"');
     expect(cleanSourceContract).toContain('"--untracked-files=normal"');

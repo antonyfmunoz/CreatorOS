@@ -204,6 +204,27 @@ try {
     ) {
       throw "Refusing to remove an unsafe release snapshot path"
     }
-    Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force
+
+    # Docker can briefly retain a file handle on the immutable source snapshot
+    # after a successful local image build. Cleanup is operational hygiene, not
+    # release qualification: retry the known-safe temporary directory, but do
+    # not convert a verified deployment into a false failure if Windows still
+    # owns the handle after the bounded retry window.
+    $cleanupSucceeded = $false
+    $cleanupFailure = $null
+    for ($cleanupAttempt = 1; $cleanupAttempt -le 3 -and -not $cleanupSucceeded; $cleanupAttempt++) {
+      try {
+        Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force -ErrorAction Stop
+        $cleanupSucceeded = $true
+      } catch {
+        $cleanupFailure = $_
+        if ($cleanupAttempt -lt 3) {
+          Start-Sleep -Milliseconds (500 * $cleanupAttempt)
+        }
+      }
+    }
+    if (-not $cleanupSucceeded -and (Test-Path -LiteralPath $resolvedTempRoot)) {
+      Write-Warning "Release completed, but the safe temporary snapshot could not be removed. Recoverable path: $resolvedTempRoot. $($cleanupFailure.Exception.Message)"
+    }
   }
 }
