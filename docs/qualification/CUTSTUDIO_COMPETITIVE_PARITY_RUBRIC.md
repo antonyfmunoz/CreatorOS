@@ -3,7 +3,7 @@
 **Status:** canonical acceptance rubric for CutStudio motion graphics and
 cinematic-generation comparisons.
 **Companion documents:** [Creation Studios competitive standard](../CREATION_STUDIOS_COMPETITIVE_STANDARD.md), [golden benchmark](CREATION_STUDIOS_GOLDEN_BENCHMARK.md), and [Remotion closure register](CUTSTUDIO_REMOTION_CLOSURE.md).
-**Last revised:** 2026-09-04
+**Last revised:** 2026-09-08
 
 ## The rule
 
@@ -130,7 +130,9 @@ reproducible artifacts.
 |  | **Total** | **74** | |
 
 Current interpretation: the declarative/native rows have substantial local and
-released evidence. Public executable TSX dispatch, full composition
+released evidence. The bounded pinned Three path now has production field proof
+for `WebGLScene` under an isolated software renderer; this advances neither
+host-GPU/WebGPU nor broad Three addon compatibility. Full composition
 preview/export equality, broad approved dependency coverage, scaled admission
 and same-input benchmark evidence remain required before a Remotion parity
 claim.
