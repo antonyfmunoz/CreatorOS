@@ -79,11 +79,14 @@ export {};`);
 });
 
 test('typechecks the pinned software-WebGL scene bridge without exposing a host GPU API', () => {
-  check(`import {WebGLScene,useFrame} from '@creativesos/cut'; import {Scene,PerspectiveCamera} from 'three';
+  check(`import {WebGLScene,useFrame,usePrivateTexture} from '@creativesos/cut'; import {Scene,PerspectiveCamera,Texture} from 'three'; import privateTexture from './private.png';
 const scene=new Scene(); const camera=new PerspectiveCamera(); const frame:number=useFrame();
 const view=<WebGLScene scene={scene} camera={camera} width={1920} height={1080} style={{opacity:frame/60}}/>;
+const texture:Texture|null=usePrivateTexture(privateTexture,{colorSpace:'srgb'});
 // @ts-expect-error a Three camera is required
 const invalid=<WebGLScene scene={scene} camera={{}}/>;
+// @ts-expect-error texture colorspaces are deliberately bounded
+usePrivateTexture(privateTexture,{colorSpace:'display-p3'});
 export {view,invalid};`);
 });
 

@@ -33,6 +33,8 @@ declare module '@creativesos/cut' {
   export function releaseFrame(handle: FramePreparation): void;
   /** Permanently fails this render; authored error contents are not exported. */
   export function failRender(): void;
+  /** Decodes a PNG/JPEG/WebP imported from this private capsule; it never fetches a URL. */
+  export function usePrivateTexture(source: string, options?: { colorSpace?: 'srgb' | 'linear' }): import('three').Texture | null;
 
   export interface TextTypography {
     text: string;

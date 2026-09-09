@@ -63,6 +63,15 @@ production topology approval or enable public code execution.
   8.3 MP surface limit. Arbitrary Three addons, WebGPU, native device access,
   managed execution, performance equivalence and cross-device pixel identity
   remain outside this contract.
+- `usePrivateTexture(importedImage)` is the explicit WebGL texture path for a
+  capsule-local PNG, JPEG, or WebP import. It accepts only the bundler's
+  `data:image/...;base64` value, pauses the frame until decoding completes, and
+  returns `null` until the texture is safe to mount. Use the returned texture
+  in a pinned Three-core material; choose `colorSpace: 'srgb'` (the default) or
+  `'linear'`. The decoded-texture qualification imports a generated private PNG,
+  renders it with `WebGLScene`, and samples the expected output pixel. This is
+  not a remote asset loader, GLTF/Three addon surface, video texture contract,
+  HDR/color-managed pipeline, or generalized source compatibility promise.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and

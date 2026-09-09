@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
-import { WebGLRenderer } from 'three';
+import React, { createContext, useContext, useId, useLayoutEffect, useRef, useState } from 'react';
+import { SRGBColorSpace, TextureLoader, WebGLRenderer } from 'three';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { frameReadiness } from './frame-readiness.mjs';
 import { validateFrameAudio } from './frame-audio.mjs';
@@ -18,6 +18,46 @@ export const useInputs = () => useContext(FrameContext).input;
 export function holdFrame(options) { return frameReadiness.hold(options); }
 export function releaseFrame(handle) { frameReadiness.release(handle); }
 export function failRender() { frameReadiness.fail(); }
+
+/**
+ * Decodes a PNG, JPEG, or WebP imported from this private capsule for a Three
+ * scene. It accepts only the bundler's local data URLs, never a remote URL,
+ * browser file path, provider asset, or host filesystem reference. Returning
+ * null while decoding lets a scene mount after the texture is ready rather than
+ * capturing an empty first WebGL frame.
+ */
+export function usePrivateTexture(src, { colorSpace = 'srgb' } = {}) {
+  const [texture, setTexture] = useState(null);
+  useLayoutEffect(() => {
+    if (typeof src !== 'string' || !/^data:image\/(png|jpe?g|webp);base64,/.test(src)) throw new Error('usePrivateTexture requires a PNG, JPEG, or WebP imported from this private capsule.');
+    if (!['srgb', 'linear'].includes(colorSpace)) throw new Error('usePrivateTexture colorSpace must be srgb or linear.');
+    setTexture(null);
+    const handle = holdFrame({ timeoutMs: 10_000 });
+    let active = true;
+    let loadedTexture;
+    const settle = () => {
+      try { releaseFrame(handle); } catch { /* Cleanup after cancellation is intentionally idempotent. */ }
+    };
+    try {
+      loadedTexture = new TextureLoader().load(src, (next) => {
+        if (!active) { next.dispose(); return; }
+        if (colorSpace === 'srgb') next.colorSpace = SRGBColorSpace;
+        setTexture(next);
+        settle();
+      }, undefined, () => {
+        if (active) failRender();
+      });
+    } catch {
+      failRender();
+    }
+    return () => {
+      active = false;
+      settle();
+      loadedTexture?.dispose();
+    };
+  }, [src, colorSpace]);
+  return texture;
+}
 
 export function FullFrame({ style, children, ...props }) {
   return <div {...props} style={{ position: 'absolute', inset: 0, ...style }}>{children}</div>;

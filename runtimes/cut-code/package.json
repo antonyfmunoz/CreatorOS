@@ -8,7 +8,8 @@
     "qualify": "node qualify.mjs",
     "qualify:audio": "node qualify-audio.mjs",
     "qualify:three": "node qualify-three-scene.mjs",
-    "qualify:webgl": "node qualify-webgl-scene.mjs"
+    "qualify:webgl": "node qualify-webgl-scene.mjs",
+    "qualify:webgl-texture": "node qualify-webgl-texture.mjs"
   },
   "devDependencies": {
     "@types/react": "18.3.31",
