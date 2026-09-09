@@ -21,6 +21,26 @@ the selected active source without executing it. It does not establish
 arbitrary-package compatibility, managed/public code execution, preview/export
 equality, scale behavior, or a Remotion parity verdict.
 
+## September 8 post-release paired-local-node field proof
+
+PR 209 merged as `2400cc9f979025f37f41b0b65790b5db5bf1b115` after the full
+protected Core, durable-workflow, native-media, desktop/mobile browser, Android,
+iOS, Windows-package and CodeQL matrix passed. Production `/api/release`
+identified that exact clean source with `identityVerified: true`, migration
+parity 126/126, and `/api/ready` reported ready.
+
+In the signed-in owner project, a bounded 1080x1080 PNG still was queued from
+the immutable revision-3 TSX composition. The explicitly paired Windows node
+claimed it once through the local CLI, completed the isolated no-network job,
+and returned a private artifact receipt. The authenticated CutStudio UI then
+showed that same job as `done`, opened its image preview, and exposed the
+artifact as a private project asset. The one-shot node returned to its expected
+paused state after completion. This proves the current released paired-local
+execution path, durable queue, artifact custody and in-product preview for this
+specific bounded composition. It does not establish arbitrary-package
+compatibility, arbitrary-code preview/export equality, scale or cost behavior,
+or a Remotion parity verdict.
+
 ## September 8 recovery-truthfulness release and fresh local-node field proof
 
 PR 202 merged as `b36c3a06f6c99568c8dbf53d6ddb8f5b1ecde6db` after the
