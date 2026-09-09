@@ -4,6 +4,35 @@ Updated 2026-09-08. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
+## September 8 software-WebGL release and production field proof
+
+PR 212 merged as `f0f173468667f114dcb948f9c349461e87602151` after its exact
+protected matrix passed Core, database/durable workflows, native media ingest,
+desktop/mobile Chromium, Android, iOS, Windows packaging, CodeQL, isolated
+execution/pixel qualification, and the production-candidate image vulnerability
+gate. Production `/api/release` identified that exact clean source with
+`identityVerified: true` and migration parity `126/126`; the Fly release command
+also completed successfully before the public identity check.
+
+The release adds the clean-room `WebGLScene` bridge to the pinned Three core.
+It is deliberately bounded to a software ANGLE/SwiftShader renderer inside the
+existing isolated no-network runtime: no host GPU device, WebGPU surface,
+network access, arbitrary Three addon surface, or managed code executor was
+added. The exact-image qualification exercised a `ShaderMaterial` across two
+frames and verified changed decoded output pixels.
+
+In the signed-in owner project, the released WebGL starter was opened as text,
+saved as a new private ZIP plus matching lockfile, registered as **Field test
+software WebGL composition**, queued as a 1080x1080 PNG still, and claimed once
+by the explicitly paired Windows local node. The node completed job
+`9896230d-a7ad-4e58-a0d8-1c2d7746c5f4`, sealed artifact
+`a1420d50-2e58-44c2-811f-efd4dd8d0d53` with SHA-256
+`9bc61cba5b6e3eb7875d4ed8479ffe7e072dcec7c79c5709c89c3591a0b36f15`, and
+the production UI showed that job as `done` and opened its private image
+preview. This is field proof of this bounded software-WebGL composition path;
+it is not host-GPU/WebGPU qualification, arbitrary-package compatibility,
+general preview/export equality, scale/cost proof, or a Remotion parity verdict.
+
 ## September 8 source-history restore field proof
 
 PR 208 merged as `c8a903b67227ec581b990cff0b7ba24feb4957cc` after protected
