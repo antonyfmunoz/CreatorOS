@@ -72,6 +72,19 @@ production topology approval or enable public code execution.
   renders it with `WebGLScene`, and samples the expected output pixel. This is
   not a remote asset loader, GLTF/Three addon surface, video texture contract,
   HDR/color-managed pipeline, or generalized source compatibility promise.
+- `usePrivateGLTF(importedGlb)` is the equally explicit 3D import path for one
+  self-contained capsule-local **binary GLB**. Before the pinned Three
+  `GLTFLoader` receives bytes, the runtime verifies the version-2 container,
+  byte/chunk bounds, JSON shape, 20 MiB asset ceiling, and rejects every `uri`
+  field. Geometry, materials, and images therefore have to be embedded in the
+  submitted GLB; the loader gets no external URL, browser path, host file, or
+  provider asset to resolve. It returns `null` while decoding and holds the
+  composition frame until the model is safe to attach. Any committed update is
+  repainted in that same frame by `WebGLScene`. The isolated qualification
+  imports a generated triangle GLB and samples its rendered output pixel.
+  This intentionally does **not** admit JSON `.gltf` sidecars, remote/data URI
+  references, DRACO/Meshopt/KTX2 decoders, arbitrary Three loaders, WebGPU,
+  host GPU, or a performance/cross-device-identical-render promise.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and

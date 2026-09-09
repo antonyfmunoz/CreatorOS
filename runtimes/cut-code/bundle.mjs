@@ -75,8 +75,8 @@ export async function bundleCapsule(files, entrypoint) {
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'private-capsule', setup(plugin) {
       plugin.onResolve({ filter: /^capsule-entry$/ }, () => ({ path: entrypoint, namespace: 'capsule' }));
-      // One pinned ESM instance is shared with the approved SVG addon. No
-      // arbitrary Three addon, package installation or remote import is allowed.
+      // One pinned ESM instance is shared with the explicit SVG and GLB loaders.
+      // No arbitrary Three addon, package installation or remote import is allowed.
       plugin.onResolve({ filter: /^three$/ }, () => ({ path: threeModule }));
       plugin.onResolve({ filter: /.*/, namespace: 'capsule' }, (args) => {
         // CSS dependencies are files in the same private capsule, not npm or
@@ -103,7 +103,7 @@ export async function bundleCapsule(files, entrypoint) {
       plugin.onLoad({ filter: /.*/, namespace: 'capsule' }, (args) => {
         const extension = path.posix.extname(args.path).slice(1).toLowerCase();
         if (['mp4', 'webm'].includes(extension)) videoImports.add(args.path);
-        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', css: args.path.endsWith('.module.css') ? 'local-css' : 'css', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl' };
+        const loaders = { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', css: args.path.endsWith('.module.css') ? 'local-css' : 'css', png: 'dataurl', jpg: 'dataurl', jpeg: 'dataurl', webp: 'dataurl', svg: 'dataurl', ttf: 'dataurl', otf: 'dataurl', woff2: 'dataurl', mp4: 'dataurl', webm: 'dataurl', glb: 'dataurl' };
         if (!loaders[extension] || !files[args.path]) throw new Error('Unsupported capsule module type.');
         return { contents: files[args.path], loader: loaders[extension] };
       });

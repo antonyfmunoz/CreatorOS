@@ -62,6 +62,25 @@ paired-local runtime. It does not prove binary ZIP import behavior by a normal
 user, broad texture/media workflows, arbitrary packages, full preview/export
 equivalence, host GPU/WebGPU, scale/cost behavior, or a Remotion parity verdict.
 
+## September 8 private-GLB candidate: local evidence only
+
+The current candidate adds `usePrivateGLTF` for capsule-local, self-contained
+binary GLB assets. Before the pinned `GLTFLoader` receives any bytes, the
+runtime validates the GLB v2 header/chunks/size and rejects every JSON `uri`.
+That requires embedded geometry, materials, and images and keeps the existing
+isolated no-network/no-host-filesystem contract intact. The candidate also
+repaints software WebGL after a same-frame local resource settles, avoiding an
+otherwise blank first capture.
+
+Focused parser, bundler, typing, and actual isolated pixel qualification use a
+generated triangle GLB and prove the expected red rendered output. This is
+candidate-local evidence only until the exact commit passes protected CI, is
+merged/deployed, and a signed-in owner imports a normal binary ZIP on
+production. It deliberately excludes `.gltf` sidecars, URI/data-URI asset
+references, DRACO/Meshopt/KTX2 decoders, arbitrary Three loaders, host GPU or
+WebGPU. It is richer bounded 3D coverage, not broad glTF compatibility or a
+Remotion/3D-tools parity verdict.
+
 ## September 8 source-history restore field proof
 
 PR 208 merged as `c8a903b67227ec581b990cff0b7ba24feb4957cc` after protected

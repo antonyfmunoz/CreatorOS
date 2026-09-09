@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useId, useLayoutEffect, useRef, useState } from 'react';
 import { SRGBColorSpace, TextureLoader, WebGLRenderer } from 'three';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { frameReadiness } from './frame-readiness.mjs';
 import { validateFrameAudio } from './frame-audio.mjs';
+import { decodePrivateGlb } from './private-glb.mjs';
 export { interpolate, spring, measureSpring, easing, cubicBezier, seededRandom, interpolateColor } from './motion.mjs';
 export { measureText, fitText } from './text-layout.mjs';
 
@@ -57,6 +59,54 @@ export function usePrivateTexture(src, { colorSpace = 'srgb' } = {}) {
     };
   }, [src, colorSpace]);
   return texture;
+}
+
+function disposePrivateGlb(root) {
+  root.traverse((node) => {
+    node.geometry?.dispose?.();
+    for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+      if (!material) continue;
+      for (const value of Object.values(material)) if (value?.isTexture) value.dispose();
+      material.dispose?.();
+    }
+  });
+}
+
+/**
+ * Loads a self-contained binary glTF model imported from this private capsule.
+ * The SDK validates the GLB structure and rejects every URI before GLTFLoader
+ * receives it, preserving the isolated no-network, no-host-filesystem model.
+ */
+export function usePrivateGLTF(src) {
+  const [model, setModel] = useState(null);
+  useLayoutEffect(() => {
+    const buffer = decodePrivateGlb(src);
+    setModel(null);
+    const handle = holdFrame({ timeoutMs: 10_000 });
+    let active = true;
+    let loadedModel;
+    const settle = () => {
+      try { releaseFrame(handle); } catch { /* Cleanup after cancellation is intentionally idempotent. */ }
+    };
+    try {
+      new GLTFLoader().parse(buffer, '', (gltf) => {
+        if (!active) { disposePrivateGlb(gltf.scene); return; }
+        loadedModel = gltf.scene;
+        setModel(loadedModel);
+        settle();
+      }, () => {
+        if (active) failRender();
+      });
+    } catch {
+      failRender();
+    }
+    return () => {
+      active = false;
+      settle();
+      if (loadedModel) disposePrivateGlb(loadedModel);
+    };
+  }, [src]);
+  return model;
 }
 
 export function FullFrame({ style, children, ...props }) {
@@ -158,7 +208,6 @@ export function WebGLScene({ scene, camera, width, height, style, ...props }) {
   const target = useRef(null);
   const rendererRef = useRef(null);
   const composition = useComposition();
-  const frame = useFrame();
   const renderWidth = width ?? composition.width;
   const renderHeight = height ?? composition.height;
   if (!scene?.isScene || !camera?.isCamera) throw new Error('WebGLScene requires a Three Scene and Camera.');
@@ -192,6 +241,10 @@ export function WebGLScene({ scene, camera, width, height, style, ...props }) {
     renderer.setSize(renderWidth, renderHeight, false);
     renderer.render(scene, camera);
     if (renderer.getContext().isContextLost()) throw new Error('WebGLScene lost its isolated software context.');
-  }, [scene, camera, renderWidth, renderHeight, frame]);
+  // Render after every committed composition update. A private texture or GLB
+  // may settle during the same composition frame; limiting this effect only to
+  // frame-number changes would otherwise capture the scene before that local
+  // resource is attached.
+  });
   return <div {...props} ref={target} style={{ width: renderWidth, height: renderHeight, overflow: 'hidden', ...style }}/>;
 }

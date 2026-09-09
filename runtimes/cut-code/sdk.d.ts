@@ -1,7 +1,7 @@
 /** Authoring contract for the native CutStudio SDK, not Remotion API compatibility. */
 declare module '@creativesos/cut' {
   import type { ReactNode, Context, HTMLAttributes, CanvasHTMLAttributes, CSSProperties } from 'react';
-  import type { Camera, Scene } from 'three';
+  import type { Camera, Object3D, Scene } from 'three';
 
   export interface CompositionConfig {
     readonly width: number;
@@ -35,6 +35,8 @@ declare module '@creativesos/cut' {
   export function failRender(): void;
   /** Decodes a PNG/JPEG/WebP imported from this private capsule; it never fetches a URL. */
   export function usePrivateTexture(source: string, options?: { colorSpace?: 'srgb' | 'linear' }): import('three').Texture | null;
+  /** Decodes a self-contained capsule-local binary GLB; every external URI is rejected before loading. */
+  export function usePrivateGLTF(source: string): Object3D | null;
 
   export interface TextTypography {
     text: string;
@@ -107,5 +109,6 @@ declare module '*.svg' { const source: string; export default source; }
 declare module '*.ttf' { const source: string; export default source; }
 declare module '*.otf' { const source: string; export default source; }
 declare module '*.woff2' { const source: string; export default source; }
+declare module '*.glb' { const source: string; export default source; }
 declare module '*.module.css' { const classes: Readonly<Record<string, string>>; export default classes; }
 declare module '*.css' {}
