@@ -42,6 +42,8 @@ jobs:
         run: npm run qualify:audio
       - name: Prove a stable pinned Three scene reaches distinct sequence pixels
         run: npm run qualify:three
+      - name: Prove a pinned shader scene reaches software-WebGL sequence pixels
+        run: npm run qualify:webgl
       - name: Prove envelopes with the container's exact media tools
         run: npm run qualify:audio -- --container
       - name: Prove actual output and cancellation boundaries
@@ -90,6 +92,8 @@ jobs:
         run: npm run qualify
       - name: Prove stable Three geometry changes within one candidate sequence
         run: npm run qualify:three
+      - name: Prove software-WebGL shader pixels within one candidate sequence
+        run: npm run qualify:webgl
       - name: Install checksum-pinned vulnerability scanner
         run: |
           mkdir -p "$RUNNER_TEMP/cut-trivy"

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
+import { WebGLRenderer } from 'three';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { frameReadiness } from './frame-readiness.mjs';
 import { validateFrameAudio } from './frame-audio.mjs';
@@ -102,6 +103,55 @@ export function SvgScene({ scene, camera, width, height, style, ...props }) {
     svg.style.height = '100%';
     host.replaceChildren(svg);
     return () => host.replaceChildren();
+  }, [scene, camera, renderWidth, renderHeight, frame]);
+  return <div {...props} ref={target} style={{ width: renderWidth, height: renderHeight, overflow: 'hidden', ...style }}/>;
+}
+
+/**
+ * A tightly bounded software-WebGL bridge for pinned Three core scenes. The
+ * isolated browser is started with SwiftShader, so this is not a host-GPU or
+ * WebGPU capability. It permits core materials, lighting, textures embedded in
+ * the capsule, and ShaderMaterial while preserving the no-network sandbox and
+ * the ordinary frame-driven capture contract.
+ */
+export function WebGLScene({ scene, camera, width, height, style, ...props }) {
+  const target = useRef(null);
+  const rendererRef = useRef(null);
+  const composition = useComposition();
+  const frame = useFrame();
+  const renderWidth = width ?? composition.width;
+  const renderHeight = height ?? composition.height;
+  if (!scene?.isScene || !camera?.isCamera) throw new Error('WebGLScene requires a Three Scene and Camera.');
+  if (!Number.isInteger(renderWidth) || !Number.isInteger(renderHeight) || renderWidth < 1 || renderHeight < 1 || renderWidth > 3840 || renderHeight > 3840 || renderWidth * renderHeight > 8_294_400) throw new Error('WebGLScene dimensions exceed the bounded composition contract.');
+  useLayoutEffect(() => {
+    const host = target.current;
+    if (!host) return undefined;
+    let renderer;
+    try {
+      renderer = new WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+      renderer.setPixelRatio(1);
+      renderer.domElement.setAttribute('aria-hidden', 'true');
+      renderer.domElement.style.display = 'block';
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      host.replaceChildren(renderer.domElement);
+      rendererRef.current = renderer;
+    } catch {
+      throw new Error('WebGLScene could not initialize the isolated software renderer.');
+    }
+    return () => {
+      if (rendererRef.current === renderer) rendererRef.current = null;
+      renderer.dispose();
+      renderer.forceContextLoss();
+      host.replaceChildren();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setSize(renderWidth, renderHeight, false);
+    renderer.render(scene, camera);
+    if (renderer.getContext().isContextLost()) throw new Error('WebGLScene lost its isolated software context.');
   }, [scene, camera, renderWidth, renderHeight, frame]);
   return <div {...props} ref={target} style={{ width: renderWidth, height: renderHeight, overflow: 'hidden', ...style }}/>;
 }

@@ -78,6 +78,15 @@ fitted.style.fontSize=4;
 export {};`);
 });
 
+test('typechecks the pinned software-WebGL scene bridge without exposing a host GPU API', () => {
+  check(`import {WebGLScene,useFrame} from '@creativesos/cut'; import {Scene,PerspectiveCamera} from 'three';
+const scene=new Scene(); const camera=new PerspectiveCamera(); const frame:number=useFrame();
+const view=<WebGLScene scene={scene} camera={camera} width={1920} height={1080} style={{opacity:frame/60}}/>;
+// @ts-expect-error a Three camera is required
+const invalid=<WebGLScene scene={scene} camera={{}}/>;
+export {view,invalid};`);
+});
+
 test('declarations cover exactly the SDK runtime export names', () => {
   const names = new Set();
   for (const file of ['sdk.jsx', 'motion.mjs', 'text-layout.mjs']) {

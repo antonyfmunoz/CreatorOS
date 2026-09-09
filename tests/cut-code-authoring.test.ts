@@ -31,6 +31,13 @@ describe("data-only source authoring", () => {
     expect(files.find((file) => file.path === "src/index.tsx")?.content).toContain("SvgScene");
     expect(() => buildCutSourceZip(files, "src/index.tsx")).not.toThrow();
   });
+  it("offers an inert, pinned software-WebGL starter without widening dependencies", () => {
+    const files = starterCutSource("three_webgl");
+    const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.content);
+    expect(manifest.dependencies).toEqual({ react: "18.3.1", three: "0.185.1" });
+    expect(files.find((file) => file.path === "src/index.tsx")?.content).toContain("WebGLScene");
+    expect(() => buildCutSourceZip(files, "src/index.tsx")).not.toThrow();
+  });
   it("ships typed inputs in the motion and Three starters", () => {
     expect(starterCutSource().find((file) => file.path === "src/index.tsx")?.content).toContain("useInputs<Inputs>()");
     expect(starterCutSource("three_svg").find((file) => file.path === "src/index.tsx")?.content).toContain("rotationSpeed");
