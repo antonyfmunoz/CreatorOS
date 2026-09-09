@@ -42,6 +42,15 @@ test('rejects host, network and unapproved dependency imports', async () => {
     await assert.rejects(bundleCapsule(files, 'src/index.tsx'));
   }
 });
+
+test('bundles a capsule-local binary GLB only through the private SDK hook', async () => {
+  const source = `import React,{useEffect,useMemo}from 'react';import {FullFrame,WebGLScene,usePrivateGLTF}from '@creativesos/cut';import model from './scene.glb';import * as THREE from 'three';export default function Scene(){const modelValue=usePrivateGLTF(model);const scene=useMemo(()=>new THREE.Scene(),[]);const camera=useMemo(()=>new THREE.PerspectiveCamera(),[]);useEffect(()=>{if(modelValue&&!modelValue.parent)scene.add(modelValue)},[modelValue,scene]);return <FullFrame><WebGLScene scene={scene} camera={camera}/></FullFrame>}`;
+  const manifest = { 'package.json': strToU8(JSON.stringify({ dependencies: { react: '18.3.1', three: '0.185.1' } })) };
+  const bundle = await bundleCapsule(readCapsule(archive(source, { ...manifest, 'src/scene.glb': new Uint8Array(20) }), 'src/index.tsx'), 'src/index.tsx');
+  assert.ok(bundle.javascript.includes('GLTFLoader'));
+  const unsupported = readCapsule(archive(`import 'three/addons/loaders/DRACOLoader.js';export default ()=>null;`, manifest), 'src/index.tsx');
+  await assert.rejects(bundleCapsule(unsupported, 'src/index.tsx'));
+});
 test('pins Three core and its approved vector renderer without admitting arbitrary addons', async () => {
   const source = `import {Scene,BoxGeometry,Mesh,MeshBasicMaterial} from 'three';import {SVGRenderer} from 'three/addons/renderers/SVGRenderer.js';export default ()=>{const scene=new Scene();scene.add(new Mesh(new BoxGeometry(),new MeshBasicMaterial()));return <div>{new SVGRenderer().info.render.faces}</div>};`;
   const manifest = { 'package.json': strToU8(JSON.stringify({ dependencies: { react: '18.3.1', three: '0.185.1' } })) };

@@ -4,6 +4,7 @@
 !package-lock.json
 !bundle.mjs
 !sdk.jsx
+!private-glb.mjs
 !frame-readiness.mjs
 !frame-audio.mjs
 !video-source-audio.mjs

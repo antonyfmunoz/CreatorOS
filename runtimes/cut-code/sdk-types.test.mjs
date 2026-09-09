@@ -90,6 +90,15 @@ usePrivateTexture(privateTexture,{colorSpace:'display-p3'});
 export {view,invalid};`);
 });
 
+test('typechecks a self-contained private GLB without admitting a general asset loader', () => {
+  check(`import {WebGLScene,usePrivateGLTF} from '@creativesos/cut'; import {Scene,PerspectiveCamera,Object3D} from 'three'; import modelSource from './model.glb';
+const scene=new Scene(); const camera=new PerspectiveCamera(); const model:Object3D|null=usePrivateGLTF(modelSource);
+if(model) scene.add(model); const view=<WebGLScene scene={scene} camera={camera}/>;
+// @ts-expect-error the safe API takes one capsule-local GLB only
+usePrivateGLTF(modelSource,{draco:true});
+export {view};`);
+});
+
 test('declarations cover exactly the SDK runtime export names', () => {
   const names = new Set();
   for (const file of ['sdk.jsx', 'motion.mjs', 'text-layout.mjs']) {
@@ -136,10 +145,14 @@ const e=<FrameAudio file="a.wav" reverse="yes"/>;`);
 
 test('the configuration hook fails explicitly outside its provider and renders inside it', async () => {
   // This evaluates only the checked-in SDK in a unit test, never a user capsule.
-  const compiled = await build({ entryPoints: [path.join(directory, 'sdk.jsx')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], logLevel: 'silent' });
+  const compiled = await build({ entryPoints: [path.join(directory, 'sdk.jsx')], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react', 'three', 'three/addons/renderers/SVGRenderer.js', 'three/addons/loaders/GLTFLoader.js'], logLevel: 'silent' });
   const require = createRequire(import.meta.url);
   const module = { exports: {} };
-  vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: (name) => { assert.equal(name, 'react'); return require(name); } });
+  vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: (name) => {
+    if (name === 'react') return require(name);
+    if (['three', 'three/addons/renderers/SVGRenderer.js', 'three/addons/loaders/GLTFLoader.js'].includes(name)) return {};
+    assert.fail(`Unexpected SDK runtime dependency: ${name}`);
+  } });
   const { FrameContext, useComposition, FrameAudio, Sequence, Repeat, Freeze } = module.exports;
   const Scene = () => React.createElement('span', null, useComposition().fps);
   assert.throws(() => renderToStaticMarkup(React.createElement(Scene)), /composition provider/);
