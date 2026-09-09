@@ -33,6 +33,35 @@ preview. This is field proof of this bounded software-WebGL composition path;
 it is not host-GPU/WebGPU qualification, arbitrary-package compatibility,
 general preview/export equality, scale/cost proof, or a Remotion parity verdict.
 
+## September 8 private-texture release and production field proof
+
+PR 214 merged as `904253dfc34c83dd09a765039b7748d7d3786ff1` after its protected
+Core, database/durable-workflow, native-media, desktop/mobile browser, Android,
+iOS, Windows-package, CodeQL, isolated texture-pixel and candidate-image gates
+passed. Production `/api/release` identified that exact clean source with
+`identityVerified: true` and migration parity `126/126`; `/api/ready` reported
+`release_ready` and `verified` deployment status.
+
+The release adds `usePrivateTexture` to the clean-room SDK. It accepts only
+capsule-bundled `data:image` PNG, JPEG or WebP values and renders them through
+the existing isolated software WebGL path. It rejects remote URLs and does not
+add host-file access, a general asset loader, network access, host GPU/WebGPU,
+or arbitrary dependency support. The exact runtime qualification rendered a
+local capsule PNG and decoded a red output pixel.
+
+In the signed-in owner project, the released software-WebGL starter was edited
+into **Field test private texture composition**, saved as a new private source
+and matching lockfile, registered, and queued as a 1080x1080 PNG still. The
+explicitly paired Windows node completed isolated job
+`c015fa61-8f71-492f-b439-950b88b08077`, produced private artifact
+`13215a71-9df4-40e1-9b36-adc9c8ffd7b1` with SHA-256
+`61827f7e1e00027c7eefecb9866a3f7856daab9a0dca24575152777ad15758f3`, and
+the authenticated production UI reported `done` and opened the image preview.
+This field-proves the narrow sealed data-URL texture path through the released
+paired-local runtime. It does not prove binary ZIP import behavior by a normal
+user, broad texture/media workflows, arbitrary packages, full preview/export
+equivalence, host GPU/WebGPU, scale/cost behavior, or a Remotion parity verdict.
+
 ## September 8 source-history restore field proof
 
 PR 208 merged as `c8a903b67227ec581b990cff0b7ba24feb4957cc` after protected
