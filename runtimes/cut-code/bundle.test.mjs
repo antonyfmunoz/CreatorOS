@@ -54,6 +54,12 @@ test('bundles a frame-captured Three SVG scene through the native SDK bridge', a
   const bundle = await bundleCapsule(readCapsule(archive(source, manifest), 'src/index.tsx'), 'src/index.tsx');
   assert.ok(bundle.javascript.includes('SVGRenderer'));
 });
+test('bundles a frame-captured Three software-WebGL scene through the native SDK bridge', async () => {
+  const source = `import {FullFrame,WebGLScene} from '@creativesos/cut';import {Scene,PerspectiveCamera,BoxGeometry,Mesh,MeshStandardMaterial,AmbientLight} from 'three';export default function SceneView(){const scene=new Scene();const camera=new PerspectiveCamera(45,16/9,.1,10);camera.position.z=3;scene.add(new AmbientLight('#ffffff',1));scene.add(new Mesh(new BoxGeometry(),new MeshStandardMaterial({color:'#00ff00'})));return <FullFrame><WebGLScene scene={scene} camera={camera} width={320} height={180}/></FullFrame>}`;
+  const manifest = { 'package.json': strToU8(JSON.stringify({ dependencies: { react: '18.3.1', three: '0.185.1' } })) };
+  const bundle = await bundleCapsule(readCapsule(archive(source, manifest), 'src/index.tsx'), 'src/index.tsx');
+  assert.ok(bundle.javascript.includes('WebGLRenderer'));
+});
 test('allows private relative TSX imports and rejects escaping archive paths', async () => {
   const files = readCapsule(archive(`export {default} from './title';`, { 'src/title.tsx': strToU8('export default () => <h1>Private title</h1>') }), 'src/index.tsx');
   assert.ok(await bundleCapsule(files, 'src/index.tsx'));

@@ -62,7 +62,10 @@ try {
   // Use grayscale text coverage instead of LCD subpixel coverage: opacity and
   // transformed layers otherwise allow prior compositor paint state to change
   // a later frame's edge pixels. This does not relax Chromium's sandbox.
-  browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage', '--disable-lcd-text'], timeout: 20_000 });
+  // Force the renderer through Chromium's software implementation. This admits
+  // bounded WebGL scenes without depending on a host GPU or widening the
+  // container's device/capability surface.
+  browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage', '--disable-lcd-text', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'], timeout: 20_000 });
   const context = await browser.newContext({ viewport: { width: request.width, height: request.height }, deviceScaleFactor: 1, serviceWorkers: 'block', acceptDownloads: false, reducedMotion: 'reduce', locale: 'en-US', timezoneId: 'UTC', colorScheme: 'light' });
   await context.route('**/*', (route) => route.abort('blockedbyclient'));
   await context.routeWebSocket(/.*/, (socket) => socket.close());

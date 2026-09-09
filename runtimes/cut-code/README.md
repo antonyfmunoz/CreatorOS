@@ -55,6 +55,14 @@ production topology approval or enable public code execution.
   with the matching lockfile remains a closed dependency graph. It is a
   starting point for editable vector scenes, not a claim of GPU, texture,
   shader, lighting or arbitrary-addon support.
+- CutStudio also exposes a **New software WebGL package** starter. It runs only
+  in the same isolated local browser with Chromium's SwiftShader renderer
+  forced, not through a host GPU or WebGPU. It admits pinned Three-core
+  materials, lighting, data-only capsule textures, and `ShaderMaterial` while
+  retaining the exact dependency boundary, no-network policy, frame clock and
+  8.3 MP surface limit. Arbitrary Three addons, WebGPU, native device access,
+  managed execution, performance equivalence and cross-device pixel identity
+  remain outside this contract.
 - `@creativesos/cut`: `useFrame`, `useGlobalFrame`, `useComposition`, `useInputs`,
   `FullFrame`, local-frame `Sequence`, `Freeze` and bounded/alternating `Repeat`.
 - Native `measureText` and `fitText` calculate actual browser text layout and
