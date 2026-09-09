@@ -4,6 +4,23 @@ Updated 2026-09-08. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
+## September 8 source-history restore field proof
+
+PR 208 merged as `c8a903b67227ec581b990cff0b7ba24feb4957cc` after protected
+qualification run `34296522599` passed Core, database/durable workflows,
+native media ingest, desktop/mobile browser, Android, iOS, Windows packaging
+and CodeQL. The released production identity reports that exact clean commit
+and migration parity 126/126.
+
+In the signed-in owner project, a deliberately revised isolated TSX composition
+was restored from immutable revision 1. Production created revision 3 rather
+than overwriting history, displayed the explicit restore receipt, and opened
+the active private source as text with the revision-only marker absent. This is
+field evidence that source-history restore creates a new revision and changes
+the selected active source without executing it. It does not establish
+arbitrary-package compatibility, managed/public code execution, preview/export
+equality, scale behavior, or a Remotion parity verdict.
+
 ## September 8 recovery-truthfulness release and fresh local-node field proof
 
 PR 202 merged as `b36c3a06f6c99568c8dbf53d6ddb8f5b1ecde6db` after the
