@@ -77,6 +77,16 @@ describe("CutStudio local code-render queue contract", () => {
     expect(client).toContain("Pinned source history");
     expect(client).toContain("loadCompositionHistory");
   });
+  it("restores a historical snapshot only by creating the next immutable revision", () => {
+    expect(server).toContain('compositions/:compositionId/history/:revision/restore');
+    expect(server).toContain("That composition revision is already current");
+    expect(server).toContain('eventType: "cutstudio.composition.history_restored"');
+    expect(server).toContain('revision: sql`${cutStudioCompositions.revision} + 1`');
+    expect(client).toContain("restoreCompositionRevision");
+    expect(client).toContain("The source history remains immutable");
+    expect(client).toContain("Restore revision");
+    expect(client).toContain("Source history for ${composition.name}");
+  });
   it("enforces a declared value-only input contract before durable work is created", () => {
     expect(server).toContain("normalizeCutCodeRenderInput");
     expect(server).toContain("Composition input does not match this code contract");
