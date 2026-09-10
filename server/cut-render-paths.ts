@@ -5,12 +5,13 @@ function safeSourceExtension(filename?: string | null) {
   return /^\.[a-z0-9]{1,10}$/.test(extension) ? extension : ".bin";
 }
 
-export function cutRenderWorkspacePaths(tempDirectory: string, projectName: string, sourceFilename?: string | null) {
-  const outputName = `${projectName.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "cut"}.mp4`;
+export function cutRenderWorkspacePaths(tempDirectory: string, projectName: string, sourceFilename?: string | null, format: "mp4" | "webm" = "mp4") {
+  if (format !== "mp4" && format !== "webm") throw new Error("Unsupported render output format");
+  const outputName = `${projectName.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "cut"}.${format}`;
   return {
     outputName,
     sourcePath: path.join(tempDirectory, `input-source${safeSourceExtension(sourceFilename)}`),
-    outputPath: path.join(tempDirectory, "render-output.mp4"),
+    outputPath: path.join(tempDirectory, `render-output.${format}`),
   };
 }
 
