@@ -144,7 +144,14 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     try { inputs = JSON.parse(batchInputJson); }
     catch { throw new Error("Batch input must be valid JSON"); }
     if (!Array.isArray(inputs) || inputs.length < 2 || inputs.length > 20) throw new Error("Batch input must be an array of 2–20 composition input objects");
-    return inputs.map(requestForInput);
+    const requests = inputs.map(requestForInput);
+    // The server treats a batch as distinct, independently durable renders.
+    // Catch duplicate requests before sending them so the author receives the
+    // actionable rule rather than a generic submission error.
+    if (new Set(requests.map((request) => JSON.stringify(request))).size !== requests.length) {
+      throw new Error("Each batch input must produce a distinct render request");
+    }
+    return requests;
   };
   const label = `${composition.name} local render`;
   return <div className="mt-3 space-y-2 border-t border-[#1d9bf0]/20 pt-3" aria-label={label}>

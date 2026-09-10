@@ -52,6 +52,7 @@ describe("CutStudio local code-render queue contract", () => {
     expect(server).toContain('eventType: "cutstudio.code_render.batch_queued"');
     expect(client).toContain("Optional input batch JSON (2–20 inputs)");
     expect(client).toContain("queueCodeRenderBatch");
+    expect(client).toContain("Each batch input must produce a distinct render request");
   });
   it("revalidates stored code-capsule limits before issuing a local-node lease", () => {
     expect(server).toContain("cutCodeCapsuleSchema.parse(composition.codeCapsule)");
