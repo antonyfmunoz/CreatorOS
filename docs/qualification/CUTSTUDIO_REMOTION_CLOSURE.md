@@ -62,6 +62,57 @@ paired-local runtime. It does not prove binary ZIP import behavior by a normal
 user, broad texture/media workflows, arbitrary packages, full preview/export
 equivalence, host GPU/WebGPU, scale/cost behavior, or a Remotion parity verdict.
 
+## September 9 private-GLB release and production field proof
+
+PR 216 merged as `04306e365961b2826be223d78a2a2ae549f54f13` after its
+protected qualification passed. Production release 433 reported that exact
+clean identity with `identityVerified: true`, migration parity `126/126`, a
+ready application, and configured private object storage.
+
+The release adds `usePrivateGLTF` to the clean-room SDK for capsule-local,
+self-contained binary GLB v2 assets. Before the pinned loader receives bytes,
+the isolated runtime validates the header, chunks and size and rejects every
+JSON `uri`; embedded geometry, materials and images are therefore required.
+The local runtime remains no-network and has no host-file access, host GPU,
+WebGPU, sidecar `.gltf`, DRACO/Meshopt/KTX2 decoder, arbitrary loader or
+arbitrary-package path.
+
+In a signed-in owner project, a normal binary ZIP and its exact matching npm
+lockfile were imported together, registered as **Field test private GLB
+composition**, and queued as a 1080x1080 PNG still. An initial local-node
+preflight correctly refused to execute while no immutable runtime image was
+available; that terminal failure is retained. The retried job was explicitly
+claimed by the paired Windows node using the immutable isolated image
+`sha256:da5dfa9909f1d14d5a2bdae856b1611b8c100cd922fafe6413c8dd93ca9a574a`.
+It completed job `8b9844fe-182f-429e-9c49-57476ee8b261`, sealed private
+artifact `bd864b00-29ad-4433-af93-1fc8223152dd` with receipt-verified SHA-256
+`2840cc372686d4bff9e0634fb5b7fa6190fccd94d04bc474bbde412481fd7a40`, and the
+authenticated production UI reported `done` and visibly previewed the expected
+red GLB triangle. This field-proves that narrow sealed binary-GLB path through
+the released paired-local runtime. It is not broad glTF compatibility,
+host-GPU/WebGPU proof, arbitrary package compatibility, preview/export
+equivalence for arbitrary code, scale/cost evidence, or a Remotion parity
+verdict.
+
+The same signed-in composition was then queued as a bounded 30-frame,
+1080x1080 MP4. The paired node completed job
+`c9bf68b3-9ad3-4f1f-af69-16cdae4fa41c`, sealed artifact
+`9726cb73-26f0-4cfe-bec1-f7922b8b3528` with receipt-verified SHA-256
+`d38d25e0b15807e91952611cf751c03eb69efbef4552d8ed32319ed6d20df8ab`, and
+the authenticated UI loaded the private video player with the expected red
+triangle visible. This expands the field proof only to this bounded GLB MP4
+path; it does not change any of the broader exclusions above.
+
+Finally, the unchanged composition and still request were queued and claimed a
+second time on the same immutable image. Job
+`62ececd7-b1c3-43e1-bcad-1af830bf8cb2` sealed private artifact
+`295acf44-f9a3-4874-8978-57bec563eaf3`; its receipt-verified SHA-256 was the
+same `2840cc372686d4bff9e0634fb5b7fa6190fccd94d04bc474bbde412481fd7a40` as
+the first still, and both terminal records appeared in the authenticated UI.
+This is two-run determinism evidence for this one GLB composition, exact
+request and runtime image—not a guarantee for different packages, GPUs,
+encoders, inputs or broader preview/export behavior.
+
 ## September 8 private-GLB candidate: local evidence only
 
 The current candidate adds `usePrivateGLTF` for capsule-local, self-contained
