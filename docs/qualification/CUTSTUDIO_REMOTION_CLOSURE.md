@@ -163,6 +163,16 @@ this exact code-render artifact can re-enter the native editor without an
 export/download/re-upload hop; it is not evidence for team collaboration,
 arbitrary media compatibility or benchmarked connected superiority.
 
+After the exact release containing commit
+`f6938c0b7a52157700692b94d2cb3fa098c6b268` was deployed, the same signed-in
+editor was given two identical typed batch requests. It rejected them before
+creating work with the visible message **"Each batch input must produce a
+distinct render request"**. The test form was restored to an empty batch
+afterward. This is narrow production field evidence that the client prevents
+accidental duplicate work for structurally identical requests; the durable
+broker remains the authoritative validation boundary and this does not prove
+deduplication for semantically equivalent but structurally different inputs.
+
 ## September 8 private-GLB candidate: local evidence only
 
 The current candidate adds `usePrivateGLTF` for capsule-local, self-contained
