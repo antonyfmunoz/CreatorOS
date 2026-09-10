@@ -132,10 +132,13 @@ reproducible artifacts.
 Current interpretation: the declarative/native rows have substantial local and
 released evidence. The bounded pinned Three path now has production field proof
 for `WebGLScene` under an isolated software renderer; this advances neither
-host-GPU/WebGPU nor broad Three addon compatibility. Full composition
-preview/export equality, broad approved dependency coverage, scaled admission
-and same-input benchmark evidence remain required before a Remotion parity
-claim.
+host-GPU/WebGPU nor broad Three addon compatibility. The deterministic-rendering
+row has narrow state-4 field evidence for two typed parameter variants, durable
+batch admission and private receipts in the exact paired-local runtime; it is
+not state 5 because no authorized same-input Remotion comparison exists. Full
+composition preview/export equality, broad approved dependency coverage, scaled
+admission and same-input benchmark evidence remain required before a Remotion
+parity claim.
 
 ## Rubric B — HyperFrames parity
 
