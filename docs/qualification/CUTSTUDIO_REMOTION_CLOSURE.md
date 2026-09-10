@@ -1,6 +1,6 @@
 # CutStudio versus Remotion: evidence-separated closure register
 
-Updated 2026-09-08. This register supersedes any older suggestion that only
+Updated 2026-09-10. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
@@ -112,6 +112,66 @@ the first still, and both terminal records appeared in the authenticated UI.
 This is two-run determinism evidence for this one GLB composition, exact
 request and runtime image—not a guarantee for different packages, GPUs,
 encoders, inputs or broader preview/export behavior.
+
+## September 10 parameter-batch production field proof
+
+The signed-in owner project also exercised durable local batches. A two-item
+GLB still batch produced two separately queued, claimed and completed jobs:
+`01c1236d-e9ef-467a-9d67-854f6e1d3c5b` and
+`c236c1e0-9670-4dd3-9e2d-a2dc65fcffd0`. Both receipts had the expected
+unchanged GLB still hash
+`2840cc372686d4bff9e0634fb5b7fa6190fccd94d04bc474bbde412481fd7a40`.
+That source intentionally ignores the optional batch labels, so equal output
+is expected. This is evidence for independent durable batch admission,
+claiming and completion—not evidence that arbitrary input fields affect an
+arbitrary composition's pixels.
+
+To prove the latter narrowly, a clean built-in 3D SVG source package was
+saved as **Typed 3D batch field proof** with a declared contract:
+`rotationSpeed` is a number in `[0.1, 4]`, and `accent` is a hex color
+string. The same signed-in page queued two 1080x1080 PNG still requests on
+the approved Windows isolated runtime image:
+
+| Input | Job | Artifact | Receipt-verified SHA-256 |
+| --- | --- | --- | --- |
+| `{\"rotationSpeed\":1,\"accent\":\"#1d9bf0\"}` | `4a83fcea-e012-4955-a83d-2a7e3a253059` | `068079a4-4a8d-4196-9e5d-cdfd04f489f1` | `14f3efa7caf9286f32499d2e2c44bd0d1c881805e807e2072f6476f24ea02fff` |
+| `{\"rotationSpeed\":3,\"accent\":\"#ff3366\"}` | `4d9f0880-3d4c-4dd9-9cdb-9ebcc6fcfcba` | `843ea785-ec16-45d8-93f5-923d3d6ea7a8` | `87922985a65e68500cc5ae5f0982ef25fdda8696e18f4e60599557ab5b85e8c9` |
+
+Both terminal records appeared as `done` in the authenticated production UI;
+each opened a private image preview, with visibly distinct blue and pink 3D
+results. This is production field evidence for validated typed input,
+independent durable batch jobs, receipt custody and input-to-pixel variation
+for this exact built-in source, request shape and isolated image. It does not
+prove that all packages use their declared fields, all parameter dimensions
+produce a meaningful creative change, preview/export equivalence across
+arbitrary sources, cross-hardware determinism, scale/cost behavior or any
+Remotion parity verdict.
+
+The same composition then produced a bounded MP4 frame-range render with
+`frameRange: [4, 12]`, 1080x1080 at 30 FPS. The paired node completed job
+`e7a16630-ec2a-4e99-b778-0a8597f608e9`, sealed artifact
+`1fccccc2-71c2-44a7-8de2-a26817f5c1ac`, and returned receipt hash
+`f1c2dd2d7cf97898c0fafaf70523ca4f9aa7b70315d9ed2747ab664566e9f119`.
+The authenticated product listed the private MP4 as `done` and loaded its
+animated blue 3D preview. This proves one bounded typed video range end to end;
+it does not substitute for a broad temporal-quality review, arbitrary-source
+preview/export equality, cross-runtime determinism, or a competitor benchmark.
+The same authenticated user selected **Add to timeline**. CutStudio added the
+private artifact to V2 at the playhead, saved the four-clip timeline, and
+exposed its normal transform, compositing and recovery controls. That confirms
+this exact code-render artifact can re-enter the native editor without an
+export/download/re-upload hop; it is not evidence for team collaboration,
+arbitrary media compatibility or benchmarked connected superiority.
+
+After the exact release containing commit
+`f6938c0b7a52157700692b94d2cb3fa098c6b268` was deployed, the same signed-in
+editor was given two identical typed batch requests. It rejected them before
+creating work with the visible message **"Each batch input must produce a
+distinct render request"**. The test form was restored to an empty batch
+afterward. This is narrow production field evidence that the client prevents
+accidental duplicate work for structurally identical requests; the durable
+broker remains the authoritative validation boundary and this does not prove
+deduplication for semantically equivalent but structurally different inputs.
 
 ## September 8 private-GLB candidate: local evidence only
 
