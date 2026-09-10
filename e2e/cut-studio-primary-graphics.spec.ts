@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
+import sharp from "sharp";
+import { downloadCutRender, waitForCutRender } from "./helpers/cut-render";
 
 test("primary preview animates supported native timeline graphics at the selected output frame", async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -26,9 +28,28 @@ test("primary preview animates supported native timeline graphics at the selecte
   expect(await graphic.evaluate((element: HTMLElement) => element.style.top)).toBe("40%");
   await expect(graphic).toHaveCSS("opacity", "0.5");
   expect(await graphic.evaluate((element: HTMLElement) => element.style.transform)).toContain("scale(1.5)");
-  await player.getByLabel("Primary sequence canvas", { exact: true }).screenshot({ path: `${directory}/graphics-frame-29.png` });
+  const preview = await player.getByLabel("Primary sequence canvas", { exact: true }).screenshot({ path: `${directory}/graphics-frame-29.png` });
+  const { data: previewPixels, info: previewImage } = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const samplePreview = (x: number, y: number) => {
+    const offset = (Math.floor(previewImage.height * y) * previewImage.width + Math.floor(previewImage.width * x)) * previewImage.channels;
+    return [...previewPixels.subarray(offset, offset + 3)];
+  };
+  const previewShape = samplePreview(.6, .5);
+  const previewBase = samplePreview(.05, .05);
+  expect(previewShape[0]).toBeGreaterThan(230); expect(previewShape[1]).toBeLessThan(15); expect(previewShape[2]).toBeLessThan(15);
   const otherOwner = info.project.name.startsWith("mobile") ? "2" : "1";
   const denied = await page.request.get(`/api/cut/projects/${project.id}`, { headers: { "x-creativesos-demo-user": otherOwner } });
   expect(denied.status()).toBe(404);
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, frame: 29, crossOwnerStatus: denied.status() }, null, 2));
+  await page.getByRole("button", { name: "Close sequence", exact: true }).click();
+  const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
+  expect(submitted.status()).toBe(202); const job = await submitted.json(); await waitForCutRender(page.request, job.id, info);
+  const finished = await (await page.request.get(`/api/cut/jobs/${job.id}`)).json(); expect(finished.state).toBe("done");
+  const output = await downloadCutRender(page.request, job.id, `${directory}/render.mp4`);
+  const sampleNative = (x: number, y: number) => [...execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-vf", `select=eq(n\\,29),crop=2:2:${Math.floor(1280 * x)}:${Math.floor(720 * y)},scale=1:1,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "pipe:1"], { windowsHide: true, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).subarray(0, 3)];
+  const nativeShape = sampleNative(.6, .5);
+  const nativeBase = sampleNative(.05, .05);
+  for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["base", previewBase, nativeBase]] as const) {
+    for (let channel = 0; channel < 3; channel++) expect(Math.abs(previewSample[channel] - nativeSample[channel]), `${name} frame 29 channel ${channel}`).toBeLessThanOrEqual(12);
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, frame: 29, jobId: job.id, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewBase, nativeBase }, null, 2));
 });
