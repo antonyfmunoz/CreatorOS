@@ -36,7 +36,13 @@ test("primary preview animates supported native timeline graphics at the selecte
   };
   const previewShape = samplePreview(.6, .5);
   const previewBase = samplePreview(.05, .05);
-  expect(previewShape[0]).toBeGreaterThan(230); expect(previewShape[1]).toBeLessThan(15); expect(previewShape[2]).toBeLessThan(15);
+  // The keyframe intentionally makes the red shape 50% opaque over the blue
+  // source. Verify that compositing took place without mistaking an alpha blend
+  // for an opaque primary-red pixel. The native-output comparison below remains
+  // the strict preview/render agreement oracle.
+  expect(previewShape[0]).toBeGreaterThan(previewBase[0] + 70);
+  expect(previewShape[1]).toBeLessThan(15);
+  expect(previewShape[2]).toBeLessThan(previewBase[2] - 70);
   const otherOwner = info.project.name.startsWith("mobile") ? "2" : "1";
   const denied = await page.request.get(`/api/cut/projects/${project.id}`, { headers: { "x-creativesos-demo-user": otherOwner } });
   expect(denied.status()).toBe(404);
