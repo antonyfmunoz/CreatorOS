@@ -86,6 +86,8 @@ export default function CutStudioPage() {
   const [future, setFuture] = useState<CutEdl[]>([]);
   const [revision, setRevision] = useState(0);
   const [mediaUrl, setMediaUrl] = useState("");
+  const [timelineMonitorMode, setTimelineMonitorMode] = useState<"edit" | "rendered">("edit");
+  const [renderedTimelinePreview, setRenderedTimelinePreview] = useState<{ jobId: string; url: string } | null>(null);
   const [sourceMedia, setSourceMedia] = useState<ProjectMedia | null>(null);
   const [sourceMediaUrl, setSourceMediaUrl] = useState("");
   const [sourceIn, setSourceIn] = useState(0);
@@ -207,7 +209,7 @@ export default function CutStudioPage() {
       }
       setPendingProjectRefresh(null);
       setAuthorizedProjectUserId(openingAccountId);
-      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(nextReviews); setWorkspace(nextWorkspace); setAudioTemplates(nextTemplates); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
+      setProject(next); setEdl(next.edl); setRevision(next.revision); setJobs(projectJobs); setMediaLibrary(projectMedia); setLutLibrary(next.luts ?? []); setLoudnessMeasurement(null); setMediaUrl(secure.url); setTimelineMonitorMode("edit"); setRenderedTimelinePreview(null); setSourceMedia(primaryMedia); setSourceMediaUrl(secure.url); setSourceIn(0); setSourceOut(primaryMedia?.duration ?? next.duration); setHistory([]); setFuture([]); setPlayhead(0); setSelectedClip(0); setSelectedClipIds(next.edl.clips[0]?.id ? [next.edl.clips[0].id] : []); setTranscriptDraft(next.transcript); setTranscriptSearch(""); setHighlights(projectJobs.find((job) => job.kind === "highlights" && job.state === "done")?.output?.candidates ?? []); setReviews(nextReviews); setWorkspace(nextWorkspace); setAudioTemplates(nextTemplates); setAudioTemplateName(""); setReviewUrl(""); setComparisonVersionIds([]); setComparisonMedia({}); setCollaboratorUsername(""); setWorkspaceNote(""); setSaveStatus("");
     } catch (error) { if (opening === openGeneration.current) setMessage(error instanceof Error ? error.message : "Could not open the project"); }
     finally { if (opening === openGeneration.current) setBusy(""); }
   }, [hasUnsavedTimeline, confirmLeavingTimeline]);
@@ -492,6 +494,19 @@ export default function CutStudioPage() {
   const transcribe = async () => { await startJob("transcribe"); };
   const requestHighlights = async () => { await startJob("highlights"); };
   const render = async (clip?: { start: number; end: number }) => { await startJob("render", { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps, clip }); };
+  const previewRenderedOutput = async (job: Job) => {
+    if (!project || job.kind !== "render" || job.state !== "done") return;
+    if (project.mediaKind !== "video") { setMessage("Audio-only projects open completed output from the Renders panel. Timeline rendered preview is available for video projects."); return; }
+    setBusy(`timeline-preview:${job.id}`); setMessage("");
+    try {
+      const descriptor = await (await apiRequest("GET", `/api/cut/jobs/${job.id}/media`)).json() as { url: string };
+      setRenderedTimelinePreview({ jobId: job.id, url: descriptor.url });
+      setTimelineMonitorMode("rendered");
+      setPlayhead(0);
+      setMessage("Showing the completed private render. This is the authoritative composited output for that render, not the fast edit preview.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not open the private render in the timeline monitor"); }
+    finally { setBusy(""); }
+  };
   const sendRenderToDistribution = async (job: Job) => {
     if (!project) return;
     if (!confirmLeavingTimeline()) return;
@@ -744,6 +759,7 @@ export default function CutStudioPage() {
   const onTime = () => {
     const media = mediaRef.current; if (!media || !edl) return;
     const current = media.currentTime; const clip = edl.clips.find((item) => current >= item.start && current < item.end);
+    if (timelineMonitorMode === "rendered") { setPlayhead(current); return; }
     if (!clip) { const next = edl.clips.find((item) => item.start > current); if (next) media.currentTime = next.start; else media.pause(); }
     setPlayhead(media.currentTime);
   };
@@ -1120,6 +1136,7 @@ export default function CutStudioPage() {
   };
   const words = project.transcript?.segments.flatMap((segment) => segment.words) ?? [];
   const renders = jobs.filter((job) => job.kind === "render");
+  const latestCompletedRender = renders.find((job) => job.state === "done");
   const transcriptJob = jobs.find((job) => job.kind === "transcribe");
   const highlightJob = jobs.find((job) => job.kind === "highlights");
   const transcriptMatches = (transcriptDraft?.segments ?? []).filter((segment) => !transcriptSearch.trim() || segment.text.toLowerCase().includes(transcriptSearch.trim().toLowerCase()));
@@ -1143,10 +1160,12 @@ export default function CutStudioPage() {
             </div>
           </div>
           <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950" aria-label="Timeline monitor">
-            <span className="absolute left-3 top-2 z-10 rounded bg-black/75 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">Timeline monitor</span>
+            <div className="absolute left-3 top-2 z-10 flex flex-wrap items-center gap-2 rounded bg-black/75 px-2 py-1"><span className="text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">{timelineMonitorMode === "rendered" ? "Rendered timeline" : "Edit preview"}</span><Button size="sm" variant={timelineMonitorMode === "edit" ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={() => setTimelineMonitorMode("edit")}>Edit preview</Button><Button size="sm" variant={timelineMonitorMode === "rendered" ? "default" : "ghost"} className="h-6 px-2 text-[10px]" disabled={!renderedTimelinePreview} onClick={() => setTimelineMonitorMode("rendered")}>Rendered output</Button>{latestCompletedRender && <Button size="sm" variant="outline" className="h-6 border-emerald-500/40 px-2 text-[10px] text-emerald-200" disabled={busy === `timeline-preview:${latestCompletedRender.id}`} onClick={() => void previewRenderedOutput(latestCompletedRender)}>{busy === `timeline-preview:${latestCompletedRender.id}` ? <Loader2 className="h-3 w-3 animate-spin"/> : "Use latest render"}</Button>}</div>
             {project.mediaKind === "video" && <div className="absolute right-3 top-2 z-10"><CutStudioPrimaryPreview projectId={project.id} sourceAssetId={project.sourceAssetId} edl={edl} media={mediaLibrary} transcript={project.transcript} captions={captions} captionStyle={captionStyle} fps={fps} onOpen={() => { mediaRef.current?.pause(); sourceMediaRef.current?.pause(); stopAudioMeter(); }}/></div>}
-            {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={{ filter: cutClipCssColorPreview(clip) }} src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
-            {(edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} data-graphic-kind={graphic.kind} className={`pointer-events-none absolute font-bold ${graphic.kind === "shape" ? "" : "max-w-[80%] rounded px-3 py-2"}`} style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, width: graphic.kind === "shape" ? `${graphic.width * 100}%` : undefined, height: graphic.kind === "shape" ? `${graphic.height * 100}%` : undefined, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
+            {timelineMonitorMode === "edit" && <span className="absolute bottom-2 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded bg-black/75 px-2 py-1 text-[10px] text-zinc-300">Fast edit preview: source/proxy playback and lightweight overlays. Rendered output is the authoritative composited result.</span>}
+            {timelineMonitorMode === "rendered" && <span className="absolute bottom-2 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded bg-emerald-950/85 px-2 py-1 text-[10px] text-emerald-200">Private completed render · exact compositing for this completed render</span>}
+            {project.mediaKind === "video" ? <video crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="max-h-[58vh] w-full bg-black object-contain" style={timelineMonitorMode === "edit" ? { filter: cutClipCssColorPreview(clip) } : undefined} src={timelineMonitorMode === "rendered" ? renderedTimelinePreview?.url : mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/> : <audio crossOrigin="anonymous" ref={(node) => { mediaRef.current = node; }} className="w-[90%]" src={mediaUrl} controls onPlay={() => void startAudioMeter()} onPause={stopAudioMeter} onEnded={stopAudioMeter} onTimeUpdate={onTime}/>}
+            {timelineMonitorMode === "edit" && (edl.graphics ?? []).filter((graphic) => playhead >= graphic.timelineStart && playhead <= graphic.timelineStart + graphic.duration).map((graphic) => <div key={graphic.id} data-graphic-kind={graphic.kind} className={`pointer-events-none absolute font-bold ${graphic.kind === "shape" ? "" : "max-w-[80%] rounded px-3 py-2"}`} style={{ left: `${graphic.x * 100}%`, top: `${graphic.y * 100}%`, width: graphic.kind === "shape" ? `${graphic.width * 100}%` : undefined, height: graphic.kind === "shape" ? `${graphic.height * 100}%` : undefined, color: graphic.textColor, backgroundColor: `${graphic.backgroundColor}${Math.round(graphic.backgroundOpacity * 255).toString(16).padStart(2, "0")}`, fontSize: `${Math.max(12, Math.min(48, graphic.fontSize / 2))}px` }}>{graphic.text}</div>)}
           </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Realtime audio RMS meter"><span className="w-24 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Live loudness</span><div className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-zinc-900"><div className={`h-full transition-[width] duration-75 ${audioLevelDb > -6 ? "bg-red-500" : audioLevelDb > -18 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.max(0, Math.min(100, ((audioLevelDb + 60) / 60) * 100))}%` }}/></div><output aria-label="Live RMS level" className="w-20 text-right font-mono text-xs text-zinc-300">{audioLevelDb.toFixed(1)} dBFS</output><output aria-label="Live short-term loudness" className="w-24 text-right font-mono text-xs font-bold text-[#1d9bf0]">{liveLufs.toFixed(1)} LUFS-S</output></div><div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" aria-label="Calibrated loudness analysis"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">EBU R128 loudness</p><p className="mt-1 text-[10px] text-zinc-600">Live LUFS-S uses a rolling three-second K-weighted estimate. Analyze provides calibrated integrated evidence for the private source.</p></div><Button size="sm" variant="outline" disabled={busy === "loudness"} onClick={() => void analyzeLoudness()}>{busy === "loudness" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Volume2 className="mr-1.5 h-3.5 w-3.5"/>}Analyze</Button></div>{loudnessMeasurement && <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.integratedLufs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LUFS-I</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.truePeakDbfs.toFixed(1)}</output><span className="text-[9px] text-zinc-500">dBTP</span></div><div className="rounded-lg bg-black p-2"><output className="block font-mono text-sm font-bold text-white">{loudnessMeasurement.loudnessRangeLu.toFixed(1)}</output><span className="text-[9px] text-zinc-500">LRA · LU</span></div></div>}</div>
