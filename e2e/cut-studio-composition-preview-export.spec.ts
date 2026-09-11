@@ -1,0 +1,182 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { expect, test, type APIResponse, type Page, type TestInfo } from "@playwright/test";
+import sharp from "sharp";
+import { downloadCutRender, waitForCutRender } from "./helpers/cut-render";
+
+function ownerFor(info: TestInfo) { return info.project.name.startsWith("mobile") ? 1 : 2; }
+async function request(page: Page, owner: number, method: string, url: string, data?: unknown, headers: Record<string, string> = {}) {
+  return page.request.fetch(url, { method, data, headers: { "x-creativesos-demo-user": String(owner), ...headers } });
+}
+async function expectOk(response: APIResponse) {
+  expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy();
+}
+
+test("declarative composition player and native export agree at an authored nonlinear frame", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const frame = 1;
+  const owner = ownerFor(info);
+  const otherOwner = owner === 1 ? 2 : 1;
+  const directory = info.outputPath("composition-preview-export");
+  mkdirSync(directory, { recursive: true });
+
+  // A private source is still required for a project and for the native export
+  // pipeline. The visual oracle is a deterministic shape over that black
+  // source, so browser media timing cannot mask a composition-clock mismatch.
+  const sourcePath = `${directory}/source.mp4`;
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+  const uploaded = await page.request.post("/api/assets/upload-proxy", {
+    headers: { "x-creativesos-demo-user": String(owner) },
+    multipart: { kind: "video", visibility: "private", video: { name: "composition-oracle.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } },
+  });
+  await expectOk(uploaded);
+  const source = (await uploaded.json()).asset;
+  const created = await request(page, owner, "POST", "/api/cut/projects", {
+    sourceAssetId: source.id,
+    name: `Composition preview/export oracle ${Date.now()}`,
+    duration: 1,
+    mediaKind: "video",
+  });
+  await expectOk(created);
+  const project = await created.json();
+
+  const compositionName = `Nonlinear preview/export ${Date.now()}`;
+  const manifest = {
+    version: 1,
+    name: compositionName,
+    width: 1280,
+    height: 720,
+    fps: 30,
+    durationInFrames: 30,
+    background: "#000000",
+    parameters: [],
+    fonts: [],
+    metadata: { qualification: "composition-preview-export" },
+    layers: [
+      {
+        id: "source",
+        kind: "video",
+        name: "Private black source",
+        assetId: source.id,
+        from: 0,
+        durationInFrames: 30,
+        sourceStartFrame: 0,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        opacity: 1,
+        rotation: 0,
+        volume: 0,
+        anchorX: .5,
+        anchorY: .5,
+        rotationX: 0,
+        rotationY: 0,
+        perspective: 0,
+        blendMode: "normal",
+        style: {},
+        dataBindings: {},
+        effects: [],
+        animations: [],
+      },
+      {
+        id: "spring-red",
+        kind: "shape",
+        name: "Spring red proof shape",
+        from: 0,
+        durationInFrames: 30,
+        sourceStartFrame: 0,
+        x: .1,
+        y: .3,
+        width: .25,
+        height: .3,
+        opacity: 1,
+        rotation: 0,
+        volume: 1,
+        anchorX: .5,
+        anchorY: .5,
+        rotationX: 0,
+        rotationY: 0,
+        perspective: 0,
+        blendMode: "normal",
+        style: { fill: "#ff0000" },
+        dataBindings: {},
+        effects: [],
+        animations: [{
+          property: "x",
+          keyframes: [
+            { frame: 0, value: .1, easing: "linear" },
+            { frame: 15, value: .5, easing: "spring" },
+            { frame: 29, value: .45, easing: "ease_in_out" },
+          ],
+        }],
+      },
+    ],
+  };
+  const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, {
+    name: compositionName,
+    mode: "declarative",
+    manifest,
+    codeCapsule: null,
+  });
+  await expectOk(saved);
+  const composition = await saved.json();
+
+  const playerPath = `/api/cut/projects/${project.id}/compositions/${composition.id}/player`;
+  const contract = await request(page, owner, "GET", playerPath);
+  await expectOk(contract);
+  expect((await contract.json()).composition.manifest).toMatchObject({ name: compositionName, layers: expect.arrayContaining([expect.objectContaining({ id: "spring-red" })]) });
+  const denied = await request(page, otherOwner, "GET", playerPath);
+  expect(denied.status()).toBe(404);
+
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const compositionCard = page.getByLabel(`Composition ${compositionName}`, { exact: true });
+  await expect(compositionCard).toBeVisible();
+  const player = compositionCard.getByLabel("CutStudio composition player", { exact: true });
+  await expect(player).toBeVisible();
+  const slider = player.getByLabel("Preview frame", { exact: true });
+  await slider.press("Home");
+  for (let step = 0; step < frame; step += 1) await slider.press("ArrowRight");
+  await expect(player).toHaveAttribute("data-current-frame", String(frame));
+  const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview-frame-${frame}.png` });
+  const { data: previewPixels, info: previewImage } = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const samplePreview = (x: number, y: number) => {
+    const offset = (Math.floor(previewImage.height * y) * previewImage.width + Math.floor(previewImage.width * x)) * previewImage.channels;
+    return [...previewPixels.subarray(offset, offset + 3)];
+  };
+  // Frame 1 lies between authored control points. The spring's position here
+  // is deliberately different from a linear interpolation; these interior
+  // samples avoid antialiased edges and isolate motion position + color.
+  const previewShape = samplePreview(.4, .45);
+  const previewBase = samplePreview(.05, .05);
+  expect(previewShape[0]).toBeGreaterThan(previewBase[0] + 180);
+  expect(previewShape[1]).toBeLessThan(20);
+  expect(previewShape[2]).toBeLessThan(20);
+
+  const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, {
+    idempotencyKey: `e2e.composition.preview-export.${crypto.randomUUID()}`,
+    compositionIds: [composition.id],
+    render: { aspect: "source", captions: false, quality: "draft", resolution: "720p", fps: 30 },
+  });
+  await expectOk(batch);
+  const job = (await batch.json()).jobs[0];
+  await waitForCutRender(page.request, job.id, info, { "x-creativesos-demo-user": String(owner) });
+  const completed = await request(page, owner, "GET", `/api/cut/jobs/${job.id}`);
+  await expectOk(completed);
+  expect((await completed.json()).state).toBe("done");
+  const output = await downloadCutRender(page.request, job.id, `${directory}/composition-render.mp4`, { "x-creativesos-demo-user": String(owner) });
+  const nativeFrame = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+  const { data: nativePixels, info: nativeImage } = await sharp(nativeFrame).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const sampleNative = (x: number, y: number) => {
+    const offset = (Math.floor(nativeImage.height * y) * nativeImage.width + Math.floor(nativeImage.width * x)) * nativeImage.channels;
+    return [...nativePixels.subarray(offset, offset + 3)];
+  };
+  const nativeShape = sampleNative(.4, .45);
+  const nativeBase = sampleNative(.05, .05);
+  for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["base", previewBase, nativeBase]] as const) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      expect(Math.abs(previewSample[channel] - nativeSample[channel]), `${name} frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
+    }
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewBase, nativeBase }, null, 2));
+});
