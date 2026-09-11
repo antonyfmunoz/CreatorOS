@@ -151,10 +151,10 @@ function ffmpegMotionEasing(progress: string, easing: CutMotionEasing, compositi
   return point;
 }
 
-function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity" | "rotation" | "brightness" | "saturation", multiplier: number, timeVariable = "t") {
+function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity" | "rotation" | "rotationX" | "rotationY" | "perspective" | "brightness" | "saturation", multiplier: number, timeVariable = "t") {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const baseValue = property === "rotation" ? transform.rotation ?? 0 : property === "brightness" || property === "saturation" ? 1 : transform[property];
+  const baseValue = property === "rotation" || property === "rotationX" || property === "rotationY" ? transform[property] ?? 0 : property === "perspective" ? transform.perspective ?? 0 : property === "brightness" || property === "saturation" ? 1 : transform[property];
   const points = [{ at: 0, value: baseValue, easing: "linear" as const, compositionAuthored: false }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => {
     if (typeof keyframe[property] !== "number") return [];
     const propertyEasing = keyframe[`${property}Easing`];
@@ -680,6 +680,9 @@ function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
       || transform.height !== 1
       || transform.opacity !== 1
       || (transform.rotation ?? 0) !== 0
+      || (transform.rotationX ?? 0) !== 0
+      || (transform.rotationY ?? 0) !== 0
+      || (transform.perspective ?? 0) !== 0
       || (transform.anchorX ?? .5) !== .5
       || (transform.anchorY ?? .5) !== .5
     : false;
@@ -694,6 +697,9 @@ function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
       || keyframe.scale !== undefined
       || keyframe.opacity !== undefined
       || keyframe.rotation !== undefined
+      || keyframe.rotationX !== undefined
+      || keyframe.rotationY !== undefined
+      || keyframe.perspective !== undefined
       || keyframe.brightness !== undefined
       || keyframe.saturation !== undefined,
   );
@@ -856,6 +862,37 @@ async function renderMultitrack(
           ? `(${motionPropertyExpression(clip, "rotation", Math.PI / 180, "t")})`
           : String(Number((rotation * Math.PI / 180).toFixed(8)));
         overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${rotationRadians}':ow=iw:oh=ih:c=none`);
+      }
+      // Declarative composition media uses the same CSS-like transform model
+      // as graphic layers: scale, then Z rotation, then the bounded X/Y
+      // perspective transform around the authored anchor. Keep the native
+      // path on a fixed surface and limit changes to authored keyframe spans;
+      // this avoids silently dropping a 3D control during EDL compilation.
+      const rotationX = transform.rotationX ?? 0;
+      const rotationY = transform.rotationY ?? 0;
+      const perspective = transform.perspective ?? 0;
+      const transform3dPoints = [{ at: 0, rotationX, rotationY, perspective }, ...(clip.motionKeyframes ?? []).map((keyframe) => ({
+        at: keyframe.at,
+        rotationX: keyframe.rotationX ?? rotationX,
+        rotationY: keyframe.rotationY ?? rotationY,
+        perspective: keyframe.perspective ?? perspective,
+      }))]
+        .sort((left, right) => left.at - right.at)
+        .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
+      const has3dTransform = transform3dPoints.some((point) => Math.abs(point.rotationX) > .0001 || Math.abs(point.rotationY) > .0001);
+      if (has3dTransform) {
+        const transformWidth = animatedScale ? maximumAnimatedWidth : overlayWidth;
+        const transformHeight = animatedScale ? maximumAnimatedHeight : overlayHeight;
+        for (let pointIndex = 0; pointIndex < transform3dPoints.length; pointIndex += 1) {
+          const point = transform3dPoints[pointIndex];
+          const [topLeft, topRight, bottomLeft, bottomRight] = projectCutGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective, anchorX, anchorY);
+          const nextPoint = transform3dPoints[pointIndex + 1];
+          const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : clipDuration;
+          const timeline = transform3dPoints.length > 1
+            ? `:enable='between(t,${Number((timelineStart + point.at).toFixed(3))},${Number((timelineStart + intervalEnd).toFixed(3))})'`
+            : "";
+          overlayFilters.push(`perspective=x0=${topLeft[0]}:y0=${topLeft[1]}:x1=${topRight[0]}:y1=${topRight[1]}:x2=${bottomLeft[0]}:y2=${bottomLeft[1]}:x3=${bottomRight[0]}:y3=${bottomRight[1]}:sense=destination:interpolation=cubic${timeline}`);
+        }
       }
       const animatedColor = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.brightness === "number" || typeof keyframe.saturation === "number");
       if (animatedColor) {

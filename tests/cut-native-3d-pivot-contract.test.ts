@@ -6,6 +6,8 @@ describe("native 3D graphic pivot contract", () => {
     const source = readFileSync(new URL("../server/cut-studio.ts", import.meta.url), "utf8");
     expect(source).toContain('import { planCutGraphicRasters, projectCutGraphicCorners } from "./cut-graphic-geometry"');
     expect(source).toContain("projectCutGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective, graphic.anchorX ?? .5, graphic.anchorY ?? .5)");
+    expect(source).toContain("projectCutGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective, anchorX, anchorY)");
+    expect(source).toContain("const rotationX = transform.rotationX ?? 0;");
   });
 
   it("keeps planning bounds while allowing the preview-compatible 3D origin", () => {
