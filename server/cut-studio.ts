@@ -672,15 +672,28 @@ async function appendCaptionFilter(filters: string[], videoLabel: string, reques
 
 function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
   const transform = clip.transform;
-  if (!transform) return false;
-  return transform.x !== 0
-    || transform.y !== 0
-    || transform.width !== 1
-    || transform.height !== 1
-    || transform.opacity !== 1
-    || (transform.rotation ?? 0) !== 0
-    || (transform.anchorX ?? .5) !== .5
-    || (transform.anchorY ?? .5) !== .5;
+  const transformed = transform
+    ? transform.x !== 0
+      || transform.y !== 0
+      || transform.width !== 1
+      || transform.height !== 1
+      || transform.opacity !== 1
+      || (transform.rotation ?? 0) !== 0
+      || (transform.anchorX ?? .5) !== .5
+      || (transform.anchorY ?? .5) !== .5
+    : false;
+  // A composition player evaluates media keyframes even when the base
+  // rectangle itself is full-frame.  Rendering that clip directly as the
+  // opaque timeline base would erase its authored position, scale and alpha
+  // motion.  Route every visually animated primary segment through the same
+  // alpha-capable composition surface as an overlay instead.
+  const animated = (clip.motionKeyframes ?? []).some((keyframe) =>
+    keyframe.x !== undefined
+      || keyframe.y !== undefined
+      || keyframe.scale !== undefined
+      || keyframe.opacity !== undefined,
+  );
+  return transformed || animated;
 }
 
 async function renderMultitrack(
@@ -737,8 +750,7 @@ async function renderMultitrack(
   const primaryVisualSurface = Boolean(composition)
     && primaryPlan.segments.length === 1
     && Boolean(primaryPlan.segments[0]?.clip)
-    && cutPrimaryClipNeedsCompositionSurface(primaryPlan.segments[0]!.clip!)
-    && !(primaryPlan.segments[0]!.clip!.motionKeyframes?.length);
+    && cutPrimaryClipNeedsCompositionSurface(primaryPlan.segments[0]!.clip!);
   const graphicPlans = planCutGraphicRasters(graphics, size[0], size[1]);
   for (let index = 0; index < primaryPlan.segments.length; index += 1) {
     const { clip, duration: outputDuration } = primaryPlan.segments[index];
