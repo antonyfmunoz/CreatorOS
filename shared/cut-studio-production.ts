@@ -105,6 +105,10 @@ export const cutCompositionLayerSchema = z.object({
   if (["video", "audio", "image", "lottie", "rive"].includes(value.kind) && !value.assetId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `${value.kind} layers require an asset` });
   if (value.kind === "composition" && !value.compositionId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["compositionId"], message: "Composition layers require a project composition reference" });
   if (["text", "caption", "svg", "path"].includes(value.kind) && !value.text?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: `${value.kind} layers require source text or path data` });
+  // Data layers are ordinary rendered text whose value can be supplied by a
+  // typed composition parameter. Do not admit a browser-only placeholder: a
+  // concrete fallback or a text binding is required for preview and export.
+  if (value.kind === "data" && !value.text?.trim() && !value.dataBindings.text) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Data layers require text or a typed text binding" });
   if (value.kind === "path" && value.text && (value.text.length > 4_000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9+.,\s-]+$/.test(value.text))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "Vector paths may contain only bounded SVG path commands and numbers" });
   if (value.kind === "svg" && value.text) {
     try { sanitizeCutStudioSvg(value.text); } catch (error) {
@@ -782,7 +786,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
     }];
   });
   const graphics = manifest.layers.flatMap((layer) => {
-    if (!["text", "caption", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
+    if (!["text", "caption", "data", "shape", "path", "svg", "image", "lottie", "rive", "three"].includes(layer.kind) || (!["shape", "image", "lottie", "rive", "three"].includes(layer.kind) && !layer.text) || (["image", "lottie", "rive"].includes(layer.kind) && !layer.assetId)) return [];
     const initialState = evaluateValidatedLayerFrame(layer, 0);
     const transitionMaskIds = Array.from(new Set([layer.enter?.kind === "custom_mask" ? layer.enter.maskAssetId : undefined, layer.exit?.kind === "custom_mask" ? layer.exit.maskAssetId : undefined].filter((value): value is string => Boolean(value))));
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
@@ -806,12 +810,12 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
       fontSize: Math.max(12, Math.min(160, Number(layer.style.fontSize) || 48)),
       fontReferenceWidth: manifest.width,
       imageFit: layer.kind === "image" ? cutImageFit(layer.style.objectFit) : "contain" as const,
-      textLayout: ["text", "caption"].includes(layer.kind) ? resolveCutTextLayout(layer.style, selectedFont?.assetId ? selectedFont : undefined) : undefined,
+      textLayout: ["text", "caption", "data"].includes(layer.kind) ? resolveCutTextLayout(layer.style, selectedFont?.assetId ? selectedFont : undefined) : undefined,
       fontAssetId: selectedFont?.assetId,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",
-      textColor: three?.edgeColor ?? (typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : "#ffffff"),
-      backgroundColor: three?.color ?? (typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : "#000000"),
-      backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : ["text", "caption"].includes(layer.kind) && !layer.style.backgroundColor ? 0 : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : 0.72,
+      textColor: three?.edgeColor ?? (typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : layer.kind === "data" ? "#1d9bf0" : "#ffffff"),
+      backgroundColor: three?.color ?? (typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : layer.kind === "data" ? "#1d9bf0" : "#000000"),
+      backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : ["text", "caption"].includes(layer.kind) && !layer.style.backgroundColor ? 0 : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : layer.kind === "data" ? .15 : 0.72,
       fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,
       primitive: three?.primitive ?? null,

@@ -125,6 +125,19 @@ describe("CutStudio programmable production runtime", () => {
     expect(clip.motionKeyframes?.at(-1)).toMatchObject({ at: 2, easing: "linear", xEasing: "ease_in", yEasing: "ease_out", scaleEasing: "spring", opacityEasing: "step" });
   });
 
+  it("renders typed data layers into the same final graphic contract as preview", () => {
+    const dataManifest = {
+      ...manifest,
+      parameters: [{ key: "metric", label: "Metric", type: "text" as const, defaultValue: "42 qualified leads" }],
+      layers: [sourceLayer, { id: "metric", kind: "data" as const, name: "Qualified leads", from: 0, durationInFrames: 60, text: "42 qualified leads", x: .1, y: .1, width: .3, height: .12, dataBindings: { text: "metric" }, style: {} }],
+    };
+    const resolved = resolveCompositionParameters(dataManifest, { metric: "63 qualified leads" });
+    expect(resolved.layers[1]).toMatchObject({ kind: "data", text: "63 qualified leads" });
+    const graphic = compileCompositionToEdl(resolved, { version: 3, clips: [] }).graphics![0]!;
+    expect(graphic).toMatchObject({ kind: "title", text: "63 qualified leads", textColor: "#1d9bf0", backgroundColor: "#1d9bf0", backgroundOpacity: .15 });
+    expect(() => cutCompositionManifestSchema.parse({ ...dataManifest, layers: [sourceLayer, { ...dataManifest.layers[1], text: undefined, dataBindings: {} }] })).toThrow(/Data layers require text/i);
+  });
+
   it("expands same-format nested compositions with deterministic timing and private asset lineage", () => {
     const childId = "00000000-0000-4000-8000-000000000050";
     const rootId = "00000000-0000-4000-8000-000000000051";
