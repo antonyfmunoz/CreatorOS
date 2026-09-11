@@ -339,7 +339,7 @@ test("nested static uniform media rotation agrees in the player and native expor
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, childCompositionId: child.id, rootCompositionId: root.id, jobId: job.id, previewRed, previewBlack, nativeRed, nativeBlack }, null, 2));
 });
 
-test("animated primary composition media agrees in the player and native export", async ({ page }, info) => {
+test("animated rotated primary composition media agrees in the player and native export", async ({ page }, info) => {
   test.setTimeout(120_000);
   const owner = ownerFor(info);
   const otherOwner = owner === 1 ? 2 : 1;
@@ -364,7 +364,7 @@ test("animated primary composition media agrees in the player and native export"
     version: 1, name: compositionName, width: 1280, height: 720, fps: 30, durationInFrames: 30, background: "#000000", parameters: [], fonts: [], metadata: { qualification: "animated-primary-composition-preview-export" },
     layers: [{
       id: "primary", kind: "video", name: "Animated red primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
-      x: .05, y: .25, width: .25, height: .5, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [],
+      x: .05, y: .25, width: .25, height: .5, opacity: 1, rotation: 90, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [],
       animations: [{ property: "x", keyframes: [{ frame: 0, value: .05, easing: "linear" }, { frame: 15, value: .45, easing: "ease_in_out" }] }],
     }],
   };

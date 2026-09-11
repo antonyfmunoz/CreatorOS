@@ -806,8 +806,13 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
     if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
-    if (layer.kind === "video" && layer.rotation !== 0 && layer.animations.some((animation) => ["x", "y", "scale", "rotation"].includes(animation.property))) {
-      throw new Error("Rotated video layers currently require static position, scale, and rotation until animated media transforms are rendered as composition surfaces");
+    // Native media composition surfaces preserve a static 2D rotation while
+    // the existing per-frame overlay expressions animate position, scale and
+    // alpha. Rotation itself is not yet represented in the native clip motion
+    // contract, so reject only that unsupported property rather than blocking
+    // otherwise renderable rotated media motion.
+    if (layer.kind === "video" && layer.animations.some((animation) => animation.property === "rotation")) {
+      throw new Error("Animated video rotation requires the native media rotation-motion surface");
     }
     const sourceStart = layer.sourceStartFrame / fps;
     const duration = layer.durationInFrames / fps;
