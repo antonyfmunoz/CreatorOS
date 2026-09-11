@@ -56,13 +56,17 @@ function amount(effect: FrameState["effects"][number], key: string, fallback: nu
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function effectStyles(state: FrameState) {
-  const filters = [`blur(${Math.min(80, state.blur)}px)`, `brightness(${Math.min(8, state.brightness)})`, `saturate(${Math.min(8, state.saturation)})`];
+function effectStyles(state: FrameState, canvasWidth: number) {
+  // Manifest effect distances are authored composition pixels, never viewport
+  // pixels. Convert them to container-query units so a preview retains the
+  // same visual treatment at every responsive player size as native export.
+  const compositionPixels = (value: number) => `${Number((Math.max(-80, Math.min(80, value)) * 100 / Math.max(1, canvasWidth)).toFixed(6))}cqw`;
+  const filters = [`blur(${compositionPixels(state.blur)})`, `brightness(${Math.min(8, state.brightness)})`, `saturate(${Math.min(8, state.saturation)})`];
   let overlay: CSSProperties | null = null;
   for (const effect of state.effects) {
-    if (effect.kind === "blur" || effect.kind === "motion_blur") filters.push(`blur(${Math.max(0, Math.min(80, amount(effect, "radius", effect.kind === "motion_blur" ? 2 : 6)))}px)`);
-    if (effect.kind === "glow") filters.push(`drop-shadow(0 0 ${Math.max(0, Math.min(80, amount(effect, "radius", 16)))}px ${String(effect.parameters.color ?? "#1d9bf0")})`);
-    if (effect.kind === "drop_shadow") filters.push(`drop-shadow(${amount(effect, "x", 4)}px ${amount(effect, "y", 6)}px ${Math.max(0, amount(effect, "blur", 10))}px ${String(effect.parameters.color ?? "#000000")})`);
+    if (effect.kind === "blur" || effect.kind === "motion_blur") filters.push(`blur(${compositionPixels(Math.max(0, amount(effect, "radius", effect.kind === "motion_blur" ? 2 : 6)))})`);
+    if (effect.kind === "glow") filters.push(`drop-shadow(0 0 ${compositionPixels(Math.max(0, amount(effect, "radius", 16)))} ${String(effect.parameters.color ?? "#1d9bf0")})`);
+    if (effect.kind === "drop_shadow") filters.push(`drop-shadow(${compositionPixels(amount(effect, "x", 4))} ${compositionPixels(amount(effect, "y", 6))} ${compositionPixels(Math.max(0, amount(effect, "blur", 10)))} ${String(effect.parameters.color ?? "#000000")})`);
     if (effect.kind === "color_matrix") {
       const color = cutColorMatrixControls(effect.parameters);
       filters.push(`contrast(${color.contrast}) brightness(${color.brightness}) saturate(${color.saturation})`);
@@ -291,7 +295,7 @@ function MediaLayer({ layer, frame, fps, playing, playbackRate, muted, masterVol
 function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playback }: MediaPlayback & { layer: Layer; state: FrameState; frame: number; fps: number; canvasWidth: number; fonts: CutCompositionManifest["fonts"] }) {
   const assetUrl = useContext(AssetUrlContext);
   const fontsReady = useContext(FontsReadyContext);
-  const visual = effectStyles(state);
+  const visual = effectStyles(state, canvasWidth);
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, opacity: state.opacity,
     // x/y are top-left coordinates in manifests, templates and native exports.

@@ -123,6 +123,23 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.clips[0].effects).toEqual([{ kind: "color_matrix", parameters: { brightness: .55, saturation: .7, contrast: 1.1 } }]);
   });
 
+  it("preserves native alpha-matte media effects with their bounded placement controls", () => {
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [{
+        ...sourceLayer,
+        effects: [
+          { id: "shadow", kind: "drop_shadow" as const, enabled: true, parameters: { x: -18, y: 12, blur: 14, color: "#112233" } },
+          { id: "glow", kind: "glow" as const, enabled: true, parameters: { radius: 20, color: "#1d9bf0" } },
+        ],
+      }],
+    }, { version: 3, clips: [] });
+    expect(edl.clips[0].effects).toEqual([
+      { kind: "drop_shadow", parameters: { x: -18, y: 12, blur: 14, color: "#112233" } },
+      { kind: "glow", parameters: { radius: 20, color: "#1d9bf0" } },
+    ]);
+  });
+
   it("preserves independent named easing for every exported media property", () => {
     const easedManifest = {
       ...manifest,

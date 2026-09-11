@@ -848,16 +848,24 @@ async function renderMultitrack(
       const maximumAnimatedHeight = Math.max(2, Math.round(size[1] * transform.height * maximumScale / 2) * 2);
       const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
       const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
-      const compositionEffectFilters = clipCompositionEffectFilters(clip, overlayIndex);
-      const overlayFilters = animatedScale
-        ? [...clipColorFilters(clip, lutPaths), ...compositionEffectFilters, `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
-        : [...clipColorFilters(clip, lutPaths), ...compositionEffectFilters, `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      const compositionEffects = clipCompositionEffectPlan(clip, overlayIndex);
+      const sourceFilters = animatedScale
+        ? [...clipColorFilters(clip, lutPaths), ...compositionEffects.filters, `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, "format=rgba", `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
+        : [...clipColorFilters(clip, lutPaths), ...compositionEffects.filters, `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, "format=rgba", `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`];
+      const sourceLabel = `overlaycore${overlayIndex}`;
+      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${sourceFilters.join(",")}[${sourceLabel}]`);
+      const coreWidth = animatedScale ? maximumAnimatedWidth : overlayWidth;
+      const coreHeight = animatedScale ? maximumAnimatedHeight : overlayHeight;
+      const alphaSurface = appendClipAlphaEffectSurface(filters, sourceLabel, `overlayeffect${overlayIndex}`, compositionEffects.alphaEffects, coreWidth, coreHeight, timelineStart, clipDuration, request.fps, overlayIndex);
+      const overlayFilters: string[] = [];
       // The transform stays a top-left authored rectangle. When rotated, pad
       // into a fixed diagonal surface and place that surface from the mapped
       // transform origin, matching the composition player's CSS semantics.
       const hasRotationSurface = rotation !== 0 || animatedRotation;
-      const rotatedRasterWidth = hasRotationSurface ? Math.max(2, Math.ceil(Math.hypot(animatedScale ? virtualWidth : overlayWidth, animatedScale ? virtualHeight : overlayHeight) / 2) * 2) : (animatedScale ? virtualWidth : overlayWidth);
-      const rotatedRasterHeight = hasRotationSurface ? rotatedRasterWidth : (animatedScale ? virtualHeight : overlayHeight);
+      const sourceSurfaceWidth = alphaSurface.width;
+      const sourceSurfaceHeight = alphaSurface.height;
+      const rotatedRasterWidth = hasRotationSurface ? Math.max(2, Math.ceil(Math.hypot(sourceSurfaceWidth, sourceSurfaceHeight) / 2) * 2) : sourceSurfaceWidth;
+      const rotatedRasterHeight = hasRotationSurface ? rotatedRasterWidth : sourceSurfaceHeight;
       if (hasRotationSurface) {
         const rotationRadians = animatedRotation
           ? `(${motionPropertyExpression(clip, "rotation", Math.PI / 180, "t")})`
@@ -886,7 +894,9 @@ async function renderMultitrack(
       let perspectiveRasterWidth = rotatedRasterWidth;
       let perspectiveRasterHeight = rotatedRasterHeight;
       if (has3dTransform) {
-        const surface = planCutPerspectiveSurface(perspectiveRasterWidth, perspectiveRasterHeight, transform3dPoints, anchorX, anchorY);
+        const surfaceAnchorX = (alphaSurface.padding.left + anchorX * coreWidth) / sourceSurfaceWidth;
+        const surfaceAnchorY = (alphaSurface.padding.top + anchorY * coreHeight) / sourceSurfaceHeight;
+        const surface = planCutPerspectiveSurface(perspectiveRasterWidth, perspectiveRasterHeight, transform3dPoints, surfaceAnchorX, surfaceAnchorY);
         perspectivePadX = surface.padX;
         perspectivePadY = surface.padY;
         perspectiveRasterWidth = surface.width;
@@ -918,7 +928,7 @@ async function renderMultitrack(
         overlayFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression})'`);
       } else overlayFilters.push(`colorchannelmixer=aa=${transform.opacity}`);
       const overlayLabel = `overlay${overlayIndex}`;
-      filters.push(`[${sourceIndex}:v]trim=start=${clip.start}:end=${clip.end},setpts=(PTS-STARTPTS)/${speed}+${timelineStart}/TB,${overlayFilters.join(",")}[${clip.maskAssetId ? `${overlayLabel}raw` : overlayLabel}]`);
+      filters.push(`[overlayeffect${overlayIndex}]${overlayFilters.join(",")}[${clip.maskAssetId ? `${overlayLabel}raw` : overlayLabel}]`);
       if (clip.maskAssetId) {
         const maskInput = inputIndex.get(clip.maskAssetId);
         const mask = inputById.get(clip.maskAssetId);
@@ -926,8 +936,10 @@ async function renderMultitrack(
         filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
-      const overlayX = hasRotationSurface ? `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2 - perspectivePadX).toFixed(5))}` : `(${motionOverlayExpression(clip, "x", size[0])})-${perspectivePadX}`;
-      const overlayY = hasRotationSurface ? `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2 - perspectivePadY).toFixed(5))}` : `(${motionOverlayExpression(clip, "y", size[1])})-${perspectivePadY}`;
+      const sourceAnchorX = alphaSurface.padding.left + anchorX * coreWidth;
+      const sourceAnchorY = alphaSurface.padding.top + anchorY * coreHeight;
+      const overlayX = hasRotationSurface ? `(${motionOverlayExpression(clip, "x", size[0])})+${Number((sourceAnchorX - rotatedRasterWidth / 2 - perspectivePadX).toFixed(5))}` : `(${motionOverlayExpression(clip, "x", size[0])})-${alphaSurface.padding.left + perspectivePadX}`;
+      const overlayY = hasRotationSurface ? `(${motionOverlayExpression(clip, "y", size[1])})+${Number((sourceAnchorY - rotatedRasterHeight / 2 - perspectivePadY).toFixed(5))}` : `(${motionOverlayExpression(clip, "y", size[1])})-${alphaSurface.padding.top + perspectivePadY}`;
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
@@ -1206,18 +1218,45 @@ function clipColorFilters(clip: CutEdl["clips"][number], lutPaths: Map<string, s
   return filters;
 }
 
+type ClipAlphaEffect = {
+  kind: "drop_shadow" | "glow";
+  color: string;
+  blur: number;
+  x: number;
+  y: number;
+};
+
+type ClipCompositionEffectPlan = {
+  filters: string[];
+  alphaEffects: ClipAlphaEffect[];
+};
+
 /**
- * Render the portable, bounded portion of a declarative layer's effect stack
- * on media clips as well as graphics. Effects that require a separately
- * rasterized alpha silhouette are rejected instead of being silently omitted;
- * this preserves preview/export truth while the dedicated alpha-matte path is
- * built and qualified.
+ * Render the portable portion of a declarative layer's effect stack on media
+ * clips as well as graphics. Alpha-silhouette effects are planned separately:
+ * they need an expanded transparent surface, then colored blurred alpha
+ * mattes behind the moving source. Keeping that plan explicit prevents a CSS
+ * preview effect from being cropped or silently omitted in the native export.
  */
-function clipCompositionEffectFilters(clip: CutEdl["clips"][number], index: number) {
+function clipCompositionEffectPlan(clip: CutEdl["clips"][number], index: number): ClipCompositionEffectPlan {
   const filters: string[] = [];
+  const alphaEffects: ClipAlphaEffect[] = [];
   for (let effectIndex = 0; effectIndex < (clip.effects?.length ?? 0); effectIndex += 1) {
     const effect = clip.effects![effectIndex];
-    if (effect.kind === "drop_shadow" || effect.kind === "glow") throw new Error(`The ${effect.kind.replaceAll("_", " ")} media effect needs the native alpha-matte renderer before export`);
+    if (effect.kind === "drop_shadow") alphaEffects.push({
+      kind: "drop_shadow",
+      color: effectColor(effect, "color", "#000000"),
+      blur: effectNumber(effect, "blur", 10, 0, 80),
+      x: effectNumber(effect, "x", 4, -80, 80),
+      y: effectNumber(effect, "y", 6, -80, 80),
+    });
+    if (effect.kind === "glow") alphaEffects.push({
+      kind: "glow",
+      color: effectColor(effect, "color", "#1d9bf0"),
+      blur: effectNumber(effect, "radius", 16, 0, 80),
+      x: 0,
+      y: 0,
+    });
     if (effect.kind === "blur") filters.push(`gblur=sigma=${Number((effectNumber(effect, "radius", effectNumber(effect, "amount", 6, 0, 60), 0, 60) / 3).toFixed(3))}:steps=2:planes=15`);
     if (effect.kind === "motion_blur") {
       const radius = effectNumber(effect, "radius", effectNumber(effect, "amount", 2, 0, 20), 0, 20);
@@ -1245,7 +1284,62 @@ function clipCompositionEffectFilters(clip: CutEdl["clips"][number], index: numb
     // Custom masks compile into clip.maskAssetId and are applied after the
     // media surface has been prepared so alpha remains private and exact.
   }
-  return filters;
+  return { filters, alphaEffects };
+}
+
+function clipAlphaEffectPadding(effects: ClipAlphaEffect[]) {
+  const bounds = effects.reduce((current, effect) => {
+    // CSS drop-shadow's blur extends beyond the opaque shape. Two radii is a
+    // conservative native extent that avoids clipping at the source boundary.
+    const spread = Math.ceil(effect.blur * 2);
+    return {
+      left: Math.max(current.left, spread - effect.x),
+      right: Math.max(current.right, spread + effect.x),
+      top: Math.max(current.top, spread - effect.y),
+      bottom: Math.max(current.bottom, spread + effect.y),
+    };
+  }, { left: 0, right: 0, top: 0, bottom: 0 });
+  return bounds;
+}
+
+function appendClipAlphaEffectSurface(filters: string[], sourceLabel: string, outputLabel: string, effects: ClipAlphaEffect[], width: number, height: number, timelineStart: number, duration: number, fps: number, index: number) {
+  const padding = clipAlphaEffectPadding(effects);
+  if (!effects.length) {
+    filters.push(`[${sourceLabel}]null[${outputLabel}]`);
+    return { width, height, padding };
+  }
+  const surfaceWidth = width + padding.left + padding.right;
+  const surfaceHeight = height + padding.top + padding.bottom;
+  const label = `clipalpha${index}`;
+  const branches = [`[${label}base]`, ...effects.map((_, effectIndex) => `[${label}effect${effectIndex}]`)];
+  filters.push(`[${sourceLabel}]split=${branches.length}${branches.join("")}`);
+  // Build a real transparent surface before extracting and blurring alpha.
+  // Blurring the unpadded matte first confines every pixel to the source
+  // rectangle, which is exactly the native clipping bug this path prevents.
+  filters.push(`[${label}base]format=rgba,pad=${surfaceWidth}:${surfaceHeight}:${padding.left}:${padding.top}:color=black@0[${label}content]`);
+  const surfaces: string[] = [];
+  for (let effectIndex = 0; effectIndex < effects.length; effectIndex += 1) {
+    const effect = effects[effectIndex];
+    const alphaLabel = `${label}alpha${effectIndex}`;
+    const colorLabel = `${label}color${effectIndex}`;
+    const surfaceLabel = `${label}surface${effectIndex}`;
+    // CSS drop-shadow's blur radius is already the Gaussian spread in the
+    // authoring model. Preserve that spread for native output rather than
+    // shrinking it to a third of the declared effect.
+    const sigma = Number(effect.blur.toFixed(3));
+    filters.push(`[${label}effect${effectIndex}]format=rgba,alphaextract,pad=${surfaceWidth}:${surfaceHeight}:${padding.left + effect.x}:${padding.top + effect.y}:color=black${sigma > 0 ? `,gblur=sigma=${sigma}:steps=2:planes=1` : ""}[${alphaLabel}]`);
+    filters.push(`color=c=0x${effect.color.slice(1)}@${effect.kind === "glow" ? ".9" : ".8"}:s=${surfaceWidth}x${surfaceHeight}:r=${fps}:d=${Number(duration.toFixed(5))},format=rgba,setpts=PTS+${Number(timelineStart.toFixed(5))}/TB[${colorLabel}]`);
+    filters.push(`[${colorLabel}][${alphaLabel}]alphamerge[${surfaceLabel}]`);
+    surfaces.push(surfaceLabel);
+  }
+  let composite = surfaces[0];
+  for (let effectIndex = 1; effectIndex < surfaces.length; effectIndex += 1) {
+    const next = `${label}merged${effectIndex}`;
+    filters.push(`[${composite}][${surfaces[effectIndex]}]overlay=0:0:shortest=1[${next}]`);
+    composite = next;
+  }
+  filters.push(`[${composite}][${label}content]overlay=0:0:shortest=1[${outputLabel}]`);
+  return { width: surfaceWidth, height: surfaceHeight, padding };
 }
 
 function masterAudioFilters(request: z.infer<typeof cutRenderRequestSchema>) {
