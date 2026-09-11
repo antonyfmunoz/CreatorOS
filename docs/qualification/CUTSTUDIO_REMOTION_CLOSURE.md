@@ -4,6 +4,37 @@ Updated 2026-09-10. This register supersedes any older suggestion that only
 providers or competitive benchmarking remain. Implemented source, isolated
 qualification, released application behavior and competitive parity are distinct.
 
+## September 11 layered native-preview/export release
+
+PR 223 merged as `8c05fbf68c9906c0e5971fc434572d72de05ddbf` after the
+protected Core, database/durable-workflow, native-media, desktop/mobile
+Chromium, Android, iOS and Windows-package qualification matrix passed. The
+protected production release then repeated its exact-release qualification,
+native-media proof and serial mobile-and-desktop field journeys before
+deploying. Production `/api/release` identifies this clean source commit with
+`identityVerified: true` and migration parity `126/126`; the post-deploy public
+boundary check passed.
+
+This release adds a frame-29 visual oracle for a native primary timeline with a
+blue base video and an independently transformed, semi-transparent red video
+layer. Desktop and mobile Chromium both capture the private preview canvas,
+decode the exact final-render frame, compare covered and uncovered RGB samples
+within the declared tolerance, and retain a bounded receipt. The job also
+confirms a different owner receives `404` for the project. The test is an
+actual preview/export agreement proof for that supported layered-video case,
+not a claim that every composition, media format, curve, effect, browser or
+isolated code package has equivalent preview and export pixels.
+
+The next unclosed P0 evidence gap is direct sampled agreement between the
+declarative **composition player** and its final composition render across the
+supported nonlinear timing, transform, opacity, color and reveal controls.
+The candidate proof on `codex/cut-motion-parity-closure` preserves private
+asset routing, seeks the in-between frame 1 of an authored spring curve, compares the
+preview and decoded export at both shape and base samples, and retains a
+bounded receipt. It does not close the gap until the protected browser matrix
+has run it successfully; a UI-only player test or an export-only render test
+does not close it.
+
 ## September 8 software-WebGL release and production field proof
 
 PR 212 merged as `f0f173468667f114dcb948f9c349461e87602151` after its exact
