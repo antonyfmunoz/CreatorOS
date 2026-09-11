@@ -1,5 +1,5 @@
 import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { evaluateCompositionFrame, expandNestedCompositionManifest, type CutCompositionManifest } from "@shared/cut-studio-production";
+import { evaluateCompositionFrame, expandNestedCompositionManifest, parseCutShapeGradientStyle, type CutCompositionManifest } from "@shared/cut-studio-production";
 import { sanitizeCutStudioSvg } from "@shared/cut-studio-svg";
 import { parseCutThreePrimitiveStyle, renderCutThreePrimitiveSvg } from "@shared/cut-studio-three";
 import { validateCutStudioLottie } from "@shared/cut-studio-lottie";
@@ -310,7 +310,13 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
     const textStyles = cutTextStyles(resolveCutTextLayout(layer.style, font), canvasWidth, "container", font ? `${JSON.stringify(font.family)}, "CutStudio Noto Sans", sans-serif` : '"CutStudio Noto Sans", sans-serif', String(layer.style.color ?? dataDefaults?.color ?? "#ffffff"), layer.style.backgroundColor || dataDefaults?.backgroundColor ? colorWithOpacity(layer.style.backgroundColor ?? dataDefaults?.backgroundColor, layer.style.backgroundOpacity ?? dataDefaults?.backgroundOpacity) : "transparent");
     content = <CutStudioTextPreview text={layer.text} layout={resolveCutTextLayout(layer.style, font)} styles={{ box: textStyles.box as CSSProperties, content: textStyles.content as CSSProperties }} canvasWidth={canvasWidth} fontsReady={fontsReady}/>;
   }
-  else if (layer.kind === "shape") content = <div className="h-full w-full" style={{ background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
+  else if (layer.kind === "shape") {
+    const gradient = parseCutShapeGradientStyle(layer.style);
+    const background = gradient
+      ? `linear-gradient(to ${gradient.direction === "horizontal" ? "right" : "bottom"}, ${gradient.startColor}, ${gradient.endColor})`
+      : String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0");
+    content = <div className="h-full w-full" style={{ background, borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
+  }
   else if (layer.kind === "image" && layer.assetId) content = <ImageLayer key={assetUrl(layer.assetId)} layer={layer}/>;
   // Replacing an asset needs a fresh media element/error state and audio graph;
   // reconnecting a graph from the previous source can leave a repaired layer

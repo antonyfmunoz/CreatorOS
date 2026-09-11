@@ -157,6 +157,12 @@ export const cutGraphicSchema = z.object({
   fontFamily: z.string().trim().min(1).max(160).default("CreativesOS Sans"),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#ffffff"),
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#000000"),
+  // Optional so queuing a new renderer never changes the identity of an older
+  // immutable timeline snapshot. Shape gradients are validated when a
+  // declarative composition is compiled.
+  gradientStartColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  gradientEndColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  gradientDirection: z.enum(["horizontal", "vertical"]).optional(),
   backgroundOpacity: z.number().finite().min(0).max(1).default(0.72),
   width: z.number().finite().positive().max(8).default(0.25),
   height: z.number().finite().positive().max(8).default(0.25),
