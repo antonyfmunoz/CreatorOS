@@ -381,10 +381,67 @@ function nestedLayerId(path: string[], layerId: string) {
   return `nested_${(hash >>> 0).toString(36)}_${layerId.slice(0, 48)}`;
 }
 
-function assertNeutralCompositionContainer(layer: CutCompositionManifest["layers"][number]) {
-  if (layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.height !== 1 || layer.opacity !== 1 || layer.rotation !== 0 || layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.anchorX !== .5 || layer.anchorY !== .5 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.length || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
-    throw new Error("Nested composition containers must keep neutral transform, effects, animation, blend, and transitions until composition-group rendering is available");
+function assertSupportedCompositionContainer(layer: CutCompositionManifest["layers"][number]) {
+  // A nested composition is flattened into its native children, rather than
+  // rendered into an intermediate bitmap. Static rectangular placement is
+  // exact under that model: its layout, opacity and audio gain can be applied
+  // to every child before either preview or EDL compilation. General group
+  // transforms are not equivalent to applying the same property per child
+  // (for example, a rotated non-square group introduces a matrix/skew), and
+  // group effects/blending need an intermediate composite. Keep those cases
+  // fail-closed instead of silently producing a different final render.
+  if (layer.rotation !== 0 || layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.length || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
+    throw new Error("Nested composition containers support static placement, rectangular scaling, opacity, and audio gain only; rotation, 3D, effects, blend, animation, and transitions require composition-group rendering");
   }
+}
+
+function mapNestedAnimationValues(
+  animation: CutCompositionManifest["layers"][number]["animations"][number],
+  transform: (value: number) => number,
+) {
+  return {
+    ...animation,
+    keyframes: animation.keyframes.map((keyframe) => {
+      if (typeof keyframe.value !== "number") throw new Error("Nested composition layout requires numeric animation keyframes");
+      return { ...keyframe, value: transform(keyframe.value) };
+    }),
+  };
+}
+
+/**
+ * Flatten one static composition container into a child layer. The container
+ * coordinates describe the child's complete canvas, so translating/scaling a
+ * child is affine in the parent's rectangular layout. This transforms every
+ * authored X/Y/opacity/volume curve too; otherwise a child would look correct
+ * at its keyframes but drift in between during preview or final rendering.
+ */
+function applyNestedContainerLayout(child: CutCompositionManifest["layers"][number], container: CutCompositionManifest["layers"][number]) {
+  const scaleX = container.width;
+  const scaleY = container.height;
+  const hasRectangularScale = scaleX !== 1 || scaleY !== 1;
+  if (hasRectangularScale && [child.enter, child.exit].some((transition) => transition?.kind === "slide")) {
+    // Slide distances are currently part of the transition descriptor rather
+    // than scalar animation curves. Scaling a group would need a dedicated
+    // group transition evaluator to preserve those distances exactly.
+    throw new Error("Nested composition rectangular scaling cannot contain child slide transitions until composition-group rendering is available");
+  }
+  const animations = child.animations.map((animation) => {
+    if (animation.property === "x") return mapNestedAnimationValues(animation, (value) => container.x + value * scaleX);
+    if (animation.property === "y") return mapNestedAnimationValues(animation, (value) => container.y + value * scaleY);
+    if (animation.property === "opacity") return mapNestedAnimationValues(animation, (value) => value * container.opacity);
+    if (animation.property === "volume") return mapNestedAnimationValues(animation, (value) => value * container.volume);
+    return animation;
+  });
+  return cutCompositionLayerSchema.parse({
+    ...child,
+    x: container.x + child.x * scaleX,
+    y: container.y + child.y * scaleY,
+    width: child.width * scaleX,
+    height: child.height * scaleY,
+    opacity: child.opacity * container.opacity,
+    volume: child.volume * container.volume,
+    animations,
+  });
 }
 
 function numericAnimationFallback(layer: CutCompositionManifest["layers"][number], property: CutCompositionManifest["layers"][number]["animations"][number]["property"]) {
@@ -474,7 +531,7 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
       usedLayerIds.add(id);
       return [{ ...layer, id }];
     }
-    assertNeutralCompositionContainer(layer);
+    assertSupportedCompositionContainer(layer);
     if (depth >= maxDepth) throw new Error(`Nested compositions may be at most ${maxDepth} levels deep`);
     if (!options.resolveComposition) throw new Error("Nested composition resolution is unavailable");
     const referencedRaw = options.resolveComposition(layer.compositionId!);
@@ -496,7 +553,7 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
     return expand(referenced, [...path, layer.id], [...stack, layer.compositionId!], depth + 1)
       .flatMap((child) => {
         const rebased = rebaseNestedLayerTime(child, layer.sourceStartFrame, sourceWindowEnd, layer.from);
-        return rebased ? [rebased] : [];
+        return rebased ? [applyNestedContainerLayout(rebased, layer)] : [];
       });
   });
 

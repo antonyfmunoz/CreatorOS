@@ -174,13 +174,87 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0]).toMatchObject({ timelineStart: 10 / 30, duration: 45 / 30 });
   });
 
+  it("flattens static nested placement into child layout, opacity, gain, and authored curves", () => {
+    const childId = "00000000-0000-4000-8000-000000000056";
+    const rootId = "00000000-0000-4000-8000-000000000057";
+    const child = {
+      ...manifest,
+      name: "Placed child",
+      layers: [{
+        ...sourceLayer,
+        id: "placed-source",
+        x: .1,
+        y: .2,
+        width: .4,
+        height: .5,
+        opacity: .8,
+        volume: .5,
+        effects: [],
+        animations: [
+          { property: "x" as const, keyframes: [{ frame: 0, value: .1 }, { frame: 60, value: .5 }] },
+          { property: "y" as const, keyframes: [{ frame: 0, value: .2 }, { frame: 60, value: .6 }] },
+          { property: "opacity" as const, keyframes: [{ frame: 0, value: .8 }, { frame: 60, value: .4 }] },
+          { property: "volume" as const, keyframes: [{ frame: 0, value: .5 }, { frame: 60, value: 1 }] },
+        ],
+      }],
+    };
+    const root = {
+      ...manifest,
+      name: "Placed master",
+      layers: [{
+        id: "placed-child",
+        kind: "composition" as const,
+        name: "Placed child",
+        compositionId: childId,
+        from: 0,
+        durationInFrames: 120,
+        x: .2,
+        y: .1,
+        width: .5,
+        height: .4,
+        opacity: .7,
+        volume: .4,
+      }],
+    };
+    const options = { rootCompositionId: rootId, resolveComposition: (id: string) => id === childId ? child : undefined };
+    const expanded = expandNestedCompositionManifest(root, options);
+    const layer = expanded.layers[0]!;
+    expect(layer).toMatchObject({ kind: "video", width: .2, height: .2, volume: .2 });
+    expect(layer.x).toBeCloseTo(.25);
+    expect(layer.y).toBeCloseTo(.18);
+    expect(layer.opacity).toBeCloseTo(.56);
+    const valuesFor = (property: "x" | "y" | "opacity" | "volume") => layer.animations.find((animation) => animation.property === property)!.keyframes.map((keyframe) => keyframe.value as number);
+    expect(valuesFor("x")).toEqual([.25, .45]);
+    expect(valuesFor("y")[0]).toBeCloseTo(.18);
+    expect(valuesFor("y")[1]).toBeCloseTo(.34);
+    expect(valuesFor("opacity")[0]).toBeCloseTo(.56);
+    expect(valuesFor("opacity")[1]).toBeCloseTo(.28);
+    expect(valuesFor("volume")).toEqual([.2, .4]);
+    const frame = evaluateCompositionFrame(expanded, 60)[0]!;
+    expect(frame.x).toBeCloseTo(.45);
+    expect(frame.y).toBeCloseTo(.34);
+    expect(frame.opacity).toBeCloseTo(.28);
+    expect(frame.volume).toBeCloseTo(.4);
+    const clip = compileCompositionToEdl(root, { version: 3, clips: [] }, options).clips[0]!;
+    expect(clip.transform).toMatchObject({ width: .2, height: .2 });
+    expect(clip.transform?.x).toBeCloseTo(.25);
+    expect(clip.transform?.y).toBeCloseTo(.18);
+    expect(clip.transform?.opacity).toBeCloseTo(.56);
+    const finalMotion = clip.motionKeyframes?.find((point) => point.at === 2)!;
+    expect(finalMotion.x).toBeCloseTo(.45);
+    expect(finalMotion.y).toBeCloseTo(.34);
+    expect(finalMotion.opacity).toBeCloseTo(.28);
+  });
+
   it("rejects unsafe nested composition resolution instead of silently approximating it", () => {
     const childId = "00000000-0000-4000-8000-000000000052";
     const rootId = "00000000-0000-4000-8000-000000000053";
     const root = { ...manifest, layers: [{ id: "child", kind: "composition" as const, name: "Child", compositionId: childId, from: 0, durationInFrames: 120 }] };
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId })).toThrow(/resolution is unavailable/i);
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: () => ({ ...manifest, fps: 24 }) })).toThrow(/same width, height, and frame rate/i);
-    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], opacity: .9 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/neutral transform/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/static placement/i);
+    const slideChild = { ...manifest, layers: [{ ...sourceLayer, enter: { kind: "slide" as const, durationInFrames: 10 } }] };
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], width: .8 }] }, { rootCompositionId: rootId, resolveComposition: () => slideChild })).toThrow(/child slide transitions/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 110, durationInFrames: 20 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/source trim must remain/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 15, durationInFrames: 80 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/start inside a child transition/i);
     const cyclic = { ...manifest, layers: [{ ...root.layers[0], compositionId: rootId }] };
