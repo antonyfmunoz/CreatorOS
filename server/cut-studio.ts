@@ -848,9 +848,10 @@ async function renderMultitrack(
       const maximumAnimatedHeight = Math.max(2, Math.round(size[1] * transform.height * maximumScale / 2) * 2);
       const virtualWidth = Math.max(maximumAnimatedWidth, Math.round(maximumAnimatedWidth * maximumScale / minimumScale / 2) * 2);
       const virtualHeight = Math.max(maximumAnimatedHeight, Math.round(maximumAnimatedHeight * maximumScale / minimumScale / 2) * 2);
+      const compositionEffectFilters = clipCompositionEffectFilters(clip, overlayIndex);
       const overlayFilters = animatedScale
-        ? [...clipColorFilters(clip, lutPaths), `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
-        : [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+        ? [...clipColorFilters(clip, lutPaths), ...compositionEffectFilters, `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
+        : [...clipColorFilters(clip, lutPaths), ...compositionEffectFilters, `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
       // The transform stays a top-left authored rectangle. When rotated, pad
       // into a fixed diagonal surface and place that surface from the mapped
       // transform origin, matching the composition player's CSS semantics.
@@ -1201,6 +1202,48 @@ function clipColorFilters(clip: CutEdl["clips"][number], lutPaths: Map<string, s
     const lutPath = lutPaths.get(clip.lutAssetId);
     if (!lutPath) throw new Error("The selected private LUT is unavailable");
     filters.push(`lut3d=file='${escapeFfmpegFilterPath(lutPath)}':interp=tetrahedral`);
+  }
+  return filters;
+}
+
+/**
+ * Render the portable, bounded portion of a declarative layer's effect stack
+ * on media clips as well as graphics. Effects that require a separately
+ * rasterized alpha silhouette are rejected instead of being silently omitted;
+ * this preserves preview/export truth while the dedicated alpha-matte path is
+ * built and qualified.
+ */
+function clipCompositionEffectFilters(clip: CutEdl["clips"][number], index: number) {
+  const filters: string[] = [];
+  for (let effectIndex = 0; effectIndex < (clip.effects?.length ?? 0); effectIndex += 1) {
+    const effect = clip.effects![effectIndex];
+    if (effect.kind === "drop_shadow" || effect.kind === "glow") throw new Error(`The ${effect.kind.replaceAll("_", " ")} media effect needs the native alpha-matte renderer before export`);
+    if (effect.kind === "blur") filters.push(`gblur=sigma=${Number((effectNumber(effect, "radius", effectNumber(effect, "amount", 6, 0, 60), 0, 60) / 3).toFixed(3))}:steps=2:planes=15`);
+    if (effect.kind === "motion_blur") {
+      const radius = effectNumber(effect, "radius", effectNumber(effect, "amount", 2, 0, 20), 0, 20);
+      filters.push(`gblur=sigma=${Number((radius * 1.8).toFixed(3))}:sigmaV=${Number((radius * .3).toFixed(3))}:steps=2:planes=15`);
+    }
+    if (effect.kind === "grain" || effect.kind === "noise") {
+      const amount = effectNumber(effect, "amount", .5, 0, 80);
+      const strength = Math.round(amount <= 1 ? amount * 24 : amount);
+      filters.push(`noise=alls=${strength}:allf=${effect.kind === "grain" ? "a+p" : "t+u"}`);
+    }
+    if (effect.kind === "vignette") filters.push(`vignette=angle=PI/${Number((10 - effectNumber(effect, "amount", .5, 0, 1) * 6).toFixed(3))}:eval=frame`);
+    if (effect.kind === "color_matrix") {
+      const color = cutColorMatrixControls(effect.parameters);
+      filters.push(...cutGraphicColorFilters(String(color.brightness), String(color.saturation), `clipeffect${index}${effectIndex}`, color.contrast));
+    }
+    if (effect.kind === "chroma_key") filters.push(`chromakey=0x${effectColor(effect, "color", "#00ff00").slice(1)}:${effectNumber(effect, "similarity", effectNumber(effect, "amount", .3, .01, 1), .01, 1)}:${effectNumber(effect, "blend", .08, 0, 1)}`);
+    if (effect.kind === "displacement") {
+      const amount = effectNumber(effect, "amount", .2, 0, 1);
+      filters.push(`lenscorrection=k1=${Number((amount * .35).toFixed(3))}:k2=${Number((amount * -.12).toFixed(3))}:i=bilinear:fc=black@0`);
+    }
+    if (effect.kind === "light_leak") {
+      const amount = effectNumber(effect, "amount", .5, 0, 1);
+      filters.push(`colorbalance=rs=${Number((amount * .28).toFixed(3))}:gs=${Number((amount * .08).toFixed(3))}:bs=${Number((amount * -.08).toFixed(3))}:rh=${Number((amount * .18).toFixed(3))}:pl=1`);
+    }
+    // Custom masks compile into clip.maskAssetId and are applied after the
+    // media surface has been prepared so alpha remains private and exact.
   }
   return filters;
 }

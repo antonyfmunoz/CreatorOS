@@ -489,3 +489,71 @@ test("primary-media 3D perspective agrees in the player and native export", asyn
   }
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, previewCenter, previewOutside, nativeCenter, nativeOutside }, null, 2));
 });
+
+test("primary-media color-matrix effect agrees in the player and native export", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(info);
+  const directory = info.outputPath("primary-media-effect-preview-export");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/source.mp4`;
+  // The uniform chroma source makes the authored brightness treatment easy to
+  // sample without an external fixture or a timing-sensitive visual oracle.
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x40c080:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+  const uploaded = await page.request.post("/api/assets/upload-proxy", {
+    headers: { "x-creativesos-demo-user": String(owner) },
+    multipart: { kind: "video", visibility: "private", video: { name: "primary-effect-oracle.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } },
+  });
+  await expectOk(uploaded);
+  const source = (await uploaded.json()).asset;
+  const created = await request(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Primary media effect oracle ${Date.now()}`, duration: 1, mediaKind: "video" });
+  await expectOk(created);
+  const project = await created.json();
+  const compositionName = `Primary effect source ${Date.now()}`;
+  const manifest = {
+    version: 1, name: compositionName, width: 1280, height: 720, fps: 30, durationInFrames: 30, background: "#000000", parameters: [], fonts: [], metadata: { qualification: "primary-media-effect-preview-export" },
+    layers: [{
+      id: "primary", kind: "video", name: "Effect teal primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
+      x: .25, y: .25, width: .5, height: .5, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, animations: [],
+      effects: [{ id: "grade", kind: "color_matrix", enabled: true, parameters: { brightness: .5, saturation: 1, contrast: 1 } }],
+    }],
+  };
+  const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: compositionName, mode: "declarative", manifest, codeCapsule: null });
+  await expectOk(saved);
+  const composition = await saved.json();
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
+  await expect(player).toBeVisible();
+  const media = player.getByLabel("Effect teal primary media", { exact: true });
+  await expect.poll(async () => {
+    const video = media.evaluate((element) => {
+      const value = element as HTMLMediaElement;
+      return !value.error && value.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+    });
+    return video;
+  }, { timeout: 15_000 }).toBe(true);
+  const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview.png` });
+  const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
+  const previewColor = previewPixel(.5, .5);
+  const previewBlack = previewPixel(.1, .5);
+  expect(previewColor[1]).toBeGreaterThan(50);
+  expect(previewColor[1]).toBeLessThan(130);
+  expect(previewBlack[0]).toBeLessThan(20);
+  const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { idempotencyKey: `e2e.primary.effect.preview-export.${crypto.randomUUID()}`, compositionIds: [composition.id], render: { aspect: "source", captions: false, quality: "draft", resolution: "720p", fps: 30 } });
+  await expectOk(batch);
+  const job = (await batch.json()).jobs[0];
+  await waitForCutRender(page.request, job.id, info, { "x-creativesos-demo-user": String(owner) });
+  const output = await downloadCutRender(page.request, job.id, `${directory}/primary-effect-render.mp4`, { "x-creativesos-demo-user": String(owner) });
+  const native = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+  const nativeImage = await sharp(native).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const nativePixel = (x: number, y: number) => [...nativeImage.data.subarray((Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels, (Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels + 3)];
+  const nativeColor = nativePixel(.5, .5);
+  const nativeBlack = nativePixel(.1, .5);
+  expect(nativeColor[1]).toBeGreaterThan(50);
+  expect(nativeColor[1]).toBeLessThan(130);
+  expect(nativeBlack[0]).toBeLessThan(20);
+  for (const [name, previewValue, nativeValue] of [["color", previewColor, nativeColor], ["black", previewBlack, nativeBlack]] as const) {
+    for (let channel = 0; channel < 3; channel += 1) expect(Math.abs(previewValue[channel] - nativeValue[channel]), `${name} channel ${channel}`).toBeLessThanOrEqual(14);
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, previewColor, previewBlack, nativeColor, nativeBlack }, null, 2));
+});
