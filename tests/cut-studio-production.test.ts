@@ -259,13 +259,84 @@ describe("CutStudio programmable production runtime", () => {
     expect(finalMotion.opacity).toBeCloseTo(.28);
   });
 
+  it("flattens static uniform nested graphic rotation around the composition pivot", () => {
+    const childId = "00000000-0000-4000-8000-000000000058";
+    const rootId = "00000000-0000-4000-8000-000000000059";
+    const child = {
+      ...manifest,
+      name: "Rotated graphic child",
+      layers: [{
+        id: "rotated-shape",
+        kind: "shape" as const,
+        name: "Pivot proof",
+        from: 0,
+        durationInFrames: 120,
+        x: .1,
+        y: .2,
+        width: .2,
+        height: .1,
+        anchorX: .5,
+        anchorY: .5,
+        rotation: 10,
+        opacity: .8,
+        volume: 1,
+        style: { fill: "#ff0000" },
+        dataBindings: {},
+        effects: [],
+        animations: [{ property: "rotation" as const, keyframes: [{ frame: 0, value: 10 }, { frame: 60, value: 20 }] }],
+      }],
+    };
+    const root = {
+      ...manifest,
+      name: "Rotated graphic master",
+      layers: [
+        sourceLayer,
+        {
+          id: "rotated-child",
+          kind: "composition" as const,
+          name: "Rotated graphic child",
+          compositionId: childId,
+          from: 0,
+          durationInFrames: 120,
+          x: .2,
+          y: .2,
+          width: .5,
+          height: .5,
+          anchorX: .5,
+          anchorY: .5,
+          rotation: 90,
+          opacity: .5,
+          volume: 1,
+        },
+      ],
+    };
+    const options = { rootCompositionId: rootId, resolveComposition: (id: string) => id === childId ? child : undefined };
+    const expanded = expandNestedCompositionManifest(root, options);
+    const layer = expanded.layers.find((candidate) => candidate.kind === "shape")!;
+    // The child pivot maps from (.30, .325) around the group pivot (.45, .45)
+    // to (.575, .30); its top-left is then reconstructed from its own anchor.
+    expect(layer.x).toBeCloseTo(.525);
+    expect(layer.y).toBeCloseTo(.275);
+    expect(layer.width).toBeCloseTo(.1);
+    expect(layer.height).toBeCloseTo(.05);
+    expect(layer.rotation).toBeCloseTo(100);
+    expect(layer.opacity).toBeCloseTo(.4);
+    expect(layer.animations.find((animation) => animation.property === "rotation")?.keyframes.map((keyframe) => keyframe.value)).toEqual([100, 110]);
+    const finalGraphic = compileCompositionToEdl(root, { version: 3, clips: [] }, options).graphics!.find((graphic) => graphic.kind === "shape")!;
+    expect(finalGraphic).toMatchObject({ width: .1, height: .05, rotation: 100, backgroundOpacity: .4 });
+    expect(finalGraphic.x).toBeCloseTo(.525);
+    expect(finalGraphic.y).toBeCloseTo(.275);
+    expect(finalGraphic.motionKeyframes?.find((keyframe) => keyframe.at === 2)?.rotation).toBeCloseTo(110);
+  });
+
   it("rejects unsafe nested composition resolution instead of silently approximating it", () => {
     const childId = "00000000-0000-4000-8000-000000000052";
     const rootId = "00000000-0000-4000-8000-000000000053";
     const root = { ...manifest, layers: [{ id: "child", kind: "composition" as const, name: "Child", compositionId: childId, from: 0, durationInFrames: 120 }] };
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId })).toThrow(/resolution is unavailable/i);
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: () => ({ ...manifest, fps: 24 }) })).toThrow(/same width, height, and frame rate/i);
-    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/static placement/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10, width: .8 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/uniform container scaling/i);
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/graphic-only child/i);
     const slideChild = { ...manifest, layers: [{ ...sourceLayer, enter: { kind: "slide" as const, durationInFrames: 10 } }] };
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], width: .8 }] }, { rootCompositionId: rootId, resolveComposition: () => slideChild })).toThrow(/child slide transitions/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 110, durationInFrames: 20 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/source trim must remain/i);
