@@ -151,10 +151,11 @@ function ffmpegMotionEasing(progress: string, easing: CutMotionEasing, compositi
   return point;
 }
 
-function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity", multiplier: number, timeVariable = "t") {
+function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity" | "rotation", multiplier: number, timeVariable = "t") {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const points = [{ at: 0, value: transform[property], easing: "linear" as const, compositionAuthored: false }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => {
+  const baseValue = property === "rotation" ? transform.rotation ?? 0 : transform[property];
+  const points = [{ at: 0, value: baseValue, easing: "linear" as const, compositionAuthored: false }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => {
     if (typeof keyframe[property] !== "number") return [];
     const propertyEasing = keyframe[`${property}Easing`];
     return [{ at: keyframe.at, value: keyframe[property]!, easing: propertyEasing ?? keyframe.easing ?? "linear", compositionAuthored: propertyEasing !== undefined }];
@@ -691,7 +692,8 @@ function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
     keyframe.x !== undefined
       || keyframe.y !== undefined
       || keyframe.scale !== undefined
-      || keyframe.opacity !== undefined,
+      || keyframe.opacity !== undefined
+      || keyframe.rotation !== undefined,
   );
   return transformed || animated;
 }
@@ -831,6 +833,7 @@ async function renderMultitrack(
       const anchorX = transform.anchorX ?? .5;
       const anchorY = transform.anchorY ?? .5;
       const animatedScale = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.scale === "number");
+      const animatedRotation = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.rotation === "number");
       const scales = [1, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [keyframe.scale] : [])];
       const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
       const maximumAnimatedWidth = Math.max(2, Math.round(size[0] * transform.width * maximumScale / 2) * 2);
@@ -843,9 +846,15 @@ async function renderMultitrack(
       // The transform stays a top-left authored rectangle. When rotated, pad
       // into a fixed diagonal surface and place that surface from the mapped
       // transform origin, matching the composition player's CSS semantics.
-      const rotatedRasterWidth = rotation === 0 ? (animatedScale ? virtualWidth : overlayWidth) : Math.max(2, Math.ceil(Math.hypot(animatedScale ? virtualWidth : overlayWidth, animatedScale ? virtualHeight : overlayHeight) / 2) * 2);
-      const rotatedRasterHeight = rotation === 0 ? (animatedScale ? virtualHeight : overlayHeight) : rotatedRasterWidth;
-      if (rotation !== 0) overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${Number((rotation * Math.PI / 180).toFixed(8))}':ow=iw:oh=ih:c=none`);
+      const hasRotationSurface = rotation !== 0 || animatedRotation;
+      const rotatedRasterWidth = hasRotationSurface ? Math.max(2, Math.ceil(Math.hypot(animatedScale ? virtualWidth : overlayWidth, animatedScale ? virtualHeight : overlayHeight) / 2) * 2) : (animatedScale ? virtualWidth : overlayWidth);
+      const rotatedRasterHeight = hasRotationSurface ? rotatedRasterWidth : (animatedScale ? virtualHeight : overlayHeight);
+      if (hasRotationSurface) {
+        const rotationRadians = animatedRotation
+          ? `(${motionPropertyExpression(clip, "rotation", Math.PI / 180, "t")})`
+          : String(Number((rotation * Math.PI / 180).toFixed(8)));
+        overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${rotationRadians}':ow=iw:oh=ih:c=none`);
+      }
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       const animatedOpacity = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.opacity === "number");
       if (animatedOpacity) {
@@ -861,8 +870,8 @@ async function renderMultitrack(
         filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
-      const overlayX = rotation === 0 ? motionOverlayExpression(clip, "x", size[0]) : `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2).toFixed(5))}`;
-      const overlayY = rotation === 0 ? motionOverlayExpression(clip, "y", size[1]) : `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2).toFixed(5))}`;
+      const overlayX = hasRotationSurface ? `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2).toFixed(5))}` : motionOverlayExpression(clip, "x", size[0]);
+      const overlayY = hasRotationSurface ? `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2).toFixed(5))}` : motionOverlayExpression(clip, "y", size[1]);
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;

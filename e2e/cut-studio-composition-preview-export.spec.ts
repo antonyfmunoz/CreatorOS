@@ -339,7 +339,7 @@ test("nested static uniform media rotation agrees in the player and native expor
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, childCompositionId: child.id, rootCompositionId: root.id, jobId: job.id, previewRed, previewBlack, nativeRed, nativeBlack }, null, 2));
 });
 
-test("animated rotated primary composition media agrees in the player and native export", async ({ page }, info) => {
+test("animated primary-media rotation agrees in the player and native export", async ({ page }, info) => {
   test.setTimeout(120_000);
   const owner = ownerFor(info);
   const otherOwner = owner === 1 ? 2 : 1;
@@ -364,8 +364,11 @@ test("animated rotated primary composition media agrees in the player and native
     version: 1, name: compositionName, width: 1280, height: 720, fps: 30, durationInFrames: 30, background: "#000000", parameters: [], fonts: [], metadata: { qualification: "animated-primary-composition-preview-export" },
     layers: [{
       id: "primary", kind: "video", name: "Animated red primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
-      x: .05, y: .25, width: .25, height: .5, opacity: 1, rotation: 90, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [],
-      animations: [{ property: "x", keyframes: [{ frame: 0, value: .05, easing: "linear" }, { frame: 15, value: .45, easing: "ease_in_out" }] }],
+      x: .05, y: .25, width: .25, height: .5, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [],
+      animations: [
+        { property: "x", keyframes: [{ frame: 0, value: .05, easing: "linear" }, { frame: 15, value: .45, easing: "ease_in_out" }] },
+        { property: "rotation", keyframes: [{ frame: 0, value: 0, easing: "linear" }, { frame: 15, value: 90, easing: "linear" }] },
+      ],
     }],
   };
   const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: compositionName, mode: "declarative", manifest, codeCapsule: null });
@@ -390,7 +393,10 @@ test("animated rotated primary composition media agrees in the player and native
   const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
   const previewRed = previewPixel(.3, .5);
-  const previewBlack = previewPixel(.1, .5);
+  // This point begins inside the rectangle but is outside once the authored
+  // in-between rotation is evaluated. It catches a renderer that accepts a
+  // keyframe but silently leaves the media raster unrotated.
+  const previewBlack = previewPixel(.24, .34);
   expect(previewRed[0]).toBeGreaterThan(180);
   expect(previewRed[1]).toBeLessThan(20);
   expect(previewBlack[0]).toBeLessThan(20);
@@ -404,7 +410,7 @@ test("animated rotated primary composition media agrees in the player and native
   const nativeImage = await sharp(native).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const nativePixel = (x: number, y: number) => [...nativeImage.data.subarray((Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels, (Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels + 3)];
   const nativeRed = nativePixel(.3, .5);
-  const nativeBlack = nativePixel(.1, .5);
+  const nativeBlack = nativePixel(.24, .34);
   expect(nativeRed[0]).toBeGreaterThan(180);
   expect(nativeRed[1]).toBeLessThan(20);
   expect(nativeBlack[0]).toBeLessThan(20);
