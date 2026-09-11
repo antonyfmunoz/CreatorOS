@@ -670,6 +670,19 @@ async function appendCaptionFilter(filters: string[], videoLabel: string, reques
   return "captioned";
 }
 
+function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
+  const transform = clip.transform;
+  if (!transform) return false;
+  return transform.x !== 0
+    || transform.y !== 0
+    || transform.width !== 1
+    || transform.height !== 1
+    || transform.opacity !== 1
+    || (transform.rotation ?? 0) !== 0
+    || (transform.anchorX ?? .5) !== .5
+    || (transform.anchorY ?? .5) !== .5;
+}
+
 async function renderMultitrack(
   jobId: string,
   leaseToken: string,
@@ -716,6 +729,16 @@ async function renderMultitrack(
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  // A composition's lone V1 source can itself be a positioned visual layer.
+  // The primary timeline normally makes V1 the opaque render base, which is
+  // correct for an edit but silently discards that layer's geometry. For the
+  // bounded one-segment composition case, make the base black and send V1
+  // through the same overlay pipeline as every other visual layer.
+  const primaryVisualSurface = Boolean(composition)
+    && primaryPlan.segments.length === 1
+    && Boolean(primaryPlan.segments[0]?.clip)
+    && cutPrimaryClipNeedsCompositionSurface(primaryPlan.segments[0]!.clip!)
+    && !(primaryPlan.segments[0]!.clip!.motionKeyframes?.length);
   const graphicPlans = planCutGraphicRasters(graphics, size[0], size[1]);
   for (let index = 0; index < primaryPlan.segments.length; index += 1) {
     const { clip, duration: outputDuration } = primaryPlan.segments[index];
@@ -731,10 +754,14 @@ async function renderMultitrack(
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
     const { fadeIn, fadeOut } = cutClipFades(clip, outputDuration, index, primaryPlan.segments.length);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
-    if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
-    if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
-    filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
+    if (primaryVisualSurface) {
+      filters.push(`color=c=black:s=${size[0]}x${size[1]}:r=${request.fps}:d=${outputDuration},format=yuv420p,settb=AVTB[basev${index}]`);
+    } else {
+      const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
+      if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
+      if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+      filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
+    }
     if (primaryHasAudio && media.hasAudio) {
       const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain("v1"))}':eval=frame`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo", "apad", `atrim=duration=${outputDuration}`];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
@@ -775,7 +802,7 @@ async function renderMultitrack(
   let overlayIndex = 0;
   let duckingIndex = 0;
   const audioLabels = primaryHasAudio ? ["[baseaudio]"] : [];
-  for (const clip of clips.filter((item) => (item.track ?? "v1") !== "v1")) {
+  for (const clip of clips.filter((item) => primaryVisualSurface || (item.track ?? "v1") !== "v1")) {
     const assetId = clip.assetId;
     if (!assetId) continue;
     const input = inputById.get(assetId);
