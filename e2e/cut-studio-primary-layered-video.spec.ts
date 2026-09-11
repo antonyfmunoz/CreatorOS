@@ -71,7 +71,11 @@ test("primary preview applies native-clock transforms to supported layered video
   const otherOwner = info.project.name.startsWith("mobile") ? "2" : "1";
   const denied = await page.request.get(`/api/cut/projects/${project.id}`, { headers: { "x-creativesos-demo-user": otherOwner } });
   expect(denied.status()).toBe(404);
-  await player.getByRole("button", { name: "Close sequence", exact: true }).click();
+  // The dialog close control is a sibling of the player region, not a child.
+  // Keep this interaction scoped to the accessible dialog control so the
+  // preview/export pixels above remain the actual oracle rather than a
+  // locator timeout.
+  await page.getByRole("button", { name: "Close sequence", exact: true }).click();
   const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
   expect(submitted.status()).toBe(202);
   const job = await submitted.json();
