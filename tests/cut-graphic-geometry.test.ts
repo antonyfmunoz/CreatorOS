@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cutGraphicSchema } from "../shared/cut-studio";
 import { compileCompositionToEdl } from "../shared/cut-studio-production";
-import { cutGraphicPivotOffset, planCutGraphicRaster, planCutGraphicRasters, projectCutGraphicCorners } from "../server/cut-graphic-geometry";
+import { cutGraphicPivotOffset, planCutGraphicRaster, planCutGraphicRasters, planCutPerspectiveSurface, projectCutGraphicCorners } from "../server/cut-graphic-geometry";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "../server/cut-render-snapshot";
 
 const graphic = () => cutGraphicSchema.parse({ id: "shape", kind: "shape", text: "", timelineStart: 0, duration: 1, width: .25, height: .25 });
@@ -48,5 +48,15 @@ describe("bounded authored graphic geometry", () => {
     expect(bottomLeft).toEqual([0, 50]);
     expect(topLeft[1]).not.toBe(0);
     expect(topRight[1]).not.toBe(0);
+  });
+
+  it("gives transformed media a bounded transparent surface", () => {
+    const surface = planCutPerspectiveSurface(512, 288, [{ rotationX: 0, rotationY: 60, perspective: 900 }]);
+    expect(surface.padX).toBeGreaterThanOrEqual(2);
+    expect(surface.padY).toBeGreaterThanOrEqual(2);
+    expect(surface.width).toBeGreaterThan(512);
+    expect(surface.height).toBeGreaterThan(288);
+    expect(surface.anchorX).toBeCloseTo(.5, 6);
+    expect(surface.anchorY).toBeCloseTo(.5, 6);
   });
 });

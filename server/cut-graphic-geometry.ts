@@ -65,3 +65,43 @@ export function projectCutGraphicCorners(width: number, height: number, rotation
   };
   return [project(0, 0), project(width, 0), project(0, height), project(width, height)] as const;
 }
+
+/**
+ * Reserve a transparent native surface around a perspective-transformed
+ * visual. FFmpeg's perspective filter keeps the input frame dimensions; if a
+ * video fills that frame, an otherwise-correct projection can leave opaque
+ * edge pixels outside the CSS-like transformed footprint. The browser instead
+ * composites an element with transparent space around it. This plan makes the
+ * native input match that compositing model without allocating an unbounded
+ * work surface for extreme authoring values.
+ */
+export function planCutPerspectiveSurface(
+  width: number,
+  height: number,
+  points: Array<{ rotationX: number; rotationY: number; perspective: number }>,
+  anchorX = .5,
+  anchorY = .5,
+) {
+  const corners = points.flatMap((point) => projectCutGraphicCorners(width, height, point.rotationX, point.rotationY, point.perspective, anchorX, anchorY));
+  const minX = Math.min(...corners.map(([x]) => x));
+  const maxX = Math.max(...corners.map(([x]) => x));
+  const minY = Math.min(...corners.map(([, y]) => y));
+  const maxY = Math.max(...corners.map(([, y]) => y));
+  // Two pixels of transparent overscan prevents resampling at a transformed
+  // edge from sampling the opaque source border.
+  const padX = Math.max(2, Math.ceil(Math.max(0, -minX, maxX - width)) + 2);
+  const padY = Math.max(2, Math.ceil(Math.max(0, -minY, maxY - height)) + 2);
+  const surfaceWidth = width + padX * 2;
+  const surfaceHeight = height + padY * 2;
+  if (surfaceWidth > 8192 || surfaceHeight > 8192 || surfaceWidth * surfaceHeight > MAX_SURFACE_PIXELS) {
+    throw new Error("3D media transform exceeds the native surface budget; reduce its dimensions, rotation, or perspective");
+  }
+  return {
+    padX,
+    padY,
+    width: surfaceWidth,
+    height: surfaceHeight,
+    anchorX: (padX + width * anchorX) / surfaceWidth,
+    anchorY: (padY + height * anchorY) / surfaceHeight,
+  };
+}

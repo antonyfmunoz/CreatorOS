@@ -72,7 +72,7 @@ import { renewCutJobLease, withCutJobLeaseWrite } from "./cut-job-publication";
 import { recoverCutJobs, retryCutJob } from "./cut-job-recovery";
 import { admitCutAuxiliaryJob } from "./cut-job-admission";
 import { cutMaskAlpha } from "@shared/cut-mask";
-import { planCutGraphicRasters, projectCutGraphicCorners } from "./cut-graphic-geometry";
+import { planCutGraphicRasters, planCutPerspectiveSurface, projectCutGraphicCorners } from "./cut-graphic-geometry";
 import { cutGraphicOpacityFilters } from "./cut-graphic-opacity";
 import { cutGraphicColorFilters } from "./cut-graphic-color";
 import { reserveWorkerSlot } from "./worker-admission";
@@ -880,12 +880,22 @@ async function renderMultitrack(
         .sort((left, right) => left.at - right.at)
         .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
       const has3dTransform = transform3dPoints.some((point) => Math.abs(point.rotationX) > .0001 || Math.abs(point.rotationY) > .0001);
+      let perspectivePadX = 0;
+      let perspectivePadY = 0;
+      let perspectiveRasterWidth = rotatedRasterWidth;
+      let perspectiveRasterHeight = rotatedRasterHeight;
       if (has3dTransform) {
-        const transformWidth = animatedScale ? maximumAnimatedWidth : overlayWidth;
-        const transformHeight = animatedScale ? maximumAnimatedHeight : overlayHeight;
+        const surface = planCutPerspectiveSurface(perspectiveRasterWidth, perspectiveRasterHeight, transform3dPoints, anchorX, anchorY);
+        perspectivePadX = surface.padX;
+        perspectivePadY = surface.padY;
+        perspectiveRasterWidth = surface.width;
+        perspectiveRasterHeight = surface.height;
+        // Preserve transparent pixels outside the original media rectangle so
+        // the post-projection output has the same empty footprint as CSS.
+        overlayFilters.push(`pad=${surface.width}:${surface.height}:${surface.padX}:${surface.padY}:color=black@0`);
         for (let pointIndex = 0; pointIndex < transform3dPoints.length; pointIndex += 1) {
           const point = transform3dPoints[pointIndex];
-          const [topLeft, topRight, bottomLeft, bottomRight] = projectCutGraphicCorners(transformWidth, transformHeight, point.rotationX, point.rotationY, point.perspective, anchorX, anchorY);
+          const [topLeft, topRight, bottomLeft, bottomRight] = projectCutGraphicCorners(surface.width, surface.height, point.rotationX, point.rotationY, point.perspective, surface.anchorX, surface.anchorY);
           const nextPoint = transform3dPoints[pointIndex + 1];
           const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : clipDuration;
           const timeline = transform3dPoints.length > 1
@@ -915,8 +925,8 @@ async function renderMultitrack(
         filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
-      const overlayX = hasRotationSurface ? `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2).toFixed(5))}` : motionOverlayExpression(clip, "x", size[0]);
-      const overlayY = hasRotationSurface ? `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2).toFixed(5))}` : motionOverlayExpression(clip, "y", size[1]);
+      const overlayX = hasRotationSurface ? `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2 - perspectivePadX).toFixed(5))}` : `(${motionOverlayExpression(clip, "x", size[0])})-${perspectivePadX}`;
+      const overlayY = hasRotationSurface ? `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2 - perspectivePadY).toFixed(5))}` : `(${motionOverlayExpression(clip, "y", size[1])})-${perspectivePadY}`;
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
