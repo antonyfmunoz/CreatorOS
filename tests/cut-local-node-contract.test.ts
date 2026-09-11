@@ -74,10 +74,13 @@ describe("CutStudio local-node contract", () => {
   });
 
   it("does not offer a knowingly unavailable local render", () => {
-    expect(creativeRuntimeSource).toContain('const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured"');
+    expect(creativeRuntimeSource).toContain("const localExecutionReadiness = useMemo<LocalExecutionReadiness>");
+    expect(creativeRuntimeSource).toContain("now - new Date(node.lastSeenAt).getTime() <= 90_000");
+    expect(creativeRuntimeSource).toContain("Pair a trusted workstation with the isolated runtime");
+    expect(creativeRuntimeSource).toContain("Your paired workstation has not sent a fresh heartbeat");
     expect(creativeRuntimeSource).toContain("Execution setup required");
-    expect(creativeRuntimeSource).toContain("ready={localCodeExecutionReady}");
-    expect(creativeRuntimeSource).toContain("disabled={busy || !ready}");
+    expect(creativeRuntimeSource).toContain("readiness={localExecutionReadiness}");
+    expect(creativeRuntimeSource).toContain("disabled={busy || !readiness.ready}");
   });
 
   it("lets a successful local-node command drain its fetch handles before process exit", () => {
