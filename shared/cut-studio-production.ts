@@ -806,8 +806,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
     if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
-    // Native media composition surfaces preserve bounded 2D rotation motion;
-    // 3D media transforms remain outside this renderer's contract.
+    // Native media composition surfaces preserve the same bounded transform
+    // contract as declarative preview, including 3D controls and the
+    // renderable portion of the ordered layer effect stack.
     const sourceStart = layer.sourceStartFrame / fps;
     const duration = layer.durationInFrames / fps;
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
@@ -824,6 +825,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
       label: layer.name,
       assetId: layer.assetId,
       ...(layer.kind === "video" && cutLayerMaskAsset(layer) ? { maskAssetId: cutLayerMaskAsset(layer)! } : {}),
+      ...(layer.kind === "video" && layer.effects.some((effect) => effect.enabled) ? { effects: layer.effects.filter((effect) => effect.enabled).slice(0, 20).map((effect) => ({ kind: effect.kind, parameters: effect.parameters })) } : {}),
       track: `${trackPrefix}${trackIndex}`,
       timelineStart: layer.from / fps,
       volume: layer.volume,

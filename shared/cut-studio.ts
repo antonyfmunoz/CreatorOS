@@ -78,6 +78,10 @@ export const cutClipSchema = z.object({
     similarity: z.number().finite().min(0.01).max(1),
     blend: z.number().finite().min(0).max(1),
   }).optional(),
+  // Composition-authored media effects use the same bounded effect contract as
+  // graphic layers. Keeping them on the editable clip makes a native export
+  // fail closed instead of silently dropping a visible preview treatment.
+  effects: z.array(cutGraphicEffectSchema).max(20).optional(),
   maskAssetId: z.string().uuid().optional(),
   transform: z.object({
     x: z.number().finite().min(0).max(1),

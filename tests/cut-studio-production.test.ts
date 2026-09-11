@@ -99,6 +99,7 @@ describe("CutStudio programmable production runtime", () => {
   it("compiles media motion and graphics into the editable EDL without flattening the source", () => {
     const edl = compileCompositionToEdl(manifest, { version: 3, clips: [{ id: "legacy", start: 0, end: 4, track: "v1", timelineStart: 0 }] });
     expect(edl.clips[0]).toMatchObject({ id: "source", assetId: sourceAssetId, track: "v1", start: 0, end: 4 });
+    expect(edl.clips[0].effects).toEqual([{ kind: "glow", parameters: { intensity: .5 } }]);
     expect(edl.clips[0].motionKeyframes).toMatchObject([{ at: 0, x: 0 }, { at: 2, x: 1 }]);
     expect(edl.graphics).toMatchObject([{ id: "title", text: "Ship the story", timelineStart: 1 / 3, duration: 2, rotation: -8 }]);
     expect(edl.graphics?.[0].motionKeyframes?.[0]).toMatchObject({ at: 0, opacity: 1 });
@@ -106,6 +107,20 @@ describe("CutStudio programmable production runtime", () => {
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)).toMatchObject({ at: 2 - (1 / 30), opacity: 1 });
     expect(edl.graphics?.[0].motionKeyframes?.at(-1)?.x).toBeCloseTo(.1);
     expect(edl.graphics?.[0].motionKeyframes).toEqual(expect.arrayContaining([expect.objectContaining({ at: 1.5, scale: 1.4, rotation: -8 })]));
+  });
+
+  it("preserves only enabled declarative media effects for the native renderer", () => {
+    const edl = compileCompositionToEdl({
+      ...manifest,
+      layers: [{
+        ...sourceLayer,
+        effects: [
+          { id: "matrix", kind: "color_matrix" as const, enabled: true, parameters: { brightness: .55, saturation: .7, contrast: 1.1 } },
+          { id: "off", kind: "noise" as const, enabled: false, parameters: { amount: .5 } },
+        ],
+      }],
+    }, { version: 3, clips: [] });
+    expect(edl.clips[0].effects).toEqual([{ kind: "color_matrix", parameters: { brightness: .55, saturation: .7, contrast: 1.1 } }]);
   });
 
   it("preserves independent named easing for every exported media property", () => {
