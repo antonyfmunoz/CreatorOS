@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
+import { downloadCutRender, waitForCutRender } from "./helpers/cut-render";
 
 test("primary preview applies native-clock transforms to supported layered video", async ({ page }, info) => {
   test.setTimeout(120_000);
@@ -52,9 +54,40 @@ test("primary preview applies native-clock transforms to supported layered video
   expect(await video.evaluate((element: HTMLElement) => element.style.top)).toBe("40%");
   await expect(video).toHaveCSS("opacity", "0.5");
   expect(await video.evaluate((element: HTMLElement) => element.style.transform)).toContain("scale(1.5)");
-  await player.getByLabel("Primary sequence canvas", { exact: true }).screenshot({ path: `${directory}/layered-frame-29.png` });
+  const preview = await player.getByLabel("Primary sequence canvas", { exact: true }).screenshot({ path: `${directory}/layered-frame-29.png` });
+  const { data: previewPixels, info: previewImage } = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const samplePreview = (x: number, y: number) => {
+    const offset = (Math.floor(previewImage.height * y) * previewImage.width + Math.floor(previewImage.width * x)) * previewImage.channels;
+    return [...previewPixels.subarray(offset, offset + 3)];
+  };
+  // Frame 29 is the selected final frame. The transformed red overlay is
+  // intentionally semi-transparent over blue, so use both an overlay pixel
+  // and an uncovered primary pixel as independent preview/export oracles.
+  const previewOverlay = samplePreview(.6, .5);
+  const previewBase = samplePreview(.05, .05);
+  expect(previewOverlay[0]).toBeGreaterThan(previewBase[0] + 70);
+  expect(previewOverlay[1]).toBeLessThan(20);
+  expect(previewOverlay[2]).toBeLessThan(previewBase[2] - 70);
   const otherOwner = info.project.name.startsWith("mobile") ? "2" : "1";
   const denied = await page.request.get(`/api/cut/projects/${project.id}`, { headers: { "x-creativesos-demo-user": otherOwner } });
   expect(denied.status()).toBe(404);
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, frame: 29, crossOwnerStatus: denied.status() }, null, 2));
+  // The dialog close control is a sibling of the player region, not a child.
+  // Keep this interaction scoped to the accessible dialog control so the
+  // preview/export pixels above remain the actual oracle rather than a
+  // locator timeout.
+  await page.getByRole("button", { name: "Close sequence", exact: true }).click();
+  const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: "16:9", resolution: "720p", fps: 30, captions: false, quality: "draft" } });
+  expect(submitted.status()).toBe(202);
+  const job = await submitted.json();
+  await waitForCutRender(page.request, job.id, info);
+  const finished = await (await page.request.get(`/api/cut/jobs/${job.id}`)).json();
+  expect(finished.state).toBe("done");
+  const output = await downloadCutRender(page.request, job.id, `${directory}/layered-render.mp4`);
+  const sampleNative = (x: number, y: number) => [...execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-vf", `select=eq(n\\,29),crop=2:2:${Math.floor(1280 * x)}:${Math.floor(720 * y)},scale=1:1,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "pipe:1"], { windowsHide: true, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).subarray(0, 3)];
+  const nativeOverlay = sampleNative(.6, .5);
+  const nativeBase = sampleNative(.05, .05);
+  for (const [name, previewSample, nativeSample] of [["overlay", previewOverlay, nativeOverlay], ["base", previewBase, nativeBase]] as const) {
+    for (let channel = 0; channel < 3; channel++) expect(Math.abs(previewSample[channel] - nativeSample[channel]), `${name} frame 29 channel ${channel}`).toBeLessThanOrEqual(12);
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, frame: 29, jobId: job.id, crossOwnerStatus: denied.status(), previewOverlay, nativeOverlay, previewBase, nativeBase }, null, 2));
 });

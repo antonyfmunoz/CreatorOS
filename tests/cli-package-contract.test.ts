@@ -29,5 +29,6 @@ describe("standalone CreativesOS CLI package", () => {
     expect(cli).toContain('uploaded: false');
     expect(cli).toContain('flag: "wx"');
     expect(cli).toContain("renderIsolated({ request, source, image })");
+    expect(cli).toContain("const commandArgs = commandIndex === -1 ? [] : args.slice(commandIndex + 1)");
   });
 });
