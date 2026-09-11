@@ -339,7 +339,7 @@ test("nested static uniform media rotation agrees in the player and native expor
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, childCompositionId: child.id, rootCompositionId: root.id, jobId: job.id, previewRed, previewBlack, nativeRed, nativeBlack }, null, 2));
 });
 
-test("animated primary-media rotation agrees in the player and native export", async ({ page }, info) => {
+test("animated primary-media rotation and color agree in the player and native export", async ({ page }, info) => {
   test.setTimeout(120_000);
   const owner = ownerFor(info);
   const otherOwner = owner === 1 ? 2 : 1;
@@ -347,9 +347,9 @@ test("animated primary-media rotation agrees in the player and native export", a
   const directory = info.outputPath("animated-primary-composition-preview-export");
   mkdirSync(directory, { recursive: true });
   const sourcePath = `${directory}/source.mp4`;
-  // A uniform source makes its translated primary rectangle an unambiguous
-  // oracle. This specifically exercises the former opaque-V1 export path.
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+  // A uniform, strongly saturated source makes geometric and color curves
+  // independently inspectable at one authored frame.
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x40c080:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
   const uploaded = await page.request.post("/api/assets/upload-proxy", {
     headers: { "x-creativesos-demo-user": String(owner) },
     multipart: { kind: "video", visibility: "private", video: { name: "animated-primary-oracle.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } },
@@ -363,11 +363,13 @@ test("animated primary-media rotation agrees in the player and native export", a
   const manifest = {
     version: 1, name: compositionName, width: 1280, height: 720, fps: 30, durationInFrames: 30, background: "#000000", parameters: [], fonts: [], metadata: { qualification: "animated-primary-composition-preview-export" },
     layers: [{
-      id: "primary", kind: "video", name: "Animated red primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
+      id: "primary", kind: "video", name: "Animated teal primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
       x: .05, y: .25, width: .25, height: .5, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [],
       animations: [
         { property: "x", keyframes: [{ frame: 0, value: .05, easing: "linear" }, { frame: 15, value: .45, easing: "ease_in_out" }] },
         { property: "rotation", keyframes: [{ frame: 0, value: 0, easing: "linear" }, { frame: 5, value: 90, easing: "linear" }] },
+        { property: "brightness", keyframes: [{ frame: 0, value: 1, easing: "linear" }, { frame: 5, value: .5, easing: "linear" }] },
+        { property: "saturation", keyframes: [{ frame: 0, value: 1, easing: "linear" }, { frame: 5, value: .1, easing: "linear" }] },
       ],
     }],
   };
@@ -380,7 +382,7 @@ test("animated primary-media rotation agrees in the player and native export", a
   await page.goto(`/cut-studio?project=${project.id}`);
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
-  const media = player.getByLabel("Animated red primary media", { exact: true });
+  const media = player.getByLabel("Animated teal primary media", { exact: true });
   await expect.poll(async () => media.evaluate((element) => {
     const video = element as HTMLMediaElement;
     return !video.error && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
@@ -392,13 +394,14 @@ test("animated primary-media rotation agrees in the player and native export", a
   const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview-frame-${frame}.png` });
   const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
-  const previewRed = previewPixel(.3, .5);
+  const previewColor = previewPixel(.3, .5);
   // This point is outside after the authored frame-five quarter-turn but
   // inside an unrotated source rectangle. It catches a renderer that accepts
   // the keyframe yet silently leaves the media raster unrotated.
   const previewBlack = previewPixel(.1, .5);
-  expect(previewRed[0]).toBeGreaterThan(180);
-  expect(previewRed[1]).toBeLessThan(20);
+  expect(Math.max(...previewColor) - Math.min(...previewColor)).toBeLessThan(25);
+  expect(previewColor[0]).toBeGreaterThan(20);
+  expect(previewColor[0]).toBeLessThan(140);
   expect(previewBlack[0]).toBeLessThan(20);
 
   const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { idempotencyKey: `e2e.animated.primary.preview-export.${crypto.randomUUID()}`, compositionIds: [composition.id], render: { aspect: "source", captions: false, quality: "draft", resolution: "720p", fps: 30 } });
@@ -409,13 +412,14 @@ test("animated primary-media rotation agrees in the player and native export", a
   const native = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
   const nativeImage = await sharp(native).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const nativePixel = (x: number, y: number) => [...nativeImage.data.subarray((Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels, (Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels + 3)];
-  const nativeRed = nativePixel(.3, .5);
+  const nativeColor = nativePixel(.3, .5);
   const nativeBlack = nativePixel(.1, .5);
-  expect(nativeRed[0]).toBeGreaterThan(180);
-  expect(nativeRed[1]).toBeLessThan(20);
+  expect(Math.max(...nativeColor) - Math.min(...nativeColor)).toBeLessThan(25);
+  expect(nativeColor[0]).toBeGreaterThan(20);
+  expect(nativeColor[0]).toBeLessThan(140);
   expect(nativeBlack[0]).toBeLessThan(20);
-  for (const [name, previewValue, nativeValue] of [["red", previewRed, nativeRed], ["black", previewBlack, nativeBlack]] as const) {
+  for (const [name, previewValue, nativeValue] of [["color", previewColor, nativeColor], ["black", previewBlack, nativeBlack]] as const) {
     for (let channel = 0; channel < 3; channel += 1) expect(Math.abs(previewValue[channel] - nativeValue[channel]), `${name} frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
   }
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewRed, previewBlack, nativeRed, nativeBlack }, null, 2));
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewColor, previewBlack, nativeColor, nativeBlack }, null, 2));
 });
