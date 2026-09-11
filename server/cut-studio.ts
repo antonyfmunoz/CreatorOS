@@ -151,10 +151,10 @@ function ffmpegMotionEasing(progress: string, easing: CutMotionEasing, compositi
   return point;
 }
 
-function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity" | "rotation", multiplier: number, timeVariable = "t") {
+function motionPropertyExpression(clip: CutEdl["clips"][number], property: "x" | "y" | "opacity" | "rotation" | "brightness" | "saturation", multiplier: number, timeVariable = "t") {
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const timelineStart = clip.timelineStart ?? 0;
-  const baseValue = property === "rotation" ? transform.rotation ?? 0 : transform[property];
+  const baseValue = property === "rotation" ? transform.rotation ?? 0 : property === "brightness" || property === "saturation" ? 1 : transform[property];
   const points = [{ at: 0, value: baseValue, easing: "linear" as const, compositionAuthored: false }, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => {
     if (typeof keyframe[property] !== "number") return [];
     const propertyEasing = keyframe[`${property}Easing`];
@@ -693,7 +693,9 @@ function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
       || keyframe.y !== undefined
       || keyframe.scale !== undefined
       || keyframe.opacity !== undefined
-      || keyframe.rotation !== undefined,
+      || keyframe.rotation !== undefined
+      || keyframe.brightness !== undefined
+      || keyframe.saturation !== undefined,
   );
   return transformed || animated;
 }
@@ -854,6 +856,12 @@ async function renderMultitrack(
           ? `(${motionPropertyExpression(clip, "rotation", Math.PI / 180, "t")})`
           : String(Number((rotation * Math.PI / 180).toFixed(8)));
         overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${rotationRadians}':ow=iw:oh=ih:c=none`);
+      }
+      const animatedColor = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.brightness === "number" || typeof keyframe.saturation === "number");
+      if (animatedColor) {
+        const brightness = motionPropertyExpression(clip, "brightness", 1, "T");
+        const saturation = motionPropertyExpression(clip, "saturation", 1, "T");
+        overlayFilters.push(...cutGraphicColorFilters(brightness, saturation, `clipcolor${overlayIndex}`, 1, { frameUniform: true }));
       }
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       const animatedOpacity = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.opacity === "number");

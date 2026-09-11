@@ -813,9 +813,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
     mediaTrackCounts[layer.kind] += 1;
     const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
-    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity", "rotation"].includes(item.property));
+    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity", "rotation", "brightness", "saturation"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
-    const easingAt = (property: "x" | "y" | "scale" | "opacity" | "rotation", frame: number): CutMotionEasing =>
+    const easingAt = (property: "x" | "y" | "scale" | "opacity" | "rotation" | "brightness" | "saturation", frame: number): CutMotionEasing =>
       layer.animations.find((animation) => animation.property === property)?.keyframes.find((keyframe) => keyframe.frame === frame)?.easing ?? "linear";
     return [{
       id: layer.id,
@@ -835,6 +835,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         scale: valueAtFrame(layer, "scale", frame, 1),
         opacity: valueAtFrame(layer, "opacity", frame, layer.opacity),
         rotation: valueAtFrame(layer, "rotation", frame, layer.rotation),
+        brightness: valueAtFrame(layer, "brightness", frame, 1),
+        saturation: valueAtFrame(layer, "saturation", frame, 1),
         // Preserve each authored property curve. The generic legacy field is
         // neutral, so readers that have not adopted per-property easing do not
         // get a fabricated shared curve.
@@ -844,6 +846,8 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         scaleEasing: easingAt("scale", frame),
         opacityEasing: easingAt("opacity", frame),
         rotationEasing: easingAt("rotation", frame),
+        brightnessEasing: easingAt("brightness", frame),
+        saturationEasing: easingAt("saturation", frame),
       })),
     }];
   });
