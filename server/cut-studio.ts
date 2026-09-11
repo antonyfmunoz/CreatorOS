@@ -788,6 +788,9 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
+      const rotation = transform.rotation ?? 0;
+      const anchorX = transform.anchorX ?? .5;
+      const anchorY = transform.anchorY ?? .5;
       const animatedScale = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.scale === "number");
       const scales = [1, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [keyframe.scale] : [])];
       const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
@@ -798,6 +801,12 @@ async function renderMultitrack(
       const overlayFilters = animatedScale
         ? [...clipColorFilters(clip, lutPaths), `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
         : [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      // The transform stays a top-left authored rectangle. When rotated, pad
+      // into a fixed diagonal surface and place that surface from the mapped
+      // transform origin, matching the composition player's CSS semantics.
+      const rotatedRasterWidth = rotation === 0 ? (animatedScale ? virtualWidth : overlayWidth) : Math.max(2, Math.ceil(Math.hypot(animatedScale ? virtualWidth : overlayWidth, animatedScale ? virtualHeight : overlayHeight) / 2) * 2);
+      const rotatedRasterHeight = rotation === 0 ? (animatedScale ? virtualHeight : overlayHeight) : rotatedRasterWidth;
+      if (rotation !== 0) overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${Number((rotation * Math.PI / 180).toFixed(8))}':ow=iw:oh=ih:c=none`);
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       const animatedOpacity = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.opacity === "number");
       if (animatedOpacity) {
@@ -813,8 +822,8 @@ async function renderMultitrack(
         filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
-      const overlayX = motionOverlayExpression(clip, "x", size[0]);
-      const overlayY = motionOverlayExpression(clip, "y", size[1]);
+      const overlayX = rotation === 0 ? motionOverlayExpression(clip, "x", size[0]) : `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2).toFixed(5))}`;
+      const overlayY = rotation === 0 ? motionOverlayExpression(clip, "y", size[1]) : `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2).toFixed(5))}`;
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;

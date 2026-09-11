@@ -85,6 +85,11 @@ export const cutClipSchema = z.object({
     width: z.number().finite().positive().max(1),
     height: z.number().finite().positive().max(1),
     opacity: z.number().finite().min(0).max(1),
+    // Optional to keep queued immutable v3 snapshots valid. The renderer
+    // supplies CSS-compatible centered defaults for legacy clips.
+    rotation: z.number().finite().min(-3_600).max(3_600).optional(),
+    anchorX: z.number().finite().min(-4).max(4).optional(),
+    anchorY: z.number().finite().min(-4).max(4).optional(),
   }).optional(),
   motionKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(43_200),
