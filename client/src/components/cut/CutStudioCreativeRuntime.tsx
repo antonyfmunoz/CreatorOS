@@ -27,6 +27,7 @@ type ProviderRow = { id: string; label: string; configured: boolean; capabilitie
 type LocalNodeInvitation = { token: string; expiresAt: string };
 type LocalNodeRow = { id: string; name: string; status: "ready" | "busy" | "paused" | "revoked"; lastSeenAt: string | null; capabilities: { isolatedCode: boolean; docker: boolean; operatingSystem: string; cpuCores: number; memoryMb: number } };
 type CodeRenderRow = { id: string; compositionId: string; state: string; detail: string; progress: number; mode: string; format: string; artifactAssetId: string | null; cancellationRequestedAt: string | null; createdAt: string; retryStatus?: "created" | "existing" };
+type LocalExecutionReadiness = { ready: boolean; message: string };
 type RuntimePayload = {
   compositionRuntime: { declarative: string; packageAuthoring: string; isolatedCode: string; networkPolicy: string };
   generationRuntime: { dispatchEnabled: boolean; providers: ProviderRow[] };
@@ -72,7 +73,7 @@ function CodeCompositionInputs({ contract, inputJson, disabled, onChange }: { co
   </div>;
 }
 
-function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }: { composition: CompositionRow; busy: boolean; ready: boolean; onQueue: (request: CutCodeRenderRequest) => void; onQueueBatch: (requests: CutCodeRenderRequest[]) => void }) {
+function CodeRenderControls({ composition, busy, readiness, onQueue, onQueueBatch }: { composition: CompositionRow; busy: boolean; readiness: LocalExecutionReadiness; onQueue: (request: CutCodeRenderRequest) => void; onQueueBatch: (requests: CutCodeRenderRequest[]) => void }) {
   const [mode, setMode] = useState<CutCodeRenderMode>("still");
   const [width, setWidth] = useState(1080);
   const [height, setHeight] = useState(1080);
@@ -174,7 +175,8 @@ function CodeRenderControls({ composition, busy, ready, onQueue, onQueueBatch }:
     <label className="block text-[9px] text-zinc-500">Optional input batch JSON (2–20 inputs)<textarea aria-label={`${label} input batch JSON`} className={`${field} min-h-16 resize-y font-mono`} value={batchInputJson} disabled={busy} onChange={(event) => setBatchInputJson(event.target.value)}/></label>
     <p className="text-[9px] leading-4 text-zinc-500">The trusted node enforces a 16–3840px edge, 8.3MP output, 1–60 FPS, 600-frame, and 64 KiB input ceiling. {composition.codeCapsule?.inputContract ? "This composition also enforces its declared input contract and defaults." : "No input contract is declared yet."} Private media is never injected into code directly.</p>
     {error && <p role="alert" className="text-[9px] text-amber-300">{error}</p>}
-    <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button><Button size="sm" variant="outline" disabled={busy || !ready} onClick={() => { try { setError(""); onQueueBatch(batchRequests()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render batch is invalid"); } }}>Queue local batch</Button></div>
+    {!readiness.ready && <p role="status" aria-label="Local execution readiness" className="text-[9px] leading-4 text-amber-200">{readiness.message}</p>}
+    <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || !readiness.ready} onClick={() => { try { setError(""); onQueue(request()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render settings are invalid"); } }}><Play className="mr-1 h-3.5 w-3.5"/>{readiness.ready ? `Queue local ${mode === "sequence" ? "frame sequence" : mode}` : "Execution setup required"}</Button><Button size="sm" variant="outline" disabled={busy || !readiness.ready} onClick={() => { try { setError(""); onQueueBatch(batchRequests()); } catch (cause) { setError(cause instanceof Error ? cause.message : "The local render batch is invalid"); } }}>Queue local batch</Button></div>
   </div>;
 }
 
@@ -298,7 +300,26 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
   // media descriptor route returns JSON, not a font, and failures were hidden).
   const waitingJobs = useMemo(() => runtime?.jobs.filter((job) => job.state === "provider_pending").length ?? 0, [runtime]);
   const hasRenderedAnimationLayers = useMemo(() => runtime?.compositions.some((composition) => composition.manifest.layers.some((layer) => layer.kind === "lottie" || layer.kind === "rive")) ?? false, [runtime]);
-  const localCodeExecutionReady = runtime?.compositionRuntime.isolatedCode === "configured";
+  const localExecutionReadiness = useMemo<LocalExecutionReadiness>(() => {
+    if (runtime?.compositionRuntime.isolatedCode !== "configured") {
+      return { ready: false, message: "Execution setup required: activate the private execution broker before local renders can be queued." };
+    }
+    const compatibleNodes = localNodes.filter((node) => node.status !== "revoked" && node.capabilities.isolatedCode && node.capabilities.docker);
+    if (!compatibleNodes.length) {
+      return { ready: false, message: "Pair a trusted workstation with the isolated runtime before queueing this private code render." };
+    }
+    const now = Date.now();
+    const freshNodes = compatibleNodes.filter((node) => node.lastSeenAt && now - new Date(node.lastSeenAt).getTime() <= 90_000);
+    if (!freshNodes.length) {
+      return { ready: false, message: "Your paired workstation has not sent a fresh heartbeat. Start `creativesos node serve` on that machine, then try again." };
+    }
+    if (freshNodes.some((node) => node.status === "ready")) return { ready: true, message: "" };
+    if (freshNodes.some((node) => node.status === "busy")) {
+      return { ready: false, message: "Your paired workstation is completing another isolated render. This single-job runtime will become available when that work finishes." };
+    }
+    return { ready: false, message: "Your paired workstation is paused. Start `creativesos node serve` or run one foreground job, then try again." };
+  }, [localNodes, runtime?.compositionRuntime.isolatedCode]);
+  const localCodeExecutionReady = localExecutionReadiness.ready;
   const useCodeRenderOutput = (job: CodeRenderRow) => {
     const output = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
     if (!output) {
@@ -610,7 +631,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
             const isCurrentRevision = Number(revision.revision) === Number(composition.revision);
             return <div key={`${composition.id}:${revision.revision}`} className="mt-1 flex items-center justify-between gap-2"><p>Revision {revision.revision} · {new Date(revision.createdAt).toLocaleString()} · {revision.codeCapsule?.entrypoint ?? "declarative manifest"}</p>{isCurrentRevision ? <span className="shrink-0 text-[9px] text-zinc-600">Current</span> : <Button size="sm" variant="ghost" aria-label={`Restore revision ${revision.revision} for ${composition.name}`} disabled={Boolean(busy)} onClick={() => void restoreCompositionRevision(composition, revision.revision)}>Restore</Button>}</div>;
           })}</div>}
-          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest} compositionManifests={declarativeCompositionManifests}/><CompositionAuthoringControls composition={composition} assets={media} compositions={runtime.compositions.filter((candidate) => candidate.mode === "declarative")} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : "Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated."}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} ready={localCodeExecutionReady} onQueue={(request) => void queueCodeRender(composition, request)} onQueueBatch={(requests) => void queueCodeRenderBatch(composition, requests)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
+          {composition.mode === "declarative" ? <><CutStudioCompositionPreview manifest={composition.manifest} compositionManifests={declarativeCompositionManifests}/><CompositionAuthoringControls composition={composition} assets={media} compositions={runtime.compositions.filter((candidate) => candidate.mode === "declarative")} busy={Boolean(busy)} onChange={(manifest) => updateCompositionDraft(composition.id, () => manifest)} onSave={() => void saveComposition(composition)}/><CompositionVariantBatchControls composition={composition} busy={Boolean(busy) || compositions.current.has(composition.id)} onCreate={(variants, render) => void createCompositionVariants(composition, variants, render)}/></> : <div className="mt-3 rounded-lg border border-[#1d9bf0]/25 bg-[#1d9bf0]/5 p-3 text-[10px] leading-5 text-zinc-300"><p className="font-bold">{composition.codeCapsule?.entrypoint}</p><p>Runtime {composition.codeCapsule?.runtime} · network {composition.codeCapsule?.networkPolicy} · {composition.codeCapsule?.maximumMemoryMb} MB · {composition.codeCapsule?.maximumCpuMs} ms CPU</p><p className="mt-1 text-zinc-500">{localCodeExecutionReady ? "Queueing creates durable work only. A paired local CLI must explicitly claim and run it in the isolated container." : localExecutionReadiness.message}</p><CodeRenderControls composition={composition} busy={Boolean(busy)} readiness={localExecutionReadiness} onQueue={(request) => void queueCodeRender(composition, request)} onQueueBatch={(requests) => void queueCodeRenderBatch(composition, requests)}/>{runtime.codeRenders.filter((job) => job.compositionId === composition.id).map((job) => {
             const reusableOutput = job.artifactAssetId ? media.find((item) => item.assetId === job.artifactAssetId) : null;
             const isCompositedOutput = job.mode === "video" || job.mode === "still" || job.mode === "audio";
             const isImageOutput = job.mode === "still" || job.format === "gif";
