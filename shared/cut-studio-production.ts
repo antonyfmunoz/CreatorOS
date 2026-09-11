@@ -806,22 +806,16 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
     if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
-    // Native media composition surfaces preserve a static 2D rotation while
-    // the existing per-frame overlay expressions animate position, scale and
-    // alpha. Rotation itself is not yet represented in the native clip motion
-    // contract, so reject only that unsupported property rather than blocking
-    // otherwise renderable rotated media motion.
-    if (layer.kind === "video" && layer.animations.some((animation) => animation.property === "rotation")) {
-      throw new Error("Animated video rotation requires the native media rotation-motion surface");
-    }
+    // Native media composition surfaces preserve bounded 2D rotation motion;
+    // 3D media transforms remain outside this renderer's contract.
     const sourceStart = layer.sourceStartFrame / fps;
     const duration = layer.durationInFrames / fps;
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
     mediaTrackCounts[layer.kind] += 1;
     const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
-    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity"].includes(item.property));
+    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity", "rotation"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
-    const easingAt = (property: "x" | "y" | "scale" | "opacity", frame: number): CutMotionEasing =>
+    const easingAt = (property: "x" | "y" | "scale" | "opacity" | "rotation", frame: number): CutMotionEasing =>
       layer.animations.find((animation) => animation.property === property)?.keyframes.find((keyframe) => keyframe.frame === frame)?.easing ?? "linear";
     return [{
       id: layer.id,
@@ -840,6 +834,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         y: valueAtFrame(layer, "y", frame, layer.y),
         scale: valueAtFrame(layer, "scale", frame, 1),
         opacity: valueAtFrame(layer, "opacity", frame, layer.opacity),
+        rotation: valueAtFrame(layer, "rotation", frame, layer.rotation),
         // Preserve each authored property curve. The generic legacy field is
         // neutral, so readers that have not adopted per-property easing do not
         // get a fabricated shared curve.
@@ -848,6 +843,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         yEasing: easingAt("y", frame),
         scaleEasing: easingAt("scale", frame),
         opacityEasing: easingAt("opacity", frame),
+        rotationEasing: easingAt("rotation", frame),
       })),
     }];
   });

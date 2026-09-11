@@ -97,6 +97,7 @@ export const cutClipSchema = z.object({
     y: z.number().finite().min(0).max(1),
     scale: z.number().finite().min(0.25).max(4).optional(),
     opacity: z.number().finite().min(0).max(1).optional(),
+    rotation: z.number().finite().min(-3_600).max(3_600).optional(),
     // Each property may retain its authored curve when a composition is
     // compiled to an editable native timeline. `easing` remains as the
     // backwards-compatible shared fallback for older EDL snapshots.
@@ -105,6 +106,7 @@ export const cutClipSchema = z.object({
     yEasing: cutMotionEasingSchema.optional(),
     scaleEasing: cutMotionEasingSchema.optional(),
     opacityEasing: cutMotionEasingSchema.optional(),
+    rotationEasing: cutMotionEasingSchema.optional(),
   })).max(50).optional(),
   volumeKeyframes: z.array(z.object({
     at: z.number().finite().min(0).max(43_200),
