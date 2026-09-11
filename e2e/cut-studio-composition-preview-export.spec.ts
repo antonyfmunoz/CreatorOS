@@ -12,6 +12,26 @@ async function expectOk(response: APIResponse) {
   expect(response.ok(), `${response.status()} ${response.url()}: ${await response.text()}`).toBeTruthy();
 }
 
+async function sampledFrameDifference(preview: Buffer, native: Buffer) {
+  // Browser screenshots and native exports do not share a text rasterizer or
+  // output codec, so compare a fixed, low-resolution full composition instead
+  // of granting a single well-chosen pixel the authority to represent a frame.
+  // This preserves large transform, reveal, color, layering and layout drift
+  // while tolerating bounded edge antialiasing and H.264 quantization.
+  const [browser, rendered] = await Promise.all([
+    sharp(preview).resize(160, 90, { fit: "fill" }).removeAlpha().raw().toBuffer(),
+    sharp(native).resize(160, 90, { fit: "fill" }).removeAlpha().raw().toBuffer(),
+  ]);
+  let total = 0;
+  let maximum = 0;
+  for (let index = 0; index < browser.length; index += 1) {
+    const difference = Math.abs(browser[index]! - rendered[index]!);
+    total += difference;
+    maximum = Math.max(maximum, difference);
+  }
+  return { mean: total / browser.length, maximum, sampledChannels: browser.length };
+}
+
 test("declarative composition player and native export agree at an authored nonlinear frame", async ({ page }, info) => {
   test.setTimeout(120_000);
   // This is deliberately an in-between frame for both motion systems. It is
@@ -248,7 +268,27 @@ test("declarative composition player and native export agree at an authored nonl
     }
   }
   for (let channel = 0; channel < 3; channel += 1) expect(Math.abs(previewData[channel] - nativeData[channel]), `data frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewData, nativeData, previewBase, nativeBase }, null, 2));
+
+  // A single intermediate frame proves the nonlinear shape is not merely a
+  // static first/last-frame match.  These additional samples make the oracle
+  // cover the entire 30-frame composition clock, including both sides of the
+  // spring and wipe boundaries.  Retain every comparison in the receipt so a
+  // future renderer change cannot silently narrow the evidence back to one
+  // favorable frame.
+  const sampledFrames = [0, 5, 11, 17, 23, 29];
+  const frameAgreement: Array<{ frame: number; mean: number; maximum: number; sampledChannels: number }> = [];
+  for (const sampledFrame of sampledFrames) {
+    await slider.fill(String(sampledFrame));
+    await expect(player).toHaveAttribute("data-current-frame", String(sampledFrame));
+    const browserFrame = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview-frame-${sampledFrame}.png` });
+    const renderedFrame = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-vf", `select=eq(n\\,${sampledFrame})`, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+    const comparison = await sampledFrameDifference(browserFrame, renderedFrame);
+    // A mean over every RGB channel prevents a screenshot that only contains
+    // the background or an isolated sampled feature from passing this gate.
+    expect(comparison.mean, `full-composition frame ${sampledFrame} mean RGB difference`).toBeLessThanOrEqual(18);
+    frameAgreement.push({ frame: sampledFrame, ...comparison });
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewData, nativeData, previewBase, nativeBase, frameAgreement }, null, 2));
 });
 
 test("nested static uniform media rotation agrees in the player and native export", async ({ page }, info) => {
