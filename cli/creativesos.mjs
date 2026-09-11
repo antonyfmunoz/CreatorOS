@@ -10,7 +10,9 @@ import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const version = "0.1.0";
 const args = process.argv.slice(2);
-const command = args.includes("--version") || args.includes("-v") ? "version" : args.find((value) => !value.startsWith("-")) ?? "help";
+const commandIndex = args.findIndex((value) => !value.startsWith("-"));
+const command = args.includes("--version") || args.includes("-v") ? "version" : commandIndex === -1 ? "help" : args[commandIndex];
+const commandArgs = commandIndex === -1 ? [] : args.slice(commandIndex + 1);
 const json = args.includes("--json");
 const baseUrl = (process.env.CREATIVESOS_API_URL ?? "https://creativesos.net/api/v1").replace(/\/$/, "");
 const apiKey = process.env.CREATIVESOS_API_KEY?.trim();
@@ -172,6 +174,30 @@ async function downloadPrivateSource(url) {
   return source;
 }
 
+// Error text from Docker, the local runtime, or a network stack can contain a
+// private path, a source filename, or a short-lived asset URL. The CLI may
+// show that detail to the device owner, but the durable job timeline is shared
+// product state and must only receive a bounded, actionable explanation.
+function safeLocalRenderFailure(error) {
+  const message = error instanceof Error ? error.message : "";
+  if (/cancelled by its editor|abort(?:ed)?/i.test(message)) {
+    return { code: "local_node_render_cancelled", detail: "Stopped because cancellation was requested by the editor." };
+  }
+  if (/approved local CutStudio runtime image|docker(?: desktop)?|container/i.test(message)) {
+    return { code: "local_node_runtime_unavailable", detail: "The isolated local renderer could not start. Confirm Docker is running and the approved CutStudio runtime is installed." };
+  }
+  if (/source (?:download|archive)|source capsule|lockfile|short-lived/i.test(message)) {
+    return { code: "local_node_source_unavailable", detail: "The private source package could not be read. Retry the render to request a fresh protected download." };
+  }
+  if (/timed? out|timeout|maximum.*(?:cpu|memory|output)|exceeds.*limit|output.*limit/i.test(message)) {
+    return { code: "local_node_resource_limit", detail: "The isolated render exceeded an approved local resource limit. Simplify the composition or adjust its approved render settings." };
+  }
+  if (/upload|artifact.*(?:rejected|accept)|receipt/i.test(message)) {
+    return { code: "local_node_artifact_unavailable", detail: "The protected render output could not be verified or delivered. Retry the render." };
+  }
+  return { code: "local_node_render_failed", detail: "The isolated local render failed. Retry it; if it repeats, update the local CutStudio runtime." };
+}
+
 async function executeOneLocalJob(config) {
   const origin = config.appUrl;
   const claimed = await rawNodeRequest("/api/cut/nodes/jobs/claim", { method: "POST", credential: config.credential, origin });
@@ -232,8 +258,8 @@ async function executeOneLocalJob(config) {
     // deterministic output.
     return { status: "completed", jobId, artifactId: completed.body?.artifact?.id, sha256: artifactSha256, image };
   } catch (error) {
-    const detail = error instanceof Error ? error.message.slice(0, 400) : "Local isolated rendering failed";
-    await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, origin, body: { leaseToken, code: "local_node_render_failed", detail } }).catch(() => undefined);
+    const failure = safeLocalRenderFailure(error);
+    await rawNodeRequest(`/api/cut/nodes/jobs/${jobId}/fail`, { method: "POST", credential: config.credential, origin, body: { leaseToken, ...failure } }).catch(() => undefined);
     throw error;
   }
 }
@@ -332,10 +358,15 @@ async function runLocalPreview(sourcePath) {
 }
 
 async function runNodeCommand() {
-  const subcommand = args[1];
+  // Global flags (notably --json) are valid before or after every command.
+  // Resolve the node subcommand from the remaining positional arguments rather
+  // than assuming `node` always occupies argv[0].
+  const subcommandIndex = commandArgs.findIndex((value) => !value.startsWith("-"));
+  const subcommand = subcommandIndex === -1 ? undefined : commandArgs[subcommandIndex];
+  const firstNodeArgument = subcommandIndex === -1 ? undefined : commandArgs.slice(subcommandIndex + 1).find((value) => !value.startsWith("-"));
   if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) return usage();
   if (subcommand === "connect") {
-    const pairingCode = args[2];
+    const pairingCode = firstNodeArgument;
     if (!pairingCode || pairingCode.startsWith("-")) fail("provide the one-time pairing code: creativesos node connect <pairing-code>", 2);
     if (await loadNodeConfig(false)) fail("this machine is already paired. Run `creativesos node disconnect` before pairing it again.", 2);
     const name = option("--name") ?? `${os.hostname()} CutStudio node`;
@@ -363,7 +394,7 @@ async function runNodeCommand() {
     return;
   }
   if (subcommand === "preview") {
-    await runLocalPreview(args[2]);
+    await runLocalPreview(firstNodeArgument);
     return;
   }
   if (subcommand === "serve") {

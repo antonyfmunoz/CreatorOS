@@ -86,6 +86,16 @@ describe("CutStudio local-node contract", () => {
     expect(cliSource).toContain('sha256: artifactSha256');
   });
 
+  it("keeps private local-render failures out of the durable job timeline while preserving actionable recovery guidance", () => {
+    expect(cliSource).toContain("function safeLocalRenderFailure(error)");
+    expect(cliSource).toContain("private path, a source filename, or a short-lived asset URL");
+    expect(cliSource).toContain('code: "local_node_runtime_unavailable"');
+    expect(cliSource).toContain('code: "local_node_source_unavailable"');
+    expect(cliSource).toContain('code: "local_node_resource_limit"');
+    expect(cliSource).toContain('body: { leaseToken, ...failure }');
+    expect(cliSource).not.toContain("const detail = error instanceof Error ? error.message.slice(0, 400)");
+  });
+
   it("keeps legacy or missing output budgets inside the hardened runtime ceiling", () => {
     expect(cliSource).toContain("Number.isSafeInteger(declaredMaximumOutputBytes)");
     expect(cliSource).toContain("declaredMaximumOutputBytes >= 1024");
