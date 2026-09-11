@@ -19,7 +19,7 @@ describe("private mask semantics", () => {
   it("fails unsupported native masks before compiling an executable edit", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     for (const kind of ["audio", "lottie", "rive", "data"]) {
-      expect(() => compileCompositionToEdl({ version: 1, name: "Unsupported mask", width: 480, height: 270, fps: 30, durationInFrames: 30, layers: [{ id: "media", name: "Media", kind, assetId: id, from: 0, durationInFrames: 30, effects: [{ id: "mask", kind: "mask", parameters: { maskAssetId: id } }] }] }, { version: 3, clips: [] })).toThrow(/not supported yet/);
+      expect(() => compileCompositionToEdl({ version: 1, name: "Unsupported mask", width: 480, height: 270, fps: 30, durationInFrames: 30, layers: [{ id: "media", name: "Media", kind, assetId: id, text: kind === "data" ? "Masked metric" : undefined, from: 0, durationInFrames: 30, effects: [{ id: "mask", kind: "mask", parameters: { maskAssetId: id } }] }] }, { version: 3, clips: [] })).toThrow(/not supported yet/);
     }
   });
   it("carries a video layer's private mask into the native timeline", () => {

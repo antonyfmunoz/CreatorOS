@@ -140,6 +140,32 @@ test("declarative composition player and native export agree at an authored nonl
         enter: { kind: "wipe", durationInFrames: 12, easing: "ease_in_out", direction: "left" },
         animations: [],
       },
+      {
+        id: "data-metric",
+        kind: "data",
+        name: "Qualified lead metric",
+        from: 0,
+        durationInFrames: 30,
+        sourceStartFrame: 0,
+        text: "42 qualified leads",
+        x: .05,
+        y: .8,
+        width: .3,
+        height: .1,
+        opacity: 1,
+        rotation: 0,
+        volume: 1,
+        anchorX: .5,
+        anchorY: .5,
+        rotationX: 0,
+        rotationY: 0,
+        perspective: 0,
+        blendMode: "normal",
+        style: { color: "#ffffff", backgroundColor: "#1d9bf0", backgroundOpacity: 1, fontSize: 36 },
+        dataBindings: {},
+        effects: [],
+        animations: [],
+      },
     ],
   };
   const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, {
@@ -163,6 +189,7 @@ test("declarative composition player and native export agree at an authored nonl
   await expect(compositionCard).toBeVisible();
   const player = compositionCard.getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
+  await expect(player.getByText("42 qualified leads", { exact: true })).toBeVisible();
   const slider = player.getByLabel("Preview frame", { exact: true });
   await slider.press("Home");
   for (let step = 0; step < frame; step += 1) await slider.press("ArrowRight");
@@ -179,6 +206,10 @@ test("declarative composition player and native export agree at an authored nonl
   const previewShape = samplePreview(.6, .45);
   const previewWipeVisible = samplePreview(.2, .12);
   const previewWipeHidden = samplePreview(.5, .12);
+  // Sample the data card's lower-right interior instead of its text glyphs:
+  // browser and native text rasterization deliberately use independent font
+  // sessions, so antialiased glyph-edge pixels are not a stable color oracle.
+  const previewData = samplePreview(.32, .87);
   const previewBase = samplePreview(.05, .05);
   expect(previewShape[0]).toBeGreaterThan(previewBase[0] + 180);
   expect(previewShape[1]).toBeLessThan(20);
@@ -186,6 +217,7 @@ test("declarative composition player and native export agree at an authored nonl
   expect(previewWipeVisible[1]).toBeGreaterThan(previewBase[1] + 180);
   expect(previewWipeVisible[0]).toBeLessThan(20);
   expect(previewWipeHidden[1]).toBeLessThan(20);
+  expect(previewData[2]).toBeGreaterThan(previewBase[2] + 80);
 
   const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, {
     idempotencyKey: `e2e.composition.preview-export.${crypto.randomUUID()}`,
@@ -208,13 +240,15 @@ test("declarative composition player and native export agree at an authored nonl
   const nativeShape = sampleNative(.6, .45);
   const nativeWipeVisible = sampleNative(.2, .12);
   const nativeWipeHidden = sampleNative(.5, .12);
+  const nativeData = sampleNative(.32, .87);
   const nativeBase = sampleNative(.05, .05);
   for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["wipe-visible", previewWipeVisible, nativeWipeVisible], ["wipe-hidden", previewWipeHidden, nativeWipeHidden], ["base", previewBase, nativeBase]] as const) {
     for (let channel = 0; channel < 3; channel += 1) {
       expect(Math.abs(previewSample[channel] - nativeSample[channel]), `${name} frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
     }
   }
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewBase, nativeBase }, null, 2));
+  for (let channel = 0; channel < 3; channel += 1) expect(Math.abs(previewData[channel] - nativeData[channel]), `data frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewData, nativeData, previewBase, nativeBase }, null, 2));
 });
 
 test("nested static composition placement agrees in the player and native export", async ({ page }, info) => {

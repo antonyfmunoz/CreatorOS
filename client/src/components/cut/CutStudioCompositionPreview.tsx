@@ -300,9 +300,10 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
     transformOrigin: `${layer.anchorX * 100}% ${layer.anchorY * 100}%`, transformStyle: "preserve-3d", mixBlendMode: layer.blendMode.replace("_", "-") as CSSProperties["mixBlendMode"], filter: visual.filter, ...revealStyle(state),
   };
   let content = null;
-  if (layer.kind === "text" || layer.kind === "caption") {
+  if (layer.kind === "text" || layer.kind === "caption" || layer.kind === "data") {
     const font = fonts.find((candidate) => candidate.assetId && candidate.family === layer.style.fontFamily);
-    const textStyles = cutTextStyles(resolveCutTextLayout(layer.style, font), canvasWidth, "container", font ? `${JSON.stringify(font.family)}, "CutStudio Noto Sans", sans-serif` : '"CutStudio Noto Sans", sans-serif', String(layer.style.color ?? "#ffffff"), layer.style.backgroundColor ? colorWithOpacity(layer.style.backgroundColor, layer.style.backgroundOpacity) : "transparent");
+    const dataDefaults = layer.kind === "data" ? { color: "#1d9bf0", backgroundColor: "#1d9bf0", backgroundOpacity: .15 } : null;
+    const textStyles = cutTextStyles(resolveCutTextLayout(layer.style, font), canvasWidth, "container", font ? `${JSON.stringify(font.family)}, "CutStudio Noto Sans", sans-serif` : '"CutStudio Noto Sans", sans-serif', String(layer.style.color ?? dataDefaults?.color ?? "#ffffff"), layer.style.backgroundColor || dataDefaults?.backgroundColor ? colorWithOpacity(layer.style.backgroundColor ?? dataDefaults?.backgroundColor, layer.style.backgroundOpacity ?? dataDefaults?.backgroundOpacity) : "transparent");
     content = <CutStudioTextPreview text={layer.text} layout={resolveCutTextLayout(layer.style, font)} styles={{ box: textStyles.box as CSSProperties, content: textStyles.content as CSSProperties }} canvasWidth={canvasWidth} fontsReady={fontsReady}/>;
   }
   else if (layer.kind === "shape") content = <div className="h-full w-full" style={{ background: String(layer.style.fill ?? layer.style.backgroundColor ?? "#1d9bf0"), borderRadius: `${Math.max(0, Math.min(100, Number(layer.style.borderRadius ?? 0)))}%` }}/>;
@@ -314,7 +315,6 @@ function PreviewLayer({ layer, state, frame, fps, canvasWidth, fonts, ...playbac
   else if (layer.kind === "svg" || layer.kind === "path") content = <VectorLayer layer={layer}/>;
   else if (layer.kind === "three") content = <ThreePrimitiveLayer layer={layer}/>;
   else if (layer.kind === "lottie") content = <LottieLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
-  else if (layer.kind === "data") content = <div className="grid h-full w-full place-items-center rounded border border-[#1d9bf0]/50 bg-[#1d9bf0]/15 px-2 text-center text-[8px] font-bold text-[#1d9bf0]">{layer.text ?? layer.name}</div>;
   else if (layer.kind === "rive") content = <RiveLayer key={layer.assetId} layer={layer} frame={frame} fps={fps}/>;
   if (!content) return null;
   let maskAsset: string | null = null; let maskError = "";
