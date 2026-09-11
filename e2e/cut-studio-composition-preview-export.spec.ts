@@ -423,3 +423,69 @@ test("animated primary-media rotation and color agree in the player and native e
   }
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewColor, previewBlack, nativeColor, nativeBlack }, null, 2));
 });
+
+test("primary-media 3D perspective agrees in the player and native export", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const owner = ownerFor(info);
+  const directory = info.outputPath("primary-media-3d-composition-preview-export");
+  mkdirSync(directory, { recursive: true });
+  const sourcePath = `${directory}/source.mp4`;
+  // A uniform, high-chroma source makes the contracted 3D footprint visible
+  // without a protected fixture. At 60 degrees, the center remains painted
+  // while a point inside the untransformed rectangle becomes transparent.
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x40c080:s=160x90:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath], { windowsHide: true, timeout: 10_000, stdio: "pipe" });
+  const uploaded = await page.request.post("/api/assets/upload-proxy", {
+    headers: { "x-creativesos-demo-user": String(owner) },
+    multipart: { kind: "video", visibility: "private", video: { name: "primary-3d-oracle.mp4", mimeType: "video/mp4", buffer: readFileSync(sourcePath) } },
+  });
+  await expectOk(uploaded);
+  const source = (await uploaded.json()).asset;
+  const created = await request(page, owner, "POST", "/api/cut/projects", { sourceAssetId: source.id, name: `Primary 3D composition oracle ${Date.now()}`, duration: 1, mediaKind: "video" });
+  await expectOk(created);
+  const project = await created.json();
+  const compositionName = `Primary 3D source ${Date.now()}`;
+  const manifest = {
+    version: 1, name: compositionName, width: 1280, height: 720, fps: 30, durationInFrames: 30, background: "#000000", parameters: [], fonts: [], metadata: { qualification: "primary-media-3d-composition-preview-export" },
+    layers: [{
+      id: "primary", kind: "video", name: "Perspective teal primary media", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0,
+      x: .3, y: .3, width: .4, height: .4, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 60, perspective: 900, blendMode: "normal", style: {}, dataBindings: {}, effects: [], animations: [],
+    }],
+  };
+  const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: compositionName, mode: "declarative", manifest, codeCapsule: null });
+  await expectOk(saved);
+  const composition = await saved.json();
+  await page.goto(`/cut-studio?project=${project.id}`);
+  const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
+  await expect(player).toBeVisible();
+  const media = player.getByLabel("Perspective teal primary media", { exact: true });
+  await expect.poll(async () => media.evaluate((element) => {
+    const video = element as HTMLMediaElement;
+    return !video.error && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+  }), { timeout: 15_000 }).toBe(true);
+  const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview.png` });
+  const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
+  const previewCenter = previewPixel(.5, .5);
+  const previewOutside = previewPixel(.32, .5);
+  expect(previewCenter[1]).toBeGreaterThan(80);
+  expect(previewCenter[0]).toBeGreaterThan(30);
+  expect(previewOutside[0]).toBeLessThan(20);
+
+  const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, { idempotencyKey: `e2e.primary.3d.preview-export.${crypto.randomUUID()}`, compositionIds: [composition.id], render: { aspect: "source", captions: false, quality: "draft", resolution: "720p", fps: 30 } });
+  await expectOk(batch);
+  const job = (await batch.json()).jobs[0];
+  await waitForCutRender(page.request, job.id, info, { "x-creativesos-demo-user": String(owner) });
+  const output = await downloadCutRender(page.request, job.id, `${directory}/primary-3d-render.mp4`, { "x-creativesos-demo-user": String(owner) });
+  const native = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+  const nativeImage = await sharp(native).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const nativePixel = (x: number, y: number) => [...nativeImage.data.subarray((Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels, (Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels + 3)];
+  const nativeCenter = nativePixel(.5, .5);
+  const nativeOutside = nativePixel(.32, .5);
+  expect(nativeCenter[1]).toBeGreaterThan(80);
+  expect(nativeCenter[0]).toBeGreaterThan(30);
+  expect(nativeOutside[0]).toBeLessThan(20);
+  for (const [name, previewValue, nativeValue] of [["center", previewCenter, nativeCenter], ["outside", previewOutside, nativeOutside]] as const) {
+    for (let channel = 0; channel < 3; channel += 1) expect(Math.abs(previewValue[channel] - nativeValue[channel]), `${name} channel ${channel}`).toBeLessThanOrEqual(18);
+  }
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, previewCenter, previewOutside, nativeCenter, nativeOutside }, null, 2));
+});

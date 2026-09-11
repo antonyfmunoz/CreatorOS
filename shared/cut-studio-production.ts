@@ -813,9 +813,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
     mediaTrackCounts[layer.kind] += 1;
     const trackIndex = Math.min(8, mediaTrackCounts[layer.kind]);
-    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity", "rotation", "brightness", "saturation"].includes(item.property));
+    const motion = layer.animations.filter((item) => ["x", "y", "scale", "opacity", "rotation", "rotationX", "rotationY", "perspective", "brightness", "saturation"].includes(item.property));
     const frames = Array.from(new Set(motion.flatMap((item) => item.keyframes.map((keyframe) => keyframe.frame)))).sort((a, b) => a - b);
-    const easingAt = (property: "x" | "y" | "scale" | "opacity" | "rotation" | "brightness" | "saturation", frame: number): CutMotionEasing =>
+    const easingAt = (property: "x" | "y" | "scale" | "opacity" | "rotation" | "rotationX" | "rotationY" | "perspective" | "brightness" | "saturation", frame: number): CutMotionEasing =>
       layer.animations.find((animation) => animation.property === property)?.keyframes.find((keyframe) => keyframe.frame === frame)?.easing ?? "linear";
     return [{
       id: layer.id,
@@ -827,7 +827,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
       track: `${trackPrefix}${trackIndex}`,
       timelineStart: layer.from / fps,
       volume: layer.volume,
-      transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height, opacity: layer.opacity, rotation: layer.rotation, anchorX: layer.anchorX, anchorY: layer.anchorY },
+      transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height, opacity: layer.opacity, rotation: layer.rotation, rotationX: layer.rotationX, rotationY: layer.rotationY, perspective: layer.perspective, anchorX: layer.anchorX, anchorY: layer.anchorY },
       motionKeyframes: frames.slice(0, 50).map((frame) => ({
         at: frame / fps,
         x: valueAtFrame(layer, "x", frame, layer.x),
@@ -835,6 +835,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         scale: valueAtFrame(layer, "scale", frame, 1),
         opacity: valueAtFrame(layer, "opacity", frame, layer.opacity),
         rotation: valueAtFrame(layer, "rotation", frame, layer.rotation),
+        rotationX: valueAtFrame(layer, "rotationX", frame, layer.rotationX),
+        rotationY: valueAtFrame(layer, "rotationY", frame, layer.rotationY),
+        perspective: valueAtFrame(layer, "perspective", frame, layer.perspective),
         brightness: valueAtFrame(layer, "brightness", frame, 1),
         saturation: valueAtFrame(layer, "saturation", frame, 1),
         // Preserve each authored property curve. The generic legacy field is
@@ -846,6 +849,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
         scaleEasing: easingAt("scale", frame),
         opacityEasing: easingAt("opacity", frame),
         rotationEasing: easingAt("rotation", frame),
+        rotationXEasing: easingAt("rotationX", frame),
+        rotationYEasing: easingAt("rotationY", frame),
+        perspectiveEasing: easingAt("perspective", frame),
         brightnessEasing: easingAt("brightness", frame),
         saturationEasing: easingAt("saturation", frame),
       })),

@@ -88,6 +88,11 @@ export const cutClipSchema = z.object({
     // Optional to keep queued immutable v3 snapshots valid. The renderer
     // supplies CSS-compatible centered defaults for legacy clips.
     rotation: z.number().finite().min(-3_600).max(3_600).optional(),
+    // Optional 3D fields preserve compatibility with immutable timeline
+    // snapshots created before native media transforms were available.
+    rotationX: z.number().finite().min(-3_600).max(3_600).optional(),
+    rotationY: z.number().finite().min(-3_600).max(3_600).optional(),
+    perspective: z.number().finite().min(0).max(10_000).optional(),
     anchorX: z.number().finite().min(-4).max(4).optional(),
     anchorY: z.number().finite().min(-4).max(4).optional(),
   }).optional(),
@@ -98,6 +103,9 @@ export const cutClipSchema = z.object({
     scale: z.number().finite().min(0.25).max(4).optional(),
     opacity: z.number().finite().min(0).max(1).optional(),
     rotation: z.number().finite().min(-3_600).max(3_600).optional(),
+    rotationX: z.number().finite().min(-3_600).max(3_600).optional(),
+    rotationY: z.number().finite().min(-3_600).max(3_600).optional(),
+    perspective: z.number().finite().min(0).max(10_000).optional(),
     brightness: z.number().finite().min(0).max(4).optional(),
     saturation: z.number().finite().min(0).max(4).optional(),
     // Each property may retain its authored curve when a composition is
@@ -109,6 +117,9 @@ export const cutClipSchema = z.object({
     scaleEasing: cutMotionEasingSchema.optional(),
     opacityEasing: cutMotionEasingSchema.optional(),
     rotationEasing: cutMotionEasingSchema.optional(),
+    rotationXEasing: cutMotionEasingSchema.optional(),
+    rotationYEasing: cutMotionEasingSchema.optional(),
+    perspectiveEasing: cutMotionEasingSchema.optional(),
     brightnessEasing: cutMotionEasingSchema.optional(),
     saturationEasing: cutMotionEasingSchema.optional(),
   })).max(50).optional(),

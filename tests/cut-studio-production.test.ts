@@ -117,6 +117,9 @@ describe("CutStudio programmable production runtime", () => {
           { property: "x" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .8, easing: "ease_in" as const }] },
           { property: "y" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: .4, easing: "ease_out" as const }] },
           { property: "scale" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: 1.3, easing: "spring" as const }] },
+          { property: "rotationX" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: 18, easing: "ease_out" as const }] },
+          { property: "rotationY" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: -24, easing: "spring" as const }] },
+          { property: "perspective" as const, keyframes: [{ frame: 0, value: 0 }, { frame: 60, value: 900, easing: "ease_in" as const }] },
           { property: "opacity" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: .3, easing: "step" as const }] },
           { property: "brightness" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: .7, easing: "ease_out" as const }] },
           { property: "saturation" as const, keyframes: [{ frame: 0, value: 1 }, { frame: 60, value: .2, easing: "ease_in" as const }] },
@@ -124,7 +127,8 @@ describe("CutStudio programmable production runtime", () => {
       }],
     };
     const clip = compileCompositionToEdl(easedManifest, { version: 3, clips: [] }).clips[0];
-    expect(clip.motionKeyframes?.at(-1)).toMatchObject({ at: 2, easing: "linear", xEasing: "ease_in", yEasing: "ease_out", scaleEasing: "spring", opacityEasing: "step", brightness: .7, saturation: .2, brightnessEasing: "ease_out", saturationEasing: "ease_in" });
+    expect(clip.transform).toMatchObject({ rotationX: 0, rotationY: 0, perspective: 0 });
+    expect(clip.motionKeyframes?.at(-1)).toMatchObject({ at: 2, easing: "linear", xEasing: "ease_in", yEasing: "ease_out", scaleEasing: "spring", rotationXEasing: "ease_out", rotationYEasing: "spring", perspectiveEasing: "ease_in", opacityEasing: "step", rotationX: 18, rotationY: -24, perspective: 900, brightness: .7, saturation: .2, brightnessEasing: "ease_out", saturationEasing: "ease_in" });
   });
 
   it("renders typed data layers into the same final graphic contract as preview", () => {
