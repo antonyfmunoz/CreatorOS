@@ -38,6 +38,9 @@ CutStudio local-node commands:
   node heartbeat [--status ready|busy|paused]
                 Send an explicit availability heartbeat to CreativesOS.
   node work     Claim and execute at most one approved code-render job locally.
+  node preview <source.zip> --request <request.json> --output <artifact>
+                Render a local-only isolated preview. It never contacts CreativesOS,
+                claims work, uploads an artifact, or overwrites an existing file.
   node serve [--poll-ms <2000-60000>]
                 Keep this foreground process available for approved local jobs.
   node disconnect
@@ -308,6 +311,26 @@ async function runOneNodeJob() {
   }
 }
 
+async function runLocalPreview(sourcePath) {
+  if (!sourcePath || sourcePath.startsWith("-")) fail("provide a local source ZIP: creativesos node preview <source.zip> --request <request.json> --output <artifact>", 2);
+  const requestPath = option("--request");
+  const outputPath = option("--output");
+  if (!requestPath || !outputPath) fail("node preview requires both --request <request.json> and --output <artifact>.", 2);
+  const [source, requestText] = await Promise.all([fs.readFile(path.resolve(sourcePath)), fs.readFile(path.resolve(requestPath), "utf8")]);
+  if (!source.length || source.length > 25 * 1024 * 1024) fail("the local source ZIP must be between 1 byte and 25 MiB.", 2);
+  let request;
+  try { request = JSON.parse(requestText); } catch { fail("--request must contain valid JSON.", 2); }
+  const destination = path.resolve(outputPath);
+  try { await fs.access(destination); fail("--output already exists; choose a new path so preview never overwrites a local artifact.", 2); }
+  catch (error) { if (error?.code !== "ENOENT") throw error; }
+  const image = localRuntimeImage();
+  const { renderIsolated } = await import(pathToFileURL(path.join(localRuntimeDirectory(), "host.mjs")).href);
+  const rendered = await renderIsolated({ request, source, image });
+  await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+  await fs.writeFile(destination, rendered.artifact, { flag: "wx", mode: 0o600 });
+  print({ status: "previewed_locally", output: destination, bytes: rendered.artifact.length, sha256: rendered.receipt.artifactSha256, image, network: "none", uploaded: false });
+}
+
 async function runNodeCommand() {
   const subcommand = args[1];
   if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) return usage();
@@ -337,6 +360,10 @@ async function runNodeCommand() {
   if (subcommand === "work") {
     const result = await runOneNodeJob();
     print(result);
+    return;
+  }
+  if (subcommand === "preview") {
+    await runLocalPreview(args[2]);
     return;
   }
   if (subcommand === "serve") {
