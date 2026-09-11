@@ -150,7 +150,7 @@ function PrimaryVideoOverlay({ clip, media, projectId, frame, fps, playing, onEr
   const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
   const style: CSSProperties = {
     left: `${state.x * 100}%`, top: `${state.y * 100}%`, width: `${transform.width * 100}%`, height: `${transform.height * 100}%`, opacity: state.opacity,
-    transform: `scale(${state.scale})`, transformOrigin: "top left",
+    transform: `rotate(${transform.rotation ?? 0}deg) scale(${state.scale})`, transformOrigin: `${(transform.anchorX ?? .5) * 100}% ${(transform.anchorY ?? .5) * 100}%`,
   };
   const maskUrl = clip.maskAssetId ? `/api/assets/${encodeURIComponent(clip.maskAssetId)}/stream` : undefined;
   return <div data-primary-preview-overlay={clip.id ?? media.id} data-primary-preview-mask={maskUrl ? "enabled" : "none"} className="absolute overflow-hidden" style={{ ...style, ...(maskUrl ? { maskImage: `url("${maskUrl}")`, WebkitMaskImage: `url("${maskUrl}")`, maskMode: "luminance", maskSize: "100% 100%", WebkitMaskSize: "100% 100%", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat" } : {}) }}>

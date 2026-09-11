@@ -60,10 +60,11 @@ Nested declarative compositions flatten their native children without creating a
 private intermediate bitmap. A static container can therefore place and
 rectangularly scale its full child canvas while inheriting opacity and audio
 gain into the child layers and authored X/Y/opacity/volume curves. A static,
-uniformly scaled 2D container can additionally rotate a graphic-only child
-composition exactly around the group pivot: each child graphic receives the
+uniformly scaled 2D container can additionally rotate a static visual child
+composition exactly around the group pivot: each child layer receives the
 mapped transform origin and summed Z rotation, rather than an unsafe copied
-offset. Media children, X/Y group or child motion, 3D, group effects, blending,
+offset; video uses the same static transform origin in browser and native
+rendering. Audio children, X/Y group or child motion, 3D, group effects, blending,
 group animation/transitions, slide/flip child transitions, and rectangular
 scaling of a child slide transition remain explicitly rejected until a true
 composition-group renderer can preserve preview/export agreement.

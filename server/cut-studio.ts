@@ -670,6 +670,19 @@ async function appendCaptionFilter(filters: string[], videoLabel: string, reques
   return "captioned";
 }
 
+function cutPrimaryClipNeedsCompositionSurface(clip: CutEdl["clips"][number]) {
+  const transform = clip.transform;
+  if (!transform) return false;
+  return transform.x !== 0
+    || transform.y !== 0
+    || transform.width !== 1
+    || transform.height !== 1
+    || transform.opacity !== 1
+    || (transform.rotation ?? 0) !== 0
+    || (transform.anchorX ?? .5) !== .5
+    || (transform.anchorY ?? .5) !== .5;
+}
+
 async function renderMultitrack(
   jobId: string,
   leaseToken: string,
@@ -716,6 +729,16 @@ async function renderMultitrack(
   const height = request.resolution === "720p" ? 720 : request.resolution === "2160p" ? 2160 : 1080;
   const composition = request.composition && request.aspect === "source" ? cutCompositionManifestSchema.parse(request.composition.manifest) : null;
   const size = composition ? cutCompositionRenditionSize(composition.width, composition.height, request.resolution) : request.aspect === "source" ? cutSourceRenditionSize(inputById.get(source.id)?.media.videoGeometry ?? {}, height) : request.aspect === "16:9" ? [Math.round(height * 16 / 9 / 2) * 2, height] : request.aspect === "9:16" ? [Math.round(height * 9 / 16 / 2) * 2, height] : [height, height];
+  // A composition's lone V1 source can itself be a positioned visual layer.
+  // The primary timeline normally makes V1 the opaque render base, which is
+  // correct for an edit but silently discards that layer's geometry. For the
+  // bounded one-segment composition case, make the base black and send V1
+  // through the same overlay pipeline as every other visual layer.
+  const primaryVisualSurface = Boolean(composition)
+    && primaryPlan.segments.length === 1
+    && Boolean(primaryPlan.segments[0]?.clip)
+    && cutPrimaryClipNeedsCompositionSurface(primaryPlan.segments[0]!.clip!)
+    && !(primaryPlan.segments[0]!.clip!.motionKeyframes?.length);
   const graphicPlans = planCutGraphicRasters(graphics, size[0], size[1]);
   for (let index = 0; index < primaryPlan.segments.length; index += 1) {
     const { clip, duration: outputDuration } = primaryPlan.segments[index];
@@ -731,10 +754,14 @@ async function renderMultitrack(
     if (!media?.hasVideo || sourceIndex === undefined) throw new Error("Primary multitrack clips must contain video");
     const speed = clip.speed ?? 1;
     const { fadeIn, fadeOut } = cutClipFades(clip, outputDuration, index, primaryPlan.segments.length);
-    const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
-    if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
-    if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
-    filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
+    if (primaryVisualSurface) {
+      filters.push(`color=c=black:s=${size[0]}x${size[1]}:r=${request.fps}:d=${outputDuration},format=yuv420p,settb=AVTB[basev${index}]`);
+    } else {
+      const videoFilters = [`trim=start=${clip.start}:end=${clip.end}`, `setpts=(PTS-STARTPTS)/${speed}`, ...clipColorFilters(clip, lutPaths), ...cutFitVideoFilters(size[0], size[1]), `fps=${request.fps}`, "format=yuv420p", "settb=AVTB"];
+      if (fadeIn > 0) videoFilters.push(`fade=t=in:st=0:d=${fadeIn}`);
+      if (fadeOut > 0) videoFilters.push(`fade=t=out:st=${Math.max(0, outputDuration - fadeOut)}:d=${fadeOut}`);
+      filters.push(`[${sourceIndex}:v]${videoFilters.join(",")}[basev${index}]`);
+    }
     if (primaryHasAudio && media.hasAudio) {
       const audioFilters = [`atrim=start=${clip.start}:end=${clip.end}`, "asetpts=PTS-STARTPTS", ...atempoFilters(speed), `volume='${clipVolumeExpression(clip, trackGain("v1"))}':eval=frame`, "aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo", "apad", `atrim=duration=${outputDuration}`];
       if (fadeIn > 0) audioFilters.push(`afade=t=in:st=0:d=${fadeIn}`);
@@ -775,7 +802,7 @@ async function renderMultitrack(
   let overlayIndex = 0;
   let duckingIndex = 0;
   const audioLabels = primaryHasAudio ? ["[baseaudio]"] : [];
-  for (const clip of clips.filter((item) => (item.track ?? "v1") !== "v1")) {
+  for (const clip of clips.filter((item) => primaryVisualSurface || (item.track ?? "v1") !== "v1")) {
     const assetId = clip.assetId;
     if (!assetId) continue;
     const input = inputById.get(assetId);
@@ -788,6 +815,9 @@ async function renderMultitrack(
       const transform = clip.transform ?? { x: 0, y: 0, width: 1, height: 1, opacity: 1 };
       const overlayWidth = Math.max(2, Math.round(size[0] * transform.width / 2) * 2);
       const overlayHeight = Math.max(2, Math.round(size[1] * transform.height / 2) * 2);
+      const rotation = transform.rotation ?? 0;
+      const anchorX = transform.anchorX ?? .5;
+      const anchorY = transform.anchorY ?? .5;
       const animatedScale = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.scale === "number");
       const scales = [1, ...(clip.motionKeyframes ?? []).flatMap((keyframe) => typeof keyframe.scale === "number" ? [keyframe.scale] : [])];
       const minimumScale = Math.min(...scales); const maximumScale = Math.max(...scales);
@@ -798,6 +828,12 @@ async function renderMultitrack(
       const overlayFilters = animatedScale
         ? [...clipColorFilters(clip, lutPaths), `scale=${maximumAnimatedWidth}:${maximumAnimatedHeight}`, `pad=${virtualWidth}:${virtualHeight}:0:0:color=black@0`, "format=rgba", `zoompan=z='${motionScaleExpression(clip, minimumScale, request.fps)}':x=0:y=0:d=1:s=${maximumAnimatedWidth}x${maximumAnimatedHeight}:fps=${request.fps}`, `setpts=PTS+${timelineStart}/TB`]
         : [...clipColorFilters(clip, lutPaths), `scale=${overlayWidth}:${overlayHeight}:force_original_aspect_ratio=decrease`, `pad=${overlayWidth}:${overlayHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, "format=rgba"];
+      // The transform stays a top-left authored rectangle. When rotated, pad
+      // into a fixed diagonal surface and place that surface from the mapped
+      // transform origin, matching the composition player's CSS semantics.
+      const rotatedRasterWidth = rotation === 0 ? (animatedScale ? virtualWidth : overlayWidth) : Math.max(2, Math.ceil(Math.hypot(animatedScale ? virtualWidth : overlayWidth, animatedScale ? virtualHeight : overlayHeight) / 2) * 2);
+      const rotatedRasterHeight = rotation === 0 ? (animatedScale ? virtualHeight : overlayHeight) : rotatedRasterWidth;
+      if (rotation !== 0) overlayFilters.push(`pad=${rotatedRasterWidth}:${rotatedRasterHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0`, `rotate=angle='${Number((rotation * Math.PI / 180).toFixed(8))}':ow=iw:oh=ih:c=none`);
       if (clip.chromaKey?.enabled) overlayFilters.push(`chromakey=0x${clip.chromaKey.color.slice(1)}:${clip.chromaKey.similarity}:${clip.chromaKey.blend}`);
       const animatedOpacity = (clip.motionKeyframes ?? []).some((keyframe) => typeof keyframe.opacity === "number");
       if (animatedOpacity) {
@@ -813,8 +849,8 @@ async function renderMultitrack(
         filters.push(`[${maskInput}:v]scale=${animatedScale ? maximumAnimatedWidth : overlayWidth}:${animatedScale ? maximumAnimatedHeight : overlayHeight},format=gray[overlaymask${overlayIndex}]`);
         filters.push(`[${overlayLabel}raw][overlaymask${overlayIndex}]alphamerge[${overlayLabel}]`);
       }
-      const overlayX = motionOverlayExpression(clip, "x", size[0]);
-      const overlayY = motionOverlayExpression(clip, "y", size[1]);
+      const overlayX = rotation === 0 ? motionOverlayExpression(clip, "x", size[0]) : `(${motionOverlayExpression(clip, "x", size[0])})+${Number((anchorX * overlayWidth - rotatedRasterWidth / 2).toFixed(5))}`;
+      const overlayY = rotation === 0 ? motionOverlayExpression(clip, "y", size[1]) : `(${motionOverlayExpression(clip, "y", size[1])})+${Number((anchorY * overlayHeight - rotatedRasterHeight / 2).toFixed(5))}`;
       filters.push(`[${videoLabel}][overlay${overlayIndex}]overlay=x='${overlayX}':y='${overlayY}':eval=frame:eof_action=pass:shortest=0:enable='between(t,${timelineStart},${timelineStart + clipDuration})'[framed${overlayIndex + 1}]`);
       videoLabel = `framed${overlayIndex + 1}`;
       overlayIndex += 1;
@@ -1133,7 +1169,12 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     const lutPaths = await materializeCutLuts(project, clips, temp);
-    if (project.edl.version === 3 && project.mediaKind === "video" && (cutPrimaryTimeline({ ...project.edl, clips }).requiresTimeline || clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
+    // A saved composition is always a compositing request, even when its
+    // only visual happens to reference the project source on V1.  The simple
+    // single-source render path deliberately ignores an EDL clip transform;
+    // routing that case there silently drops a composition's placement,
+    // rotation and opacity.  The multitrack renderer owns those transforms.
+    if (project.edl.version === 3 && project.mediaKind === "video" && (Boolean(compositionManifest) || cutPrimaryTimeline({ ...project.edl, clips }).requiresTimeline || clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });

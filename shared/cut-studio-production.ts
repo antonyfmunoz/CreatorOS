@@ -463,7 +463,7 @@ function applyNestedContainerLayout(child: CutCompositionManifest["layers"][numb
  * surface in both the browser and native renderer.
  */
 function applyStaticUniformNestedGraphicRotation(child: CutCompositionManifest["layers"][number], container: CutCompositionManifest["layers"][number]) {
-  if (child.kind === "video" || child.kind === "audio") throw new Error("Nested composition rotation currently supports graphic-only child compositions; media group rotation requires composition-group rendering");
+  if (child.kind === "audio") throw new Error("Nested composition rotation currently supports visual child layers only; rotated audio groups require composition-group rendering");
   if (child.blendMode !== "normal" || child.rotationX !== 0 || child.rotationY !== 0 || child.perspective !== 0 || [child.enter, child.exit].some((transition) => transition?.kind === "flip" || transition?.kind === "slide")) {
     throw new Error("Nested composition rotation cannot contain blended, 3D, flip, or slide child graphics until composition-group rendering is available");
   }
@@ -806,6 +806,9 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
   const mediaTrackCounts = { video: 0, audio: 0 };
   const clips = manifest.layers.flatMap((layer) => {
     if (!layer.assetId || (layer.kind !== "video" && layer.kind !== "audio")) return [];
+    if (layer.kind === "video" && layer.rotation !== 0 && layer.animations.some((animation) => ["x", "y", "scale", "rotation"].includes(animation.property))) {
+      throw new Error("Rotated video layers currently require static position, scale, and rotation until animated media transforms are rendered as composition surfaces");
+    }
     const sourceStart = layer.sourceStartFrame / fps;
     const duration = layer.durationInFrames / fps;
     const trackPrefix = layer.kind === "audio" ? "a" : "v";
@@ -825,7 +828,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
       track: `${trackPrefix}${trackIndex}`,
       timelineStart: layer.from / fps,
       volume: layer.volume,
-      transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height, opacity: layer.opacity },
+      transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height, opacity: layer.opacity, rotation: layer.rotation, anchorX: layer.anchorX, anchorY: layer.anchorY },
       motionKeyframes: frames.slice(0, 50).map((frame) => ({
         at: frame / fps,
         x: valueAtFrame(layer, "x", frame, layer.x),

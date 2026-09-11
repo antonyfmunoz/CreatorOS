@@ -336,7 +336,11 @@ describe("CutStudio programmable production runtime", () => {
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId })).toThrow(/resolution is unavailable/i);
     expect(() => expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: () => ({ ...manifest, fps: 24 }) })).toThrow(/same width, height, and frame rate/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10, width: .8 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/uniform container scaling/i);
-    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/graphic-only child/i);
+    const staticVideoChild = { ...manifest, layers: [{ ...sourceLayer, animations: [] }] };
+    const rotatedVideo = expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => staticVideoChild });
+    expect(rotatedVideo.layers.find((layer) => layer.kind === "video")?.rotation).toBeCloseTo(10);
+    const audioChild = { ...manifest, layers: [{ ...sourceLayer, kind: "audio" as const, rotation: 0, animations: [] }] };
+    expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], rotation: 10 }] }, { rootCompositionId: rootId, resolveComposition: () => audioChild })).toThrow(/visual child layers/i);
     const slideChild = { ...manifest, layers: [{ ...sourceLayer, enter: { kind: "slide" as const, durationInFrames: 10 } }] };
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], width: .8 }] }, { rootCompositionId: rootId, resolveComposition: () => slideChild })).toThrow(/child slide transitions/i);
     expect(() => expandNestedCompositionManifest({ ...root, layers: [{ ...root.layers[0], sourceStartFrame: 110, durationInFrames: 20 }] }, { rootCompositionId: rootId, resolveComposition: () => manifest })).toThrow(/source trim must remain/i);
