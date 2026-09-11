@@ -667,8 +667,8 @@ function graphicCurves(manifest: CutCompositionManifest, layer: CutCompositionMa
   const transitions: CutGraphicCurves["transitions"] = [];
   for (const phase of ["enter", "exit"] as const) {
     const transition = layer[phase];
-    if (!transition || !transition.durationInFrames || !["fade", "custom_mask", "slide", "zoom"].includes(transition.kind)) continue;
-    transitions.push({ phase, kind: transition.kind === "custom_mask" ? "fade" : transition.kind as "fade" | "slide" | "zoom", durationInFrames: transition.durationInFrames, easing: transition.easing,
+    if (!transition || !transition.durationInFrames || !["fade", "custom_mask", "slide", "zoom", "wipe", "clock_wipe", "iris"].includes(transition.kind)) continue;
+    transitions.push({ phase, kind: transition.kind === "custom_mask" ? "fade" : transition.kind as "fade" | "slide" | "zoom" | "wipe" | "clock_wipe" | "iris", durationInFrames: transition.durationInFrames, easing: transition.easing,
       ...(transition.direction && ["left", "right", "up", "down"].includes(transition.direction) ? { direction: transition.direction as "left" | "right" | "up" | "down" } : {}) });
   }
   return cutGraphicCurvesSchema.parse({ version: 1, fps: manifest.fps, durationInFrames: layer.durationInFrames,

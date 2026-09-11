@@ -54,3 +54,56 @@ export function cutGraphicCurveExpression(model: CutGraphicCurves, property: Cut
   // generated from declarative numbers/enums, never public expression strings.
   return `(st(0,${frame});(${expression})*${multiplier}+${offset})`.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
 }
+
+type GeometricRevealKind = "wipe" | "clock_wipe" | "iris";
+type GeometricRevealDirection = "left" | "right" | "up" | "down" | "clockwise" | "counterclockwise" | undefined;
+
+function geometricRevealAlpha(kind: GeometricRevealKind, direction: GeometricRevealDirection, progress: string, source = "alpha(X,Y)") {
+  const bounded = `clip(${progress},0,1)`;
+  if (kind === "iris") return `if(lte((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(${bounded})*(${bounded})*(W*W+H*H)/4),${source},0)`;
+  if (kind === "clock_wipe") {
+    const angle = "mod(atan2(X-W/2,H/2-Y)+2*PI,2*PI)";
+    return direction === "counterclockwise"
+      ? `if(gte(${angle},2*PI-((${bounded})*2*PI)),${source},0)`
+      : `if(lte(${angle},(${bounded})*2*PI),${source},0)`;
+  }
+  if (direction === "right") return `if(gte(X,W*(1-(${bounded}))),${source},0)`;
+  if (direction === "up") return `if(gte(Y,H*(1-(${bounded}))),${source},0)`;
+  if (direction === "down") return `if(lt(Y,H*(${bounded})),${source},0)`;
+  return `if(lt(X,W*(${bounded})),${source},0)`;
+}
+
+/**
+ * Per-frame alpha expression for validated declarative geometric reveals.
+ * This deliberately accepts only the internal curve model and t/T clocks;
+ * callers cannot provide arbitrary filter source or FFmpeg expression text.
+ */
+export function cutGraphicRevealAlphaExpression(model: CutGraphicCurves, timelineStart: number, timeVariable: "t" | "T") {
+  if (!Number.isFinite(timelineStart)) throw new Error("Graphic reveal start must be finite");
+  if (timeVariable !== "t" && timeVariable !== "T") throw new Error("Graphic reveal clock must be a supported native time variable");
+  const transitions = model.transitions.filter((transition): transition is typeof transition & { kind: GeometricRevealKind } => ["wipe", "clock_wipe", "iris"].includes(transition.kind));
+  if (!transitions.length) return undefined;
+  const frame = `clip(floor((${timeVariable}-${timelineStart}+0.000001)*${model.fps}),0,${model.durationInFrames - 1})`;
+  const reveal = (transition: typeof transitions[number]) => {
+    const start = transition.phase === "enter" ? 0 : Math.max(0, model.durationInFrames - transition.durationInFrames);
+    const progress = `(${frame}-${start})/${transition.durationInFrames}`;
+    const eased = transition.easing === "ease_in" ? `(${progress})*(${progress})`
+      : transition.easing === "ease_out" ? `1-(1-(${progress}))*(1-(${progress}))`
+        : transition.easing === "ease_in_out" ? `if(lt(${progress},.5),2*(${progress})*(${progress}),1-((-2*(${progress})+2)*(-2*(${progress})+2))/2)`
+          : transition.easing === "spring" ? `clip(1-exp(-7*(${progress}))*cos(10*(${progress})),0,1)`
+            : progress;
+    const visible = transition.phase === "enter" ? eased : `1-(${eased})`;
+    const direction = transition.direction as GeometricRevealDirection;
+    const mask = geometricRevealAlpha(transition.kind, direction, visible);
+    return transition.phase === "enter"
+      ? `if(lt(${frame},${transition.durationInFrames}),${mask},alpha(X,Y))`
+      : `if(gte(${frame},${start}),${mask},alpha(X,Y))`;
+  };
+  const enter = transitions.find((transition) => transition.phase === "enter");
+  const exit = transitions.find((transition) => transition.phase === "exit");
+  // The player evaluates an active exit after enter and therefore its reveal
+  // wins if the two transitions overlap. Keep that same precedence here.
+  const enterExpression = enter ? reveal(enter) : "alpha(X,Y)";
+  const expression = exit ? reveal(exit).replace(/alpha\(X,Y\)/g, enterExpression) : enterExpression;
+  return expression.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
+}

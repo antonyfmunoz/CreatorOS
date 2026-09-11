@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compileCompositionToEdl, evaluateCompositionFrame } from "../shared/cut-studio-production";
 import { cutGraphicSchema } from "../shared/cut-studio";
 import { cutGraphicCurvesSchema, evaluateCutGraphicCurve } from "../shared/cut-graphic-curves";
-import { cutGraphicCurveExpression } from "../server/cut-curve-expression";
+import { cutGraphicCurveExpression, cutGraphicRevealAlphaExpression } from "../server/cut-curve-expression";
 import { planCutGraphicRaster } from "../server/cut-graphic-geometry";
 
 const manifest = (easing: string, transition: string = "slide") => ({ version: 1, name: "Owned curves", width: 1920, height: 1080, fps: 30, durationInFrames: 100, layers: [
@@ -67,6 +67,19 @@ describe("native declarative graphic curves", () => {
     Object.assign(input.layers[1], { rotationY: 20 });
     const graphic = compileCompositionToEdl(input, { version: 3, clips: [] }).graphics![0];
     expect(graphic.compositionCurves).toBeUndefined();
+  });
+
+  it.each(["wipe", "clock_wipe", "iris"])("serializes an exact declarative %s reveal clock without user expression input", (transition) => {
+    const input = manifest("linear", transition);
+    const graphic = compileCompositionToEdl(input, { version: 3, clips: [] }).graphics![0];
+    const curves = cutGraphicCurvesSchema.parse(graphic.compositionCurves);
+    expect(curves.transitions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: transition, phase: "enter", durationInFrames: 20 })]));
+    const expression = cutGraphicRevealAlphaExpression(curves, graphic.timelineStart, "T");
+    expect(expression).toContain("floor((T-0.3333333333333333+0.000001)*30)");
+    expect(expression).toContain("alpha(X\\,Y)");
+    expect(expression).not.toMatch(/https?:|movie=|process|fetch/);
+    expect(() => cutGraphicRevealAlphaExpression(curves, Infinity, "T")).toThrow(/finite/);
+    expect(() => cutGraphicRevealAlphaExpression(curves, 0, "N" as "T")).toThrow(/clock/);
   });
 
   it("preserves clipped and overlapping transitions longer than the layer", () => {
