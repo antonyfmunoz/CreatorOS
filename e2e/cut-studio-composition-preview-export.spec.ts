@@ -251,7 +251,7 @@ test("declarative composition player and native export agree at an authored nonl
   writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewData, nativeData, previewBase, nativeBase }, null, 2));
 });
 
-test("nested static composition placement agrees in the player and native export", async ({ page }, info) => {
+test("nested static uniform graphic rotation agrees in the player and native export", async ({ page }, info) => {
   test.setTimeout(120_000);
   const owner = ownerFor(info);
   const directory = info.outputPath("nested-composition-preview-export");
@@ -282,10 +282,7 @@ test("nested static composition placement agrees in the player and native export
     durationInFrames: 30,
     background: "#000000",
     parameters: [], fonts: [], metadata: { qualification: "nested-composition-preview-export" },
-    layers: [
-      { id: "source", kind: "video", name: "Private black source", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [], animations: [] },
-      { id: "red", kind: "shape", name: "Nested red proof shape", from: 0, durationInFrames: 30, sourceStartFrame: 0, x: .1, y: .1, width: .4, height: .4, opacity: 1, rotation: 0, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: { fill: "#ff0000" }, dataBindings: {}, effects: [], animations: [] },
-    ],
+    layers: [{ id: "red", kind: "shape", name: "Nested red proof shape", from: 0, durationInFrames: 30, sourceStartFrame: 0, x: .1, y: .1, width: .4, height: .4, opacity: 1, rotation: 0, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: { fill: "#ff0000" }, dataBindings: {}, effects: [], animations: [] }],
   };
   const savedChild = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: childName, mode: "declarative", manifest: childManifest, codeCapsule: null });
   await expectOk(savedChild);
@@ -300,7 +297,10 @@ test("nested static composition placement agrees in the player and native export
     durationInFrames: 30,
     background: "#000000",
     parameters: [], fonts: [], metadata: { qualification: "nested-composition-preview-export" },
-    layers: [{ id: "child", kind: "composition", name: childName, compositionId: child.id, from: 0, durationInFrames: 30, sourceStartFrame: 0, x: .2, y: .2, width: .5, height: .5, opacity: 1, rotation: 0, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [], animations: [] }],
+    layers: [
+      { id: "root-source", kind: "video", name: "Private black root source", assetId: source.id, from: 0, durationInFrames: 30, sourceStartFrame: 0, x: 0, y: 0, width: 1, height: 1, opacity: 1, rotation: 0, volume: 0, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [], animations: [] },
+      { id: "child", kind: "composition", name: childName, compositionId: child.id, from: 0, durationInFrames: 30, sourceStartFrame: 0, x: .2, y: .2, width: .5, height: .5, opacity: 1, rotation: 90, volume: 1, anchorX: .5, anchorY: .5, rotationX: 0, rotationY: 0, perspective: 0, blendMode: "normal", style: {}, dataBindings: {}, effects: [], animations: [] },
+    ],
   };
   const savedRoot = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, { name: rootName, mode: "declarative", manifest: rootManifest, codeCapsule: null });
   await expectOk(savedRoot);
@@ -311,8 +311,8 @@ test("nested static composition placement agrees in the player and native export
   const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview.png` });
   const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
-  const previewRed = previewPixel(.35, .35);
-  const previewBlack = previewPixel(.55, .35);
+  const previewRed = previewPixel(.55, .35);
+  const previewBlack = previewPixel(.35, .35);
   expect(previewRed[0]).toBeGreaterThan(180);
   expect(previewRed[1]).toBeLessThan(20);
   expect(previewBlack[0]).toBeLessThan(20);
@@ -324,8 +324,8 @@ test("nested static composition placement agrees in the player and native export
   const native = execFileSync("ffmpeg", ["-v", "error", "-threads", "1", "-i", output, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { windowsHide: true, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
   const nativeImage = await sharp(native).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const nativePixel = (x: number, y: number) => [...nativeImage.data.subarray((Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels, (Math.floor(nativeImage.info.height * y) * nativeImage.info.width + Math.floor(nativeImage.info.width * x)) * nativeImage.info.channels + 3)];
-  const nativeRed = nativePixel(.35, .35);
-  const nativeBlack = nativePixel(.55, .35);
+  const nativeRed = nativePixel(.55, .35);
+  const nativeBlack = nativePixel(.35, .35);
   expect(nativeRed[0]).toBeGreaterThan(180);
   expect(nativeRed[1]).toBeLessThan(20);
   expect(nativeBlack[0]).toBeLessThan(20);

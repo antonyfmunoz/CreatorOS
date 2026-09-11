@@ -394,8 +394,12 @@ function assertSupportedCompositionContainer(layer: CutCompositionManifest["laye
   // (for example, a rotated non-square group introduces a matrix/skew), and
   // group effects/blending need an intermediate composite. Keep those cases
   // fail-closed instead of silently producing a different final render.
-  if (layer.rotation !== 0 || layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.length || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
-    throw new Error("Nested composition containers support static placement, rectangular scaling, opacity, and audio gain only; rotation, 3D, effects, blend, animation, and transitions require composition-group rendering");
+  const hasStaticUniform2dRotation = layer.rotation !== 0;
+  if (layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.length || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
+    throw new Error("Nested composition containers support static placement, rectangular scaling, opacity, audio gain, and static uniform 2D graphic rotation only; 3D, effects, blend, animation, and transitions require composition-group rendering");
+  }
+  if (hasStaticUniform2dRotation && Math.abs(layer.width - layer.height) > 0.000001) {
+    throw new Error("Nested composition rotation requires uniform container scaling until composition-group rendering is available");
   }
 }
 
@@ -442,6 +446,59 @@ function applyNestedContainerLayout(child: CutCompositionManifest["layers"][numb
     y: container.y + child.y * scaleY,
     width: child.width * scaleX,
     height: child.height * scaleY,
+    opacity: child.opacity * container.opacity,
+    volume: child.volume * container.volume,
+    animations,
+  });
+}
+
+/**
+ * Flatten a static, uniformly scaled 2D graphic group without losing its
+ * pivot. Parent rotation cannot be copied to every child position: a child
+ * needs to be moved by the rotated location of *its own transform origin*,
+ * then receive the parent angle in its local rotation. This is the exact
+ * similarity transform for a static graphic subtree, but intentionally does
+ * not pretend to cover media, blended/effected groups, 3D, transitions, or
+ * independent X/Y motion curves. Those require a real intermediate group
+ * surface in both the browser and native renderer.
+ */
+function applyStaticUniformNestedGraphicRotation(child: CutCompositionManifest["layers"][number], container: CutCompositionManifest["layers"][number]) {
+  if (child.kind === "video" || child.kind === "audio") throw new Error("Nested composition rotation currently supports graphic-only child compositions; media group rotation requires composition-group rendering");
+  if (child.blendMode !== "normal" || child.rotationX !== 0 || child.rotationY !== 0 || child.perspective !== 0 || [child.enter, child.exit].some((transition) => transition?.kind === "flip" || transition?.kind === "slide")) {
+    throw new Error("Nested composition rotation cannot contain blended, 3D, flip, or slide child graphics until composition-group rendering is available");
+  }
+  if (child.animations.some((animation) => ["x", "y", "rotationX", "rotationY", "perspective"].includes(animation.property))) {
+    throw new Error("Nested composition rotation cannot contain child position or 3D animation until composition-group rendering is available");
+  }
+  const scale = container.width;
+  const angle = container.rotation * Math.PI / 180;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const groupPivotX = container.x + container.anchorX * scale;
+  const groupPivotY = container.y + container.anchorY * scale;
+  const childPivotX = container.x + (child.x + child.anchorX * child.width) * scale;
+  const childPivotY = container.y + (child.y + child.anchorY * child.height) * scale;
+  const deltaX = childPivotX - groupPivotX;
+  const deltaY = childPivotY - groupPivotY;
+  const transformedPivotX = groupPivotX + deltaX * cosine - deltaY * sine;
+  const transformedPivotY = groupPivotY + deltaX * sine + deltaY * cosine;
+  const width = child.width * scale;
+  const height = child.height * scale;
+  const animations = child.animations.map((animation) => animation.property === "rotation"
+    ? mapNestedAnimationValues(animation, (value) => value + container.rotation)
+    : animation.property === "opacity"
+      ? mapNestedAnimationValues(animation, (value) => value * container.opacity)
+      : animation.property === "volume"
+        ? mapNestedAnimationValues(animation, (value) => value * container.volume)
+        : animation,
+  );
+  return cutCompositionLayerSchema.parse({
+    ...child,
+    x: transformedPivotX - child.anchorX * width,
+    y: transformedPivotY - child.anchorY * height,
+    width,
+    height,
+    rotation: child.rotation + container.rotation,
     opacity: child.opacity * container.opacity,
     volume: child.volume * container.volume,
     animations,
@@ -557,7 +614,8 @@ export function expandNestedCompositionManifest(manifestInput: unknown, options:
     return expand(referenced, [...path, layer.id], [...stack, layer.compositionId!], depth + 1)
       .flatMap((child) => {
         const rebased = rebaseNestedLayerTime(child, layer.sourceStartFrame, sourceWindowEnd, layer.from);
-        return rebased ? [applyNestedContainerLayout(rebased, layer)] : [];
+        if (!rebased) return [];
+        return [layer.rotation === 0 ? applyNestedContainerLayout(rebased, layer) : applyStaticUniformNestedGraphicRotation(rebased, layer)];
       });
   });
 

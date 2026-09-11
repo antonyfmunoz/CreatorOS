@@ -59,8 +59,12 @@ control or worse professional output.
 Nested declarative compositions flatten their native children without creating a
 private intermediate bitmap. A static container can therefore place and
 rectangularly scale its full child canvas while inheriting opacity and audio
-gain into the child layers and authored X/Y/opacity/volume curves. Parent
-rotation/3D, group effects, blending, animation, transitions, and rectangular
+gain into the child layers and authored X/Y/opacity/volume curves. A static,
+uniformly scaled 2D container can additionally rotate a graphic-only child
+composition exactly around the group pivot: each child graphic receives the
+mapped transform origin and summed Z rotation, rather than an unsafe copied
+offset. Media children, X/Y group or child motion, 3D, group effects, blending,
+group animation/transitions, slide/flip child transitions, and rectangular
 scaling of a child slide transition remain explicitly rejected until a true
 composition-group renderer can preserve preview/export agreement.
 | Templates | Editable kinetic title, lower-third and product composition starters, plus private Three/SVG and software-WebGL code-package starters with exact React/Three dependency pins | Expand through real creative-team evidence; the software-WebGL starter is isolated/local and does not imply host-GPU or WebGPU rendering |
