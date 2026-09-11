@@ -28,7 +28,11 @@ export const cutGraphicCurvesSchema = z.object({
   curves: z.array(curve).max(CUT_GRAPHIC_CURVE_PROPERTIES.length),
   transitions: z.array(z.object({
     phase: z.enum(["enter", "exit"]),
-    kind: z.enum(["fade", "slide", "zoom"]),
+    // These are declarative transition kinds, never filter expressions. Keeping
+    // geometric reveals in the same signed/validated clock model lets the
+    // native renderer evaluate them per frame instead of approximating a wipe
+    // with sparse static masks.
+    kind: z.enum(["fade", "slide", "zoom", "wipe", "clock_wipe", "iris"]),
     durationInFrames: z.number().int().min(1).max(3_600),
     easing: cutGraphicCurveEasingSchema.exclude(["step"]),
     direction: z.enum(["left", "right", "up", "down"]).optional(),

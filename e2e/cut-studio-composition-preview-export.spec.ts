@@ -14,7 +14,10 @@ async function expectOk(response: APIResponse) {
 
 test("declarative composition player and native export agree at an authored nonlinear frame", async ({ page }, info) => {
   test.setTimeout(120_000);
-  const frame = 1;
+  // This is deliberately an in-between frame for both motion systems. It is
+  // not a keyframe or reveal boundary, where sparse export samples can happen
+  // to agree with the composition player by accident.
+  const frame = 5;
   const owner = ownerFor(info);
   const otherOwner = owner === 1 ? 2 : 1;
   const directory = info.outputPath("composition-preview-export");
@@ -111,6 +114,32 @@ test("declarative composition player and native export agree at an authored nonl
           ],
         }],
       },
+      {
+        id: "wipe-green",
+        kind: "shape",
+        name: "Exact wipe proof shape",
+        from: 0,
+        durationInFrames: 30,
+        sourceStartFrame: 0,
+        x: .1,
+        y: .05,
+        width: .6,
+        height: .15,
+        opacity: 1,
+        rotation: 0,
+        volume: 1,
+        anchorX: .5,
+        anchorY: .5,
+        rotationX: 0,
+        rotationY: 0,
+        perspective: 0,
+        blendMode: "normal",
+        style: { fill: "#00ff00" },
+        dataBindings: {},
+        effects: [],
+        enter: { kind: "wipe", durationInFrames: 12, easing: "ease_in_out", direction: "left" },
+        animations: [],
+      },
     ],
   };
   const saved = await request(page, owner, "POST", `/api/cut/projects/${project.id}/compositions`, {
@@ -144,14 +173,19 @@ test("declarative composition player and native export agree at an authored nonl
     const offset = (Math.floor(previewImage.height * y) * previewImage.width + Math.floor(previewImage.width * x)) * previewImage.channels;
     return [...previewPixels.subarray(offset, offset + 3)];
   };
-  // Frame 1 lies between authored control points. The spring's position here
-  // is deliberately different from a linear interpolation; these interior
-  // samples avoid antialiased edges and isolate motion position + color.
-  const previewShape = samplePreview(.4, .45);
+  // The spring has already overshot by frame 5, while the wipe is only partly
+  // revealed. These interior samples avoid antialiased edges and independently
+  // prove transform/color and geometric-reveal behavior.
+  const previewShape = samplePreview(.6, .45);
+  const previewWipeVisible = samplePreview(.2, .12);
+  const previewWipeHidden = samplePreview(.5, .12);
   const previewBase = samplePreview(.05, .05);
   expect(previewShape[0]).toBeGreaterThan(previewBase[0] + 180);
   expect(previewShape[1]).toBeLessThan(20);
   expect(previewShape[2]).toBeLessThan(20);
+  expect(previewWipeVisible[1]).toBeGreaterThan(previewBase[1] + 180);
+  expect(previewWipeVisible[0]).toBeLessThan(20);
+  expect(previewWipeHidden[1]).toBeLessThan(20);
 
   const batch = await request(page, owner, "POST", `/api/cut/projects/${project.id}/composition-render-batches`, {
     idempotencyKey: `e2e.composition.preview-export.${crypto.randomUUID()}`,
@@ -171,12 +205,14 @@ test("declarative composition player and native export agree at an authored nonl
     const offset = (Math.floor(nativeImage.height * y) * nativeImage.width + Math.floor(nativeImage.width * x)) * nativeImage.channels;
     return [...nativePixels.subarray(offset, offset + 3)];
   };
-  const nativeShape = sampleNative(.4, .45);
+  const nativeShape = sampleNative(.6, .45);
+  const nativeWipeVisible = sampleNative(.2, .12);
+  const nativeWipeHidden = sampleNative(.5, .12);
   const nativeBase = sampleNative(.05, .05);
-  for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["base", previewBase, nativeBase]] as const) {
+  for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["wipe-visible", previewWipeVisible, nativeWipeVisible], ["wipe-hidden", previewWipeHidden, nativeWipeHidden], ["base", previewBase, nativeBase]] as const) {
     for (let channel = 0; channel < 3; channel += 1) {
       expect(Math.abs(previewSample[channel] - nativeSample[channel]), `${name} frame ${frame} channel ${channel}`).toBeLessThanOrEqual(12);
     }
   }
-  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewBase, nativeBase }, null, 2));
+  writeFileSync(`${directory}/receipt.json`, JSON.stringify({ projectId: project.id, compositionId: composition.id, jobId: job.id, frame, crossOwnerStatus: denied.status(), previewShape, nativeShape, previewWipeVisible, nativeWipeVisible, previewWipeHidden, nativeWipeHidden, previewBase, nativeBase }, null, 2));
 });

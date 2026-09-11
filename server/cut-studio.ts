@@ -1,5 +1,5 @@
 import type { Express, RequestHandler, Response } from "express";
-import { cutGraphicCurveExpression } from "./cut-curve-expression";
+import { cutGraphicCurveExpression, cutGraphicRevealAlphaExpression } from "./cut-curve-expression";
 import rateLimit from "express-rate-limit";
 import { CutStillError, cutStillAdmission, cutStillRequestSchema, renderCutStill } from "./cut-still";
 import { cutCompositionRenditionSize } from "@shared/cut-studio-player";
@@ -994,18 +994,29 @@ async function renderMultitrack(
       const color = cutColorMatrixControls(effect.parameters);
       rasterFilters.push(...cutGraphicColorFilters(String(color.brightness), String(color.saturation), `graphiccolor${index}effect${effectIndex}`, color.contrast));
     }
-    const revealPoints = [{ at: 0, kind: graphic.revealKind, direction: graphic.revealDirection, progress: graphic.revealProgress }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, kind: keyframe.revealKind, direction: keyframe.revealDirection, progress: keyframe.revealProgress }))]
-      .sort((left, right) => left.at - right.at)
-      .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
-    for (let pointIndex = 0; pointIndex < revealPoints.length; pointIndex += 1) {
-      const point = revealPoints[pointIndex];
-      if (!point.kind || point.kind === "custom_mask" || point.progress >= .99999) continue;
-      const nextPoint = revealPoints[pointIndex + 1];
-      const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : graphic.duration;
-      const start = Number((graphic.timelineStart + point.at).toFixed(3));
-      const end = Number((graphic.timelineStart + intervalEnd).toFixed(3));
-      const alpha = geometricRevealAlpha(point.kind, point.direction, point.progress);
-      rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}':enable='between(t,${start},${end})'`);
+    const exactReveal = graphic.compositionCurves ? cutGraphicRevealAlphaExpression(graphic.compositionCurves, graphic.timelineStart, "T") : undefined;
+    if (exactReveal) {
+      // The composition player evaluates geometric reveals on the authored
+      // frame clock. Keep the export on that exact clock rather than using the
+      // historical sparse motion snapshots, which could make short wipes
+      // visibly lag or jump in the final render.
+      const start = Number(graphic.timelineStart.toFixed(3));
+      const end = Number((graphic.timelineStart + graphic.duration).toFixed(3));
+      rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${exactReveal}':enable='between(t,${start},${end})'`);
+    } else {
+      const revealPoints = [{ at: 0, kind: graphic.revealKind, direction: graphic.revealDirection, progress: graphic.revealProgress }, ...(graphic.motionKeyframes ?? []).map((keyframe) => ({ at: keyframe.at, kind: keyframe.revealKind, direction: keyframe.revealDirection, progress: keyframe.revealProgress }))]
+        .sort((left, right) => left.at - right.at)
+        .filter((point, pointIndex, all) => pointIndex === all.length - 1 || Math.abs(point.at - all[pointIndex + 1].at) > .0005);
+      for (let pointIndex = 0; pointIndex < revealPoints.length; pointIndex += 1) {
+        const point = revealPoints[pointIndex];
+        if (!point.kind || point.kind === "custom_mask" || point.progress >= .99999) continue;
+        const nextPoint = revealPoints[pointIndex + 1];
+        const intervalEnd = nextPoint ? Math.max(point.at, nextPoint.at - (1 / request.fps)) : graphic.duration;
+        const start = Number((graphic.timelineStart + point.at).toFixed(3));
+        const end = Number((graphic.timelineStart + intervalEnd).toFixed(3));
+        const alpha = geometricRevealAlpha(point.kind, point.direction, point.progress);
+        rasterFilters.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='${alpha}':enable='between(t,${start},${end})'`);
+      }
     }
     const rotated = plan.rotated;
     let rasterWidth = animatedScale ? maximumAnimatedWidth : width;
