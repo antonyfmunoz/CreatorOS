@@ -305,6 +305,15 @@ test("nested static uniform media rotation agrees in the player and native expor
   await page.goto(`/cut-studio?project=${project.id}`);
   const player = page.getByLabel(`Composition ${rootName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
+  // The nested visual is decoded by a browser media element.  A canvas
+  // screenshot taken merely after the player chrome is visible can race the
+  // first decoded frame, producing a black oracle on a busy runner.  Qualify
+  // the actual preview resource before comparing it with the native render.
+  const previewMedia = player.getByLabel("Nested red proof media", { exact: true });
+  await expect.poll(async () => previewMedia.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    return !media.error && media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+  }), { timeout: 15_000 }).toBe(true);
   const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview.png` });
   const previewImage = await sharp(preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const previewPixel = (x: number, y: number) => [...previewImage.data.subarray((Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels, (Math.floor(previewImage.info.height * y) * previewImage.info.width + Math.floor(previewImage.info.width * x)) * previewImage.info.channels + 3)];
