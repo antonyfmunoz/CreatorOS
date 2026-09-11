@@ -1142,7 +1142,12 @@ async function renderJob(jobId: string, leaseToken: string, baseProject: typeof 
     }
     if (!clips.length) throw new Error("The requested render does not contain playable media");
     const lutPaths = await materializeCutLuts(project, clips, temp);
-    if (project.edl.version === 3 && project.mediaKind === "video" && (cutPrimaryTimeline({ ...project.edl, clips }).requiresTimeline || clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
+    // A saved composition is always a compositing request, even when its
+    // only visual happens to reference the project source on V1.  The simple
+    // single-source render path deliberately ignores an EDL clip transform;
+    // routing that case there silently drops a composition's placement,
+    // rotation and opacity.  The multitrack renderer owns those transforms.
+    if (project.edl.version === 3 && project.mediaKind === "video" && (Boolean(compositionManifest) || cutPrimaryTimeline({ ...project.edl, clips }).requiresTimeline || clips.some((clip) => (clip.track ?? "v1") !== "v1" || clip.transition === "cross_dissolve" || (clip.assetId && clip.assetId !== source.id)) || (project.edl.graphics?.length ?? 0) > 0)) {
       if (project.mediaKind !== "video") throw new Error("Multitrack rendering currently requires a primary video project");
       await renderMultitrack(jobId, leaseToken, project, source, request, clips, project.edl.graphics ?? [], project.edl.tracks ?? [], project.edl.audioBuses ?? [], lutPaths, temp, outputPath);
       const duration = cutDuration({ version: 3, clips, graphics: project.edl.graphics, tracks: project.edl.tracks, audioBuses: project.edl.audioBuses });
