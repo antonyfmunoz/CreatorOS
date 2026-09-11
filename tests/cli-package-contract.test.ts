@@ -20,4 +20,14 @@ describe("standalone CreativesOS CLI package", () => {
     expect(packer).toContain('await rm(releaseRoot, { recursive: true, force: true })');
     expect(packer).toContain("creativesos node serve");
   });
+
+  it("offers a local-only isolated code-composition preview without turning preview into a cloud job", () => {
+    const cli = readFileSync(new URL("../cli/creativesos.mjs", import.meta.url), "utf8");
+    expect(cli).toContain("node preview <source.zip>");
+    expect(cli).toContain('status: "previewed_locally"');
+    expect(cli).toContain('network: "none"');
+    expect(cli).toContain('uploaded: false');
+    expect(cli).toContain('flag: "wx"');
+    expect(cli).toContain("renderIsolated({ request, source, image })");
+  });
 });
