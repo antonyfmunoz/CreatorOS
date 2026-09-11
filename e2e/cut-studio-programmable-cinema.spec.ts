@@ -173,7 +173,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   // qualification may have neither a broker nor a paired worker, but either
   // setup state must keep queue admission closed and explain the next step.
   await expect(studio.getByRole("button", { name: "Execution setup required" })).toBeDisabled();
-  await expect(studio.getByRole("status")).toContainText(/(activate the private execution broker|Pair a trusted workstation)/);
+  await expect(studio.getByLabel("Local execution readiness")).toContainText(/(activate the private execution broker|Pair a trusted workstation)/);
   await studio.getByRole("button", { name: "Kinetic" }).click();
   await expect(studio.getByText(/Motion composition saved/)).toBeVisible();
   await expect(studio.getByLabel("Deterministic composition preview")).toBeVisible();
