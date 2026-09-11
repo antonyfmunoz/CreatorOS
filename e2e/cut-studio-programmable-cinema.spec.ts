@@ -169,7 +169,12 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   await codePackage.getByRole("button", { name: "Save isolated composition" }).click();
   await expect(studio.getByText(/Pinned code composition saved/)).toBeVisible();
   await expect(studio.getByText("src/index.tsx", { exact: true })).toBeVisible();
-  await expect(studio.getByText("Authoring is ready. Local execution will become available after this environment’s private storage and execution broker are activated.")).toBeVisible();
+  // A source package can be authored without a renderer, but render admission
+  // must stay closed until a compatible local worker is paired. The browser
+  // qualification intentionally has no paired worker, so it proves that the
+  // UI does not advertise an unavailable queue action.
+  await expect(studio.getByText("Pair a trusted workstation with the isolated runtime before queueing this private code render.")).toBeVisible();
+  await expect(studio.getByRole("button", { name: "Execution setup required" })).toBeDisabled();
   await studio.getByRole("button", { name: "Kinetic" }).click();
   await expect(studio.getByText(/Motion composition saved/)).toBeVisible();
   await expect(studio.getByLabel("Deterministic composition preview")).toBeVisible();
