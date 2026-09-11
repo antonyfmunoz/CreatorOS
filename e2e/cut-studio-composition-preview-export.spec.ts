@@ -189,6 +189,7 @@ test("declarative composition player and native export agree at an authored nonl
   await expect(compositionCard).toBeVisible();
   const player = compositionCard.getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
+  await expect(player.getByText("42 qualified leads", { exact: true })).toBeVisible();
   const slider = player.getByLabel("Preview frame", { exact: true });
   await slider.press("Home");
   for (let step = 0; step < frame; step += 1) await slider.press("ArrowRight");
@@ -205,7 +206,10 @@ test("declarative composition player and native export agree at an authored nonl
   const previewShape = samplePreview(.6, .45);
   const previewWipeVisible = samplePreview(.2, .12);
   const previewWipeHidden = samplePreview(.5, .12);
-  const previewData = samplePreview(.1, .84);
+  // Sample the data card's lower-right interior instead of its text glyphs:
+  // browser and native text rasterization deliberately use independent font
+  // sessions, so antialiased glyph-edge pixels are not a stable color oracle.
+  const previewData = samplePreview(.32, .87);
   const previewBase = samplePreview(.05, .05);
   expect(previewShape[0]).toBeGreaterThan(previewBase[0] + 180);
   expect(previewShape[1]).toBeLessThan(20);
@@ -236,7 +240,7 @@ test("declarative composition player and native export agree at an authored nonl
   const nativeShape = sampleNative(.6, .45);
   const nativeWipeVisible = sampleNative(.2, .12);
   const nativeWipeHidden = sampleNative(.5, .12);
-  const nativeData = sampleNative(.1, .84);
+  const nativeData = sampleNative(.32, .87);
   const nativeBase = sampleNative(.05, .05);
   for (const [name, previewSample, nativeSample] of [["shape", previewShape, nativeShape], ["wipe-visible", previewWipeVisible, nativeWipeVisible], ["wipe-hidden", previewWipeHidden, nativeWipeHidden], ["base", previewBase, nativeBase]] as const) {
     for (let channel = 0; channel < 3; channel += 1) {
