@@ -1007,10 +1007,14 @@ async function renderMultitrack(
     } else if (graphic.kind === "three") {
       await sharp(Buffer.from(renderCutThreePrimitiveSvg({ primitive: graphic.primitive, color: graphic.backgroundColor, secondaryColor: graphic.secondaryColor, edgeColor: graphic.edgeColor, wireframe: graphic.wireframe, depth: graphic.depth })), { density: 300 }).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(baseRasterPath);
     } else if (graphic.kind === "shape" || graphic.kind === "path") {
+      const gradientId = `shape_gradient_${rasterGraphicInputs.length}`;
+      const shapeGradient = graphic.kind === "shape" && graphic.gradientStartColor && graphic.gradientEndColor
+        ? `<defs><linearGradient id="${gradientId}" x1="0%" y1="0%" x2="${graphic.gradientDirection === "vertical" ? "0%" : "100%"}" y2="${graphic.gradientDirection === "vertical" ? "100%" : "0%"}"><stop offset="0%" stop-color="${graphic.gradientStartColor}"/><stop offset="100%" stop-color="${graphic.gradientEndColor}"/></linearGradient></defs>`
+        : "";
       const element = graphic.kind === "path"
         ? `<path d="${graphic.text}" fill="${graphic.fillColor ?? "none"}" stroke="${graphic.textColor}" stroke-width="${graphic.strokeWidth}"/>`
-        : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${graphic.backgroundColor}"/>`;
-      await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
+        : `<rect width="100" height="100" rx="${graphic.borderRadius}" fill="${shapeGradient ? `url(#${gradientId})` : graphic.backgroundColor}"/>`;
+      await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${shapeGradient}${element}</svg>`)).resize(width, height, { fit: "fill" }).png().toFile(baseRasterPath);
     } else {
       const privateFont = graphic.fontAssetId ? inputById.get(graphic.fontAssetId) : undefined;
       if (graphic.fontAssetId && (!privateFont || privateFont.asset.kind !== "cut-font" || !privateFont.asset.mimeType || !cutStudioFontMime.test(privateFont.asset.mimeType))) throw new Error("A composition font must reference ready private TTF or OTF media");

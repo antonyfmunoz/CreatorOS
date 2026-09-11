@@ -18,6 +18,24 @@ const stringRecord = z.record(z.string().max(80), z.string().max(500)).superRefi
   if (Object.keys(value).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, message: "At most 100 properties are allowed" });
 });
 
+export const cutShapeGradientDirectionSchema = z.enum(["horizontal", "vertical"]);
+export type CutShapeGradientDirection = z.infer<typeof cutShapeGradientDirectionSchema>;
+export type CutShapeGradient = { startColor: string; endColor: string; direction: CutShapeGradientDirection };
+
+// Shape style stays a bounded scalar record so older immutable manifests remain
+// valid. Parse the optional gradient explicitly instead of allowing arbitrary
+// CSS through to either the browser preview or the native SVG rasterizer.
+export function parseCutShapeGradientStyle(style: Record<string, string | number | boolean | null>): CutShapeGradient | null {
+  const startColor = style.gradientStartColor;
+  const endColor = style.gradientEndColor;
+  const direction = style.gradientDirection;
+  if (startColor === undefined && endColor === undefined && direction === undefined) return null;
+  if (!color.safeParse(startColor).success || !color.safeParse(endColor).success || !cutShapeGradientDirectionSchema.safeParse(direction ?? "horizontal").success) {
+    throw new Error("Shape gradients require two #RRGGBB colors and a horizontal or vertical direction");
+  }
+  return { startColor: String(startColor), endColor: String(endColor), direction: (direction ?? "horizontal") as CutShapeGradientDirection };
+}
+
 export const cutCompositionParameterSchema = z.object({
   key: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/),
   label: z.string().trim().min(1).max(80),
@@ -118,6 +136,11 @@ export const cutCompositionLayerSchema = z.object({
   if (value.kind === "three") {
     try { parseCutThreePrimitiveStyle(value.style); } catch (error) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["style"], message: error instanceof Error ? error.message : "The 3D primitive descriptor is invalid" });
+    }
+  }
+  if (value.kind === "shape") {
+    try { parseCutShapeGradientStyle(value.style); } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["style"], message: error instanceof Error ? error.message : "Shape gradient is invalid" });
     }
   }
   if (Object.keys(value.dataBindings).length > 100) context.addIssue({ code: z.ZodIssueCode.custom, path: ["dataBindings"], message: "At most 100 data bindings are allowed" });
@@ -866,6 +889,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
     const selectedFont = typeof layer.style.fontFamily === "string" ? manifest.fonts.find((font) => font.family === layer.style.fontFamily) : undefined;
     if (transitionMaskIds.length > 1) throw new Error("A graphic layer must use one custom mask asset across its transitions");
     const three = layer.kind === "three" ? parseCutThreePrimitiveStyle(layer.style) : null;
+    const shapeGradient = layer.kind === "shape" ? parseCutShapeGradientStyle(layer.style) : null;
     const motionKeyframes = sampledGraphicMotion(manifest, layer);
     return [{
       id: layer.id,
@@ -889,6 +913,7 @@ export function compileCompositionToEdl(manifestInput: unknown, baseEdl: CutEdl,
       fontFamily: selectedFont?.family ?? "CreativesOS Sans",
       textColor: three?.edgeColor ?? (typeof (layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) === "string" && color.safeParse(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color).success ? String(layer.kind === "path" ? layer.style.stroke ?? layer.style.color : layer.style.color) : layer.kind === "data" ? "#1d9bf0" : "#ffffff"),
       backgroundColor: three?.color ?? (typeof (layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) === "string" && color.safeParse(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor).success ? String(layer.kind === "shape" ? layer.style.fill : layer.style.backgroundColor) : layer.kind === "data" ? "#1d9bf0" : "#000000"),
+      ...(shapeGradient ? { gradientStartColor: shapeGradient.startColor, gradientEndColor: shapeGradient.endColor, gradientDirection: shapeGradient.direction } : {}),
       backgroundOpacity: layer.kind === "shape" || layer.kind === "path" ? layer.opacity : ["text", "caption"].includes(layer.kind) && !layer.style.backgroundColor ? 0 : typeof layer.style.backgroundOpacity === "number" ? Math.max(0, Math.min(1, layer.style.backgroundOpacity)) : layer.kind === "data" ? .15 : 0.72,
       fillColor: layer.kind === "path" && typeof layer.style.fill === "string" && color.safeParse(layer.style.fill).success ? layer.style.fill : null,
       strokeWidth: layer.kind === "path" && typeof layer.style.strokeWidth === "number" ? Math.max(.1, Math.min(20, layer.style.strokeWidth)) : 2,

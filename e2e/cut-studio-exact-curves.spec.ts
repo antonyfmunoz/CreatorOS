@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { expect, test } from '@playwright/test';
-import { compileCompositionToEdl, evaluateCompositionFrame } from '../shared/cut-studio-production';
+import { compileCompositionToEdl, evaluateCompositionFrame, parseCutShapeGradientStyle } from '../shared/cut-studio-production';
 import { cutGraphicCurveExpression } from '../server/cut-curve-expression';
 import { waitForCutRender } from './helpers/cut-render';
 
@@ -34,6 +34,17 @@ test('native scalar formulas match every authored frame including spring and mis
     receipts.push({ easing: graphic.id, deliveryFps, microsecondTimeBase, frames, maximumAlphaQuantizationError: maximumError });
   }
   writeFileSync(info.outputPath('curve-formula-frames.json'), JSON.stringify(receipts, null, 2));
+});
+
+test('bounded shape gradients compile to an explicit native graphic contract', () => {
+  const style = { fill: '#ff0000', gradientStartColor: '#ff0000', gradientEndColor: '#0000ff', gradientDirection: 'vertical' };
+  expect(parseCutShapeGradientStyle(style)).toEqual({ startColor: '#ff0000', endColor: '#0000ff', direction: 'vertical' });
+  const compiled = compileCompositionToEdl({ version: 1, name: 'Gradient contract', width: 1280, height: 720, fps: 30, durationInFrames: 30, layers: [
+    { id: 'source', name: 'Source', kind: 'video', assetId: '11111111-1111-4111-8111-111111111111', from: 0, durationInFrames: 30 },
+    { id: 'gradient', name: 'Gradient', kind: 'shape', from: 0, durationInFrames: 30, style },
+  ] }, { version: 3, clips: [] });
+  expect(compiled.graphics).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'gradient', gradientStartColor: '#ff0000', gradientEndColor: '#0000ff', gradientDirection: 'vertical' })]));
+  expect(() => parseCutShapeGradientStyle({ gradientStartColor: '#ff0000' })).toThrow('Shape gradients require two #RRGGBB colors');
 });
 
 test('saved nonlinear compositions retain two-pixel preview and native position agreement', async ({ page }, info) => {
