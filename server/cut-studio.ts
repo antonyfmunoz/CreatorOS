@@ -296,6 +296,35 @@ async function bakeGraphicGlowAndShadow(graphic: RenderGraphic, inputPath: strin
   return outputPath;
 }
 
+/**
+ * The isolated Lottie/Rive renderer produces one transparent PNG for each
+ * composition frame.  Static graphics can bake glow and shadow into one PNG;
+ * animation graphics need that same bounded treatment applied to every
+ * generated frame before FFmpeg reads the numbered sequence.  Keep the
+ * derived files separate from the renderer output so a failed decoration
+ * cannot corrupt the source frame sequence or leave a partial sequence
+ * looking valid to FFmpeg.
+ */
+async function bakeAnimationGlowAndShadowFrames(input: {
+  graphic: RenderGraphic;
+  pattern: string;
+  frameCount: number;
+  width: number;
+  height: number;
+  outputDirectory: string;
+  onProgress?: (completedFrames: number, totalFrames: number) => Promise<void>;
+}) {
+  if (!graphicEffect(input.graphic, "drop_shadow") && !graphicEffect(input.graphic, "glow")) return input.pattern;
+  await fs.mkdir(input.outputDirectory, { recursive: true });
+  const patternName = path.basename(input.pattern);
+  for (let frame = 0; frame < input.frameCount; frame += 1) {
+    const filename = patternName.replace("%06d", String(frame).padStart(6, "0"));
+    await bakeGraphicGlowAndShadow(input.graphic, path.join(path.dirname(input.pattern), filename), path.join(input.outputDirectory, filename), input.width, input.height);
+    if ((frame + 1) % 10 === 0 || frame + 1 === input.frameCount) await input.onProgress?.(frame + 1, input.frameCount);
+  }
+  return path.join(input.outputDirectory, patternName);
+}
+
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
   const points = cutClipVolumePoints(clip);
   const gain = (value: number) => Number((value * multiplier).toFixed(5));
@@ -988,13 +1017,26 @@ async function renderMultitrack(
     const width = Math.max(2, Math.round(graphic.width * size[0] / 2) * 2);
     const height = Math.max(2, Math.round(graphic.height * size[1] / 2) * 2);
     if (graphic.kind === "lottie" || graphic.kind === "rive") {
-      if (maskAssetId || needsBakedEffects) throw new Error("Animation layers cannot use baked masks, shadows, or glows; use realtime effects instead");
+      // Private alpha masks are deliberately not admitted for animation
+      // layers yet.  Unlike masks, glow and drop-shadow have no external
+      // source and can be reproduced safely by decorating each isolated
+      // animation frame before the native sequence is composed.
+      if (maskAssetId) throw new Error("Animation layers cannot use private masks yet");
       const privateAnimation = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
       const expectedKind = graphic.kind === "lottie" ? "cut-lottie" : "cut-rive";
       if (!privateAnimation || privateAnimation.asset.kind !== expectedKind) throw new Error(`A composition ${graphic.kind} layer must reference ready private validated media`);
       const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, sourceStartSeconds: graphic.animationSourceStartSeconds, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
+      const framePattern = await bakeAnimationGlowAndShadowFrames({
+        graphic,
+        pattern: frames.pattern,
+        frameCount: frames.frameCount,
+        width,
+        height,
+        outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}-styled`),
+        onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total),
+      });
       rasterGraphicInputIndexes.set(graphic.id, mediaInputs.length + rasterGraphicInputs.length);
-      rasterGraphicInputs.push({ path: frames.pattern, animated: true });
+      rasterGraphicInputs.push({ path: framePattern, animated: true });
       return;
     } else if (graphic.kind === "image") {
       const privateImage = graphic.assetId ? inputById.get(graphic.assetId) : undefined;
