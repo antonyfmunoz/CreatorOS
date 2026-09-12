@@ -81,6 +81,7 @@ import { cutFilterGraphArgs } from "./cut-filter-graph";
 import { cutFilterThreadArgs, cutSimpleFilterThreadArgs } from "./cut-filter-budget";
 import { cutCodecThreadArgs } from "./cut-codec-budget";
 import { renderCutAnimationFrames } from "./cut-animation-renderer";
+import { bakeCutAnimationGlowAndShadowFrames, bakeCutGraphicGlowAndShadow } from "./cut-animation-effects";
 import { cutRenderDurationArgs, cutRasterInputArgs } from "./cut-render-duration";
 import { captureCutRenderTimeline, resolveCutRenderTimeline } from "./cut-render-snapshot";
 import { prepareCutInputs } from "./cut-input-preparation";
@@ -273,56 +274,6 @@ function effectNumber(effect: ReturnType<typeof graphicEffect>, key: string, fal
 function effectColor(effect: ReturnType<typeof graphicEffect>, key: string, fallback: string) {
   const value = effect?.parameters[key];
   return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-}
-
-async function bakeGraphicGlowAndShadow(graphic: RenderGraphic, inputPath: string, outputPath: string, width: number, height: number) {
-  const shadow = graphicEffect(graphic, "drop_shadow");
-  const glow = graphicEffect(graphic, "glow");
-  if (!shadow && !glow) return inputPath;
-  const shadowBlur = effectNumber(shadow, "blur", 10, 0, 40);
-  const shadowX = effectNumber(shadow, "x", 4, -40, 40);
-  const shadowY = effectNumber(shadow, "y", 6, -40, 40);
-  const shadowColor = effectColor(shadow, "color", "#000000");
-  const glowBlur = effectNumber(glow, "radius", 16, 0, 60);
-  const glowColor = effectColor(glow, "color", "#1d9bf0");
-  const source = (await fs.readFile(inputPath)).toString("base64");
-  const nodes = [
-    shadow ? `<feOffset in="SourceAlpha" dx="${shadowX}" dy="${shadowY}" result="shadowOffset"/><feGaussianBlur in="shadowOffset" stdDeviation="${shadowBlur}" result="shadowBlur"/><feFlood flood-color="${shadowColor}" flood-opacity="0.8" result="shadowColor"/><feComposite in="shadowColor" in2="shadowBlur" operator="in" result="shadow"/>` : "",
-    glow ? `<feGaussianBlur in="SourceAlpha" stdDeviation="${glowBlur}" result="glowBlur"/><feFlood flood-color="${glowColor}" flood-opacity="0.9" result="glowColor"/><feComposite in="glowColor" in2="glowBlur" operator="in" result="glow"/>` : "",
-  ].join("");
-  const merge = `${shadow ? '<feMergeNode in="shadow"/>' : ""}${glow ? '<feMergeNode in="glow"/>' : ""}<feMergeNode in="SourceGraphic"/>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><defs><filter id="fx" x="0" y="0" width="100%" height="100%">${nodes}<feMerge>${merge}</feMerge></filter></defs><image width="${width}" height="${height}" href="data:image/png;base64,${source}" filter="url(#fx)"/></svg>`;
-  await sharp(Buffer.from(svg)).png().toFile(outputPath);
-  return outputPath;
-}
-
-/**
- * The isolated Lottie/Rive renderer produces one transparent PNG for each
- * composition frame.  Static graphics can bake glow and shadow into one PNG;
- * animation graphics need that same bounded treatment applied to every
- * generated frame before FFmpeg reads the numbered sequence.  Keep the
- * derived files separate from the renderer output so a failed decoration
- * cannot corrupt the source frame sequence or leave a partial sequence
- * looking valid to FFmpeg.
- */
-async function bakeAnimationGlowAndShadowFrames(input: {
-  graphic: RenderGraphic;
-  pattern: string;
-  frameCount: number;
-  width: number;
-  height: number;
-  outputDirectory: string;
-  onProgress?: (completedFrames: number, totalFrames: number) => Promise<void>;
-}) {
-  if (!graphicEffect(input.graphic, "drop_shadow") && !graphicEffect(input.graphic, "glow")) return input.pattern;
-  await fs.mkdir(input.outputDirectory, { recursive: true });
-  const patternName = path.basename(input.pattern);
-  for (let frame = 0; frame < input.frameCount; frame += 1) {
-    const filename = patternName.replace("%06d", String(frame).padStart(6, "0"));
-    await bakeGraphicGlowAndShadow(input.graphic, path.join(path.dirname(input.pattern), filename), path.join(input.outputDirectory, filename), input.width, input.height);
-    if ((frame + 1) % 10 === 0 || frame + 1 === input.frameCount) await input.onProgress?.(frame + 1, input.frameCount);
-  }
-  return path.join(input.outputDirectory, patternName);
 }
 
 function clipVolumeExpression(clip: CutEdl["clips"][number], multiplier = 1) {
@@ -1026,7 +977,7 @@ async function renderMultitrack(
       const expectedKind = graphic.kind === "lottie" ? "cut-lottie" : "cut-rive";
       if (!privateAnimation || privateAnimation.asset.kind !== expectedKind) throw new Error(`A composition ${graphic.kind} layer must reference ready private validated media`);
       const frames = await renderCutAnimationFrames({ kind: graphic.kind, sourcePath: privateAnimation.url, outputDirectory: path.join(temp, `graphic-animation-${rasterGraphicInputs.length}`), width, height, fps: request.fps, duration: graphic.duration, sourceStartSeconds: graphic.animationSourceStartSeconds, session: nativeSession, onProgress: (completed, total) => reportPreparation(graphicIndex, completed / total) });
-      const framePattern = await bakeAnimationGlowAndShadowFrames({
+      const framePattern = await bakeCutAnimationGlowAndShadowFrames({
         graphic,
         pattern: frames.pattern,
         frameCount: frames.frameCount,
@@ -1071,7 +1022,7 @@ async function renderMultitrack(
       }
     }
     const styledRasterPath = maskAssetId ? path.join(temp, `graphic-raster-styled-${rasterGraphicInputs.length}.png`) : rasterPath;
-    const styledInputPath = needsBakedEffects ? await bakeGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
+    const styledInputPath = needsBakedEffects ? await bakeCutGraphicGlowAndShadow(graphic, baseRasterPath, styledRasterPath, width, height) : baseRasterPath;
     if (maskAssetId) {
       const privateMask = inputById.get(maskAssetId);
       if (!privateMask?.asset.mimeType?.startsWith("image/")) throw new Error("A custom reveal mask must reference ready private image media");
