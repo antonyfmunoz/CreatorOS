@@ -418,7 +418,7 @@ function assertSupportedCompositionContainer(layer: CutCompositionManifest["laye
   // group effects/blending need an intermediate composite. Keep those cases
   // fail-closed instead of silently producing a different final render.
   const hasStaticUniform2dRotation = layer.rotation !== 0;
-  if (layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.some((animation) => !["opacity", "volume"].includes(animation.property)) || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
+  if (layer.rotationX !== 0 || layer.rotationY !== 0 || layer.perspective !== 0 || layer.blendMode !== "normal" || layer.effects.length || layer.animations.some((animation) => !["x", "y", "opacity", "volume"].includes(animation.property)) || layer.enter?.kind !== undefined || layer.exit?.kind !== undefined) {
     throw new Error("Nested composition containers support static placement, rectangular scaling, opacity, audio gain, and static uniform 2D graphic rotation only; 3D, effects, blend, animation, and transitions require composition-group rendering");
   }
   if (hasStaticUniform2dRotation && Math.abs(layer.width - layer.height) > 0.000001) {
@@ -457,14 +457,19 @@ function applyNestedContainerLayout(child: CutCompositionManifest["layers"][numb
     throw new Error("Nested composition rectangular scaling cannot contain child slide transitions until composition-group rendering is available");
   }
   const parentFrameOffset = child.from - container.from;
-  const parentAnimation = (property: "opacity" | "volume", base: number) => {
+  // A group translation is affine: for a child without its own position
+  // curve, each sampled parent X/Y value simply replaces the static parent
+  // offset in the already-scaled child position. That keeps preview and EDL
+  // evaluation identical without pretending it covers group scale/rotation.
+  const parentAnimation = (property: "x" | "y" | "opacity" | "volume", base: number) => {
     const source = container.animations.find((animation) => animation.property === property);
     if (!source) return [];
     if (child.animations.some((animation) => animation.property === property)) throw new Error(`Nested composition ${property} animation cannot be combined with an independently animated child until composition-group rendering is available`);
     const end = parentFrameOffset + child.durationInFrames;
+    const fallback = property === "x" ? container.x : property === "y" ? container.y : property === "opacity" ? container.opacity : container.volume;
     return [{ property, keyframes: [
-      { frame: 0, value: valueAtFrame(container, property, parentFrameOffset, property === "opacity" ? container.opacity : container.volume) * base, easing: "linear" as const },
-      ...source.keyframes.filter((keyframe) => keyframe.frame > parentFrameOffset && keyframe.frame < end).map((keyframe) => ({ ...keyframe, frame: keyframe.frame - parentFrameOffset, value: Number(keyframe.value) * base })),
+      { frame: 0, value: property === "x" || property === "y" ? valueAtFrame(container, property, parentFrameOffset, fallback) + base : valueAtFrame(container, property, parentFrameOffset, fallback) * base, easing: "linear" as const },
+      ...source.keyframes.filter((keyframe) => keyframe.frame > parentFrameOffset && keyframe.frame < end).map((keyframe) => ({ ...keyframe, frame: keyframe.frame - parentFrameOffset, value: (property === "x" || property === "y" ? Number(keyframe.value) + base : Number(keyframe.value) * base) })),
     ] }];
   };
   const animations = [...child.animations.map((animation) => {
@@ -473,7 +478,7 @@ function applyNestedContainerLayout(child: CutCompositionManifest["layers"][numb
     if (animation.property === "opacity") return mapNestedAnimationValues(animation, (value) => value * container.opacity);
     if (animation.property === "volume") return mapNestedAnimationValues(animation, (value) => value * container.volume);
     return animation;
-  }), ...parentAnimation("opacity", child.opacity), ...parentAnimation("volume", child.volume)];
+  }), ...parentAnimation("x", child.x * scaleX), ...parentAnimation("y", child.y * scaleY), ...parentAnimation("opacity", child.opacity), ...parentAnimation("volume", child.volume)];
   return cutCompositionLayerSchema.parse({
     ...child,
     x: container.x + child.x * scaleX,

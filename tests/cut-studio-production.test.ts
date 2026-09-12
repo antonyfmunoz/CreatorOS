@@ -297,22 +297,33 @@ describe("CutStudio programmable production runtime", () => {
     expect(finalMotion.opacity).toBeCloseTo(.28);
   });
 
-  it("propagates exact parent opacity and volume curves into non-conflicting nested children", () => {
+  it("propagates exact parent translation, opacity, and volume curves into non-conflicting nested children", () => {
     const childId = "00000000-0000-4000-8000-000000000071";
     const rootId = "00000000-0000-4000-8000-000000000072";
-    const child = { ...manifest, name: "Fading child", layers: [{ ...sourceLayer, id: "fade-source", opacity: .8, volume: .5, animations: [] }] };
-    const root = { ...manifest, name: "Fading parent", durationInFrames: 90, layers: [{ id: "group", kind: "composition" as const, name: "Fading child", compositionId: childId, from: 10, durationInFrames: 60, opacity: .75, volume: .8, animations: [
+    const child = { ...manifest, name: "Fading child", layers: [{ ...sourceLayer, id: "fade-source", x: .2, y: .3, width: .5, height: .5, opacity: .8, volume: .5, animations: [] }] };
+    const root = { ...manifest, name: "Fading parent", durationInFrames: 90, layers: [{ id: "group", kind: "composition" as const, name: "Fading child", compositionId: childId, from: 10, durationInFrames: 60, x: .1, y: .15, width: .5, height: .5, opacity: .75, volume: .8, animations: [
+      { property: "x" as const, keyframes: [{ frame: 0, value: .1, easing: "linear" as const }, { frame: 59, value: .4, easing: "ease_in_out" as const }] },
+      { property: "y" as const, keyframes: [{ frame: 0, value: .15, easing: "linear" as const }, { frame: 59, value: .35, easing: "ease_out" as const }] },
       { property: "opacity" as const, keyframes: [{ frame: 0, value: .75, easing: "linear" as const }, { frame: 59, value: .25, easing: "ease_in_out" as const }] },
       { property: "volume" as const, keyframes: [{ frame: 0, value: .8, easing: "linear" as const }, { frame: 59, value: 1.2, easing: "ease_out" as const }] },
     ] }] };
     const expanded = expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
     const layer = expanded.layers[0]!;
+    expect(layer.animations.find((animation) => animation.property === "x")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.2), expect.closeTo(.5)]);
+    expect(layer.animations.find((animation) => animation.property === "y")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.3), expect.closeTo(.5)]);
     expect(layer.animations.find((animation) => animation.property === "opacity")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.6), expect.closeTo(.2)]);
     expect(layer.animations.find((animation) => animation.property === "volume")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.4), expect.closeTo(.6)]);
     expect(evaluateCompositionFrame(expanded, 10)[0]?.opacity).toBeCloseTo(.6);
     expect(evaluateCompositionFrame(expanded, 10)[0]?.volume).toBeCloseTo(.4);
+    expect(evaluateCompositionFrame(expanded, 10)[0]?.x).toBeCloseTo(.2);
+    expect(evaluateCompositionFrame(expanded, 10)[0]?.y).toBeCloseTo(.3);
     expect(evaluateCompositionFrame(expanded, 69)[0]?.opacity).toBeCloseTo(.2);
     expect(evaluateCompositionFrame(expanded, 69)[0]?.volume).toBeCloseTo(.6);
+    expect(evaluateCompositionFrame(expanded, 69)[0]?.x).toBeCloseTo(.5);
+    expect(evaluateCompositionFrame(expanded, 69)[0]?.y).toBeCloseTo(.5);
+    const finalClip = compileCompositionToEdl(root, { version: 3, clips: [] }, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined }).clips[0]!;
+    expect(finalClip.motionKeyframes?.find((point) => point.at === (59 / 30))?.x).toBeCloseTo(.5);
+    expect(finalClip.motionKeyframes?.find((point) => point.at === (59 / 30))?.y).toBeCloseTo(.5);
   });
 
   it("flattens static uniform nested graphic rotation around the composition pivot", () => {
