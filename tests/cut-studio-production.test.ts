@@ -297,6 +297,24 @@ describe("CutStudio programmable production runtime", () => {
     expect(finalMotion.opacity).toBeCloseTo(.28);
   });
 
+  it("propagates exact parent opacity and volume curves into non-conflicting nested children", () => {
+    const childId = "00000000-0000-4000-8000-000000000071";
+    const rootId = "00000000-0000-4000-8000-000000000072";
+    const child = { ...manifest, name: "Fading child", layers: [{ ...sourceLayer, id: "fade-source", opacity: .8, volume: .5, animations: [] }] };
+    const root = { ...manifest, name: "Fading parent", durationInFrames: 90, layers: [{ id: "group", kind: "composition" as const, name: "Fading child", compositionId: childId, from: 10, durationInFrames: 60, opacity: .75, volume: .8, animations: [
+      { property: "opacity" as const, keyframes: [{ frame: 0, value: .75, easing: "linear" as const }, { frame: 59, value: .25, easing: "ease_in_out" as const }] },
+      { property: "volume" as const, keyframes: [{ frame: 0, value: .8, easing: "linear" as const }, { frame: 59, value: 1.2, easing: "ease_out" as const }] },
+    ] }] };
+    const expanded = expandNestedCompositionManifest(root, { rootCompositionId: rootId, resolveComposition: (id) => id === childId ? child : undefined });
+    const layer = expanded.layers[0]!;
+    expect(layer.animations.find((animation) => animation.property === "opacity")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.6), expect.closeTo(.2)]);
+    expect(layer.animations.find((animation) => animation.property === "volume")?.keyframes.map((point) => point.value)).toEqual([expect.closeTo(.4), expect.closeTo(.6)]);
+    expect(evaluateCompositionFrame(expanded, 10)[0]?.opacity).toBeCloseTo(.6);
+    expect(evaluateCompositionFrame(expanded, 10)[0]?.volume).toBeCloseTo(.4);
+    expect(evaluateCompositionFrame(expanded, 69)[0]?.opacity).toBeCloseTo(.2);
+    expect(evaluateCompositionFrame(expanded, 69)[0]?.volume).toBeCloseTo(.6);
+  });
+
   it("flattens static uniform nested graphic rotation around the composition pivot", () => {
     const childId = "00000000-0000-4000-8000-000000000058";
     const rootId = "00000000-0000-4000-8000-000000000059";
