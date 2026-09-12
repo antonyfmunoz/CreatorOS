@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
 import {
@@ -137,10 +137,26 @@ async function productionPlan(project: typeof cutStudioProjects.$inferSelect, cr
   return concurrent;
 }
 
+/**
+ * A CutStudio project records its source only after the owner has explicitly
+ * authorized it for editing.  Older/private uploads can predate the default
+ * business that is created with a project, so that one source may not carry
+ * the project business ID.  Keep that compatibility narrow: every other
+ * composition asset must still belong to the project business.
+ */
+function projectCompositionAssetScope(project: typeof cutStudioProjects.$inferSelect) {
+  return and(
+    eq(assets.ownerUserId, project.ownerUserId),
+    or(eq(assets.businessId, project.businessId), eq(assets.id, project.sourceAssetId)),
+    eq(assets.visibility, "private"),
+    eq(assets.status, "ready"),
+  );
+}
+
 async function assertProjectAssets(project: typeof cutStudioProjects.$inferSelect, assetIds: string[]) {
   const uniqueIds = Array.from(new Set(assetIds));
   if (!uniqueIds.length) return;
-  const rows = await db.select({ id: assets.id }).from(assets).where(and(inArray(assets.id, uniqueIds), eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+  const rows = await db.select({ id: assets.id }).from(assets).where(and(inArray(assets.id, uniqueIds), projectCompositionAssetScope(project)));
   if (rows.length !== uniqueIds.length) throw new Error("Every referenced asset must be a ready private asset in this business");
 }
 
@@ -167,7 +183,7 @@ async function assertCompositionAssets(project: typeof cutStudioProjects.$inferS
   await assertProjectAssets(project, ids);
   const uniqueIds = Array.from(new Set(ids));
   if (!uniqueIds.length) return;
-  const rows = await db.select({ id: assets.id, kind: assets.kind, mimeType: assets.mimeType }).from(assets).where(and(inArray(assets.id, uniqueIds), eq(assets.ownerUserId, project.ownerUserId), eq(assets.businessId, project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready")));
+  const rows = await db.select({ id: assets.id, kind: assets.kind, mimeType: assets.mimeType }).from(assets).where(and(inArray(assets.id, uniqueIds), projectCompositionAssetScope(project)));
   const byId = new Map(rows.map((asset) => [asset.id, asset]));
   const fontIds = manifest.fonts.flatMap((font) => font.assetId ? [font.assetId] : []);
   if (fontIds.some((assetId) => { const asset = byId.get(assetId); return !asset || asset.kind !== "cut-font" || !asset.mimeType || !/^(font\/(ttf|otf|sfnt)|application\/(font-sfnt|x-font-ttf|x-font-opentype|octet-stream))$/i.test(asset.mimeType); })) throw new Error("Every composition font must be ready private TTF or OTF media");
@@ -497,7 +513,7 @@ export function registerCutStudioProductionRoutes(cut: CutRouteRegistry, depende
       const [projectMedia] = await db.select({ id: cutStudioProjectMedia.id }).from(cutStudioProjectMedia).where(and(eq(cutStudioProjectMedia.projectId, access.project.id), eq(cutStudioProjectMedia.assetId, req.params.assetId), inArray(cutStudioProjectMedia.mediaKind, ["video", "audio", "image", "font", "lottie", "rive"]))).limit(1);
       if (!projectMedia) return res.status(404).json({ message: "Composition media not found" });
     }
-    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.assetId), eq(assets.ownerUserId, access.project.ownerUserId), eq(assets.businessId, access.project.businessId), eq(assets.visibility, "private"), eq(assets.status, "ready"))).limit(1);
+    const [asset] = await db.select().from(assets).where(and(eq(assets.id, req.params.assetId), projectCompositionAssetScope(access.project))).limit(1);
     if (!asset) return res.status(404).json({ message: "Composition media not found" });
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "creativesos-composition-media-"));
     const outputPath = path.join(temp, "media.bin");
