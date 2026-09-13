@@ -586,7 +586,7 @@ export function CutStudioCreativeRuntime({ project, media, onSaveCodeSource, onT
     await refresh(); setMessage("Workflow graph saved.");
   });
 
-  return <div className="rounded-2xl border border-[#1d9bf0]/35 bg-zinc-950 p-4" aria-label="CutStudio creative runtime">
+  return <div className="cut-studio-creative-runtime rounded-2xl border border-[#1d9bf0]/35 bg-zinc-950 p-4" aria-label="CutStudio creative runtime">
     {unsavedCount > 0 && <div aria-label="Unsaved creative edits" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
       <p>{unsavedCount} unsaved creative {unsavedCount === 1 ? "draft" : "drafts"}. Save each composition, source package, workflow or brief to keep it.</p>
       {conflictCount > 0 && <p className="mt-1">Some saved records changed elsewhere or were removed. Your edits are preserved; their original revision still protects against overwriting someone else's work.</p>}

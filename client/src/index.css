@@ -119,6 +119,98 @@
   .horizontal-rail > * {
     scroll-snap-align: start;
   }
+
+  /* CutStudio is a focused creation surface, not a general dashboard. The
+     hierarchy follows the attached Stitch system: black canvas, charcoal
+     work areas, thin graphite dividers, and one blue active state. */
+  .cut-studio-shell {
+    background:
+      radial-gradient(circle at 52% -18%, rgb(29 155 240 / 0.14), transparent 34rem),
+      #09090a;
+  }
+
+  .cut-studio-topbar {
+    border-bottom: 1px solid rgb(63 63 70 / 0.8);
+    background: rgb(0 0 0 / 0.88);
+    backdrop-filter: blur(18px);
+  }
+
+  .cut-studio-mark {
+    color: #1d9bf0;
+    background: rgb(29 155 240 / 0.12);
+    border: 1px solid rgb(29 155 240 / 0.25);
+  }
+
+  .cut-studio-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid rgb(82 82 91);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    color: rgb(228 228 231);
+    font-size: 0.75rem;
+    font-weight: 700;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+
+  .cut-studio-export:hover {
+    border-color: rgb(161 161 170);
+    background: rgb(39 39 42);
+  }
+
+  .cut-studio-workspace {
+    align-items: start;
+  }
+
+  .cut-studio-monitor,
+  .cut-studio-panel,
+  .cut-studio-meter,
+  .cut-studio-timeline {
+    border: 1px solid rgb(63 63 70 / 0.9);
+    border-radius: 0.875rem;
+    background: rgb(24 24 27 / 0.9);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.16);
+  }
+
+  .cut-studio-source {
+    background: rgb(17 17 19 / 0.96);
+  }
+
+  .cut-studio-program {
+    border-color: rgb(82 82 91);
+    background-color: #000;
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.32), inset 0 0 0 1px rgb(255 255 255 / 0.025);
+  }
+
+  .cut-studio-meter {
+    background: linear-gradient(90deg, rgb(20 20 23), rgb(29 29 33));
+  }
+
+  .cut-studio-timeline {
+    background: linear-gradient(180deg, rgb(28 28 31), rgb(18 18 20));
+  }
+
+  .cut-studio-inspector > * {
+    border-color: rgb(63 63 70 / 0.9) !important;
+    background-color: rgb(24 24 27 / 0.92) !important;
+    box-shadow: 0 14px 38px rgb(0 0 0 / 0.14);
+  }
+
+  .cut-studio-creative-runtime {
+    background:
+      linear-gradient(145deg, rgb(29 155 240 / 0.09), transparent 38%),
+      rgb(24 24 27 / 0.96) !important;
+  }
+
+  .cut-studio-creative-runtime [role="button"],
+  .cut-studio-creative-runtime button {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .cut-studio-creative-runtime .sticky {
+    box-shadow: 0 8px 18px rgb(0 0 0 / 0.22);
+  }
 }
 
 @layer utilities {
