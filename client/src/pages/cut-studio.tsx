@@ -144,6 +144,20 @@ export default function CutStudioPage() {
   const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
   const [audioTemplateName, setAudioTemplateName] = useState("");
   const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">("edit");
+  const inspectorRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const inspector = inspectorRef.current;
+    if (!inspector) return;
+    for (const child of Array.from(inspector.children)) {
+      const text = child.textContent ?? "";
+      const panel = text.includes("Project media") ? "media"
+        : text.includes("Titles & graphics") ? "edit"
+        : text.includes("Motion graphics + cinema studio") ? "create"
+        : text.includes("AI edit assistant") || text.includes("Highlights") ? "assist"
+        : "deliver";
+      child.setAttribute("data-workspace-panel", panel);
+    }
+  }, [project?.id, mediaLibrary.length, renders.length, reviews.length, workspace?.participants.length]);
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
@@ -1148,6 +1162,10 @@ export default function CutStudioPage() {
   const renderEstimate = estimateCutRenderSeconds(cutDuration(edl), { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps } as CutRenderRequest);
   const focusWorkspaceTool = (tool: typeof activeWorkspaceTool) => {
     setActiveWorkspaceTool(tool);
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      inspectorRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     const heading = ({ media: "Project media", edit: "Titles & graphics", create: "Motion graphics + cinema studio", assist: "AI edit assistant", deliver: "Render" } as const)[tool];
     const target = [...document.querySelectorAll(".cut-studio-inspector h2")].find((element) => element.textContent?.trim() === heading)?.closest("div");
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1257,7 +1275,7 @@ export default function CutStudioPage() {
              {project.transcript && <div className="mt-3 rounded-xl bg-zinc-900 p-3"><div className="flex items-center justify-between"><p className="text-xs font-bold">Smart cleanup</p><Button size="sm" variant="outline" disabled={busy === "detect"} onClick={() => void detectCleanup()}>{busy === "detect" ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <WandSparkles className="mr-1 h-3 w-3"/>}Analyze</Button></div>{candidates && <div className="mt-3 grid gap-2 sm:grid-cols-2"><Button size="sm" variant="outline" disabled={!candidates.fillerWords.length} onClick={() => applyCandidates(candidates.fillerWords)}>Remove {candidates.fillerWords.length} filler words</Button><Button size="sm" variant="outline" disabled={!candidates.silenceGaps.length} onClick={() => applyCandidates(candidates.silenceGaps)}>Tighten {candidates.silenceGaps.length} pauses</Button></div>}</div>}
           </div>
         </section>
-        <aside className="cut-studio-inspector min-w-0 space-y-4">
+        <aside ref={inspectorRef} data-active-tool={activeWorkspaceTool} className="cut-studio-inspector min-w-0 space-y-4" aria-label="Editor inspector">
           <CutStudioCreativeRuntime key={`creative:${project.id}`} project={project} media={mediaLibrary} onSaveCodeSource={saveCodeSource} onTimelineBusyChange={(value) => { if (currentProjectRef.current?.id === project.id) { creativeBusyRef.current = value; setCreativeTimelineBusy(value); } }} onUnsavedChange={(value) => { if (currentProjectRef.current?.id === project.id) { creativeDraftRef.current = value; setCreativeDraftDirty(value); } }} onRenderBatchQueued={() => { if (currentProjectRef.current?.id === project.id) void openProject(project.id); }} onProjectMediaChanged={() => { if (currentProjectRef.current?.id === project.id) void openProject(project.id); }} onUseCodeRenderOutput={(media) => { if (currentProjectRef.current?.id !== project.id) return; if (media.mediaKind === "video" || media.mediaKind === "audio") addMediaClip(media); else if (media.mediaKind === "image") addImageGraphic(media); }} onTimelineApplied={(result) => { if (currentProjectRef.current?.id !== project.id) return; edlRef.current = result.edl; setEdl(result.edl); setRevision(result.revision); setProject((value) => value ? { ...value, edl: result.edl, duration: result.duration, revision: result.revision } : value); setHistory([]); setFuture([]); }}/>
           <CutStudioFrameExport key={`frame-export:${project.id}`} renders={renders}/>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"><div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">Project media</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Open private media in the source monitor; insert media, graphics, fonts, animations, or pinned code-composition packages.</p></div><label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-zinc-700 px-3 text-xs font-bold hover:bg-zinc-900"><input aria-label="Add project media" className="sr-only" type="file" accept="video/*,audio/*,image/*,.ttf,.otf,.json,.riv,.zip,.yaml,.lock,font/ttf,font/otf,application/json,application/x-rive,application/zip" disabled={busy === "media"} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadProjectMedia(file); }}/>{busy === "media" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <Plus className="mr-1.5 h-3.5 w-3.5"/>}Media</label></div><div className="mt-3 space-y-2">{mediaLibrary.map((media) => { const proxy = jobs.find((job) => job.kind === "proxy" && job.output?.mediaId === media.id && job.state === "done"); const isCodeResource = media.mediaKind === "code_source" || media.mediaKind === "code_lockfile"; return <div key={media.id} className={`flex flex-wrap items-center gap-2 rounded-xl p-2 ${sourceMedia?.id === media.id ? "border border-[#1d9bf0] bg-sky-950/30" : "bg-zinc-900"}`}><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-black text-[10px] font-bold text-zinc-500">{media.mediaKind === "audio" ? "A" : media.mediaKind === "image" ? "I" : media.mediaKind === "font" ? "F" : media.mediaKind === "lottie" ? "L" : media.mediaKind === "rive" ? "R" : isCodeResource ? "C" : "V"}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{media.name}</span><span className="text-[10px] text-zinc-600">{media.mediaKind === "font" ? "private font" : isCodeResource ? media.mediaKind.replace("_", " ") : `${formatTime(media.duration)} · ${media.assetId === project.sourceAssetId ? "primary" : media.mediaKind}`}{proxy ? " · proxy ready" : ""}</span></span>{!["font", "lottie", "rive", "code_source", "code_lockfile"].includes(media.mediaKind) && <Button aria-label={`Open ${media.name} in source monitor`} size="sm" variant="outline" disabled={busy === "source-media"} onClick={() => void openSourceMedia(media)}>Open</Button>}{media.mediaKind === "image" && <Button aria-label={`Add ${media.name} as image graphic`} size="sm" variant="outline" disabled={project.mediaKind !== "video"} onClick={() => addImageGraphic(media)}>Graphic</Button>}{media.mediaKind === "video" && <Button aria-label={`${proxy ? "Use" : "Create"} editing proxy for ${media.name}`} size="sm" variant="outline" disabled={busy === `proxy:${media.id}`} onClick={() => void createOrUseProxy(media)}>{busy === `proxy:${media.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : proxy ? "Use proxy" : "Proxy"}</Button>}{media.assetId !== project.sourceAssetId && ["video", "audio"].includes(media.mediaKind) && <Button aria-label={`Add all of ${media.name}`} size="sm" variant="outline" onClick={() => addMediaClip(media)}>Add all</Button>}</div>; })}</div>{project.mediaKind !== "video" && <p className="mt-3 rounded-lg bg-amber-950/40 px-3 py-2 text-[11px] leading-5 text-amber-300">Multitrack layers require a video project. Audio-only projects keep the fast single-track workflow.</p>}</div>
