@@ -143,6 +143,7 @@ export default function CutStudioPage() {
   const [loudnessMeasurement, setLoudnessMeasurement] = useState<LoudnessMeasurement | null>(null);
   const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
   const [audioTemplateName, setAudioTemplateName] = useState("");
+  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">("edit");
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
@@ -1145,10 +1146,29 @@ export default function CutStudioPage() {
   const highlightJob = jobs.find((job) => job.kind === "highlights");
   const transcriptMatches = (transcriptDraft?.segments ?? []).filter((segment) => !transcriptSearch.trim() || segment.text.toLowerCase().includes(transcriptSearch.trim().toLowerCase()));
   const renderEstimate = estimateCutRenderSeconds(cutDuration(edl), { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps } as CutRenderRequest);
+  const focusWorkspaceTool = (tool: typeof activeWorkspaceTool) => {
+    setActiveWorkspaceTool(tool);
+    const heading = ({ media: "Project media", edit: "Titles & graphics", create: "Motion graphics + cinema studio", assist: "AI edit assistant", deliver: "Render" } as const)[tool];
+    const target = [...document.querySelectorAll(".cut-studio-inspector h2")].find((element) => element.textContent?.trim() === heading)?.closest("div");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
     <main className="cut-studio-shell min-h-screen pb-24 text-white">
       <header className="cut-studio-topbar sticky top-0 z-30 flex h-16 items-center px-3"><Button variant="ghost" size="icon" onClick={() => { if (!confirmLeavingTimeline()) return; ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setPendingProjectRefresh(null); setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><span className="cut-studio-mark ml-1 flex h-8 w-8 items-center justify-center rounded-lg"><Scissors className="h-4 w-4"/></span><div className="ml-2 min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">CutStudio</p><h1 className="truncate text-sm font-bold">{project.name}</h1></div><div className="mr-2 hidden items-center gap-2 text-[10px] text-zinc-500 sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${visibleSaveStatus === "Saved" ? "bg-emerald-400" : "bg-[#1d9bf0]"}`}/>{visibleSaveStatus || "Editing locally"}</div><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="cut-studio-export ml-1" href={`/api/cut/projects/${project.id}/export.edl`} download aria-label="Export EDL"><Download className="h-4 w-4"/><span className="hidden sm:inline">EDL</span></a></header>
-      <div className="cut-studio-workspace mx-auto grid max-w-[1640px] gap-4 p-3 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="cut-studio-workspace mx-auto grid max-w-[1640px] gap-4 p-3 lg:grid-cols-[64px_minmax(0,1fr)_380px]">
+        <nav className="cut-studio-tool-rail" aria-label="CutStudio workspace tools">
+          {([[
+            "media", Film, "Media"
+          ], [
+            "edit", Scissors, "Edit"
+          ], [
+            "create", Sparkles, "Create"
+          ], [
+            "assist", WandSparkles, "Assist"
+          ], [
+            "deliver", Send, "Deliver"
+          ]] as const).map(([tool, Icon, label]) => <button key={tool} type="button" className={activeWorkspaceTool === tool ? "is-active" : ""} onClick={() => focusWorkspaceTool(tool)} aria-pressed={activeWorkspaceTool === tool} aria-label={label}><Icon className="h-4 w-4"/><span>{label}</span></button>)}
+        </nav>
         <section className="min-w-0 space-y-4">
           <div className="grid gap-3 xl:grid-cols-[minmax(260px,.72fr)_minmax(0,1.28fr)]">
           <div className="cut-studio-monitor cut-studio-source overflow-hidden" aria-label="Source monitor">
