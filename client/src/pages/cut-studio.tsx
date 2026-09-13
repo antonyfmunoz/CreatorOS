@@ -1167,7 +1167,7 @@ export default function CutStudioPage() {
       return;
     }
     const heading = ({ media: "Project media", edit: "Titles & graphics", create: "Motion graphics + cinema studio", assist: "AI edit assistant", deliver: "Render" } as const)[tool];
-    const target = [...document.querySelectorAll(".cut-studio-inspector h2")].find((element) => element.textContent?.trim() === heading)?.closest("div");
+    const target = Array.from(document.querySelectorAll(".cut-studio-inspector h2")).find((element) => element.textContent?.trim() === heading)?.closest("div");
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
