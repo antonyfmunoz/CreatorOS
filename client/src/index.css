@@ -254,15 +254,12 @@
     order: -10;
   }
 
-  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="create"],
-  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="assist"],
-  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="deliver"],
-  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="create"],
-  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="assist"],
-  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="deliver"],
-  .cut-studio-inspector[data-active-tool="create"] > :not([data-workspace-panel="create"]),
-  .cut-studio-inspector[data-active-tool="assist"] > :not([data-workspace-panel="assist"]),
-  .cut-studio-inspector[data-active-tool="deliver"] > :not([data-workspace-panel="deliver"]) {
+  /* The high-density motion/cinema runtime is the only panel large enough to
+     turn an editor into a document. It lives in its own Create workspace;
+     ordinary editing, assistance, review, and delivery stay directly
+     reachable so established timeline workflows never lose a control. */
+  .cut-studio-inspector[data-active-tool]:not([data-active-tool="create"]) > [data-workspace-panel="create"],
+  .cut-studio-inspector[data-active-tool="create"] > :not([data-workspace-panel="create"]) {
     display: none;
   }
 
