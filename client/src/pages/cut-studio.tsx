@@ -167,6 +167,10 @@ export default function CutStudioPage() {
     const inspector = inspectorRef.current;
     if (!inspector) return;
     for (const child of Array.from(inspector.children)) {
+      // Some inspector surfaces declare their workspace intentionally. Keep
+      // that explicit ownership instead of reclassifying them from visible
+      // text on a later render (for example the everyday clip inspector).
+      if (child.hasAttribute("data-workspace-panel")) continue;
       const text = child.textContent ?? "";
       const panel = text.includes("Project media") ? "media"
         : text.includes("Titles & graphics") ? "edit"
