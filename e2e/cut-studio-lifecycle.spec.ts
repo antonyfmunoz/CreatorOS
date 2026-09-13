@@ -151,6 +151,7 @@ test("CutStudio measures calibrated private-source loudness", async ({ page }, t
   expect(analysis.truePeakDbfs).toBeLessThan(0);
   await page.goto(`/cut-studio?project=${project.id}`);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByRole("button", { name: "Analyze" }).click();
   await expect(page.getByText("Measuring private source loudness…", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Calibrated loudness analysis").getByText("LUFS-I")).toBeVisible({ timeout: 30_000 });
@@ -214,10 +215,12 @@ test("CutStudio privately marks and inserts media from a dedicated source monito
   await page.goto(`/cut-studio?project=${project.id}`);
   await expect(page.getByRole("heading", { name: project.name })).toBeVisible();
   await expect(page.getByLabel("Timeline monitor")).toBeVisible();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const timelineVideo = page.getByLabel("Timeline monitor").locator("video");
   await timelineVideo.evaluate(async (element: HTMLVideoElement) => { element.muted = false; element.volume = .01; await element.play(); });
   await expect.poll(async () => Number((await page.getByLabel("Live short-term loudness").textContent())?.split(" ")[0]), { timeout: 10_000 }).toBeGreaterThan(-70);
   await timelineVideo.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = 0; element.dispatchEvent(new Event("timeupdate")); });
+  await page.getByRole("button", { name: "Media", exact: true }).click();
   await page.getByLabel("Open Source B-roll in source monitor").click();
   const sourceMonitor = page.getByLabel("Source monitor");
   await expect(sourceMonitor.getByText("Source B-roll")).toBeVisible();
@@ -750,6 +753,7 @@ test("CutStudio renders an owner-scoped private multitrack artifact", async ({ p
     const current = await response.json();
     return { track: current.edl.tracks.find((item: { track: string }) => item.track === "a1"), bus: current.edl.audioBuses.find((item: { id: string }) => item.id === "music") };
   }).toMatchObject({ track: { bus: "music" }, bus: { name: "Campaign music", gain: .4, muted: false } });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const audioMeter = page.getByLabel("Realtime audio RMS meter");
   await expect(audioMeter).toBeVisible();
   const timelineVideo = page.getByLabel("Timeline monitor").locator("video");

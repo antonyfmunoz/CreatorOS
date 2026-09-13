@@ -1177,13 +1177,11 @@ export default function CutStudioPage() {
   const renderEstimate = estimateCutRenderSeconds(cutDuration(edl), { aspect, captions, captionStyle, cleanAudio, audioPreset, masterGainDb, quality, resolution, fps } as CutRenderRequest);
   const focusWorkspaceTool = (tool: typeof activeWorkspaceTool) => {
     setActiveWorkspaceTool(tool);
-    if (window.matchMedia("(min-width: 1024px)").matches) {
-      inspectorRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    const heading = ({ media: "Project media", edit: "Titles & graphics", create: "Motion graphics + cinema studio", assist: "AI edit assistant", deliver: "Render" } as const)[tool];
-    const target = Array.from(document.querySelectorAll(".cut-studio-inspector h2")).find((element) => element.textContent?.trim() === heading)?.closest("div");
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    requestAnimationFrame(() => {
+      const inspector = inspectorRef.current;
+      const target = inspector?.querySelector<HTMLElement>(`[data-workspace-panel="${tool}"]`);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
   return (
     <main className="cut-studio-shell min-h-screen pb-24 text-white">

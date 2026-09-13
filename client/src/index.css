@@ -245,15 +245,11 @@
     box-shadow: 0 14px 38px rgb(0 0 0 / 0.14);
   }
 
-  /* A professional editor exposes one inspector context at a time. The rail
-     chooses the current context while every native control remains mounted,
-     preserving draft values and avoiding a destructive re-mount. */
-  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel]:not([data-workspace-panel="media"]),
-  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel]:not([data-workspace-panel="edit"]),
-  .cut-studio-inspector[data-active-tool="create"] > [data-workspace-panel]:not([data-workspace-panel="create"]),
-  .cut-studio-inspector[data-active-tool="assist"] > [data-workspace-panel]:not([data-workspace-panel="assist"]),
-  .cut-studio-inspector[data-active-tool="deliver"] > [data-workspace-panel]:not([data-workspace-panel="deliver"]) {
-    display: none;
+  /* The inspector is a contained, ordered panel stack. The rail jumps to a
+     context without unmounting or suppressing advanced controls, so keyboard,
+     accessibility, and production workflows remain available. */
+  .cut-studio-inspector > [data-workspace-panel="media"] {
+    order: -10;
   }
 
   .cut-studio-creative-runtime {
@@ -351,6 +347,9 @@
     }
 
     .cut-studio-inspector {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
       grid-column: 2;
       grid-row: 1;
       position: relative;
@@ -363,6 +362,10 @@
       padding-right: 0.25rem;
       scrollbar-color: rgb(82 82 91) transparent;
       scrollbar-width: thin;
+    }
+
+    .cut-studio-inspector > * + * {
+      margin-top: 0 !important;
     }
   }
 }
