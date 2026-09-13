@@ -15,16 +15,17 @@ test("timeline render captures its edit and review even after later changes", as
   expect(saved.ok(), await saved.text()).toBeTruthy(); const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
   await page.getByRole("button", { name: "Create", exact: true }).click();
-  const fullRender = page.getByRole("button", { name: "Render full edit", exact: true });
-  await expect(fullRender).toBeEnabled();
   let releaseApply!: () => void;
   const applyGate = new Promise<void>((resolve) => { releaseApply = resolve; });
   await page.route(`**/compositions/${composition.id}/apply`, async (route) => { await applyGate; await route.continue(); });
   try {
     await page.getByLabel("CutStudio creative runtime").getByRole("button", { name: "Apply", exact: true }).click();
+    await page.getByRole("button", { name: "Deliver", exact: true }).click();
+    const fullRender = page.getByRole("button", { name: "Render full edit", exact: true });
     await expect(fullRender).toBeDisabled();
     await expect(page.getByText("Finish applying and saving timeline changes before rendering.", { exact: true })).toBeVisible();
   } finally { releaseApply(); }
+  const fullRender = page.getByRole("button", { name: "Render full edit", exact: true });
   await expect(fullRender).toBeEnabled();
   await page.unroute(`**/compositions/${composition.id}/apply`);
   let releaseSave!: () => void;

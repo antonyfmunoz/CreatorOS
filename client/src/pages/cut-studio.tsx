@@ -144,13 +144,24 @@ export default function CutStudioPage() {
   const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
   const [audioTemplateName, setAudioTemplateName] = useState("");
   const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">(() => {
-    const saved = typeof window === "undefined" ? null : window.sessionStorage.getItem("cutstudio:workspace-tool");
+    let saved: string | null = null;
+    try {
+      saved = typeof window === "undefined" ? null : window.sessionStorage.getItem("cutstudio:workspace-tool");
+    } catch {
+      // Private browsing, storage-policy restrictions, and full device storage
+      // must never prevent the editor from opening its default workspace.
+    }
     return saved === "media" || saved === "edit" || saved === "create" || saved === "assist" || saved === "deliver" ? saved : "media";
   });
   const inspectorRef = useRef<HTMLElement | null>(null);
   const mainWorkspaceRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    window.sessionStorage.setItem("cutstudio:workspace-tool", activeWorkspaceTool);
+    try {
+      window.sessionStorage.setItem("cutstudio:workspace-tool", activeWorkspaceTool);
+    } catch {
+      // Workspace selection is a convenience preference, not an editor
+      // dependency. Continue normally when browser storage is unavailable.
+    }
   }, [activeWorkspaceTool]);
   useEffect(() => {
     const inspector = inspectorRef.current;
@@ -1185,7 +1196,7 @@ export default function CutStudioPage() {
   };
   return (
     <main className="cut-studio-shell min-h-screen pb-24 text-white">
-      <header className="cut-studio-topbar sticky top-0 z-30 flex h-16 items-center px-3"><Button variant="ghost" size="icon" onClick={() => { if (!confirmLeavingTimeline()) return; ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setPendingProjectRefresh(null); setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><span className="cut-studio-mark ml-1 flex h-8 w-8 items-center justify-center rounded-lg"><Scissors className="h-4 w-4"/></span><div className="ml-2 min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">CutStudio</p><h1 className="truncate text-sm font-bold">{project.name}</h1></div><div className="mr-2 hidden items-center gap-2 text-[10px] text-zinc-500 sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${visibleSaveStatus === "Saved" ? "bg-emerald-400" : "bg-[#1d9bf0]"}`}/>{visibleSaveStatus || "Editing locally"}</div><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="cut-studio-export ml-1" href={`/api/cut/projects/${project.id}/export.edl`} download aria-label="Export EDL"><Download className="h-4 w-4"/><span className="hidden sm:inline">EDL</span></a></header>
+      <header className="cut-studio-topbar sticky top-0 z-30 flex h-16 items-center px-3"><Button variant="ghost" size="icon" onClick={() => { if (!confirmLeavingTimeline()) return; ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setPendingProjectRefresh(null); setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><span className="cut-studio-mark ml-1 flex h-8 w-8 items-center justify-center rounded-lg"><Scissors className="h-4 w-4"/></span><div className="ml-2 min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">CutStudio</p><h1 className="truncate text-sm font-bold">{project.name}</h1></div><div className="mr-2 flex shrink-0 items-center gap-2 text-[10px] text-zinc-500"><span className={`h-1.5 w-1.5 rounded-full ${visibleSaveStatus === "Saved" ? "bg-emerald-400" : "bg-[#1d9bf0]"}`}/>{visibleSaveStatus || "Editing locally"}</div><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="cut-studio-export ml-1" href={`/api/cut/projects/${project.id}/export.edl`} download aria-label="Export EDL"><Download className="h-4 w-4"/><span className="hidden sm:inline">EDL</span></a></header>
       <div className="cut-studio-workspace mx-auto grid max-w-[1640px] gap-4 p-3 lg:grid-cols-[64px_320px_minmax(0,1fr)]">
         <nav className="cut-studio-tool-rail" aria-label="CutStudio workspace tools">
           {([[
