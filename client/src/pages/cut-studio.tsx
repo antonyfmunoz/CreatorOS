@@ -157,7 +157,7 @@ export default function CutStudioPage() {
         : "deliver";
       child.setAttribute("data-workspace-panel", panel);
     }
-  }, [project?.id, mediaLibrary.length, renders.length, reviews.length, workspace?.participants.length]);
+  }, [project?.id, mediaLibrary.length, jobs.length, reviews.length, workspace?.participants.length]);
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
