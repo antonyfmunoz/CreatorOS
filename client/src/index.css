@@ -245,11 +245,25 @@
     box-shadow: 0 14px 38px rgb(0 0 0 / 0.14);
   }
 
-  /* The inspector is a contained, ordered panel stack. The rail jumps to a
-     context without unmounting or suppressing advanced controls, so keyboard,
-     accessibility, and production workflows remain available. */
+  /* The inspector is a contained workspace, not a document-length control
+     wall. Media and Edit intentionally share the everyday cut surface; the
+     specialist Create, Assist, and Deliver workspaces replace that surface
+     until the editor chooses another mode. This follows the pane model used
+     by traditional NLEs while keeping the timeline permanently available. */
   .cut-studio-inspector > [data-workspace-panel="media"] {
     order: -10;
+  }
+
+  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="create"],
+  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="assist"],
+  .cut-studio-inspector[data-active-tool="media"] > [data-workspace-panel="deliver"],
+  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="create"],
+  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="assist"],
+  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="deliver"],
+  .cut-studio-inspector[data-active-tool="create"] > :not([data-workspace-panel="create"]),
+  .cut-studio-inspector[data-active-tool="assist"] > :not([data-workspace-panel="assist"]),
+  .cut-studio-inspector[data-active-tool="deliver"] > :not([data-workspace-panel="deliver"]) {
+    display: none;
   }
 
   .cut-studio-creative-runtime {
