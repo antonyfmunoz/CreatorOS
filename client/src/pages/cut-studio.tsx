@@ -143,8 +143,9 @@ export default function CutStudioPage() {
   const [loudnessMeasurement, setLoudnessMeasurement] = useState<LoudnessMeasurement | null>(null);
   const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
   const [audioTemplateName, setAudioTemplateName] = useState("");
-  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">("edit");
+  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">("media");
   const inspectorRef = useRef<HTMLElement | null>(null);
+  const mainWorkspaceRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const inspector = inspectorRef.current;
     if (!inspector) return;
@@ -158,6 +159,14 @@ export default function CutStudioPage() {
       child.setAttribute("data-workspace-panel", panel);
     }
   }, [project?.id, mediaLibrary.length, jobs.length, reviews.length, workspace?.participants.length]);
+  useEffect(() => {
+    const workspace = mainWorkspaceRef.current;
+    if (!workspace) return;
+    for (const child of Array.from(workspace.children)) {
+      if ((child.textContent ?? "").includes("Text-based edit")) child.setAttribute("data-workspace-panel", "transcript");
+      if (child.getAttribute("aria-label") === "Realtime audio RMS meter" || child.getAttribute("aria-label") === "Calibrated loudness analysis") child.setAttribute("data-workspace-panel", "diagnostics");
+    }
+  }, [project?.id, transcriptDraft?.segments.length]);
 
   const refreshProjects = useCallback(async () => {
     const response = await apiRequest("GET", "/api/cut/projects");
@@ -1173,7 +1182,7 @@ export default function CutStudioPage() {
   return (
     <main className="cut-studio-shell min-h-screen pb-24 text-white">
       <header className="cut-studio-topbar sticky top-0 z-30 flex h-16 items-center px-3"><Button variant="ghost" size="icon" onClick={() => { if (!confirmLeavingTimeline()) return; ++saveGeneration.current; ++openGeneration.current; clearTimeout(saveTimer.current); saveInFlight.current = null; edlRef.current = null; setPendingProjectRefresh(null); setProject(null); setEdl(null); }} aria-label="Projects"><ArrowLeft/></Button><span className="cut-studio-mark ml-1 flex h-8 w-8 items-center justify-center rounded-lg"><Scissors className="h-4 w-4"/></span><div className="ml-2 min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">CutStudio</p><h1 className="truncate text-sm font-bold">{project.name}</h1></div><div className="mr-2 hidden items-center gap-2 text-[10px] text-zinc-500 sm:flex"><span className={`h-1.5 w-1.5 rounded-full ${visibleSaveStatus === "Saved" ? "bg-emerald-400" : "bg-[#1d9bf0]"}`}/>{visibleSaveStatus || "Editing locally"}</div><Button variant="ghost" size="icon" disabled={!history.length} onClick={undo} aria-label="Undo"><Undo2/></Button><Button variant="ghost" size="icon" disabled={!future.length} onClick={redo} aria-label="Redo"><Redo2/></Button><a className="cut-studio-export ml-1" href={`/api/cut/projects/${project.id}/export.edl`} download aria-label="Export EDL"><Download className="h-4 w-4"/><span className="hidden sm:inline">EDL</span></a></header>
-      <div className="cut-studio-workspace mx-auto grid max-w-[1640px] gap-4 p-3 lg:grid-cols-[64px_minmax(0,1fr)_380px]">
+      <div className="cut-studio-workspace mx-auto grid max-w-[1640px] gap-4 p-3 lg:grid-cols-[64px_320px_minmax(0,1fr)]">
         <nav className="cut-studio-tool-rail" aria-label="CutStudio workspace tools">
           {([[
             "media", Film, "Media"
@@ -1187,7 +1196,7 @@ export default function CutStudioPage() {
             "deliver", Send, "Deliver"
           ]] as const).map(([tool, Icon, label]) => <button key={tool} type="button" className={activeWorkspaceTool === tool ? "is-active" : ""} onClick={() => focusWorkspaceTool(tool)} aria-pressed={activeWorkspaceTool === tool} aria-label={label}><Icon className="h-4 w-4"/><span>{label}</span></button>)}
         </nav>
-        <section className="min-w-0 space-y-4">
+        <section ref={mainWorkspaceRef} data-active-tool={activeWorkspaceTool} className="cut-studio-main-workspace min-w-0 space-y-4" aria-label="Editing workspace">
           <div className="grid gap-3 xl:grid-cols-[minmax(260px,.72fr)_minmax(0,1.28fr)]">
           <div className="cut-studio-monitor cut-studio-source overflow-hidden" aria-label="Source monitor">
             <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">Source monitor</p><p className="max-w-56 truncate text-xs text-zinc-400">{sourceMedia?.name ?? "Choose project media"}</p></div><span className="text-[10px] text-zinc-600">{formatTime(sourceIn)}–{formatTime(sourceOut)}</span></div>
