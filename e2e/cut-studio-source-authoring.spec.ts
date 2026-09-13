@@ -14,6 +14,10 @@ async function fixture(page: Page, info: TestInfo) {
   expect(created.ok(), await created.text()).toBeTruthy();
   const project = await created.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  // Source packages live in the dedicated Create workspace. Opening it here
+  // mirrors the production interaction instead of depending on an expanded
+  // all-tools document layout.
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   await page.getByRole("button", { name: "New source package", exact: true }).click();
   return project;
 }
