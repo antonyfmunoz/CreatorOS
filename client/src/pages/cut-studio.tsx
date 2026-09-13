@@ -143,9 +143,15 @@ export default function CutStudioPage() {
   const [loudnessMeasurement, setLoudnessMeasurement] = useState<LoudnessMeasurement | null>(null);
   const [audioTemplates, setAudioTemplates] = useState<AudioRoutingTemplate[]>([]);
   const [audioTemplateName, setAudioTemplateName] = useState("");
-  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">("media");
+  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<"media" | "edit" | "create" | "assist" | "deliver">(() => {
+    const saved = typeof window === "undefined" ? null : window.sessionStorage.getItem("cutstudio:workspace-tool");
+    return saved === "media" || saved === "edit" || saved === "create" || saved === "assist" || saved === "deliver" ? saved : "media";
+  });
   const inspectorRef = useRef<HTMLElement | null>(null);
   const mainWorkspaceRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    window.sessionStorage.setItem("cutstudio:workspace-tool", activeWorkspaceTool);
+  }, [activeWorkspaceTool]);
   useEffect(() => {
     const inspector = inspectorRef.current;
     if (!inspector) return;

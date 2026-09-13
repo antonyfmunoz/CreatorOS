@@ -38,6 +38,7 @@ for (const transition of [false, true]) {
     const player = page.getByLabel('CutStudio creative runtime').getByLabel('CutStudio composition player');
     try {
       await page.goto(`/cut-studio?project=${project.id}`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
       await expect(player).toHaveAttribute('data-player-state', 'buffering');
       await player.getByRole('button', { name: 'Play composition', exact: true }).click();
       const held = await player.evaluate((element) => new Promise<number[]>((resolve) => {

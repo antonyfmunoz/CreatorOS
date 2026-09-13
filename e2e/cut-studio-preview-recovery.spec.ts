@@ -59,6 +59,7 @@ for (const kind of ['video', 'image', 'audio'] as const) {
     const failedPattern = `**/api/assets/${failed.id}/stream*`;
     await page.route(failedPattern, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Synthetic temporary storage failure"}' }));
     await page.goto(`/cut-studio?project=${project.id}`);
+    await page.getByRole("button", { name: "Create", exact: true }).click();
     const studio = page.getByLabel('CutStudio creative runtime');
     const player = studio.getByLabel('CutStudio composition player');
     const errorText = kind === 'image' ? 'This private image could not be displayed.' : 'This private media could not be played.';

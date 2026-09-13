@@ -153,6 +153,7 @@ test("CutStudio persists and enforces the programmable motion and cinematic prod
   expect(afterInvalid.compositions.some((composition: { name: string }) => composition.name === "Corrupt capsule must not persist")).toBe(false);
 
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const riveRuntimeResponse = await page.request.get("/api/runtime-assets/rive-2.41.0.wasm");
   await expectOk(riveRuntimeResponse);
   expect((await riveRuntimeResponse.body()).length).toBeGreaterThan(700_000);

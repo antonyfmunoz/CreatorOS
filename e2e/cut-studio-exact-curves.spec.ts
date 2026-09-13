@@ -64,6 +64,7 @@ test('saved nonlinear compositions retain two-pixel preview and native position 
   const submitted = await page.request.post(`/api/cut/projects/${project.id}/render`, { data: { aspect: '16:9', resolution: '720p', fps: 30, captions: false, quality: 'draft' } });
   expect(submitted.ok()).toBeTruthy(); const job = await submitted.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel('CutStudio creative runtime').getByLabel('CutStudio composition player');
   const previews = new Map<number, Buffer>();
   for (const frame of [1, 4, 9, 14, 23, 44, 67, 88]) {

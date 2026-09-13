@@ -14,6 +14,7 @@ test("timeline render captures its edit and review even after later changes", as
   const saved = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: "Submitted composition", manifest: { version: 1, name: "Submitted composition", width: 640, height: 360, fps: 30, durationInFrames: 30, layers: [{ id: "video", kind: "video", name: "Source", assetId: asset.id, from: 0, durationInFrames: 30 }] } } });
   expect(saved.ok(), await saved.text()).toBeTruthy(); const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const fullRender = page.getByRole("button", { name: "Render full edit", exact: true });
   await expect(fullRender).toBeEnabled();
   let releaseApply!: () => void;

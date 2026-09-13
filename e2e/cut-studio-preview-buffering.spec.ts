@@ -55,6 +55,7 @@ for (const kind of ['image', 'video', 'audio', 'font', 'lottie', 'rive'] as cons
     await page.route(pattern, async (route) => { await gate; await route.continue(); });
     try {
       await page.goto(`/cut-studio?project=${project.id}`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
       await expect(player).toHaveAttribute('data-player-state', 'buffering');
       await player.getByRole('button', { name: 'Play composition', exact: true }).click();
       await expect(player).toHaveAttribute('data-play-requested', 'true');
@@ -81,6 +82,7 @@ test('composition buffering respects pause during loading and can retry a failed
   await page.route(pattern, (route) => fail ? route.fulfill({ status: 503, body: 'Synthetic storage failure' }) : route.continue());
   try {
     await page.goto(`/cut-studio?project=${project.id}`);
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(player).toHaveAttribute('data-player-state', 'error');
     await player.getByRole('button', { name: 'Play composition', exact: true }).click();
     const held = await framesFor(player); expect(new Set(held).size).toBe(1);
@@ -102,6 +104,7 @@ test('composition buffering freezes at a later media layer and retains pause aft
   await page.route(pattern, async (route) => { await gate; await route.continue(); });
   try {
     await page.goto(`/cut-studio?project=${project.id}`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(player).toHaveAttribute('data-player-state', 'paused');
     await player.getByRole('button', { name: 'Play composition', exact: true }).click();
     await expect(player).toHaveAttribute('data-player-state', 'buffering');

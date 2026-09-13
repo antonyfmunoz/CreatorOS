@@ -21,6 +21,7 @@ test('SVG and primitive framing leave transparent gutters over the source', asyn
   const composed = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: 'Vector framing', manifest } });
   expect(composed.ok(), await composed.text()).toBeTruthy(); const composition = await composed.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel('CutStudio creative runtime').getByLabel('CutStudio composition player');
   await expect(player).toHaveAttribute('data-player-state', 'paused');
   await player.locator('[data-layer-kind="svg"] img').evaluate((image: HTMLImageElement) => image.decode());

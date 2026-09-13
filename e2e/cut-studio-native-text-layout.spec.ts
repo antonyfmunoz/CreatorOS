@@ -24,6 +24,7 @@ test("native text layout preserves wrapped lines and authoring controls in priva
   expect(saved.ok(), await saved.text()).toBeTruthy();
   const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const studio = page.getByLabel("CutStudio creative runtime");
   await studio.getByLabel("Selected layer", { exact: true }).selectOption("title");
   await studio.getByLabel("Layer content", { exact: true }).fill(title);
