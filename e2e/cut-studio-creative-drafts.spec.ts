@@ -16,6 +16,7 @@ async function setup(page: Page, info: TestInfo) {
     expect(response.ok(), await response.text()).toBeTruthy(); rows.push(await response.json());
   }
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const studio = page.getByLabel('CutStudio creative runtime');
   const first = studio.getByLabel('Composition First composition', { exact: true });
   const second = studio.getByLabel('Composition Second composition', { exact: true });

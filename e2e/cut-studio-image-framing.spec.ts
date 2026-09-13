@@ -30,6 +30,7 @@ test('image framing controls preserve crop, transparent fit and stretch in actua
   const composed = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: 'Image framing', manifest } });
   expect(composed.ok(), await composed.text()).toBeTruthy(); const composition = await composed.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const studio = page.getByLabel('CutStudio creative runtime'); const player = studio.getByLabel('CutStudio composition player');
   await expect(player).toHaveAttribute('data-player-state', 'paused');
   await studio.getByLabel('Selected layer', { exact: true }).selectOption('cover');

@@ -53,6 +53,7 @@ test("authored animation offsets survive reload and match preview and private ex
     { id: "animation", name: "Offset animation", kind: "lottie", assetId: animationUpload.asset.id, from: 0, durationInFrames: 30, sourceStartFrame: 0, x: .1, y: .1, width: .2, height: 256 / 720 },
   ] } } }));
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const studio = page.getByLabel("CutStudio creative runtime");
   await studio.getByLabel("Selected layer", { exact: true }).selectOption("animation");
   await studio.getByLabel("Layer source start frame", { exact: true }).fill("5");

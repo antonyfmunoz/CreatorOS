@@ -22,6 +22,7 @@ test('native motion retains twenty authored controls and held step frames', asyn
   const composed = await page.request.post(`/api/cut/projects/${project.id}/compositions`, { data: { name: 'Motion boundaries', manifest } });
   expect(composed.ok(), await composed.text()).toBeTruthy(); const composition = await composed.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel('CutStudio creative runtime').getByLabel('CutStudio composition player');
   const previews = new Map<number, Buffer>();
   for (const frame of [2, 3, 7, 17, 29, 30, 56, 57]) {

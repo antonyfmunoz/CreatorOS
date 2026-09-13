@@ -15,6 +15,7 @@ async function projectFixture(page: Page, info: TestInfo) {
 }
 async function holdDraft(page: Page, project: { id: string }) {
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Deliver", exact: true }).click();
   const toggle = page.getByRole("switch", { name: "Keep timeline recovery copies on this device", exact: true });
   await expect(toggle).not.toBeChecked(); await toggle.click(); await expect(toggle).toBeChecked();
   await page.route(`**/projects/${project.id}/edl`, (route) => route.request().method() === "PUT"
@@ -142,6 +143,7 @@ test("a different signed-in account never inherits device recovery preferences o
   try {
     const peerProject = await projectFixture(next, info);
     await next.goto(`/cut-studio?project=${peerProject.id}`);
+    await next.getByRole("button", { name: "Deliver", exact: true }).click();
     await expect(next.getByRole("switch", { name: "Keep timeline recovery copies on this device", exact: true })).not.toBeChecked();
     await expect(next.getByRole("button", { name: "Restore and save timeline copy", exact: true })).toHaveCount(0);
     await next.getByRole("slider", { name: "V1 track gain", exact: true }).press("ArrowLeft");
@@ -154,6 +156,7 @@ test("unavailable browser storage never claims a device recovery save", async ({
   const project = await projectFixture(page, info);
   await page.addInitScript(() => { Storage.prototype.setItem = function () { throw new DOMException("Synthetic full device storage", "QuotaExceededError"); }; });
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Deliver", exact: true }).click();
   const toggle = page.getByRole("switch", { name: "Keep timeline recovery copies on this device", exact: true });
   await toggle.click();
   await expect(page.getByText("Browser storage is unavailable. Recovery settings were not changed.", { exact: true })).toBeVisible();

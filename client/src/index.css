@@ -119,6 +119,266 @@
   .horizontal-rail > * {
     scroll-snap-align: start;
   }
+
+  /* CutStudio is a focused creation surface, not a general dashboard. The
+     hierarchy follows the attached Stitch system: black canvas, charcoal
+     work areas, thin graphite dividers, and one blue active state. */
+  .cut-studio-shell {
+    background:
+      radial-gradient(circle at 52% -18%, rgb(29 155 240 / 0.14), transparent 34rem),
+      #09090a;
+  }
+
+  .cut-studio-topbar {
+    border-bottom: 1px solid rgb(63 63 70 / 0.8);
+    background: rgb(0 0 0 / 0.88);
+    backdrop-filter: blur(18px);
+  }
+
+  .cut-studio-mark {
+    color: #1d9bf0;
+    background: rgb(29 155 240 / 0.12);
+    border: 1px solid rgb(29 155 240 / 0.25);
+  }
+
+  .cut-studio-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid rgb(82 82 91);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    color: rgb(228 228 231);
+    font-size: 0.75rem;
+    font-weight: 700;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+
+  .cut-studio-export:hover {
+    border-color: rgb(161 161 170);
+    background: rgb(39 39 42);
+  }
+
+  .cut-studio-workspace {
+    align-items: start;
+  }
+
+  .cut-studio-main-workspace[data-active-tool]:not([data-active-tool="edit"]) > [data-workspace-panel="transcript"] {
+    display: none;
+  }
+
+  .cut-studio-main-workspace[data-active-tool]:not([data-active-tool="edit"]) > [data-workspace-panel="diagnostics"] {
+    display: none;
+  }
+
+  .cut-studio-tool-rail {
+    display: flex;
+    gap: 0.375rem;
+    overflow-x: auto;
+    padding: 0.125rem;
+    scrollbar-width: none;
+  }
+
+  .cut-studio-tool-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cut-studio-tool-rail button {
+    display: inline-flex;
+    min-width: 4.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border: 1px solid rgb(63 63 70 / 0.85);
+    border-radius: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    color: rgb(161 161 170);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .cut-studio-tool-rail button:hover {
+    border-color: rgb(113 113 122);
+    background: rgb(39 39 42);
+    color: #fff;
+  }
+
+  .cut-studio-tool-rail button.is-active {
+    border-color: rgb(29 155 240 / 0.65);
+    background: rgb(29 155 240 / 0.16);
+    color: #fff;
+  }
+
+  .cut-studio-monitor,
+  .cut-studio-panel,
+  .cut-studio-meter,
+  .cut-studio-timeline {
+    border: 1px solid rgb(63 63 70 / 0.9);
+    border-radius: 0.875rem;
+    background: rgb(24 24 27 / 0.9);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.16);
+  }
+
+  .cut-studio-source {
+    background: rgb(17 17 19 / 0.96);
+  }
+
+  .cut-studio-program {
+    border-color: rgb(82 82 91);
+    background-color: #000;
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.32), inset 0 0 0 1px rgb(255 255 255 / 0.025);
+  }
+
+  .cut-studio-meter {
+    background: linear-gradient(90deg, rgb(20 20 23), rgb(29 29 33));
+  }
+
+  .cut-studio-timeline {
+    background: linear-gradient(180deg, rgb(28 28 31), rgb(18 18 20));
+  }
+
+  .cut-studio-inspector > * {
+    border-color: rgb(63 63 70 / 0.9) !important;
+    background-color: rgb(24 24 27 / 0.92) !important;
+    box-shadow: 0 14px 38px rgb(0 0 0 / 0.14);
+  }
+
+  /* The inspector is a contained workspace, not a document-length control
+     wall. Media and Edit intentionally share the everyday cut surface; the
+     specialist Create, Assist, and Deliver workspaces replace that surface
+     until the editor chooses another mode. This follows the pane model used
+     by traditional NLEs while keeping the timeline permanently available. */
+  .cut-studio-inspector > [data-workspace-panel="media"] {
+    order: -10;
+  }
+
+  /* The high-density motion/cinema runtime is the only panel large enough to
+     turn an editor into a document. It lives in its own Create workspace;
+     ordinary editing, assistance, review, and delivery stay directly
+     reachable so established timeline workflows never lose a control. */
+  .cut-studio-inspector[data-active-tool]:not([data-active-tool="create"]) > [data-workspace-panel="create"],
+  .cut-studio-inspector[data-active-tool="create"] > :not([data-workspace-panel="create"]) {
+    display: none;
+  }
+
+  .cut-studio-creative-runtime {
+    background:
+      linear-gradient(145deg, rgb(29 155 240 / 0.09), transparent 38%),
+      rgb(24 24 27 / 0.96) !important;
+  }
+
+  .cut-studio-creative-runtime [role="button"],
+  .cut-studio-creative-runtime button {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .cut-studio-creative-runtime .sticky {
+    box-shadow: 0 8px 18px rgb(0 0 0 / 0.22);
+  }
+
+  @media (min-width: 1024px) {
+    .cut-studio-shell {
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .cut-studio-workspace {
+      height: calc(100dvh - 4rem);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .cut-studio-main-workspace {
+      display: flex;
+      flex-direction: column;
+      grid-column: 3;
+      min-height: 0;
+      gap: 0.75rem;
+      overflow: hidden;
+      overscroll-behavior: contain;
+      padding-right: 0.35rem;
+      scrollbar-color: rgb(82 82 91) transparent;
+      scrollbar-width: thin;
+    }
+
+    .cut-studio-main-workspace > * + * {
+      margin-top: 0 !important;
+    }
+
+    /* The first viewport behaves like an NLE: monitors on the upper deck and
+       the timeline held open beneath them. Metadata and specialist analysis
+       do not push the timeline below the fold. */
+    .cut-studio-main-workspace > :first-child {
+      flex: 0 0 clamp(16rem, 35vh, 23rem);
+      min-height: 0;
+    }
+
+    .cut-studio-main-workspace > :first-child > .cut-studio-monitor {
+      min-height: 0 !important;
+      height: 100%;
+    }
+
+    .cut-studio-source {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cut-studio-source > :nth-child(2) {
+      min-height: 0 !important;
+      flex: 1 1 auto;
+    }
+
+    .cut-studio-main-workspace > .cut-studio-timeline {
+      min-height: 15rem;
+      flex: 1 1 auto;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
+    .cut-studio-main-workspace[data-active-tool="edit"] {
+      overflow-y: auto;
+    }
+
+    .cut-studio-tool-rail {
+      position: sticky;
+      top: 5.5rem;
+      flex-direction: column;
+      overflow: visible;
+      padding: 0;
+    }
+
+    .cut-studio-tool-rail button {
+      min-width: 0;
+      min-height: 3.75rem;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.5rem 0.25rem;
+    }
+
+    .cut-studio-inspector {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      grid-column: 2;
+      grid-row: 1;
+      position: relative;
+      top: auto;
+      height: 100%;
+      max-height: none;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 0.25rem;
+      scrollbar-color: rgb(82 82 91) transparent;
+      scrollbar-width: thin;
+    }
+
+    .cut-studio-inspector > * + * {
+      margin-top: 0 !important;
+    }
+  }
 }
 
 @layer utilities {

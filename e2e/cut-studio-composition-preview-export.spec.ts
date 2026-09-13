@@ -205,6 +205,7 @@ test("declarative composition player and native export agree at an authored nonl
   expect(denied.status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const compositionCard = page.getByLabel(`Composition ${compositionName}`, { exact: true });
   await expect(compositionCard).toBeVisible();
   const player = compositionCard.getByLabel("CutStudio composition player", { exact: true });
@@ -316,6 +317,7 @@ test("authored shape gradients agree in the browser player and native export", a
   await expectOk(saved);
   const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   const preview = await player.getByLabel("Composition canvas", { exact: true }).screenshot({ path: `${directory}/preview.png` });
@@ -393,6 +395,7 @@ test("nested static uniform media rotation agrees in the player and native expor
   await expectOk(savedRoot);
   const root = await savedRoot.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${rootName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   // The nested visual is decoded by a browser media element.  A canvas
@@ -470,6 +473,7 @@ test("animated primary-media rotation and color agree in the player and native e
   expect(denied.status()).toBe(404);
 
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   const media = player.getByLabel("Animated teal primary media", { exact: true });
@@ -545,6 +549,7 @@ test("primary-media 3D perspective agrees in the player and native export", asyn
   await expectOk(saved);
   const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   const media = player.getByLabel("Perspective teal primary media", { exact: true });
@@ -611,6 +616,7 @@ test("primary-media color-matrix effect agrees in the player and native export",
   await expectOk(saved);
   const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   const media = player.getByLabel("Effect teal primary media", { exact: true });
@@ -677,6 +683,7 @@ test("primary-media glow extends beyond the source rectangle in the player and n
   await expectOk(saved);
   const composition = await saved.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   const player = page.getByLabel(`Composition ${compositionName}`, { exact: true }).getByLabel("CutStudio composition player", { exact: true });
   await expect(player).toBeVisible();
   const media = player.getByLabel("Glow teal primary media", { exact: true });

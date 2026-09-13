@@ -19,6 +19,7 @@ test("audible primary preview follows track gain and mute without reloading medi
   const created = await page.request.post("/api/cut/projects", { data: { sourceAssetId: asset.id, name: "Audible primary preview", duration, mediaKind: "video" } });
   expect(created.ok()).toBeTruthy(); const project = await created.json();
   await page.goto(`/cut-studio?project=${project.id}`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const video = page.getByLabel("Timeline monitor").locator("video");
   await video.evaluate(async (element: HTMLVideoElement) => { element.muted = false; element.volume = 1; await element.play(); });
   const level = async () => Number.parseFloat((await page.getByLabel("Live RMS level").textContent()) ?? "-60");
