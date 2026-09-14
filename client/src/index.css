@@ -359,7 +359,11 @@
        the timeline held open beneath them. Metadata and specialist analysis
        do not push the timeline below the fold. */
     .cut-studio-main-workspace:not([data-qualification-mode="true"]) > :first-child {
-      flex: 0 0 clamp(12rem, 28vh, 18rem);
+      /* The source monitor includes its own transport and edit controls. Give
+         the monitor deck enough height to keep that control strip visible at
+         common laptop viewports instead of trading it away for a few more
+         timeline pixels. */
+      flex: 0 0 clamp(15rem, 32vh, 21rem);
       min-height: 0;
     }
 
@@ -392,8 +396,8 @@
     }
 
     .cut-studio-main-workspace:not([data-qualification-mode="true"]) > .cut-studio-timeline {
-      min-height: clamp(17rem, 38vh, 26rem);
-      flex: 0 0 clamp(17rem, 38vh, 26rem);
+      min-height: clamp(16rem, 36vh, 24rem);
+      flex: 0 0 clamp(16rem, 36vh, 24rem);
       overflow: auto;
       overscroll-behavior: contain;
     }
