@@ -151,7 +151,10 @@ export default function CutStudioPage() {
       // Private browsing, storage-policy restrictions, and full device storage
       // must never prevent the editor from opening its default workspace.
     }
-    return saved === "media" || saved === "edit" || saved === "create" || saved === "assist" || saved === "deliver" ? saved : "media";
+    // Open directly in the editing workspace. This keeps the multitrack
+    // timeline and established project controls immediately available, while
+    // still restoring an editor's explicitly chosen workspace on return.
+    return saved === "media" || saved === "edit" || saved === "create" || saved === "assist" || saved === "deliver" ? saved : "edit";
   });
   const inspectorRef = useRef<HTMLElement | null>(null);
   const mainWorkspaceRef = useRef<HTMLElement | null>(null);
