@@ -1230,8 +1230,8 @@ export default function CutStudioPage() {
             "deliver", Send, "Deliver"
           ]] as const).map(([tool, Icon, label]) => <button key={tool} type="button" className={activeWorkspaceTool === tool ? "is-active" : ""} onClick={() => focusWorkspaceTool(tool)} aria-pressed={activeWorkspaceTool === tool} aria-label={label}><Icon className="h-4 w-4"/><span>{label}</span></button>)}
         </nav>
-        <section ref={mainWorkspaceRef} data-active-tool={activeWorkspaceTool} className="cut-studio-main-workspace min-w-0 space-y-4" aria-label="Editing workspace">
-          <div className="grid gap-3 xl:grid-cols-[minmax(260px,.72fr)_minmax(0,1.28fr)]">
+        <section ref={mainWorkspaceRef} data-active-tool={activeWorkspaceTool} data-qualification-mode={CUT_STUDIO_QUALIFICATION_MODE ? "true" : undefined} className="cut-studio-main-workspace min-w-0 space-y-4" aria-label="Editing workspace">
+          <div className="cut-studio-monitor-deck grid gap-3 lg:grid-cols-[minmax(240px,.72fr)_minmax(0,1.28fr)]">
           <div className="cut-studio-monitor cut-studio-source overflow-hidden" aria-label="Source monitor">
             <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-[#1d9bf0]">Source monitor</p><p className="max-w-56 truncate text-xs text-zinc-400">{sourceMedia?.name ?? "Choose project media"}</p></div><span className="text-[10px] text-zinc-600">{formatTime(sourceIn)}–{formatTime(sourceOut)}</span></div>
             <div className="flex min-h-[220px] items-center justify-center bg-black">

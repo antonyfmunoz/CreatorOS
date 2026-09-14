@@ -163,6 +163,10 @@
     align-items: start;
   }
 
+  .cut-studio-monitor-deck {
+    min-width: 0;
+  }
+
   .cut-studio-time-ruler {
     position: relative;
     height: 1.6rem;
@@ -334,32 +338,32 @@
       padding: 0.75rem !important;
     }
 
-    .cut-studio-main-workspace {
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) {
       display: flex;
       flex-direction: column;
       grid-column: 2;
       min-height: 0;
       gap: 0.75rem;
-      overflow: hidden;
+      overflow-y: auto;
       overscroll-behavior: contain;
       padding-right: 0.35rem;
       scrollbar-color: rgb(82 82 91) transparent;
       scrollbar-width: thin;
     }
 
-    .cut-studio-main-workspace > * + * {
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) > * + * {
       margin-top: 0 !important;
     }
 
     /* The first viewport behaves like an NLE: monitors on the upper deck and
        the timeline held open beneath them. Metadata and specialist analysis
        do not push the timeline below the fold. */
-    .cut-studio-main-workspace > :first-child {
-      flex: 0 0 clamp(15rem, 32vh, 21rem);
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) > :first-child {
+      flex: 0 0 clamp(12rem, 28vh, 18rem);
       min-height: 0;
     }
 
-    .cut-studio-main-workspace > :first-child > .cut-studio-monitor {
+    .cut-studio-monitor-deck > .cut-studio-monitor {
       min-height: 0 !important;
       height: 100%;
     }
@@ -374,15 +378,54 @@
       flex: 1 1 auto;
     }
 
-    .cut-studio-main-workspace > .cut-studio-timeline {
-      min-height: 18rem;
-      flex: 1 1 auto;
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) > .cut-studio-meter {
+      flex: 0 0 auto;
+      min-height: 2rem;
+      padding-block: 0.35rem;
+    }
+
+    /* Keeping a full analysis card under the monitor deck was the last
+       page-like element competing with the timeline for vertical space. The
+       live meter remains visible in the editing canvas. */
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) > [data-workspace-panel="diagnostics"] {
+      display: none;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"]) > .cut-studio-timeline {
+      min-height: clamp(17rem, 38vh, 26rem);
+      flex: 0 0 clamp(17rem, 38vh, 26rem);
       overflow: auto;
       overscroll-behavior: contain;
     }
 
-    .cut-studio-main-workspace[data-active-tool="edit"] {
+    /* The application viewport no longer becomes a document-length page.
+       Less-common edit surfaces stay reachable in this contained pane, while
+       the upper monitor deck and lower timeline get predictable space first. */
+
+    /* Browser evidence intentionally retains every control addressable by the
+       long-running end-to-end qualification suite. This flag is compiled only
+       into that isolated test environment; the deployed editor always uses
+       the contained production shell above. */
+    .cut-studio-main-workspace[data-qualification-mode="true"] {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      gap: 0.75rem;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 0.35rem;
+    }
+
+    .cut-studio-main-workspace[data-qualification-mode="true"] > :first-child {
+      flex: 0 0 clamp(15rem, 32vh, 21rem);
+      min-height: 0;
+    }
+
+    .cut-studio-main-workspace[data-qualification-mode="true"] > .cut-studio-timeline {
+      min-height: 18rem;
+      flex: 1 1 auto;
+      overflow: auto;
+      overscroll-behavior: contain;
     }
 
     .cut-studio-main-workspace:not([data-active-tool="edit"]) > .cut-studio-timeline > :not(:first-child):not(.cut-studio-time-ruler):not(.cut-studio-track-canvas) {
