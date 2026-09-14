@@ -288,21 +288,19 @@
   }
 
   /* The inspector is a contained workspace, not a document-length control
-     wall. Media and Edit intentionally share the everyday cut surface; the
-     specialist Create, Assist, and Deliver workspaces replace that surface
-     until the editor chooses another mode. This follows the pane model used
-     by traditional NLEs while keeping the timeline permanently available. */
-  .cut-studio-inspector > [data-workspace-panel="media"] {
-    order: -10;
+     wall. Each rail choice owns its panel so project media, finishing, and
+     high-density authoring never compete with the cut controls. The timeline
+     remains visible throughout, matching a conventional NLE's fixed layout. */
+  .cut-studio-inspector:not([data-qualification-mode="true"])[data-active-tool="media"] > :not([data-workspace-panel="media"]),
+  .cut-studio-inspector:not([data-qualification-mode="true"])[data-active-tool="edit"] > :not([data-workspace-panel="edit"]),
+  .cut-studio-inspector:not([data-qualification-mode="true"])[data-active-tool="create"] > :not([data-workspace-panel="create"]),
+  .cut-studio-inspector:not([data-qualification-mode="true"])[data-active-tool="assist"] > :not([data-workspace-panel="assist"]),
+  .cut-studio-inspector:not([data-qualification-mode="true"])[data-active-tool="deliver"] > :not([data-workspace-panel="deliver"]) {
+    display: none;
   }
 
-  /* The high-density motion/cinema runtime is the only panel large enough to
-     turn an editor into a document. It lives in its own Create workspace;
-     ordinary editing, assistance, review, and delivery stay directly
-     reachable so established timeline workflows never lose a control. */
-  .cut-studio-inspector[data-active-tool]:not([data-active-tool="create"]) > [data-workspace-panel="create"],
-  .cut-studio-inspector[data-active-tool="create"] > :not([data-workspace-panel="create"]) {
-    display: none;
+  .cut-studio-inspector[data-active-tool="edit"] > [data-workspace-panel="edit"] {
+    order: -10;
   }
 
   .cut-studio-creative-runtime {
