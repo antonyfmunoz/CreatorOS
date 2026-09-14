@@ -202,7 +202,11 @@
     box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
   }
 
-  .cut-studio-main-workspace[data-active-tool]:not([data-active-tool="edit"]) > [data-workspace-panel="transcript"] {
+  /* Text editing is an assistive workflow, not a fourth document section below
+     the timeline. Keep the Edit workspace dedicated to picture, timeline, and
+     inspector; surface the transcript when the operator intentionally opens
+     Assist from the tool rail. */
+  .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool]:not([data-active-tool="assist"]) > [data-workspace-panel="transcript"] {
     display: none;
   }
 
@@ -344,11 +348,18 @@
       grid-column: 2;
       min-height: 0;
       gap: 0.75rem;
-      overflow-y: auto;
+      overflow: hidden;
       overscroll-behavior: contain;
       padding-right: 0.35rem;
       scrollbar-color: rgb(82 82 91) transparent;
       scrollbar-width: thin;
+    }
+
+    /* Assist owns the transcript's scrollable reading/editing surface. The
+       conventional edit layout itself never turns into a vertically-scrolling
+       document; its timeline and inspector retain their own local scrolling. */
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="assist"] {
+      overflow-y: auto;
     }
 
     .cut-studio-main-workspace:not([data-qualification-mode="true"]) > * + * {
