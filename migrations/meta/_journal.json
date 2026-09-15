@@ -883,6 +883,13 @@
       "when": 1788900389408,
       "tag": "0125_cut_studio_composition_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1789512863251,
+      "tag": "0126_content_research_briefs",
+      "breakpoints": true
     }
   ]
 }

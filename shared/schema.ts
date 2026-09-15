@@ -9837,6 +9837,54 @@ export const taggedUsers = pgTable(
   },
 );
 
+// Creator-owned research is a first-class input to the distribution workflow.
+// URLs are kept as user-curated evidence; no external source is implied by a
+// saved brief and no provider credential is required to plan from it.
+export const contentResearchBriefs = pgTable(
+  "content_research_briefs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .references(() => businesses.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerUserId: integer("owner_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    topic: text("topic").notNull(),
+    audience: text("audience").notNull().default(""),
+    objective: text("objective").notNull().default(""),
+    angle: text("angle").notNull().default(""),
+    workingTitle: text("working_title").notNull().default(""),
+    draftText: text("draft_text").notNull().default(""),
+    sources: json("sources")
+      .$type<Array<{ label: string; url: string }>>()
+      .notNull()
+      .default([]),
+    competitors: json("competitors")
+      .$type<
+        Array<{
+          name: string;
+          platform: string;
+          url?: string;
+          observation: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerUpdatedIdx: index("content_research_briefs_owner_updated_idx").on(
+      table.ownerUserId,
+      table.updatedAt,
+    ),
+    businessUpdatedIdx: index(
+      "content_research_briefs_business_updated_idx",
+    ).on(table.businessId, table.updatedAt),
+  }),
+);
+
 export const insertTaggedUserSchema = createInsertSchema(taggedUsers).pick({
   postId: true,
   userId: true,
@@ -10905,3 +10953,4 @@ export type InsertFollower = z.infer<typeof insertFollowerSchema>;
 
 export type TaggedUser = typeof taggedUsers.$inferSelect;
 export type InsertTaggedUser = z.infer<typeof insertTaggedUserSchema>;
+export type ContentResearchBrief = typeof contentResearchBriefs.$inferSelect;
