@@ -487,6 +487,322 @@
   }
 }
 
+/* Desktop CutStudio is an editing workstation, not a stacked application
+   dashboard.  These rules deliberately use the familiar NLE anatomy: bin on
+   the left, two monitors above the sequence, a dedicated lower timeline, and
+   a narrow contextual inspector.  All scrolling stays inside the relevant
+   pane so a laptop viewport never becomes a long document. */
+@layer components {
+  .cut-studio-left-dock,
+  .cut-studio-media-bin {
+    min-width: 0;
+  }
+
+  .cut-studio-media-bin {
+    display: none;
+  }
+
+  .cut-studio-nle-timeline {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cut-studio-timeline-toolbar {
+    border-bottom: 1px solid rgb(63 63 70 / 0.78);
+  }
+
+  @media (min-width: 1024px) {
+    .cut-studio-workspace {
+      grid-template-columns: minmax(236px, 286px) minmax(620px, 1fr) minmax(276px, 326px) !important;
+      gap: 0 !important;
+      padding: 0 !important;
+      background: #111113;
+    }
+
+    .cut-studio-left-dock {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+      border-right: 1px solid rgb(63 63 70 / 0.8);
+      background: #18181b;
+    }
+
+    .cut-studio-tool-rail {
+      position: static;
+      flex: 0 0 52px;
+      flex-direction: column;
+      gap: 0;
+      overflow: hidden;
+      border-right: 1px solid rgb(63 63 70 / 0.7);
+      padding: 0.5rem 0.3rem;
+      background: #141416;
+    }
+
+    .cut-studio-tool-rail button {
+      min-height: 3.15rem;
+      border-radius: 0.35rem;
+      padding: 0.42rem 0.2rem;
+    }
+
+    .cut-studio-tool-rail button span {
+      font-size: 8px;
+      letter-spacing: 0.04em;
+    }
+
+    .cut-studio-media-bin {
+      display: flex;
+      min-width: 0;
+      flex: 1 1 auto;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .cut-studio-bin-header {
+      display: flex;
+      min-height: 3.2rem;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgb(63 63 70 / 0.72);
+      padding: 0.55rem 0.7rem;
+    }
+
+    .cut-studio-bin-header p {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .cut-studio-bin-header span {
+      display: block;
+      margin-top: 0.1rem;
+      color: rgb(161 161 170);
+      font-size: 10px;
+    }
+
+    .cut-studio-bin-header label {
+      display: grid;
+      height: 1.9rem;
+      width: 1.9rem;
+      cursor: pointer;
+      place-items: center;
+      border: 1px solid rgb(82 82 91);
+      border-radius: 0.25rem;
+      color: white;
+    }
+
+    .cut-studio-bin-header label:hover {
+      border-color: #1d9bf0;
+      background: rgb(29 155 240 / 0.13);
+    }
+
+    .cut-studio-bin-tabs {
+      display: flex;
+      gap: 0.15rem;
+      overflow-x: auto;
+      border-bottom: 1px solid rgb(63 63 70 / 0.62);
+      padding: 0.45rem 0.55rem;
+      scrollbar-width: none;
+    }
+
+    .cut-studio-bin-tabs button {
+      flex: 0 0 auto;
+      border-radius: 0.2rem;
+      padding: 0.28rem 0.42rem;
+      color: rgb(161 161 170);
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .cut-studio-bin-tabs button[aria-selected="true"] {
+      background: rgb(29 155 240 / 0.18);
+      color: #7dd3fc;
+    }
+
+    .cut-studio-bin-assets {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 0.45rem;
+      scrollbar-width: thin;
+    }
+
+    .cut-studio-bin-assets > button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 0.45rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      padding: 0.42rem;
+      color: rgb(228 228 231);
+      text-align: left;
+    }
+
+    .cut-studio-bin-assets > button:hover,
+    .cut-studio-bin-assets > button.is-selected {
+      border-color: rgb(29 155 240 / 0.65);
+      background: rgb(29 155 240 / 0.11);
+    }
+
+    .cut-studio-bin-assets > button:disabled {
+      cursor: default;
+      opacity: 0.58;
+    }
+
+    .cut-studio-bin-thumb {
+      display: grid;
+      height: 2rem;
+      width: 2.55rem;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1px solid rgb(82 82 91 / 0.75);
+      background: #09090b;
+      color: #93c5fd;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .cut-studio-bin-assets strong,
+    .cut-studio-bin-assets small {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cut-studio-bin-assets strong { font-size: 11px; }
+    .cut-studio-bin-assets small { margin-top: 0.12rem; color: rgb(161 161 170); font-size: 9px; }
+    .cut-studio-bin-assets i { color: #7dd3fc; font-size: 8px; font-style: normal; font-weight: 800; text-transform: uppercase; }
+
+    .cut-studio-bin-drop {
+      margin: 0;
+      border-top: 1px solid rgb(63 63 70 / 0.65);
+      padding: 0.6rem 0.7rem;
+      color: rgb(161 161 170);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] {
+      display: grid;
+      grid-column: 2;
+      grid-template-rows: minmax(220px, 0.86fr) minmax(0, 1.14fr);
+      gap: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #101012;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > .cut-studio-monitor-deck {
+      grid-row: 1;
+      min-height: 0;
+      padding: 0.7rem;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > .cut-studio-monitor-deck > .cut-studio-monitor {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > .cut-studio-meter,
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > [data-workspace-panel="diagnostics"] {
+      display: none;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > .cut-studio-nle-timeline {
+      grid-row: 2;
+      min-height: 0;
+      height: auto;
+      overflow: auto;
+      border-top: 1px solid rgb(82 82 91 / 0.75);
+      padding: 0.5rem !important;
+      overscroll-behavior: contain;
+    }
+
+    .cut-studio-main-workspace:not([data-qualification-mode="true"])[data-active-tool="edit"] > .cut-studio-timeline > :not(.cut-studio-timeline-toolbar):not(.cut-studio-time-ruler):not(.cut-studio-track-canvas) {
+      display: none;
+    }
+
+    .cut-studio-timeline-toolbar {
+      min-height: 2.6rem;
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+      margin-bottom: 0.45rem !important;
+      padding: 0 0.22rem 0.4rem;
+      overflow-x: auto;
+    }
+
+    .cut-studio-timeline-toolbar > div:first-child {
+      flex: 0 0 auto;
+    }
+
+    .cut-studio-timeline-toolbar h2 { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .cut-studio-timeline-toolbar p { font-size: 9px; }
+    .cut-studio-timeline-toolbar > div:last-child { flex: 0 0 auto; flex-wrap: nowrap; }
+    .cut-studio-timeline-toolbar button { min-height: 1.75rem !important; white-space: nowrap; border-radius: 0.18rem !important; padding-inline: 0.45rem !important; font-size: 10px !important; }
+    .cut-studio-timeline-toolbar button svg { height: 0.75rem; width: 0.75rem; }
+
+    .cut-studio-time-ruler {
+      margin-left: 0;
+      border-top: 1px solid rgb(63 63 70 / 0.8);
+      border-bottom: 1px solid rgb(63 63 70 / 0.8);
+      border-radius: 0;
+      background: #17171a;
+    }
+
+    .cut-studio-track-canvas {
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background-size: 8.333% 100%;
+    }
+
+    .cut-studio-track-canvas > .cut-studio-track-row,
+    .cut-studio-track-canvas > div {
+      height: 3.4rem !important;
+      border-bottom: 1px solid rgb(63 63 70 / 0.72);
+      border-radius: 0 !important;
+      background-color: #111114 !important;
+    }
+
+    .cut-studio-track-canvas > div > div:first-child {
+      left: 0.25rem;
+      top: 0.35rem;
+      min-width: 4.9rem;
+      border-radius: 0.15rem;
+      background: rgb(39 39 42 / 0.96);
+    }
+
+    .cut-studio-track-canvas > div > button {
+      top: 0.28rem;
+      bottom: 0.28rem;
+      border-radius: 0.15rem;
+    }
+
+    .cut-studio-inspector {
+      grid-column: 3;
+      gap: 0;
+      padding: 0;
+      border-left: 1px solid rgb(63 63 70 / 0.8);
+      background: #18181b;
+    }
+
+    .cut-studio-inspector > * {
+      border-width: 0 0 1px !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+
+    .cut-studio-inspector > [data-workspace-panel="edit"] {
+      padding: 0.85rem !important;
+    }
+  }
+}
+
 @layer utilities {
   /* Zinc 500 (#71717a) is 4.34:1 on the product's black canvas and misses
      WCAG AA for normal text. Preserve the semantic utility while lifting its
