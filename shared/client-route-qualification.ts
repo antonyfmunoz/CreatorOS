@@ -37,6 +37,7 @@ export const protectedClientRoutes = [
   "/courses/:id/manage",
   "/studio",
   "/distribution",
+  "/research",
   "/distribution/connections",
   "/cut-studio",
   "/cut-studio/workspace/:id",

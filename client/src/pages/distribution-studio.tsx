@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
+  BookOpenCheck,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -372,6 +373,13 @@ export default function DistributionStudio() {
             Create once. Publish everywhere.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setLocation("/research")}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-zinc-900"
+        >
+          <BookOpenCheck className="h-3.5 w-3.5" /> Research
+        </button>
       </header>
       <nav className="grid grid-cols-3 border-b border-zinc-800">
         {(["compose", "queue", "calendar"] as StudioTab[]).map((item) => (

@@ -152,6 +152,7 @@ import {
 } from "./marketplace-maturity";
 import { registerDiscoveryRoutes } from "./discovery";
 import { registerCompetitiveBenchmarkRoutes } from "./competitive-benchmarks";
+import { registerContentResearchRoutes } from "./content-research";
 import {
   awardCommunityPoints,
   registerCommunityEngagementRoutes,
@@ -873,6 +874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMediaCloudRoutes(app);
   registerAnalyticsRoutes(app);
   registerPlanningRoutes(app);
+  registerContentResearchRoutes(app);
   registerAudienceRoutes(app);
   registerAudienceStudioRoutes(app);
   registerPodcastRoutes(app);
