@@ -19,6 +19,7 @@ export const contentResearchBriefSchema = z.object({
   angle: z.string().trim().max(1_500).default(""),
   workingTitle: z.string().trim().max(240).default(""),
   draftText: z.string().trim().max(2_200).default(""),
+  plannedFor: z.string().datetime().nullable().default(null),
   sources: z.array(sourceSchema).max(30).default([]),
   competitors: z.array(competitorSchema).max(30).default([]),
 });

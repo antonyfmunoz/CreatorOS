@@ -9856,6 +9856,7 @@ export const contentResearchBriefs = pgTable(
     angle: text("angle").notNull().default(""),
     workingTitle: text("working_title").notNull().default(""),
     draftText: text("draft_text").notNull().default(""),
+    plannedFor: timestamp("planned_for"),
     sources: json("sources")
       .$type<Array<{ label: string; url: string }>>()
       .notNull()
