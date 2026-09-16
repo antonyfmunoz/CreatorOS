@@ -513,9 +513,14 @@
 
   @media (min-width: 1024px) {
     .cut-studio-workspace {
-      grid-template-columns: minmax(236px, 286px) minmax(620px, 1fr) minmax(276px, 326px) !important;
-      gap: 0 !important;
-      padding: 0 !important;
+      /* Keep every workstation column on-screen at a 1024px desktop width.
+         The earlier 620px canvas minimum, plus the new gutters, forced a
+         horizontal overflow and left the media bin/inspector partially off
+         screen. The canvas may now flex down, while both side panes retain a
+         usable minimum width. */
+      grid-template-columns: minmax(210px, 286px) minmax(0, 1fr) minmax(220px, 326px) !important;
+      gap: 0.9rem !important;
+      padding-inline: 1rem !important;
       background: #111113;
     }
 
@@ -523,17 +528,37 @@
       grid-column: 1;
       grid-row: 1;
       display: flex;
+      align-self: stretch;
+      height: 100%;
       min-height: 0;
       overflow: hidden;
       border-right: 1px solid rgb(63 63 70 / 0.8);
       background: #18181b;
     }
 
+    .cut-studio-main-workspace {
+      padding-left: 0.2rem;
+      padding-right: 0.2rem;
+    }
+
+    /* The rail is a set of distinct workspace modes, not one segmented
+       button. Give each item a visible separation at desktop scale. */
+    .cut-studio-tool-rail {
+      gap: 0.55rem;
+    }
+
+    /* Project media has one home: the dedicated left bin.  The old inspector
+       panel remains mounted for the narrow/mobile layout, but must not repeat
+       the same asset list beside the timeline on desktop. */
+    .cut-studio-inspector:not([data-qualification-mode="true"]) > [data-workspace-panel="media"] {
+      display: none !important;
+    }
+
     .cut-studio-tool-rail {
       position: static;
       flex: 0 0 52px;
       flex-direction: column;
-      gap: 0;
+      gap: 0.55rem;
       overflow: hidden;
       border-right: 1px solid rgb(63 63 70 / 0.7);
       padding: 0.5rem 0.3rem;
