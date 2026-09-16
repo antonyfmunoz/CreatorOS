@@ -336,6 +336,8 @@
       height: calc(100dvh - 4rem);
       min-height: 0;
       overflow: hidden;
+      grid-template-rows: minmax(0, 1fr);
+      align-items: stretch;
       grid-template-columns: 56px minmax(520px, 1fr) minmax(280px, 340px) !important;
       gap: 0.75rem !important;
       max-width: none !important;
@@ -346,6 +348,8 @@
       display: flex;
       flex-direction: column;
       grid-column: 2;
+      align-self: stretch;
+      height: 100%;
       min-height: 0;
       gap: 0.75rem;
       overflow: hidden;
@@ -529,7 +533,7 @@
       grid-row: 1;
       display: flex;
       align-self: stretch;
-      height: 100%;
+      height: auto;
       min-height: 0;
       overflow: hidden;
       border-right: 1px solid rgb(63 63 70 / 0.8);
