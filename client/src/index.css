@@ -529,11 +529,37 @@
       background: #18181b;
     }
 
+    /* Keep the workstation breathing evenly on both sides.  The source deck
+       and timeline used to begin flush against the left dock after the bin
+       was introduced, while the inspector retained its gutter. */
+    .cut-studio-workspace {
+      column-gap: 0.9rem !important;
+      padding-inline: 1rem !important;
+    }
+
+    .cut-studio-main-workspace {
+      padding-left: 0.2rem;
+      padding-right: 0.2rem;
+    }
+
+    /* The rail is a set of distinct workspace modes, not one segmented
+       button. Give each item a visible separation at desktop scale. */
+    .cut-studio-tool-rail {
+      gap: 0.55rem;
+    }
+
+    /* Project media has one home: the dedicated left bin.  The old inspector
+       panel remains mounted for the narrow/mobile layout, but must not repeat
+       the same asset list beside the timeline on desktop. */
+    .cut-studio-inspector:not([data-qualification-mode="true"]) > [data-workspace-panel="media"] {
+      display: none !important;
+    }
+
     .cut-studio-tool-rail {
       position: static;
       flex: 0 0 52px;
       flex-direction: column;
-      gap: 0;
+      gap: 0.55rem;
       overflow: hidden;
       border-right: 1px solid rgb(63 63 70 / 0.7);
       padding: 0.5rem 0.3rem;
