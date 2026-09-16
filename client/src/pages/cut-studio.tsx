@@ -1209,8 +1209,10 @@ export default function CutStudioPage() {
     setActiveWorkspaceTool(tool);
     requestAnimationFrame(() => {
       const inspector = inspectorRef.current;
-      const target = inspector?.querySelector<HTMLElement>(`[data-workspace-panel="${tool}"]`);
-      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // A workstation-mode change belongs to the right inspector, not the
+      // browser document. `scrollIntoView` could scroll the page itself and
+      // strand the editor below the top of the viewport.
+      inspector?.scrollTo({ top: 0, behavior: "auto" });
     });
   };
   return (
