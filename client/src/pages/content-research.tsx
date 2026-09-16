@@ -32,6 +32,7 @@ type Brief = {
   angle: string;
   workingTitle: string;
   draftText: string;
+  plannedFor: string | null;
   sources: Source[];
   competitors: Competitor[];
   updatedAt: string;
@@ -45,6 +46,7 @@ const initialForm: Form = {
   angle: "",
   workingTitle: "",
   draftText: "",
+  plannedFor: null,
   sources: [],
   competitors: [],
 };
@@ -131,8 +133,8 @@ export default function ContentResearchPage() {
   });
 
   const update = (
-    field: "topic" | "audience" | "objective" | "angle" | "workingTitle" | "draftText",
-    value: string,
+    field: "topic" | "audience" | "objective" | "angle" | "workingTitle" | "draftText" | "plannedFor",
+    value: string | null,
   ) =>
     setForm((current) => ({ ...current, [field]: value }));
   const openDraft = (brief: Brief) => {
@@ -178,6 +180,7 @@ export default function ContentResearchPage() {
             <Textarea aria-label="Distinctive angle" value={form.angle} onChange={(event) => update("angle", event.target.value)} placeholder="Your differentiated take, evidence, or hook" className="min-h-24 border-zinc-800 bg-black" />
           </div>
           <Input aria-label="Working title" value={form.workingTitle} onChange={(event) => update("workingTitle", event.target.value)} placeholder="Working title or hook" className="mt-3 border-zinc-800 bg-black" />
+          <div className="mt-3"><label className="text-xs font-bold text-zinc-300">Target publishing date</label><p className="mt-1 text-[10px] text-zinc-600">Optional. Sets the calendar date when this brief becomes a planned item.</p><Input aria-label="Target publishing date" type="date" value={form.plannedFor ? form.plannedFor.slice(0, 10) : ""} onChange={(event) => update("plannedFor", event.target.value ? new Date(`${event.target.value}T17:00:00`).toISOString() : null)} className="mt-2 border-zinc-800 bg-black" /></div>
           <Textarea aria-label="Draft seed" value={form.draftText} onChange={(event) => update("draftText", event.target.value)} placeholder="Optional draft seed. Leave blank to start from your topic and angle in the composer." className="mt-3 min-h-32 border-zinc-800 bg-black" />
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div><label className="text-xs font-bold text-zinc-300">Evidence sources</label><p className="mt-1 text-[10px] text-zinc-600">One per line: Label | https://source.example</p><Textarea aria-label="Evidence sources" value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="YouTube Trends | https://..." className="mt-2 min-h-28 border-zinc-800 bg-black text-xs" /></div>

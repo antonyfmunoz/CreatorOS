@@ -13,6 +13,7 @@ describe("content research contract", () => {
       angle: "One workflow from research through distribution",
       workingTitle: "Stop copying content between tools",
       draftText: "Create once. Distribute intentionally.",
+      plannedFor: "2026-09-30T17:00:00.000Z",
       sources: [
         { label: "Creator report", url: "https://example.com/report" },
       ],

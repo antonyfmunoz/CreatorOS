@@ -52,12 +52,14 @@ export function registerContentResearchRoutes(app: Express) {
       });
     }
     const business = await ensureDefaultBusiness(req.dbUser!);
+    const { plannedFor, ...researchInput } = parsed.data;
     const [brief] = await db
       .insert(contentResearchBriefs)
       .values({
         businessId: business.id,
         ownerUserId: req.dbUser!.id,
-        ...parsed.data,
+        ...researchInput,
+        plannedFor: plannedFor ? new Date(plannedFor) : null,
       })
       .returning();
     void emitProjectionEvent({
@@ -82,9 +84,16 @@ export function registerContentResearchRoutes(app: Express) {
     }
     const brief = await ownedBrief(req.dbUser!.id, req.params.id);
     if (!brief) return res.status(404).json({ message: "Research brief not found" });
+    const { plannedFor, ...researchUpdate } = parsed.data;
     const [updated] = await db
       .update(contentResearchBriefs)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({
+        ...researchUpdate,
+        ...(plannedFor === undefined
+          ? {}
+          : { plannedFor: plannedFor ? new Date(plannedFor) : null }),
+        updatedAt: new Date(),
+      })
       .where(eq(contentResearchBriefs.id, brief.id))
       .returning();
     return res.json(updated);
@@ -103,6 +112,7 @@ export function registerContentResearchRoutes(app: Express) {
         kind: "content",
         status: "idea",
         priority: 60,
+        dueAt: brief.plannedFor,
         sourceType: "content_research",
         sourceId: brief.id,
         metadata: { contentResearchBriefId: brief.id },
@@ -117,6 +127,7 @@ export function registerContentResearchRoutes(app: Express) {
         set: {
           title: brief.workingTitle || brief.topic,
           description: [brief.objective, brief.angle].filter(Boolean).join("\n\n"),
+          dueAt: brief.plannedFor,
           updatedAt: new Date(),
         },
       })
