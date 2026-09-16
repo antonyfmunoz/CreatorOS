@@ -513,9 +513,14 @@
 
   @media (min-width: 1024px) {
     .cut-studio-workspace {
-      grid-template-columns: minmax(236px, 286px) minmax(620px, 1fr) minmax(276px, 326px) !important;
-      gap: 0 !important;
-      padding: 0 !important;
+      /* Keep every workstation column on-screen at a 1024px desktop width.
+         The earlier 620px canvas minimum, plus the new gutters, forced a
+         horizontal overflow and left the media bin/inspector partially off
+         screen. The canvas may now flex down, while both side panes retain a
+         usable minimum width. */
+      grid-template-columns: minmax(210px, 286px) minmax(0, 1fr) minmax(220px, 326px) !important;
+      gap: 0.9rem !important;
+      padding-inline: 1rem !important;
       background: #111113;
     }
 
@@ -523,18 +528,12 @@
       grid-column: 1;
       grid-row: 1;
       display: flex;
+      align-self: stretch;
+      height: 100%;
       min-height: 0;
       overflow: hidden;
       border-right: 1px solid rgb(63 63 70 / 0.8);
       background: #18181b;
-    }
-
-    /* Keep the workstation breathing evenly on both sides.  The source deck
-       and timeline used to begin flush against the left dock after the bin
-       was introduced, while the inspector retained its gutter. */
-    .cut-studio-workspace {
-      column-gap: 0.9rem !important;
-      padding-inline: 1rem !important;
     }
 
     .cut-studio-main-workspace {
